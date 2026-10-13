@@ -16,9 +16,15 @@ import { useReducedMotion } from './useReducedMotion'
  * (settings.spriteFallback), or the image fails to load. Always decorative: the item name is
  * rendered next to it.
  *
+ * Thumbnails (AMENDMENTS-007 B30, -009 B42a): when the manifest lists a `thumbnail` for the
+ * sprite (heavy files > 100 KB — the big boss GIFs), the still PNG thumbnail is drawn at its own
+ * size instead of the full file; `full` opts out where the real animation matters (detail / boss
+ * pages).
+ *
  * Reduced motion (UX_SPEC §9): an animated sprite (GIF — most boss art) is drawn as a still
  * frame on a canvas instead of an <img>, since CSS cannot pause a GIF. Canvas drawing uses the
- * animation's default (first) frame per the HTML spec.
+ * animation's default (first) frame per the HTML spec. A thumbnail is already a still PNG, so it
+ * stays a plain <img>.
  */
 export interface SpriteImgProps {
   /** Record `sprite` path, e.g. "/sprites/weapons/4956.png". */
@@ -30,6 +36,10 @@ export interface SpriteImgProps {
   placeholder?: SpritePlaceholderVariant
   /** Box edge in CSS px (the box is always square). */
   box: number
+  /** Draw the full sprite file even when the manifest lists a thumbnail (detail / boss pages). */
+  full?: boolean
+  /** Largest whole-number upscale (see ./spriteScale); no cap when omitted. */
+  maxScale?: number
   className?: string
 }
 
@@ -47,13 +57,17 @@ function snapToDevicePixels(element: HTMLElement): void {
   if (dx !== 0 || dy !== 0) element.style.translate = `${dx}px ${dy}px`
 }
 
-export function SpriteImg({ src, sprites, damageClass, placeholder, box, className }: SpriteImgProps) {
+export function SpriteImg({ src, sprites, damageClass, placeholder, box, full = false, maxScale, className }: SpriteImgProps) {
   const userFallback = useSettingsStore((s) => s.settings.spriteFallback)
   const reducedMotion = useReducedMotion()
-  const [broken, setBroken] = useState(() => (src ? failed.has(src) : false))
+  // Re-render after a load failure; whether the drawn file is broken is read from `failed`.
+  const [, setBroken] = useState<string>()
   const entry = src ? sprites?.byPath.get(src) : undefined
-  const usable = entry && sprites && !sprites.fallbackMode && !userFallback && !broken
-  const path = usable ? entry.path : undefined
+  const enabled = entry && sprites && !sprites.fallbackMode && !userFallback
+  // The file actually drawn: the still thumbnail when listed (B30), else the sprite itself.
+  const drawn = enabled ? (full ? entry : (entry.thumbnail ?? entry)) : undefined
+  const usable = drawn !== undefined && !failed.has(drawn.path)
+  const path = usable ? drawn.path : undefined
   const still = path !== undefined && reducedMotion && ANIMATABLE.test(path)
 
   // Snap once laid out, and again when the viewport (or zoom / DPR) changes — never per frame.
@@ -66,7 +80,7 @@ export function SpriteImg({ src, sprites, damageClass, placeholder, box, classNa
     snap()
     window.addEventListener('resize', snap)
     return () => window.removeEventListener('resize', snap)
-  }, [path, box, still])
+  }, [path, box, maxScale, still])
 
   // Reduced motion: paint the still frame once the image has loaded.
   useEffect(() => {
@@ -85,7 +99,7 @@ export function SpriteImg({ src, sprites, damageClass, placeholder, box, classNa
     image.onerror = () => {
       if (!active) return
       failed.add(path)
-      setBroken(true)
+      setBroken(path)
     }
     image.src = path
     return () => {
@@ -102,24 +116,24 @@ export function SpriteImg({ src, sprites, damageClass, placeholder, box, classNa
       {usable && still ? (
         <canvas
           ref={canvasRef}
-          width={entry.width}
-          height={entry.height}
-          style={spriteSize(entry.width, entry.height, box)}
+          width={drawn.width}
+          height={drawn.height}
+          style={spriteSize(drawn.width, drawn.height, box, maxScale)}
           className="pixelated max-w-none"
         />
       ) : usable ? (
         <img
           ref={imgRef}
-          src={entry.path}
+          src={drawn.path}
           alt=""
-          style={spriteSize(entry.width, entry.height, box)}
+          style={spriteSize(drawn.width, drawn.height, box, maxScale)}
           loading="lazy"
           decoding="async"
           draggable={false}
           className="pixelated max-w-none"
           onError={() => {
-            failed.add(entry.path)
-            setBroken(true)
+            failed.add(drawn.path)
+            setBroken(drawn.path)
           }}
         />
       ) : (

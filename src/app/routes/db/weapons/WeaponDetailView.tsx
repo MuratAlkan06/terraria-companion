@@ -79,7 +79,8 @@ function DetailHeader({
   return (
     <PixelPanel as="header" className="flex flex-col gap-4 sm:flex-row sm:items-start md:gap-6">
       <div className="grid size-28 shrink-0 place-items-center border-2 border-slot-border bg-slot shadow-pixel">
-        <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={96} />
+        {/* Detail page: always the full sprite file, never a thumbnail (B30). */}
+        <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={96} full />
       </div>
       <div className="min-w-0 flex-1 space-y-4">
         <h1 className="font-display text-base leading-relaxed md:text-2xl">

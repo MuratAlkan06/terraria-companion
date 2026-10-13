@@ -1,14 +1,14 @@
 /**
- * Where a search result goes (PRD P2-S4 AC1; slice scope 3).
+ * Where a search result goes (PRD P2-S4 AC1; slice scope 3; AMENDMENTS-009 B42b).
  *
  * - Types with a local detail route navigate in-app: weapons → /weapons/:id.
- * - INTERIM — until the P5 boss pages and the A5 `/enemies/:id` pages ship: bosses and enemies
- *   have no local page yet, so their rows open the record's own terraria.wiki.gg page (its
- *   `wikiUrl`) in a new tab, with an external-link indicator on the row. Never a dead local
- *   link, never a disabled row. When those routes ship, register them in LOCAL_ROUTES and the
- *   rows switch to in-app navigation with no UI change.
- * - Any other type (a future dataset with neither a page nor a URL source) opens the wiki's
- *   search for its exact name: a live page, never a guessed article URL.
+ * - Any other doc opens its own terraria.wiki.gg article — the doc's `wikiUrl` (AMENDMENTS-007
+ *   B31: the pipeline emits it on every search doc) — in a new tab, with an external-link
+ *   indicator on the row. Never a dead local link, never a disabled row. When an entity page
+ *   ships (P5 boss pages, A5 `/enemies/:id`, …), register it in LOCAL_ROUTES and its rows switch
+ *   to in-app navigation with no UI change.
+ * - A doc with neither a page nor a `wikiUrl` opens the wiki's search for its exact name: a live
+ *   page, never a guessed article URL.
  */
 import { weaponHref } from '../app/routes/db/weapons/weaponNav'
 import type { SearchDoc, SearchDocType } from '../schemas'
@@ -32,11 +32,8 @@ export function wikiSearchUrl(name: string): string {
   return `${WIKI_ORIGIN}/wiki/Special:Search?search=${encodeURIComponent(name)}`
 }
 
-export function resolveTarget(
-  doc: Pick<SearchDoc, 'id' | 'type' | 'name'>,
-  wikiUrls: ReadonlyMap<string, string>,
-): SearchTarget {
+export function resolveTarget(doc: Pick<SearchDoc, 'id' | 'type' | 'name' | 'wikiUrl'>): SearchTarget {
   const local = LOCAL_ROUTES[doc.type]?.(doc.id)
   if (local !== undefined) return { kind: 'internal', to: local }
-  return { kind: 'external', href: wikiUrls.get(doc.id) ?? wikiSearchUrl(doc.name) }
+  return { kind: 'external', href: doc.wikiUrl ?? wikiSearchUrl(doc.name) }
 }

@@ -1,7 +1,8 @@
 /**
  * Builds the global search index (ADR-001 D4/D7). LAZY chunk: `./index.ts` imports this module
- * dynamically on the first search interaction, so MiniSearch, the search docs and the interim
- * wiki-link data stay out of the shell bundle.
+ * dynamically on the first search interaction, so MiniSearch and the search docs stay out of the
+ * shell bundle. Row targets come from the docs themselves (`wikiUrl`, B31/B42b), so no other
+ * entity data is loaded for search.
  *
  * Everything shown in a row is resolved once here (target, sprite, detail line), so the shell UI
  * renders any entity type generically (P2-S4 AC5).
@@ -9,7 +10,7 @@
 import { CLASS_LABELS } from '../app/routes/db/weapons/weaponDisplay'
 import { getStageInfo, isStage } from '../app/stages'
 import { asRarity, rarityLabel } from '../components/rarity'
-import { loadBosses, loadEnemies, loadSearchDocs, loadSpriteIndex } from '../data-access'
+import { loadSearchDocs, loadSpriteIndex } from '../data-access'
 import type { SpriteIndex } from '../data-access/types'
 import type { SearchDoc } from '../schemas'
 import { createSearchEngine } from './engine'
@@ -17,24 +18,15 @@ import { DEFAULT_PER_GROUP, groupByType } from './group'
 import { resolveTarget } from './links'
 import type { SearchIndex, SearchResultItem, SearchSuggestions, SuggestOptions } from './types'
 
-type WikiUrlEntries = Iterable<readonly [ref: string, url: string]>
-
 export interface BuildDeps {
   loadDocs: () => Promise<SearchDoc[]>
   loadSprites: () => Promise<SpriteIndex>
-  /** INTERIM ref → wiki URL sources for types without a local page (see ./links.ts). */
-  wikiUrlSources: ReadonlyArray<() => Promise<WikiUrlEntries>>
   now: () => number
 }
 
 export const DEFAULT_DEPS: BuildDeps = {
   loadDocs: loadSearchDocs,
   loadSprites: loadSpriteIndex,
-  wikiUrlSources: [
-    // Remove each source when its entity page ships (P5 boss pages; A5 /enemies/:id).
-    () => loadBosses().then((bosses) => bosses.map((b) => [`boss:${b.id}`, b.wikiUrl] as const)),
-    () => loadEnemies().then((enemies) => enemies.map((e) => [`enemy:${e.id}`, e.wikiUrl] as const)),
-  ],
   now: () => performance.now(),
 }
 
@@ -68,19 +60,16 @@ function measure(name: string, start: number, end: number): void {
  *   lazy chunk downloaded), so `timing.loadMs` covers the whole wait.
  */
 export async function buildSearchIndex(startedAt: number, deps: BuildDeps = DEFAULT_DEPS): Promise<SearchIndex> {
-  const [docs, sprites, ...wikiSources] = await Promise.all([
+  const [docs, sprites] = await Promise.all([
     deps.loadDocs(),
     deps.loadSprites().catch((error: unknown) => {
       console.warn('[search] Sprite manifest unavailable; showing placeholder art.', error)
       return null
     }),
-    ...deps.wikiUrlSources.map((source) => source()),
   ])
   const loadedAt = deps.now()
 
   const engine = createSearchEngine(docs)
-  const wikiUrls = new Map<string, string>()
-  for (const entries of wikiSources) for (const [ref, url] of entries) wikiUrls.set(ref, url)
   const spritePaths = spritesByRef(sprites)
   const items = new Map<string, SearchResultItem>()
   for (const doc of docs) {
@@ -93,7 +82,7 @@ export async function buildSearchIndex(startedAt: number, deps: BuildDeps = DEFA
       rarity: doc.rarity,
       detail: detailLine(doc),
       sprite: spritePaths.get(doc.id),
-      target: resolveTarget(doc, wikiUrls),
+      target: resolveTarget(doc),
     })
   }
   const builtAt = deps.now()

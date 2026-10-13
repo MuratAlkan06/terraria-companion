@@ -2,7 +2,7 @@
  * Global search entry point (PRD P2-S4; ADR-001 D4/D7). This module is in the shell bundle and
  * stays tiny: the index is NOT built at app start. The first search interaction (focus, keystroke,
  * "/" shortcut) calls `loadSearchIndex()`, which dynamically imports `./buildIndex` (MiniSearch +
- * search docs + interim wiki-link data, one lazy chunk) and builds the index once per session.
+ * the search docs as lazy chunks) and builds the index once per session.
  * Failures are not cached (data-access memo), so the search error state's Retry rebuilds.
  */
 import { ChunkLoadError } from '../data-access/errors'

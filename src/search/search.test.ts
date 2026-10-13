@@ -26,10 +26,6 @@ function deps(overrides: Partial<BuildDeps> = {}): BuildDeps {
   return {
     loadDocs: async () => docs,
     loadSprites: realSprites,
-    wikiUrlSources: [
-      async () => bosses.map((b) => [`boss:${b.id}`, b.wikiUrl] as const),
-      async () => enemies.map((e) => [`enemy:${e.id}`, e.wikiUrl] as const),
-    ],
     now: () => performance.now(),
     ...overrides,
   }
@@ -122,27 +118,31 @@ describe('groupByType (AC2)', () => {
   })
 })
 
-describe('result targets (internal vs interim external)', () => {
-  const urls = new Map([['boss:plantera', 'https://terraria.wiki.gg/wiki/Plantera']])
-
-  it('weapons navigate in-app to their detail page', () => {
-    expect(resolveTarget({ id: 'i:4956', type: 'weapon', name: 'Zenith' }, urls)).toEqual({ kind: 'internal', to: '/weapons/4956' })
+describe('result targets (internal vs the doc’s own wiki article; B42b)', () => {
+  it('weapons navigate in-app to their detail page (a local route wins over the doc’s wikiUrl)', () => {
+    const zenith = { id: 'i:4956', type: 'weapon', name: 'Zenith', wikiUrl: 'https://terraria.wiki.gg/wiki/Zenith' } as const
+    expect(resolveTarget(zenith)).toEqual({ kind: 'internal', to: '/weapons/4956' })
   })
 
-  it('bosses/enemies (no local page yet) open their own wiki page', () => {
-    expect(resolveTarget({ id: 'boss:plantera', type: 'boss', name: 'Plantera' }, urls)).toEqual({
-      kind: 'external',
-      href: 'https://terraria.wiki.gg/wiki/Plantera',
-    })
+  it('bosses (no local page yet) open their own wiki article from the doc', () => {
+    const plantera = { id: 'boss:plantera', type: 'boss', name: 'Plantera', wikiUrl: 'https://terraria.wiki.gg/wiki/Plantera' } as const
+    expect(resolveTarget(plantera)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Plantera' })
+  })
+
+  it('an ammo item and a buff open their own article, not the wiki search page', () => {
+    const ammo = { id: 'i:97', type: 'item', name: 'Musket Ball', wikiUrl: 'https://terraria.wiki.gg/wiki/Musket_Ball' } as const
+    const buff = { id: 'buff:on-fire', type: 'buff', name: 'On Fire!', wikiUrl: 'https://terraria.wiki.gg/wiki/On_Fire!' } as const
+    expect(resolveTarget(ammo)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Musket_Ball' })
+    expect(resolveTarget(buff)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/On_Fire!' })
   })
 
   it('anything without a page or URL falls back to the wiki search for its exact name (never a dead link)', () => {
-    expect(resolveTarget({ id: 'buff:on-fire', type: 'buff', name: 'On Fire!' }, urls)).toEqual({
+    expect(resolveTarget({ id: 'buff:on-fire', type: 'buff', name: 'On Fire!' })).toEqual({
       kind: 'external',
       href: 'https://terraria.wiki.gg/wiki/Special:Search?search=On%20Fire!',
     })
     // A malformed weapon ref has no route: still a live target, not a broken local link.
-    expect(resolveTarget({ id: 'i:abc' as SearchDoc['id'], type: 'weapon', name: 'X' }, urls)).toEqual({
+    expect(resolveTarget({ id: 'i:abc' as SearchDoc['id'], type: 'weapon', name: 'X' })).toEqual({
       kind: 'external',
       href: wikiSearchUrl('X'),
     })
@@ -166,23 +166,48 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     })
   })
 
-  it('every boss and enemy row opens its own record’s wiki page (never a guessed URL)', async () => {
+  it('every non-weapon row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
     expect(all).toHaveLength(959)
-    const byRef = new Map<string, string>([
-      ...bosses.map((b) => [`boss:${b.id}`, b.wikiUrl] as const),
-      ...enemies.map((e) => [`enemy:${e.id}`, e.wikiUrl] as const),
-    ])
+    const docById = new Map(docs.map((d) => [d.id, d]))
     for (const option of all) {
-      if (option.type === 'weapon') expect(option.target).toEqual({ kind: 'internal', to: `/weapons/${option.ref.slice(2)}` })
-      // P2-S7 ammo items + buffs: no local page and no interim URL source yet → the wiki search for the exact name
-      else if (option.type === 'item' || option.type === 'buff') expect(option.target).toEqual({ kind: 'external', href: wikiSearchUrl(option.name) })
-      else expect(option.target).toEqual({ kind: 'external', href: byRef.get(option.ref) })
+      if (option.type === 'weapon') {
+        expect(option.target).toEqual({ kind: 'internal', to: `/weapons/${option.ref.slice(2)}` })
+        continue
+      }
+      const wikiUrl = docById.get(option.ref)?.wikiUrl
+      expect(wikiUrl, option.ref).toMatch(/^https:\/\/terraria\.wiki\.gg\/wiki\//)
+      expect(wikiUrl, option.ref).not.toContain('Special:Search')
+      expect(option.target, option.ref).toEqual({ kind: 'external', href: wikiUrl })
     }
+    // P2-S7 ammo items and buffs are covered too (they used to open the wiki search page).
+    expect(new Set(all.map((o) => o.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'item', 'buff']))
     // e.g. the Enchanted Sword ENEMY must not link to the item article of the same name.
     const enchanted = index.suggest('enchanted sword').options.find((o) => o.type === 'enemy')
     expect(enchanted?.target).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Enchanted_Sword_(NPC)' })
+  })
+
+  it('retiring the boss/enemy URL loaders loses nothing: doc URLs match the records’ own wikiUrl', async () => {
+    const index = await buildSearchIndex(performance.now(), deps())
+    const records = [...bosses.map((b) => [`boss:${b.id}`, b] as const), ...enemies.map((e) => [`enemy:${e.id}`, e] as const)]
+    for (const [ref, record] of records) {
+      const doc = docs.find((d) => d.id === ref)
+      expect(doc, ref).toBeDefined()
+      const option = index.suggest(doc!.name).options.find((o) => o.ref === ref)
+      expect(option?.target, ref).toEqual({ kind: 'external', href: record.wikiUrl })
+    }
+  })
+
+  it('an ammo row and a buff row from the shipped data open their own article', async () => {
+    const index = await buildSearchIndex(performance.now(), deps())
+    const ammo = docs.find((d) => d.type === 'item' && d.tags.includes('bullets'))!
+    const buff = docs.find((d) => d.type === 'buff')!
+    for (const doc of [ammo, buff]) {
+      const row = index.suggest(doc.name).options.find((o) => o.ref === doc.id)
+      expect(row?.target, doc.id).toEqual({ kind: 'external', href: doc.wikiUrl })
+      expect(row?.target, doc.id).not.toEqual({ kind: 'external', href: wikiSearchUrl(doc.name) })
+    }
   })
 
   it('groups mixed results by type with labels, bosses carry sprites, enemies fall back to placeholder art', async () => {
@@ -202,7 +227,8 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
       { id: 'i:29', name: 'Life Crystal', type: 'item', rarity: 2, tags: ['consumables'] },
       { id: 'set:molten-armor', name: 'Molten armor', type: 'set', stage: 'late-prehm', tags: [] },
     ]
-    const index = await buildSearchIndex(performance.now(), deps({ loadDocs: async () => [...docs, ...extra], wikiUrlSources: [] }))
+    // Neither extra doc carries a wikiUrl: the row falls back to the wiki search (never a dead link).
+    const index = await buildSearchIndex(performance.now(), deps({ loadDocs: async () => [...docs, ...extra] }))
     const crystal = index.suggest('life crystal')
     expect(crystal.groups[0]).toMatchObject({ type: 'item', label: ENTITY_TYPES.item.plural })
     expect(crystal.options[0].target).toEqual({ kind: 'external', href: wikiSearchUrl('Life Crystal') })

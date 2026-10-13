@@ -2,16 +2,17 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import manifest from '../../../../public/sprites/manifest.json'
 import { CURATED_EXPLANATION } from '../../../components/CuratedLabel'
 import { createDataAccess, loadBosses, loadList } from '../../../data-access'
-import type { Boss, Weapon, WeaponListRecord } from '../../../data-access/types'
+import type { Boss, SpriteIndex, Weapon, WeaponListRecord } from '../../../data-access/types'
 import bossesJson from '../../../data/bosses.json'
 import weaponsDetailJson from '../../../data/weapons.detail.json'
 import weaponsListJson from '../../../data/weapons.list.json'
 import { getField } from '../../../schemas/getField'
 import type { StorageBackend } from '../../../storage'
 import HomePage from '../HomePage'
-import { FeaturedRow } from './FeaturedRow'
+import { FeaturedRow, MAX_UPSCALE } from './FeaturedRow'
 import {
   featuredWeaponPool,
   localDayNumber,
@@ -264,5 +265,42 @@ describe('HomePage render (SSR markup)', () => {
     expect(html).toContain('Weapon of the day')
     expect(html).not.toContain('Boss of the day')
     expect(html).not.toContain('md:grid-cols-2')
+  })
+})
+
+describe('featured card sprites: thumbnails and the upscale cap (AMENDMENTS-009 B42a/c)', () => {
+  let sprites: SpriteIndex
+  beforeAll(async () => {
+    sprites = await createDataAccess({ validate: null, importers: { 'sprite-manifest': async () => manifest } }).loadSpriteIndex()
+  })
+
+  const renderRow = (data: HomeData) =>
+    renderToStaticMarkup(createElement(MemoryRouter, null, createElement(FeaturedRow, { home: { status: 'ready', data, retry: () => {} } })))
+
+  it('on a heavy-GIF day the boss card loads the small still thumbnail, never the heavy GIF', () => {
+    const heavy = bosses.filter((b) => b.sprite !== undefined && sprites.byPath.get(b.sprite)?.thumbnail)
+    expect(heavy.length).toBeGreaterThan(0)
+    for (const boss of heavy) {
+      // A one-boss pool forces the day's pick.
+      expect(pickFeaturedBoss([boss], day(13))).toBe(boss)
+      const entry = sprites.byPath.get(boss.sprite!)!
+      const html = renderRow({ weapons, weaponsById, bosses: [boss], sprites })
+      expect(html, boss.id).toContain('Boss of the day')
+      expect(html, boss.id).toContain(`<img src="${entry.thumbnail!.path}"`)
+      expect(html, boss.id).not.toContain(entry.path)
+    }
+  })
+
+  it('the featured weapon sprite is upscaled at most 3× (a small sprite would otherwise fill the slot)', () => {
+    expect(MAX_UPSCALE).toBe(3)
+    const box = 96 // SSR markup: below lg
+    const small = featuredWeaponPool(weapons).find((w) => {
+      const f = sprites.byPath.get(w.sprite!)
+      return f !== undefined && Math.floor(box / Math.max(f.width, f.height)) > 3
+    })!
+    const f = sprites.byPath.get(small.sprite!)!
+    const html = renderRow({ weapons: [small], weaponsById, bosses: [], sprites })
+    expect(html).toContain(`href="/weapons/${small.id}"`)
+    expect(html).toContain(`<img src="${f.path}" alt="" style="width:${f.width * 3}px;height:${f.height * 3}px"`)
   })
 })

@@ -27,10 +27,12 @@ import { pickFeaturedBoss, pickFeaturedWeapon, type HomeResource } from './homeD
  *
  * Composition (P2-S5 design review): both cards share one anatomy — eyebrow, sprite slot, name,
  * meta line, stat line, trailing affordance (chevron = in-app page, ↗ = wiki, new tab) — and one
- * slot size. From lg the slot grows so small sprites get a whole-number upscale (2×/3×) instead of
- * sitting at 1× in a large empty box; art bigger than the slot still gets an exact ½/⅓
- * (./spriteScale). The weapons source link sits directly under the weapon card and says what it
- * is — the wiki's weapons category, not the item's own page (AMENDMENTS-007 B31).
+ * slot size. From lg the slot grows so small sprites get a whole-number upscale instead of
+ * sitting at 1× in a large empty box, capped at 3× (MAX_UPSCALE, design review: a 16px sword
+ * would otherwise fill the slot at 9×); art bigger than the slot still gets an exact ½/⅓
+ * (components/spriteScale). Heavy boss GIFs draw their still thumbnail (B30). The weapons source
+ * link sits directly under the weapon card and says what it is — the wiki's weapons category,
+ * not the item's own page (AMENDMENTS-007 B31).
  */
 const TITLE_ID = 'featured-title'
 
@@ -44,6 +46,8 @@ const TRAILING_ICON =
   'size-5 shrink-0 text-fg-muted transition-colors duration-(--dur-ui) ease-out-strong group-hover:text-accent'
 /** Sprite box (px) inside SLOT (size-28 / lg:size-40, minus the 2px borders and a little air). */
 const SPRITE_BOX = { base: 96, lg: 152 } as const
+/** Largest whole-number sprite upscale in the featured slot (both cards share it). */
+export const MAX_UPSCALE = 3
 /**
  * Stretched link: the link's ::after covers the whole card (the card is `relative`), so the card
  * stays one click target while other controls in it (the "curated" toggletip) remain separate,
@@ -121,7 +125,7 @@ function FeaturedWeaponCard({ weapon, sprites, box }: CardProps & { weapon: Weap
       <span className={EYEBROW}>Weapon of the day</span>
       <span className={ROW}>
         <span className={SLOT}>
-          <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={box} />
+          <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={box} maxScale={MAX_UPSCALE} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-2">
           <RarityText rarity={rarity} className={NAME}>
@@ -150,7 +154,7 @@ function FeaturedBossCard({ boss, sprites, box, className }: CardProps & { boss:
       <span className={ROW}>
         <span className={SLOT}>
           {/* Same generic creature placeholder as search rows (B32), never the "?" Unknown glyph. */}
-          <SpriteImg src={boss.sprite} sprites={sprites} placeholder="creature" box={box} />
+          <SpriteImg src={boss.sprite} sprites={sprites} placeholder="creature" box={box} maxScale={MAX_UPSCALE} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-2">
           <a href={boss.wikiUrl} target="_blank" rel="noopener noreferrer" className={cx(NAME, 'text-shadow-pixel', STRETCHED_LINK)}>

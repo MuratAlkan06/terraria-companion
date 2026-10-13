@@ -16,3 +16,6 @@ For data machine-extracted from rendered articles (Buff IDs table, infobox rows)
 
 ## Standing honest gaps (no action; tracked)
 77/79 ammo stages Unknown until P6-S0 base-material acquisition; 20 velocity multipliers Unknown (list-article items); debuff target effects Unknown; regen effects text-only pending a unit definition (schema owner decides at P3-S14). B13 meta.ts comment still pending.
+
+## B43 — Featured cards below 375px: STACK (2026-10-13)
+The boss card's 112px slot + no-break stage term cannot fit side-by-side composition below ~370px (9.5px overflow at 360, ~50px at 320). Ruling: at narrow widths the two featured cards stack vertically, full-width each; the no-break stage terms stay unbroken; no sub-md slot shrinking. Hero label ellipsis at 320 is ACCEPTED as designed truncation. Apply in the next slice touching the homepage or FeaturedRow (P3-S1's UI pass may carry it).

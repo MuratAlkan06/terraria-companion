@@ -135,10 +135,13 @@ function useOverlayState() {
 
 type OverlayTrigger = 'header' | 'hero'
 
+// Below md the right padding and icon gap are a step tighter than the left padding: the labels
+// had only ~4px to spare at 360px (hero) or were cut by ~1px (header), so platforms with slightly
+// wider text rendering ellipsized them (design review B42c).
 const TRIGGER_CLASSES: Record<OverlayTrigger, string> = {
-  header: 'min-h-tap min-w-0 flex-1 gap-2 border-panel-border px-3 shadow-pixel hover:border-border-strong',
+  header: 'min-h-tap min-w-0 flex-1 gap-1.5 border-panel-border pr-2 pl-3 shadow-pixel hover:border-border-strong',
   // Hero: larger, with a strong border + drop so the field reads clearly over the pixel art.
-  hero: 'h-14 w-full gap-2 border-border-strong px-3 shadow-pixel-drop hover:border-stone-400 md:gap-3 md:px-4',
+  hero: 'h-14 w-full gap-1.5 border-border-strong pr-2 pl-3 shadow-pixel-drop hover:border-stone-400 md:gap-3 md:px-4',
 }
 
 interface SearchOverlayProps {
@@ -324,7 +327,7 @@ function SearchCombobox({ variant, inputRef, onActivated, endSlot, autoFocus = f
 
   const activate = (item: SearchResultItem) => {
     if (item.target.kind === 'external') {
-      // INTERIM (no local boss/enemy pages yet, see src/search/links.ts): the wiki, new tab.
+      // Types without a local page yet open their wiki article in a new tab (src/search/links.ts).
       window.open(item.target.href, '_blank', 'noopener,noreferrer')
     } else {
       navigate(item.target.to)

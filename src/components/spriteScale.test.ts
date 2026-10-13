@@ -32,13 +32,27 @@ describe('whole-number sprite scaling (design review P2-S3 #4)', () => {
     expect(spriteScale(10, 10, 0)).toBe(1)
   })
 
-  it('every shipped sprite gets an integer or 1/n factor and fits its box at every used box size', () => {
-    for (const box of [32, 40, 96]) {
-      for (const f of manifest.files) {
-        const scale = spriteScale(f.width, f.height, box)
+  it('maxUpscale caps the integer upscale (featured cards: 3×) and never touches a downscale', () => {
+    expect(spriteScale(16, 16, 152)).toBe(9)
+    expect(spriteScale(16, 16, 152, 3)).toBe(3)
+    expect(spriteScale(40, 40, 152, 3)).toBe(3)
+    expect(spriteScale(60, 60, 152, 3)).toBe(2) // below the cap: unchanged
+    expect(spriteScale(200, 100, 152, 3)).toBe(1 / 2) // downscale: the cap doesn't apply
+    expect(spriteSize(16, 14, 152, 3)).toEqual({ width: 48, height: 42 })
+    // A cap below 1 or fractional still yields a whole-number factor ≥ 1.
+    expect(spriteScale(16, 16, 152, 0)).toBe(1)
+    expect(spriteScale(16, 16, 152, 2.7)).toBe(2)
+  })
+
+  it('every shipped sprite (and thumbnail) gets an integer or 1/n factor and fits its box at every used box size', () => {
+    const images = manifest.files.flatMap((f) => [f, ...('thumbnail' in f && f.thumbnail ? [{ ...f.thumbnail }] : [])])
+    for (const [box, cap] of [[32], [40], [96], [96, 3], [152, 3]] as const) {
+      for (const f of images) {
+        const scale = spriteScale(f.width, f.height, box, cap)
         const factor = scale >= 1 ? scale : 1 / scale
         expect(Math.abs(factor - Math.round(factor)), `${f.path} @${box}: ${scale}`).toBeLessThan(1e-9)
-        const size = spriteSize(f.width, f.height, box)
+        if (cap !== undefined) expect(scale, f.path).toBeLessThanOrEqual(cap)
+        const size = spriteSize(f.width, f.height, box, cap)
         expect(Math.max(size.width, size.height), f.path).toBeLessThanOrEqual(box)
       }
     }

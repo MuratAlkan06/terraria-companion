@@ -8,11 +8,15 @@
  *   texel blocks (481 of the 488 shipped weapon sprites exactly, measured 2026-10-12), so ½
  *   lands on its art pixels and loses nothing; on 2x screens every texel still maps to whole
  *   device pixels.
+ *
+ * `maxUpscale` caps the integer upscale (whole numbers, ≥ 1; default: no cap) — e.g. the featured
+ * cards stop at 3× so a 16px sword doesn't become a 9× blob in their large slot (design review).
  */
-export function spriteScale(width: number, height: number, box: number): number {
+export function spriteScale(width: number, height: number, box: number, maxUpscale = Infinity): number {
   const largest = Math.max(width, height)
   if (largest <= 0 || box <= 0) return 1
-  return largest <= box ? Math.floor(box / largest) : 1 / Math.ceil(largest / box)
+  if (largest > box) return 1 / Math.ceil(largest / box)
+  return Math.min(Math.floor(box / largest), Math.max(1, Math.floor(maxUpscale)))
 }
 
 /**
@@ -35,7 +39,12 @@ export function devicePixelOffset(left: number, top: number, dpr: number): { dx:
  * Rendered CSS size of a sprite in a `box`px square. Not rounded: rounding a ⅓ downscale of an
  * odd size would make the factor inexact again (CSS accepts fractional px; the box is fixed).
  */
-export function spriteSize(width: number, height: number, box: number): { width: number; height: number } {
-  const scale = spriteScale(width, height, box)
+export function spriteSize(
+  width: number,
+  height: number,
+  box: number,
+  maxUpscale?: number,
+): { width: number; height: number } {
+  const scale = spriteScale(width, height, box, maxUpscale)
   return { width: width * scale, height: height * scale }
 }
