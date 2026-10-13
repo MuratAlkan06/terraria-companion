@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Dark-only site: no light-mode variants exist (UX_SPEC §11 "Rejected: light mode"). */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background-color: var(--color-canvas);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--color-fg);
+    background-color: var(--color-canvas);
+    background-image: linear-gradient(
+      to bottom,
+      var(--color-night-950) 0%,
+      var(--color-night-900) 55%,
+      var(--color-forest-950) 100%
+    );
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--color-gold-600);
+    color: var(--color-white);
+  }
+
+  /* Visible 2px zero-radius focus rectangle on every focusable element (UX_SPEC §9). */
+  :focus-visible {
+    outline: var(--pixel) solid var(--color-ring);
+    outline-offset: var(--pixel);
+  }
+
+  /* Clickables get a pointer cursor (UX_SPEC anti-patterns). */
+  a[href],
+  button:not(:disabled),
+  [role="button"],
+  [role="menuitemradio"],
+  [role="menuitem"],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  /* Keep long words/URLs from causing horizontal scroll at 375px. */
+  p,
+  li,
+  dd,
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Reduced motion: remove movement globally; state changes still apply instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Pixel-art rendering helper (ADR D4). */
+@utility pixelated {
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
+}
+
+/* Bottom safe-area padding for fixed mobile chrome. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

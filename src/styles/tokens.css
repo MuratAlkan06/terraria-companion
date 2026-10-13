@@ -1,0 +1,226 @@
+/*
+ * Design tokens — Terraria Companion (UX_SPEC §11, AMENDMENTS-001 A17).
+ *
+ * Single source of truth for colour, type, geometry, motion and layering.
+ * Components must use these tokens (via Tailwind utilities or var()) and never
+ * hard-code colours, radii, durations or z-indices.
+ *
+ * Contrast notes (WCAG, verified 2026-10-12 with a luminance script):
+ *  - --color-fg / --color-fg-muted / --color-unknown are >= 5:1 on every surface.
+ *  - Rarity tokens are >= 4.5:1 on night-950/900/800. Never place rarity text on
+ *    night-700 or lighter (rarity -1, 10, 11 drop to ~4.4:1 there).
+ *  - --color-destructive (#DC2626, mandated) is 4.08:1 as text on the canvas, so
+ *    it is used as a FILL with --color-destructive-fg (4.83:1), never as text.
+ */
+
+/* Reset Tailwind's default palette, radii and breakpoints so only project tokens exist. */
+@theme {
+  --color-*: initial;
+  --radius-*: initial;
+  --breakpoint-*: initial;
+}
+
+/* `static`: every token is emitted to :root even before a utility uses it,
+   so var(--rarity-*) / var(--edge-*) lookups always resolve. */
+@theme static {
+  /* ---------- Breakpoints (UX_SPEC §7: 375 base / 768 / 1024 / 1440) ---------- */
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 90rem;
+
+  /* ---------- Brand ramps (REQUIREMENTS §11) ---------- */
+  /* Deep blue — night sky, base surfaces */
+  --color-night-950: #070b14;
+  --color-night-900: #0c1322;
+  --color-night-800: #121b30;
+  --color-night-700: #1a2742;
+  --color-night-600: #24365a;
+  --color-night-400: #4a6aa8;
+  --color-night-200: #a9c1ef;
+
+  /* Forest green */
+  --color-forest-950: #08160e;
+  --color-forest-900: #0e2418;
+  --color-forest-800: #143322;
+  --color-forest-700: #1d4a30;
+  --color-forest-600: #276140;
+  --color-forest-500: #357d52;
+  --color-forest-400: #4f9e68;
+  --color-forest-300: #7cc489;
+  --color-forest-200: #b0e0a8;
+
+  /* Earth brown */
+  --color-earth-900: #24180e;
+  --color-earth-800: #33231a;
+  --color-earth-700: #4a3220;
+  --color-earth-600: #64442b;
+  --color-earth-500: #835a38;
+  --color-earth-400: #a7774c;
+  --color-earth-300: #c99b6c;
+
+  /* Stone gray */
+  --color-stone-950: #121419;
+  --color-stone-900: #1b1e25;
+  --color-stone-800: #262a33;
+  --color-stone-700: #363b47;
+  --color-stone-600: #4b5261;
+  --color-stone-500: #666e7e;
+  --color-stone-400: #8f97a8;
+  --color-stone-300: #adb4c2;
+  --color-stone-200: #cfd4dd;
+
+  /* Warm gold */
+  --color-gold-700: #8a5a12;
+  --color-gold-600: #b07818;
+  --color-gold-500: #d99a22;
+  --color-gold-400: #f0b73a;
+  --color-gold-300: #f8cd5c;
+  --color-gold-200: #fde29a;
+
+  /* Pure white for pixel-art highlights and on-fill text. */
+  --color-white: #ffffff;
+
+  /* ---------- Semantic roles ---------- */
+  --color-canvas: var(--color-night-950);
+  --color-surface: var(--color-night-900);
+  --color-surface-raised: var(--color-night-800);
+  --color-surface-sunken: #05080f;
+
+  --color-fg: #ece8dc;
+  --color-fg-muted: var(--color-stone-300);
+  --color-fg-on-accent: var(--color-night-950);
+
+  --color-border: var(--color-stone-700);
+  --color-border-strong: var(--color-stone-500);
+  --color-ring: var(--color-gold-400);
+
+  --color-accent: var(--color-gold-400);
+  --color-accent-strong: var(--color-gold-300);
+  --color-link: var(--color-gold-300);
+
+  --color-primary: var(--color-forest-600);
+  --color-primary-hover: var(--color-forest-500);
+  --color-primary-fg: var(--color-white);
+
+  --color-destructive: #dc2626;
+  --color-destructive-fg: var(--color-white);
+
+  /* Honesty affordances (UX_SPEC §8) */
+  --color-estimate: var(--color-gold-300);
+  --color-gate: var(--color-earth-300);
+  --color-unknown: var(--color-stone-400);
+  --color-success: var(--color-forest-300);
+  /* Text-safe "negative" tone (destructive red fails 4.5:1 as text). */
+  --color-negative: #ff8a7a;
+
+  /* Kit surfaces: PixelPanel / ItemSlot / TerrariaTooltip */
+  --color-panel: var(--color-night-800);
+  --color-panel-border: var(--color-night-600);
+  --color-slot: var(--color-night-900);
+  --color-slot-border: var(--color-night-600);
+  --color-slot-hover: var(--color-night-700);
+  --color-slot-selected: var(--color-gold-400);
+  --color-tooltip-bg: var(--color-night-950);
+  --color-tooltip-border: var(--color-night-600);
+
+  /* ---------- Rarity scale (A17; wiki hex values, dark-bg adjusted) ----------
+     Source: https://terraria.wiki.gg/wiki/Rarity (checked 2026-10-12).
+     Adjusted for >= 4.5:1: -1 (#828282 -> #8c8c8c), 10 (#ff2864 -> #ff3d70),
+     11 (#b428ff -> #c25cff). Rainbow (Expert) and Fiery Red (Master) are
+     animated in-game; these are static stand-ins. */
+  --rarity--1: #8c8c8c;
+  --rarity-0: #ffffff;
+  --rarity-1: #9696ff;
+  --rarity-2: #96ff96;
+  --rarity-3: #ffc896;
+  --rarity-4: #ff9696;
+  --rarity-5: #ff96ff;
+  --rarity-6: #d2a0ff;
+  --rarity-7: #96ff0a;
+  --rarity-8: #ffff0a;
+  --rarity-9: #05c8ff;
+  --rarity-10: #ff3d70;
+  --rarity-11: #c25cff;
+  --rarity-rainbow: #e4a8ff;
+  --rarity-fiery-red: #ff5a3c;
+  --rarity-amber: #ffaf00;
+
+  /* ---------- Progression-map edge tokens (UX_SPEC §11) ---------- */
+  --edge-required: var(--color-gold-400);
+  --edge-recommended: var(--color-forest-300);
+  --edge-optional: var(--color-stone-400);
+  --edge-alt: var(--color-night-200);
+
+  /* ---------- Typography (ADR D4: OFL fonts, self-hosted via Fontsource) ---------- */
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Display only, >= 14px (UX_SPEC §9); crispest at 16/24/32px. */
+  --font-display: "Press Start 2P", ui-monospace, monospace;
+
+  /* ---------- Geometry ---------- */
+  --spacing-tap: 2.75rem; /* 44px minimum touch target (UX_SPEC §9) */
+  --spacing-slot: 3rem; /* 48px inventory slot */
+  --spacing-tabbar: 4rem; /* mobile bottom tab bar height (excl. safe area) */
+  --pixel: 2px; /* one "art pixel" for borders and bevels */
+
+  /* Pixel bevel: light top-left, dark bottom-right (zero-radius). */
+  --shadow-pixel:
+    inset var(--pixel) var(--pixel) 0 0 color-mix(in srgb, var(--color-white) 7%, transparent),
+    inset calc(var(--pixel) * -1) calc(var(--pixel) * -1) 0 0
+      color-mix(in srgb, var(--color-night-950) 55%, transparent);
+  --shadow-pixel-drop:
+    var(--pixel) var(--pixel) 0 0 color-mix(in srgb, var(--color-night-950) 80%, transparent),
+    0 0 0 var(--pixel) var(--color-night-950);
+  --shadow-slot-selected: inset 0 0 0 var(--pixel) var(--color-gold-700);
+  /* Hard 1-step drop shadow for in-game style text (item names, wordmark). */
+  --text-shadow-pixel: var(--pixel) var(--pixel) 0 var(--color-night-950);
+
+  /* ---------- Motion (UX_SPEC §11/§12) ---------- */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-press: 120ms;
+  --dur-ui: 200ms;
+  --dur-panel: 260ms;
+  --dur-exit: 180ms;
+
+  --animate-sheet-in: sheet-in var(--dur-panel) var(--ease-out-strong);
+  --animate-sheet-out: sheet-out var(--dur-exit) ease-in;
+  --animate-fade-in: fade-in var(--dur-ui) var(--ease-out-strong);
+  --animate-fade-out: fade-out var(--dur-exit) ease-in;
+  --animate-pixel-march: pixel-march 1.2s steps(1, end) infinite;
+  --animate-flicker: flicker 1.6s steps(1, end) infinite;
+
+  @keyframes sheet-in {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes sheet-out {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes pixel-march {
+    0% { opacity: 0.25; }
+    25% { opacity: 1; }
+    75% { opacity: 0.25; }
+  }
+  @keyframes flicker {
+    0% { opacity: 1; }
+    30% { opacity: 0.7; }
+    45% { opacity: 1; }
+    80% { opacity: 0.85; }
+  }
+
+  /* ---------- Layering (UX_SPEC §11 + P1 deltas: nav, popover) ---------- */
+  --z-hud: 10;
+  --z-nav: 30;
+  --z-sheet: 40;
+  --z-dialog: 100;
+  --z-popover: 200;
+  --z-toast: 1000;
+}
