@@ -27,6 +27,8 @@ export type PipelineError =
   | { code: 'E_LIST_DETAIL_DRIFT'; file: string; ref: string; field?: string; message: string }
   | { code: 'E_UNVERIFIED_VALUE_EMITTED'; ref: string; field: string; message: string }
   | { code: 'E_BUDGET'; file: string; gzBytes: number; message: string }
+  /** §7a-13: a named progression fixture fact does not hold (P2-S6 AC3 as data tests). */
+  | { code: 'E_FIXTURE'; name: string; message: string }
 
 export type PipelineErrorCode = PipelineError['code']
 

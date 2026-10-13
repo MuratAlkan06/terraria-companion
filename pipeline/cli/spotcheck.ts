@@ -11,8 +11,9 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { Condition, DropSource, Recipe, RecipeGroup, Weapon } from '../../src/schemas'
+import type { Boss, Condition, DropSource, Recipe, RecipeGroup, Weapon } from '../../src/schemas'
 import { RAW_DIR, WikiClient } from '../fetch'
+import { fetchArticles } from '../fetch/articles'
 import { findAll, hasClass, parseHtml, type HNode } from '../parse/html'
 import { stripMarkup } from '../parse/text'
 
@@ -22,6 +23,7 @@ type Case =
   | { kind: 'recipe'; page: string; result: string; why: string }
   | { kind: 'drop'; page: string; item: string; source?: string; why: string }
   | { kind: 'weapon'; page: string; item: string; why: string }
+  | { kind: 'boss'; page: string; boss: string; item: string; why: string }
 
 const PLATFORM_NOTE = /\((?:Desktop, Console(?:, Old-gen console)? and Mobile versions|Desktop version, Console version, and Mobile version)\)/g
 const MODE_LABEL: Record<string, string> = { 'm-normal': 'classic', 'm-expert-master': 'expert+master', 'm-expert': 'expert', 'm-master': 'master' }
@@ -63,6 +65,7 @@ async function main(): Promise<number> {
   const conditions = new Map(load<Condition[]>('conditions.json').map((c) => [c.id, c]))
   const drops = load<DropSource[]>('drops.json')
   const weapons = load<Weapon[]>('weapons.detail.json')
+  const bosses = load<Boss[]>('bosses.json')
   const cases = JSON.parse(readFileSync(join(repoRoot, 'pipeline/spotcheck/cases.json'), 'utf8')) as Case[]
   const idByName = new Map(universe.items.flatMap((i) => (i.name ? [[i.name, i.id] as const] : [])))
   const client = new WikiClient({ cacheDir: RAW_DIR })
@@ -79,10 +82,13 @@ async function main(): Promise<number> {
     'min' in q ? `${q.min}${q.max !== q.min ? `–${q.max}` : ''}` : Object.entries(q).map(([d, v]) => `${d} ${v.min}${v.max !== v.min ? `–${v.max}` : ''}`).join(', ') || '—'
 
   for (const c of cases) {
-    const { response } = await client.get({ action: 'parse', page: c.page, prop: 'text' }, `spotcheck/${c.page.replace(/[^A-Za-z0-9._-]/g, '_')}`)
-    const html = (response as { parse: { text: string } }).parse.text
+    // boss cases read the article the build already verified its quotes against (cached by the sync plan)
+    const html =
+      c.kind === 'boss'
+        ? ((await fetchArticles(client, [c.page], 'articles')).get(c.page)?.html ?? '')
+        : ((await client.get({ action: 'parse', page: c.page, prop: 'text' }, `spotcheck/${c.page.replace(/[^A-Za-z0-9._-]/g, '_')}`)).response as { parse: { text: string } }).parse.text
     const nodes = parseHtml(html)
-    console.log(`\n=== ${c.kind.toUpperCase()} · ${c.kind === 'recipe' ? c.result : c.kind === 'weapon' ? c.item : `${c.source ?? c.page} → ${c.item}`} · ${c.why}`)
+    console.log(`\n=== ${c.kind.toUpperCase()} · ${c.kind === 'recipe' ? c.result : c.kind === 'weapon' ? c.item : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : `${c.source ?? c.page} → ${c.item}`} · ${c.why}`)
     console.log(`    wiki: https://terraria.wiki.gg/wiki/${encodeURIComponent(c.page.replaceAll(' ', '_'))}`)
     if (c.kind === 'recipe') {
       const id = idByName.get(c.result)
@@ -153,6 +159,40 @@ async function main(): Promise<number> {
       }
       const lead = findAll(nodes, (x) => x.type === 'el' && x.tag === 'p').map((p) => clean(cellText(p.type === 'el' ? p.children : []))).find((t) => t.length > 40)
       if (lead) console.log(`  WIKI  lead: ${lead.slice(0, 600)}`)
+    } else if (c.kind === 'boss') {
+      const b = bosses.find((x) => x.id === c.boss)
+      if (!b) {
+        console.log('  DATA  (no boss record with this id)')
+        continue
+      }
+      const unknown = (f: string) => (b._prov.unverifiedFields.includes(f) ? 'Unknown' : 'n/a')
+      console.log(`  DATA  summon items: ${b.summon.items.map(n).join(', ') || 'none'} · conditions: ${b.summon.conditions.join(', ') || 'none'} · time: ${b.location.time ?? unknown('location.time')} · biomes: ${b.location.biomes.join(' | ')}`)
+      console.log(`  DATA  summon text: ${b.summon.text ?? 'Unknown'}`)
+      for (const d of ['classic', 'expert', 'master'] as const) {
+        const st = b.statsByDifficulty[d]
+        console.log(`  DATA  ${d}: ${st ? `hp ${st.hp} · defense ${st.defense} · contact ${st.contactDamage ?? (b._prov.unverifiedFields.includes(`statsByDifficulty.${d}.contactDamage`) ? 'Unknown' : 'n/a')}` : unknown(`statsByDifficulty.${d}`)}`)
+      }
+      const itemId = idByName.get(c.item)
+      for (const d of drops.filter((x) => x.itemId === itemId && b.dropIds.includes(x.id))) {
+        console.log(`  DATA  drop: ${d.source.npcName} → ${n(d.itemId)} qty ${qty(d.quantity)} | classic ${pct(d.rates.classic)} · expert ${pct(d.rates.expert)} · master ${pct(d.rates.master)}${d.conditions.length ? ` | when ${d.conditions.join(', ')}` : ''}${d._prov.unverifiedFields.length ? ` | Unknown: ${d._prov.unverifiedFields.join(', ')}` : ''}`)
+      }
+      const kids = (x: HNode | undefined) => (x && x.type === 'el' ? x.children : [])
+      for (const box of findAll(nodes, (x) => hasClass(x, 'infobox')).slice(0, 2)) {
+        for (const tr of findAll(kids(box), (x) => x.type === 'el' && x.tag === 'tr')) {
+          const cells = (tr.type === 'el' ? tr.children : []).filter((x) => x.type === 'el' && (x.tag === 'th' || x.tag === 'td'))
+          if (cells.length !== 2) continue
+          const label = clean(cellText(kids(cells[0])))
+          if (['Max Life', 'Defense', 'Damage', 'Environment'].includes(label)) console.log(`  WIKI  ${label}: ${clean(cellText(kids(cells[1])))}`)
+        }
+      }
+      const seen = new Set<string>()
+      for (const row of findAll(nodes, (x) => x.type === 'el' && (x.tag === 'tr' || x.tag === 'li'))) {
+        const text = clean(cellText(row.type === 'el' ? row.children : []))
+        if (text.startsWith(c.item) && text.length < 200 && !seen.has(text)) {
+          seen.add(text)
+          console.log(`  WIKI  drop row: ${text}`)
+        }
+      }
     } else {
       const id = idByName.get(c.item)
       for (const d of drops.filter((x) => x.itemId === id && (!c.source || x.source.npcName.startsWith(c.source)))) {

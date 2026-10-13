@@ -44,6 +44,7 @@ import { limitation } from '../validate/labDowngrade'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
 import { GapLog, isoDate, makeProv, moduleSource } from './prov'
+import { OverlayError } from './registry'
 
 const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
 
@@ -156,6 +157,15 @@ export function identifyWeapons(rows: readonly CargoRow[], info: Iteminfo): Weap
   return { typedRows: typed.length, included, excluded, untypedIteminfoCandidates }
 }
 
+/** AMENDMENTS-004 B19: a wiki self-conflict on a weapon field (overlays/withheld.json). */
+export interface WithheldField {
+  field: 'acquisition'
+  detail: string
+  /** The conflicting Cargo Items tag; must still be present (else the entry is stale). */
+  cargoTag: string
+  sources: string[]
+}
+
 export interface WeaponBuildInput {
   itemRows: readonly CargoRow[]
   itemsFetchedAt: string
@@ -165,6 +175,8 @@ export interface WeaponBuildInput {
   categories: CategoryTree
   images: ImageInfoFetch
   gating: (itemId: number) => GatingResult
+  /** Item ID → withheld field (B19); withheld values become Unknown + a source-mismatch gap. */
+  withheld?: ReadonlyMap<number, WithheldField>
 }
 
 export interface WeaponBuild {
@@ -249,10 +261,10 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     const wikiUrl = wikiPageUrl(page)
     const unverified: string[] = []
     let crossCheckFailed = false
-    const mismatch = (field: string, detail: string) => {
+    const mismatch = (field: string, detail: string, sources = [wikiUrl, iteminfoSrc.url]) => {
       unverified.push(field)
       crossCheckFailed = true
-      gaps.add({ ref, field, kind: 'source-mismatch', detail: `${name}: ${detail}; value withheld (Unknown)`, sources: [wikiUrl, iteminfoSrc.url] })
+      gaps.add({ ref, field, kind: 'source-mismatch', detail: `${name}: ${detail}; value withheld (Unknown)`, sources })
     }
     const tallied = new Set<string>()
     const unknown = (field: string, why: string) => {
@@ -364,12 +376,19 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     const acquisition: Acquisition[] = []
     const recipeIds = [...(recipesBy.get(id) ?? [])].sort()
     const dropIds = [...(dropsBy.get(id) ?? [])].sort()
-    if (recipeIds.length > 0) acquisition.push({ method: 'craft', recipeIds })
-    if (dropIds.length > 0) acquisition.push({ method: 'drop', dropIds })
     const tagList = str(row.tag).split('^').map((t) => t.trim()).filter(Boolean)
     const lower = tagList.map((t) => t.toLowerCase())
     const listcat = str(row.listcat).split('^').map((t) => t.trim().toLowerCase()).filter(Boolean)
-    const vendors = [...new Set(tagList.filter((t) => /^vendor:/i.test(t) && !/^vendor:seed:/i.test(t)).map((t) => t.slice('vendor:'.length).trim()))].sort()
+    const withheld = input.withheld?.get(id)
+    if (withheld && !tagList.includes(withheld.cargoTag)) throw new OverlayError(`[E_SCHEMA] overlay withheld/i:${id}: Cargo Items no longer carries the conflicting tag "${withheld.cargoTag}" — the conflict was resolved upstream; remove the entry`)
+    const vendors = withheld ? [] : [...new Set(tagList.filter((t) => /^vendor:/i.test(t) && !/^vendor:seed:/i.test(t)).map((t) => t.slice('vendor:'.length).trim()))].sort()
+    if (withheld) {
+      // B19: never pick a side on conflicting wiki sources — the whole acquisition is Unknown
+      mismatch('acquisition', withheld.detail, [...new Set([wikiUrl, ...withheld.sources])])
+    } else {
+      if (recipeIds.length > 0) acquisition.push({ method: 'craft', recipeIds })
+      if (dropIds.length > 0) acquisition.push({ method: 'drop', dropIds })
+    }
     const price = vendors.length === 1 ? coinPrice(str(row.buy)) : undefined
     for (const npcName of vendors) {
       const i = acquisition.length
@@ -377,23 +396,30 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
       unknown(`acquisition.${i}.conditions`, 'shop availability conditions are not structured on the wiki')
       if (!price) unknown(`acquisition.${i}.priceCopper`, vendors.length > 1 ? 'one wiki buy price for several vendors' : 'the wiki buy price is not a single coin amount (e.g. Defender Medals)')
     }
-    if (acquisition.length === 0) unknown('acquisition', 'no recipe, drop or named vendor on the wiki for this weapon')
+    if (acquisition.length === 0 && !withheld) unknown('acquisition', 'no recipe, drop or named vendor on the wiki for this weapon')
     // route hints with no backing record (reported, never inferred)
     const hints: string[] = []
-    if (listcat.includes('craftable items') && recipeIds.length === 0) hints.push('listed as craftable but no desktop recipe resolves')
-    if ((lower.some((t) => ['drop', 'bag loot', 'treasure bag loot', 'loot'].includes(t)) || listcat.some((c) => /(drop|loot) items$/.test(c))) && dropIds.length === 0) hints.push('tagged drop/loot but no Cargo Drops row resolves')
-    if (lower.some((t) => ['vendor', 'buy', 'buyable'].includes(t)) && vendors.length === 0) hints.push('tagged as sold but no vendor NPC is named')
-    if (lower.some((t) => /^vendor:seed:/.test(t))) hints.push('sold only in secret-seed worlds (not modeled)')
-    if (lower.includes('fished') || listcat.includes('fished items')) hints.push('obtained by fishing (not modeled)')
-    if (lower.includes('plunder') || listcat.includes('plunder items')) hints.push('plunder (not modeled)')
+    // a withheld acquisition (B19) is itself the finding; route hints would restate the conflicting tag
+    if (!withheld) {
+      if (listcat.includes('craftable items') && recipeIds.length === 0) hints.push('listed as craftable but no desktop recipe resolves')
+      if ((lower.some((t) => ['drop', 'bag loot', 'treasure bag loot', 'loot'].includes(t)) || listcat.some((c) => /(drop|loot) items$/.test(c))) && dropIds.length === 0) hints.push('tagged drop/loot but no Cargo Drops row resolves')
+      if (lower.some((t) => ['vendor', 'buy', 'buyable'].includes(t)) && vendors.length === 0) hints.push('tagged as sold but no vendor NPC is named')
+      if (lower.some((t) => /^vendor:seed:/.test(t))) hints.push('sold only in secret-seed worlds (not modeled)')
+      if (lower.includes('fished') || listcat.includes('fished items')) hints.push('obtained by fishing (not modeled)')
+      if (lower.includes('plunder') || listcat.includes('plunder items')) hints.push('plunder (not modeled)')
+    }
     for (const h of hints) tally(reasons, `acquisition: ${h}`, name)
     if (hints.length > 0) gaps.add({ ref, field: 'acquisition', kind: 'missing-field', detail: `${name}: ${hints.join('; ')}`, sources: [wikiUrl] })
 
-    // gating (§7b)
-    let gating = input.gating(id)
-    // own purchase routes take part in §7b too: their conditions are Unknown, so they never derive
-    // (a derivable craft/drop route still wins — using it can only overstate gating, A3-safe)
-    if (!gating.ok && vendors.length > 0) gating = { ok: false, blockers: [...new Set([...gating.blockers.filter((b) => b !== 'cycle'), 'vendor-conditions-unknown' as const])].sort() }
+    // gating (§7b) — a withheld acquisition is an unverified input, so gating is Unknown too
+    let gating: GatingResult = withheld ? { ok: false, blockers: ['acquisition-withheld'] } : input.gating(id)
+    // own purchase routes take part in §7b too: their conditions are Unknown, so they never derive,
+    // and an Unknown route could be the less gated one — a derived craft/drop gate is only exact
+    // when it is already gate-free (same rule as the deriver's minimum over routes)
+    if (vendors.length > 0) {
+      if (!gating.ok) gating = { ok: false, blockers: [...new Set([...gating.blockers.filter((b) => b !== 'cycle'), 'vendor-conditions-unknown' as const])].sort() }
+      else if (gating.gatedBy.bosses.length > 0 || gating.gatedBy.conditions.length > 0) gating = { ok: false, blockers: ['alternative-route-unverified', 'vendor-conditions-unknown'] }
+    }
     if (gating.ok) {
       w.gatedBy = gating.gatedBy
       w.stage = gating.gatedBy.stage

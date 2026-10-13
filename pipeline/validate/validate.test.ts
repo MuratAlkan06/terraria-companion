@@ -231,8 +231,31 @@ describe('corrupted records fail with named errors', () => {
 
   it('E_DANGLING_REF: edge endpoint does not resolve', () => {
     const raw = sample()
-    ;(raw.collections.edges as Rec[])[1].to = 'hard-mode'
-    expect(expectOnly(run(raw), 'E_DANGLING_REF')[0]).toMatchObject({ field: 'to', toRef: 'node:hard-mode' })
+    ;(raw.collections.edges as Rec[]).find((e) => e.to === 'pirate-invasion')!.to = 'pirate-raid'
+    expect(expectOnly(run(raw), 'E_DANGLING_REF')[0]).toMatchObject({ field: 'to', toRef: 'node:pirate-raid' })
+  })
+
+  describe('§7a-13 fixtures (E_FIXTURE, P2-S6 AC3)', () => {
+    it('the sample is checked against the fixture its subset expresses; breaking it is E_FIXTURE', () => {
+      const raw = sample()
+      raw.collections.edges = (raw.collections.edges as Rec[]).map((e) => (e.from === 'wall-of-flesh' ? { ...e, type: 'recommended-next' } : e))
+      expect(expectOnly(run(raw), 'E_FIXTURE')).toEqual([
+        expect.objectContaining({ name: 'wall-of-flesh-gates-hardmode', message: expect.stringContaining('no required-gate edge wall-of-flesh -> hardmode') }),
+      ])
+    })
+
+    it('without a manifest restriction every fixture applies — the subset fails those it cannot express', () => {
+      const raw = sample()
+      delete (raw.manifest as Rec).fixtures
+      const names = expectOnly(run(raw), 'E_FIXTURE').map((e) => (e.code === 'E_FIXTURE' ? e.name : ''))
+      expect([...new Set(names)].sort()).toEqual(['deerclops-queen-bee-optional', 'plantera-requires-all-mechs', 'requirements-bosses'])
+    })
+
+    it('an unknown fixture name in the manifest is E_SCHEMA', () => {
+      const raw = sample()
+      ;(raw.manifest as Rec).fixtures = ['plantera-requires-one-mech']
+      expect(expectOnly(run(raw), 'E_SCHEMA')[0].message).toContain('dataset.json')
+    })
   })
 
   it('E_DUPLICATE_ID: item ID reused across item collections', () => {

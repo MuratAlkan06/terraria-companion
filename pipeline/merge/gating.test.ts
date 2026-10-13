@@ -94,6 +94,41 @@ describe('createGatingDeriver', () => {
     expect(derive(8)).toEqual({ ok: false, blockers: ['drop-conditions-unknown'] })
   })
 
+  it('§7b minimum over routes is exact only when every route is derivable — unless the best route is gate-free', () => {
+    const ZOMBIE = { npcName: 'Zombie', npcIds: [3] }
+    const groups: RecipeGroup[] = [{ id: 'any-y', name: 'Any Y', memberItemIds: [1, 99], _prov: prov() }]
+    const derive = createGatingDeriver(
+      ctx(
+        [recipe('12-a', 12, []), recipe('11-a', 11, [12]), { ...recipe('13-a', 13, []), ingredients: [{ amount: 1, ref: { kind: 'group' as const, groupId: 'any-y' } }] }],
+        [drop('1-ml', 1, ML), drop('10-ml', 10, ML), drop('10-z', 10, ZOMBIE), drop('11-z', 11, ZOMBIE)],
+        GRAPH,
+        groups,
+      ),
+    )
+    // Moon Lord drop + an enemy drop: the enemy route could be less gated → Unknown, never "requires Moon Lord"
+    expect(derive(10)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'drop-source-ungated'] })
+    // a gate-free derived route is already the minimum, whatever the other routes are
+    expect(derive(11)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    // a group is a minimum over its members: one member without a route makes it Unknown too
+    expect(derive(13)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'no-known-route'] })
+  })
+
+  it('cycles: a cycle grounded by another route takes the grounded value; an ungrounded cycle is an unverified input', () => {
+    const derive = createGatingDeriver(
+      ctx(
+        // 20 ⇄ 21 (Shimmer-like round trip), 20 also dropped by Plantera
+        [recipe('20-a', 20, [21]), recipe('21-a', 21, [20]),
+          // 22 ⇄ 23 with no route into the cycle; 24 = Moon Lord drop OR crafted from 22
+          recipe('22-a', 22, [23]), recipe('23-a', 23, [22]), recipe('24-a', 24, [22])],
+        [drop('20-pl', 20, PLANTERA), drop('24-ml', 24, ML)],
+      ),
+    )
+    expect(derive(20)).toEqual({ ok: true, gatedBy: { bosses: ['plantera'], conditions: [], stage: 'mid-hm' } })
+    expect(derive(21)).toEqual({ ok: true, gatedBy: { bosses: ['plantera'], conditions: [], stage: 'mid-hm' } })
+    expect(derive(22)).toEqual({ ok: false, blockers: ['cycle'] })
+    expect(derive(24)).toEqual({ ok: false, blockers: ['alternative-route-unverified'] })
+  })
+
   it('without the progression graph (P2-S6 pending) any boss gate is underivable; gate-free routes still derive', () => {
     const derive = createGatingDeriver(ctx([recipe('3-a', 3, [1], { conditions: ['hardmode'] }), recipe('4-a', 4, [1], { conditions: ['full-moon'] })], [drop('1-x', 1, ML)], null))
     expect(derive(3)).toEqual({ ok: false, blockers: ['progression-graph-pending'] })

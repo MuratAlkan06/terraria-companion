@@ -103,5 +103,6 @@
 {"ref":"i:4144","field":"acquisition","kind":"missing-field","detail":"Terragrim: plunder (not modeled)","sources":["https://terraria.wiki.gg/wiki/Terragrim"]},
 {"ref":"i:4923","field":"autoReuse","kind":"source-mismatch","detail":"Starlight: Module:Iteminfo/data autoReuse false, wiki infobox auto-swing yes; value withheld (Unknown)","sources":["https://terraria.wiki.gg/wiki/Starlight","https://terraria.wiki.gg/wiki/Module:Iteminfo/data"]},
 {"ref":"i:5114","field":"acquisition","kind":"missing-field","detail":"Abigail's Flower: plunder (not modeled)","sources":["https://terraria.wiki.gg/wiki/Abigail's_Flower"]},
-{"ref":"i:5463","field":"acquisition","kind":"missing-field","detail":"Barnacle Staff: obtained by fishing (not modeled)","sources":["https://terraria.wiki.gg/wiki/Barnacle_Staff"]}
+{"ref":"i:5463","field":"acquisition","kind":"missing-field","detail":"Barnacle Staff: obtained by fishing (not modeled)","sources":["https://terraria.wiki.gg/wiki/Barnacle_Staff"]},
+{"ref":"i:5577","field":"acquisition","kind":"source-mismatch","detail":"Pretty Mirror: the Cargo Items infobox tag names the Clothier as vendor (vendor:Clothier), while the article says the Stylist sells it in a Graveyard and the 1.4.5.7 patch notes say the Stylist sells it instead of the Clothier — conflicting wiki sources, so no vendor is picked; value withheld (Unknown)","sources":["https://terraria.wiki.gg/wiki/Pretty_Mirror","https://terraria.wiki.gg/wiki/1.4.5.7"]}
 ]

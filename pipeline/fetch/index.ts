@@ -10,8 +10,13 @@
  * existence/redirect status of its member pages (count reconciliation) · imageinfo for the
  * weapon infobox images (sprite manifest). Sprite binaries are NOT part of this plan
  * (AMENDMENTS-001 A10: local-only `npm run pipeline:sprites`).
+ * Plan (P2-S6): + every article the bosses / progression / withheld overlays cite (rendered text +
+ * revision id: the build checks each curated quote against it) · imageinfo for the infobox images
+ * of the registry bosses' Cargo NPCs rows.
  */
-import { loadConditionsOverlay } from '../merge/overlays'
+import { bossImageFiles } from '../merge/bosses'
+import { evidencePages, loadBossesOverlay, loadConditionsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { type Article, fetchArticles } from './articles'
 import { cargoFields, cargoQueryAll, itemTypeIncludes, type CargoTableFetch } from './cargo'
 import { type CategoryTree, fetchCategoryTree } from './categories'
 import type { WikiClient } from './client'
@@ -38,6 +43,10 @@ export interface SyncResult {
   weaponCategories: CategoryTree & { pageStatus: Map<string, { exists: boolean; resolvedTitle: string }> }
   /** Image metadata for the infobox image (`imagefile`) of every Cargo Items row typed "weapon". */
   weaponImages: ImageInfoFetch
+  /** Articles cited by the curated overlays (requested title → rendered article). */
+  articles: Map<string, Article>
+  /** Image metadata for the infobox image of every boss-typed Cargo NPCs row of the registry. */
+  bossImages: ImageInfoFetch
 }
 
 export async function runSyncPlan(client: WikiClient, log?: (line: string) => void): Promise<SyncResult> {
@@ -60,7 +69,12 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   log?.('weapon image metadata (imageinfo)')
   const weaponImageFiles = tables.Items.rows.filter((r) => itemTypeIncludes(r, 'weapon')).map((r) => String(r.imagefile ?? ''))
   const weaponImages = await fetchImageInfo(client, weaponImageFiles, 'images/weapons')
-  return { iteminfo, modules, overlayPages, tables, weaponCategories: { ...weaponCategories, pageStatus: weaponCategoryPages }, weaponImages }
+  const bosses = loadBossesOverlay()
+  log?.('articles cited by the bosses / progression / withheld overlays')
+  const articles = await fetchArticles(client, evidencePages(bosses, loadProgressionOverlay(), loadWithheldOverlay()), 'articles')
+  log?.('boss image metadata (imageinfo)')
+  const bossImages = await fetchImageInfo(client, bossImageFiles(bosses, tables.NPCs.rows), 'images/bosses')
+  return { iteminfo, modules, overlayPages, tables, weaponCategories: { ...weaponCategories, pageStatus: weaponCategoryPages }, weaponImages, articles, bossImages }
 }
 
 export { WikiClient, FetchError } from './client'

@@ -44,6 +44,8 @@ async function main(): Promise<number> {
         fetchedAt: result.weaponCategories.fetchedAt,
       },
       weaponImages: { resolved: result.weaponImages.found.size, missing: result.weaponImages.missing, fetchedAt: result.weaponImages.fetchedAt },
+      articles: Object.fromEntries([...result.articles].map(([title, a]) => [title, { resolvedTitle: a.resolvedTitle, revid: a.revid, fetchedAt: a.fetchedAt }])),
+      bossImages: { resolved: result.bossImages.found.size, missing: result.bossImages.missing, fetchedAt: result.bossImages.fetchedAt },
     }
     writeFileSync(join(RAW_DIR, 'fetch-record.json'), `${JSON.stringify(record, null, 2)}\n`)
     console.log('\nfetch summary')
@@ -57,6 +59,8 @@ async function main(): Promise<number> {
     const wc = result.weaponCategories
     console.log(`  weapon category tree: ${wc.categories.size} categories, ${wc.pages.length} distinct article pages`)
     console.log(`  weapon images (imageinfo): ${result.weaponImages.found.size} resolved, ${result.weaponImages.missing.length} missing${result.weaponImages.missing.length ? ` (${result.weaponImages.missing.join(', ')})` : ''}`)
+    console.log(`  overlay evidence articles: ${result.articles.size} (rendered text + revision id)`)
+    console.log(`  boss images (imageinfo): ${result.bossImages.found.size} resolved, ${result.bossImages.missing.length} missing${result.bossImages.missing.length ? ` (${result.bossImages.missing.join(', ')})` : ''}`)
     const s = client.stats
     console.log(`  this run: ${s.networkRequests} network requests (${s.attempts} attempts, ${s.retries} retries), ${s.cacheHits} cache hits, ${(durationMs / 1000).toFixed(1)}s wall`)
     console.log(`  cumulative network attempts logged in pipeline/raw/requests.log.jsonl: ${cumulative}`)

@@ -4,10 +4,10 @@
   "notes": [
     "Curated condition registry (DATA_SCHEMA_SPEC §2.9). Every entry cites a wiki page (wikiTitle) whose existence is checked by the fetch stage; descriptions are definitional and carry no numbers that are not on the cited page.",
     "match.stations: recipe station tokens (Cargo Recipes `station`, split on ' and '). match.recipeNotes: Cargo Recipes `resulttext` note keys (texts in Module:Recipes/l10n en.result_note). match.dropNotes: parenthesized note texts in Cargo Drops rate/custom cells (markup stripped).",
-    "satisfiedByNode values are references into the progression graph (P2-S6). Until it is produced they are W_DEFERRED_REF warnings; P2-S6 must provide these node slugs (or change them here)."
+    "satisfiedByNode values are references into the progression graph (P2-S6, overlays/progression.json + bosses.json) and are hard-checked. World-state conditions map to the node that makes them true: boss-defeat conditions to the boss node, \"hardmode\" to the Hardmode milestone (required-gated by wall-of-flesh) and post-mechanical-bosses to the all-mechanical-bosses milestone, so gatedBy.stage is the stage the condition opens (a Hardmode-only item is early-hm, not the late-prehm of the Wall of Flesh fight)."
   ],
   "entries": [
-    { "id": "hardmode", "name": "Hardmode", "kind": "world-state", "satisfiedByNode": "wall-of-flesh", "wikiTitle": "Hardmode",
+    { "id": "hardmode", "name": "Hardmode", "kind": "world-state", "satisfiedByNode": "hardmode", "wikiTitle": "Hardmode",
       "description": "The world has entered Hardmode, which happens permanently when the Wall of Flesh is defeated for the first time.",
       "match": { "dropNotes": ["Hardmode"] } },
     { "id": "pre-hardmode", "name": "Pre-Hardmode", "kind": "world-state", "wikiTitle": "Pre-Hardmode",
@@ -22,6 +22,8 @@
     { "id": "post-moon-lord", "name": "Moon Lord defeated", "kind": "world-state", "satisfiedByNode": "moon-lord", "wikiTitle": "Moon Lord",
       "description": "The Moon Lord has been defeated in the world.",
       "match": { "recipeNotes": ["#note_post_moon_lord"] } },
+    { "id": "post-skeletron", "name": "Skeletron defeated", "kind": "world-state", "satisfiedByNode": "skeletron", "wikiTitle": "Skeletron",
+      "description": "Skeletron has been defeated in the world." },
     { "id": "corruption-world", "name": "Corruption world", "kind": "world-state", "wikiTitle": "The Corruption",
       "description": "The world's evil biome is the Corruption (a world has either the Corruption or the Crimson)." },
     { "id": "crimson-world", "name": "Crimson world", "kind": "world-state", "wikiTitle": "The Crimson",
@@ -34,6 +36,12 @@
       "description": "The Corruption biome, one of the two world-evil biomes." },
     { "id": "crimson", "name": "The Crimson", "kind": "biome", "wikiTitle": "The Crimson",
       "description": "The Crimson biome, one of the two world-evil biomes." },
+    { "id": "jungle", "name": "Jungle", "kind": "biome", "wikiTitle": "Jungle",
+      "description": "The Jungle biome (surface Jungle and Underground Jungle)." },
+    { "id": "hallow", "name": "The Hallow", "kind": "biome", "wikiTitle": "The Hallow",
+      "description": "The Hallow biome (surface Hallow and Underground Hallow)." },
+    { "id": "dungeon", "name": "The Dungeon", "kind": "biome", "wikiTitle": "Dungeon",
+      "description": "The Dungeon and its entrance." },
     { "id": "underworld", "name": "The Underworld", "kind": "biome", "wikiTitle": "The Underworld",
       "description": "The Underworld, the bottom layer of the world.",
       "match": { "dropNotes": ["Underworld"] } },

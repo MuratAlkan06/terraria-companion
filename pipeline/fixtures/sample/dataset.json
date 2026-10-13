@@ -2,6 +2,7 @@
   "name": "sample",
   "description": "P2-S1 hand-built validation sample. Every value is real terraria.wiki.gg data for Terraria 1.4.5.8, checked on 2026-10-12 against the Cargo tables (Items, Recipes, Drops, NPCs) and the cited article pages; anything not verifiable is absent and listed in _prov.unverifiedFields.",
   "iteminfo": { "rev": 1023241, "syncedTo": "1.4.5.7" },
+  "fixtures": ["wall-of-flesh-gates-hardmode"],
   "notes": [
     "iteminfo.rev is the Module:Iteminfo/data revision current on 2026-10-12 (edited 2026-08-22); the module states it is synced to 1.4.5.7 (ADR-001 D1 caveat).",
     "Subset dataset: acquisition lists only routes whose referenced records are in the sample, and derived lists (dropIds, combinedFrom, upgradesTo, isStation) are derived over the sample only.",
@@ -11,6 +12,8 @@
     "Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs, i: sorted 'ref*amount'})). Drop ids: itemId-npcNameSlug-fnv1a32hex(JSON.stringify(sortedConditions)).",
     "The wiki's 'Iron Anvil' station means Iron Anvil or Lead Anvil; the sample models it as item 35 only.",
     "maxStack is omitted on weapons/armor/accessories: Cargo 'stack' reports 9999 for them (suspected template default); to be resolved in P2-S2.",
-    "Boss stats: Eater of Worlds is multi-segment (per-segment stats only) and the Brain of Cthulhu life value carries the wiki's 'outdated source code' flag, so both are Unknown."
+    "Boss stats: Eater of Worlds is multi-segment (per-segment stats only) and the Brain of Cthulhu life value carries the wiki's 'outdated source code' flag, so both are Unknown.",
+    "Subset of the progression graph: only the §7a-13 fixture its records can express (wall-of-flesh gates hardmode) is checked (manifest.fixtures); the full set runs on the wiki-sync dataset.",
+    "AMENDMENTS-004 B18 (P2-S6): Clockwork Assault Rifle useTimeTicks is the Module:Iteminfo/data useTime (4, the burst interval) and useAnimationTicks the useAnimation (12) = the wiki's displayed use time (B14)."
   ]
 }

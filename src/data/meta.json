@@ -1,7 +1,7 @@
 {
   "gameVersion": "1.4.5.8",
   "dataSchemaVersion": 1,
-  "generatedAt": "2026-10-13T04:32:00.341Z",
+  "generatedAt": "2026-10-13T05:48:21.128Z",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -16,21 +16,21 @@
     "recipes": 3934,
     "recipeGroups": 38,
     "drops": 3228,
-    "bosses": 0,
-    "nodes": 0,
-    "edges": 0,
+    "bosses": 18,
+    "nodes": 28,
+    "edges": 35,
     "buffs": 0,
-    "conditions": 33,
+    "conditions": 37,
     "scenarios": 0
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 3414,
+    "total": 2853,
     "byKind": {
-      "source-mismatch": 27,
+      "source-mismatch": 28,
       "count-reconciliation": 53,
-      "missing-field": 1966,
-      "gating-underived": 488,
+      "missing-field": 1451,
+      "gating-underived": 441,
       "unverified-drop-rate": 392,
       "lab-limitation-default": 488
     }

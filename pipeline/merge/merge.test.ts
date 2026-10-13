@@ -134,8 +134,11 @@ const dropRow = (over: Partial<Record<string, string>>): CargoRow => ({
   _rowid: '1', _page: 'Zombie', nameraw: 'Zombie', id: '3', name: '[[Zombie]]', item: 'Shackle', quantity: '1', rate: '2%', custom: '', isfromnpc: '1', normal: '1', expert: '1', master: '1', ...over,
 })
 
+/** Boss registry by article (merge/bosses.ts bossAttribution): Queen Bee is a registry boss, Moon Lord is not in this test registry. */
+const registry = { byPage: new Map([['Queen Bee', { id: 'queen-bee', npcIds: new Set([222]) }]]), authoredAt: '2026-10-13' }
+
 function drops(rows: CargoRow[]) {
-  return buildDrops({ rows, fetchedAt: '2026-10-13T02:46:00.000Z', npcs: indexNpcs(npcRows), npcsFetchedAt: '2026-10-13T02:47:00.000Z', iteminfo, conditions: matchers })
+  return buildDrops({ rows, fetchedAt: '2026-10-13T02:46:00.000Z', npcs: indexNpcs(npcRows), npcsFetchedAt: '2026-10-13T02:47:00.000Z', iteminfo, conditions: matchers, bosses: registry })
 }
 
 describe('buildDrops', () => {
@@ -153,16 +156,35 @@ describe('buildDrops', () => {
     expect(d.rates).toEqual({ classic: 0.6667, expert: 0.6667, master: 0.5 })
   })
 
-  it('boss and treasure-bag sources list source.bossId as unverified (P2-S6 registry pending); flags gate difficulties', () => {
+  it('B12: boss and treasure-bag rows on a registry boss article get its bossId (curated source); flags gate difficulties', () => {
     const out = drops([
       dropRow({ _page: 'Queen Bee', nameraw: 'Queen Bee', id: '222', item: 'Bee Gun', rate: '33%', expert: '0', master: '0' }),
       dropRow({ _rowid: '2', _page: 'Queen Bee', nameraw: 'Treasure Bag (Queen Bee)', id: '222', item: 'Bee Gun', rate: '33%', isfromnpc: '0', normal: '0' }),
     ])
     const [boss, bag] = out.drops
-    expect(boss).toMatchObject({ rates: { classic: 0.33 }, source: { npcName: 'Queen Bee', npcIds: [222] } })
-    expect(boss._prov.unverifiedFields).toEqual(['source.bossId'])
-    expect(bag).toMatchObject({ rates: { expert: 0.33, master: 0.33 }, source: { npcName: 'Treasure Bag (Queen Bee)', treasureBag: true } })
+    expect(DropSource.parse(boss)).toMatchObject({ rates: { classic: 0.33 }, source: { npcName: 'Queen Bee', npcIds: [222], bossId: 'queen-bee' } })
+    expect(boss._prov).toMatchObject({ verified: true, unverifiedFields: [] })
+    expect(boss._prov.sources).toContainEqual({ kind: 'curated', overlay: 'bosses', url: 'https://terraria.wiki.gg/wiki/Queen_Bee', fetchedAt: '2026-10-13' })
+    expect(bag).toMatchObject({ rates: { expert: 0.33, master: 0.33 }, source: { npcName: 'Treasure Bag (Queen Bee)', treasureBag: true, bossId: 'queen-bee' } })
     expect(bag.source.npcIds).toBeUndefined()
+    expect(out.ledger).toMatchObject({ bossLinkedRecords: 2, eventBossRecords: 0, bossMismatchRecords: 0 })
+  })
+
+  it('B12: a boss-typed row on a non-registry article is an event boss (bossId not applicable); NPC ids foreign to the registry boss keep bossId Unknown + gap', () => {
+    const out = drops([
+      dropRow({ _page: 'Moon Lord', nameraw: 'Moon Lord', id: '', item: 'Shackle' }),
+      // a Moon Lord NPC row listed on the Queen Bee article: NPC ids agree with Cargo NPCs, but not with the registry boss
+      dropRow({ _rowid: '2', _page: 'Queen Bee', nameraw: 'Moon Lord', id: '396', item: 'Bee Gun' }),
+    ])
+    const event = out.drops.find((d) => d.itemId === 216)!
+    expect(event.source.bossId).toBeUndefined()
+    expect(event._prov.unverifiedFields).not.toContain('source.bossId')
+    const mismatch = out.drops.find((d) => d.itemId === 1121)!
+    expect(mismatch.source.bossId).toBeUndefined()
+    expect(mismatch._prov.unverifiedFields).toContain('source.bossId')
+    expect(out.ledger).toMatchObject({ bossLinkedRecords: 0, eventBossRecords: 1, bossMismatchRecords: 1 })
+    expect(out.ledger.eventBossPages).toEqual(new Map([['Moon Lord', 1]]))
+    expect(out.gaps).toContainEqual(expect.objectContaining({ ref: 'drop:cargo-row-2', field: 'source.bossId', kind: 'source-mismatch' }))
   })
 
   it('NPC ids: mismatches are withheld with a gap; multi-part bosses are not filled from the NPCs table; B10 negative variant ids are emitted', () => {

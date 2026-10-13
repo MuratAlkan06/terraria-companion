@@ -74,7 +74,9 @@ export const Boss = z.strictObject({
   }),
   location: z.strictObject({
     biomes: z.array(PlainText1), // A1: min(1) dropped
-    time: z.enum(['day', 'night', 'any', 'dusk']),
+    // P2-S6 (A1 principle): optional so an unstated time is emittable as Unknown (absent + listed
+    // "location.time") — the wiki states no time rule for e.g. Wall of Flesh or Moon Lord.
+    time: z.enum(['day', 'night', 'any', 'dusk']).optional(),
     text: PlainText.optional(),
   }),
   statsByDifficulty: z.strictObject({

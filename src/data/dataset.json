@@ -1,6 +1,6 @@
 {
   "name": "wiki-sync",
-  "description": "Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory/item detail records, bosses and progression are produced by later slices (partial.pending).",
+  "description": "Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory/item detail records, buffs and Lab scenarios are produced by later slices (partial.pending).",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -9,13 +9,15 @@
     "Sources: Module:Iteminfo/data rev 1023241 (generated 2026-08-22 03:17:40 (+00:00), game 1.4.5.7); Module:RecipeGroups rev 970262; Module:Recipes rev 1022541; Module:Recipes/l10n rev 1029827; Cargo tables fetched Recipes 2026-10-13T02:45:41.329Z, Drops 2026-10-13T02:45:50.136Z, NPCs 2026-10-13T02:45:53.516Z, Items 2026-10-13T04:21:51.824Z, Weapon_source 2026-10-13T04:21:57.231Z; weapon category tree 2026-10-13T04:22:28.057Z; imageinfo 2026-10-13T04:32:00.341Z.",
     "Weapons: Cargo Items rows whose infobox type contains \"weapon\" and whose itemid is the same item in Module:Iteminfo/data (display name, or internal name for unnamed IDs). Stats from Module:Iteminfo/data, cross-checked against the Cargo infobox (a disagreement withholds the value as Unknown + source-mismatch gap). See pipeline/merge/weapons.ts for every field rule.",
     "useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki's displayed \"Use time\" (TO-VERIFY #10). critPct = the weapon's crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.",
-    "Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b and are Unknown wherever any input is unverified (gap report lists the blockers).",
+    "Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).",
     "Weapon labBehavior defaults to a limitation card (in-game tooltip text where the wiki has one); archetype parameters are assigned by P3-S0.",
     "Recipes: desktop rows only (legacy=0 and version empty or containing \"desktop\"); result = Cargo resultid checked against the Iteminfo name; ingredients from `ings`; \"Any X\" → Module:Recipes groups; stations split on \" and \" → registered environment condition, else Module:Recipes/l10n station category group (B3), else item; \"By Hand\" = no stations.",
     "Recipe result notes (#note_post_moon_lord, #note_moon_N, …) are availability conditions in Recipe.conditions (AMENDMENTS-003 B9); environment stations are only genuine crafting environments.",
     "Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs (i:/grp:/cond:, availability conditions included as cond:), i: sorted \"ref*amount\"})); same canonical recipe with a different result amount gets a -2 suffix. Drop ids: itemId-slug(npcName)-fnv1a32hex(JSON.stringify(sorted conditions)), -N suffix on collision.",
     "Drops: rows whose platform icons exclude Desktop are skipped; normal/expert/master flags give the applicable difficulties; rate/quantity cells are parsed per pipeline/parse/dropCells.ts; anything else is absent + listed (Unknown). Unregistered notes make conditions Unknown ([] + \"conditions\" listed).",
-    "Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag) list source.bossId as unverified until the P2-S6 boss registry exists.",
+    "Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag): source.bossId = the registry boss of the row's article (pipeline/overlays/bosses.json), cross-checked against the boss's NPC ids (a mismatch keeps it Unknown + gap). Rows on event-boss articles (Pumpking, Betsy, Celestial Pillars…) carry no bossId: they are not Boss records (A3), so the field is not applicable.",
+    "Bosses (P2-S6): the REQUIREMENTS §6 registry in pipeline/overlays/bosses.json; npcIds, environment and per-difficulty stats from Cargo NPCs (pipeline/parse/npcStats.ts withholds every cell that is not one integer per difficulty, incl. cells flagged as based on outdated source code; multi-part bosses without a boss-level row are Unknown; values are the representative NPC's BASE stats = the article's first infobox — later-phase changes such as the second forms of Eye of Cthulhu, Plantera and Empress of Light are fight behavior and not modeled); summon items resolved through Module:Iteminfo/data; summon text, location time and attack-pattern tags only as verbatim quotes checked against the cited article revision; stage editorial; prep/suggested equipment/strategies absent + listed (A1 staging, enforced at P5).",
+    "Progression (P2-S6): boss nodes 1:1 with bosses + milestone/event markers (A3) from pipeline/overlays/progression.json; every edge is typed, its note is a verbatim quote of its sourceUrl article (checked at build). Edges model one world; the hardmode condition is satisfied by the Hardmode milestone (required-gated by the Wall of Flesh).",
     "Enemies: Cargo NPCs rows with an enemy type and no boss/critter/town/projectile type, merged by name; biomes = NPCs `environment` alternatives verbatim (\"/\" = or, \"+\" = and); stage absent + listed; dropIds derived (deriveEnemyDropIds).",
     "Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.",
     "Collections are emitted as JSON arrays (one record per line), incl. weapons.detail.json (AMENDMENTS-003 B11 supersedes the map shapes in DATA_SCHEMA_SPEC §3/§5)."
@@ -27,9 +29,6 @@
       "accessories",
       "items",
       "armorSets",
-      "bosses",
-      "nodes",
-      "edges",
       "buffs",
       "scenarios"
     ]

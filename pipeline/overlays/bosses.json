@@ -1,0 +1,231 @@
+{
+  "overlay": "bosses",
+  "authoredAt": "2026-10-13",
+  "notes": [
+    "Boss registry (P2-S6): the REQUIREMENTS §6 bosses, incl. Eater of Worlds / Brain of Cthulhu as world-evil alternatives. Event bosses (Pumpking, Betsy, Celestial Pillars…) are NOT Boss records: AMENDMENTS-001 A3 keeps events as progression markers (overlays/progression.json).",
+    "page = the wiki article = the Cargo NPCs/Drops `_page` of the boss rows. npcIds, environment (location.biomes), stats and the sprite file come from Cargo NPCs; this overlay only selects the representative row (`primary`, `sprite`), with `variant` = the row's name note.",
+    "statsUnknown: boss-level stats are not one NPC row (multi-part bosses whose parts have their own health or defense) → statsByDifficulty Unknown, reason in the gap report. Other rows go through pipeline/parse/npcStats.ts, which withholds every cell that is not a single integer per difficulty (incl. cells the wiki flags as based on outdated source code).",
+    "Every `quote` must occur verbatim on its article (`page` of the entry, or the tag's own `page`); the build checks it against the cached revision. summon.quote is emitted as Boss.summon.text; time is only set when a quote states it (else location.time Unknown).",
+    "stage is the editorial five-stage tag (REQUIREMENTS §1); attackPatternTags are editorial (A1 staging: only tags a behavior quote supports; prep/suggested equipment/strategies are P5 overlays)."
+  ],
+  "entries": [
+    {
+      "id": "king-slime", "name": "King Slime", "page": "King Slime", "stage": "early-prehm",
+      "primary": { "npcId": 50 },
+      "summon": { "items": ["Slime Crown"], "conditions": [], "quote": "King Slime can be summoned by using the Slime Crown, in any biome at any time." },
+      "time": { "value": "any", "quote": "in any biome at any time" },
+      "attackPatternTags": [
+        { "tag": "teleports", "quote": "When unable to reach the player, he may teleport to their location." },
+        { "tag": "summons-adds", "quote": "King Slime attempts to deal contact damage to the player by hopping towards them, and additionally summons slimes to aid him in the fight." },
+        { "tag": "despawn-leash", "quote": "If the player dies or gets more than 187.5 tiles away from King Slime, he will teleport to the bottom-right corner of the world and despawn in 0.17 seconds." },
+        { "tag": "ground-bound", "page": "Bosses", "quote": "Most bosses and event bosses can pass through blocks of all types, with the exception of King Slime, Queen Slime, Flying Dutchman, and Deerclops (most of the time)." }
+      ]
+    },
+    {
+      "id": "eye-of-cthulhu", "name": "Eye of Cthulhu", "page": "Eye of Cthulhu", "stage": "early-prehm",
+      "primary": { "npcId": 4 },
+      "summon": { "items": ["Suspicious Looking Eye"], "conditions": ["night"], "quote": "The Eye of Cthulhu can be summoned manually using a Suspicious Looking Eye at night (from 7:30 PM to 4:30 AM)." },
+      "time": { "value": "night", "quote": "using a Suspicious Looking Eye at night" },
+      "attackPatternTags": [
+        { "tag": "flies", "quote": "The Eye of Cthulhu has two phases and is able to fly through blocks in both of them." },
+        { "tag": "multi-phase", "quote": "The Eye of Cthulhu has two phases and is able to fly through blocks in both of them." },
+        { "tag": "charges", "quote": "Afterward, it charges at the player three times in succession, before repeating the cycle." },
+        { "tag": "dashes", "quote": "In the second phase, the Eye of Cthulhu will gain an additional powerful rapid chain dash attack" },
+        { "tag": "summons-adds", "quote": "it attempts to float directly above the player while spawning 3–4 Servants of Cthulhu" },
+        { "tag": "despawn-leash", "quote": "If the Eye of Cthulhu is not defeated by dawn (4:30 AM), if all players die, or if it goes too far off-screen, it will despawn." }
+      ]
+    },
+    {
+      "id": "eater-of-worlds", "name": "Eater of Worlds", "page": "Eater of Worlds", "stage": "early-prehm", "worldEvil": "corruption",
+      "primary": { "npcId": 13, "variant": "Eater of Worlds Head" },
+      "statsUnknown": "Multi-segment boss: the wiki gives health, defense and damage per segment (head, body and tail rows); no boss-level row.",
+      "summon": { "items": ["Worm Food"], "conditions": ["corruption"], "quote": "The Eater of Worlds spawns upon destroying every third Shadow Orb in a Corruption world. It can also be summoned manually by using a Worm Food in The Corruption or Underground Corruption, at any time." },
+      "time": { "value": "any", "quote": "in The Corruption or Underground Corruption, at any time" },
+      "attackPatternTags": [
+        { "tag": "burrows", "quote": "While burrowing, it gradually builds up speed in the direction of the player, up to a limit." },
+        { "tag": "despawn-leash", "quote": "If the player dies or is in neither the Corruption nor the Crimson, all of the worms begin fleeing by moving downwards." }
+      ]
+    },
+    {
+      "id": "brain-of-cthulhu", "name": "Brain of Cthulhu", "page": "Brain of Cthulhu", "stage": "early-prehm", "worldEvil": "crimson",
+      "primary": { "npcId": 266 },
+      "summon": { "items": ["Bloody Spine"], "conditions": ["crimson"], "quote": "The Brain of Cthulhu spawns upon destroying every third Crimson Heart in a Crimson world. It can also be summoned manually by using a Bloody Spine in The Crimson or Underground Crimson, at any time." },
+      "time": { "value": "any", "quote": "in The Crimson or Underground Crimson, at any time" },
+      "attackPatternTags": [
+        { "tag": "teleports", "quote": "In the first, the Brain is immune to damage and teleports randomly around the player." },
+        { "tag": "summons-adds", "quote": "Twenty Creepers spawn along with the Brain and orbit the boss at high speed." },
+        { "tag": "multi-phase", "quote": "The Brain of Cthulhu's battle is composed of two phases." },
+        { "tag": "inflicts-debuffs", "quote": "both the Creepers (in the first phase) and the Brain (in the second phase) inflict a random debuff upon contact." },
+        { "tag": "despawn-leash", "quote": "If the player leaves the Crimson, the Brain of Cthulhu will move downwards and despawn." }
+      ]
+    },
+    {
+      "id": "queen-bee", "name": "Queen Bee", "page": "Queen Bee", "stage": "late-prehm",
+      "primary": { "npcId": 222 },
+      "summon": { "items": ["Abeemination"], "conditions": ["jungle"], "quote": "The Queen Bee spawns upon breaking a Larva found inside Bee Hives in the Underground Jungle. She can also be summoned manually by using an Abeemination in the Jungle or Underground Jungle, at any time." },
+      "time": { "value": "any", "quote": "in the Jungle or Underground Jungle, at any time" },
+      "attackPatternTags": [
+        { "tag": "charges", "quote": "The Queen Bee levels herself horizontally with the player before charging back and forth three times in an attempt to ram the player." },
+        { "tag": "summons-adds", "quote": "The Queen Bee spawns Bees while hovering (which includes larger ones in Expert Mode), which pursue and attack the player." },
+        { "tag": "projectile-spam", "quote": "The Queen Bee rapidly fires large yellow stingers at the player" },
+        { "tag": "inflicts-debuffs", "quote": "she will inflict the Poisoned debuff upon direct contact with the player" },
+        { "tag": "enrage-mechanic", "quote": "When fought outside of the Underground Jungle, the Queen Bee enrages" }
+      ]
+    },
+    {
+      "id": "skeletron", "name": "Skeletron", "page": "Skeletron", "stage": "late-prehm",
+      "primary": { "npcId": 35, "variant": "Skeletron Head" },
+      "summon": { "items": ["Clothier Voodoo Doll"], "conditions": ["night"], "quote": "Summoning Skeletron requires the player to speak to the Old Man at the Dungeon's entrance at night. Upon selecting the \"Curse\" option, he will turn into Skeletron. Skeletron can only be summoned once per night, as the Old Man will not respawn until dawn. Once Skeletron is defeated, the Old Man's curse will be lifted and he will no longer appear. Skeletron will thereafter only be summonable with the Clothier Voodoo Doll. Killing the Clothier at night with this accessory equipped will summon Skeletron." },
+      "time": { "value": "night", "quote": "speak to the Old Man at the Dungeon's entrance at night" },
+      "attackPatternTags": [
+        { "tag": "homing-projectiles", "quote": "the head begins to shoot homing skulls at the player" },
+        { "tag": "inflicts-debuffs", "quote": "Skeletron will inflict debuffs upon contact with the player" },
+        { "tag": "enrage-mechanic", "quote": "If the player takes too long to kill Skeletron and dawn (4:30 AM) arrives, it will enrage" }
+      ]
+    },
+    {
+      "id": "deerclops", "name": "Deerclops", "page": "Deerclops", "stage": "late-prehm",
+      "primary": { "npcId": 668 },
+      "summon": { "items": ["Deer Thing"], "conditions": ["snow-biome"], "quote": "Deerclops can be summoned manually by using a Deer Thing in the Snow or Ice biome, at any time." },
+      "time": { "value": "any", "quote": "in the Snow or Ice biome, at any time" },
+      "attackPatternTags": [
+        { "tag": "ground-bound", "quote": "Deerclops cannot pass through solid blocks" },
+        { "tag": "inflicts-debuffs", "quote": "Deerclops will occasionally stand in place and roar, inflicting the Slow debuff on all players within 50 tiles" }
+      ]
+    },
+    {
+      "id": "wall-of-flesh", "name": "Wall of Flesh", "page": "Wall of Flesh", "stage": "late-prehm",
+      "primary": { "npcId": 113 },
+      "statsUnknown": "The mouth and both eyes share one health pool but have different defense (separate Mouth and Eye rows); the wiki states no single boss-level defense.",
+      "summon": { "items": ["Guide Voodoo Doll"], "conditions": ["underworld"], "quote": "The Wall of Flesh can be summoned by dropping a Guide Voodoo Doll into lava in The Underworld while the Guide is alive, which destroys the Guide Voodoo Doll and kills the Guide in the process." },
+      "attackPatternTags": [
+        { "tag": "summons-adds", "quote": "The Wall of Flesh has small mouths called The Hungry, each attached by a long vein, which move towards and damage players." },
+        { "tag": "inflicts-debuffs", "quote": "the two exclusive debuffs from the boss, Horrified and The Tongue" }
+      ]
+    },
+    {
+      "id": "queen-slime", "name": "Queen Slime", "page": "Queen Slime", "stage": "early-hm",
+      "primary": { "npcId": 657 },
+      "summon": { "items": ["Gelatin Crystal"], "conditions": ["hallow"], "quote": "Queen Slime is summoned by using a Gelatin Crystal in The Hallow or Underground Hallow, at any time." },
+      "time": { "value": "any", "quote": "in The Hallow or Underground Hallow, at any time" },
+      "attackPatternTags": [
+        { "tag": "teleports", "quote": "teleporting to the player's location when unable to reach them" },
+        { "tag": "summons-adds", "quote": "Additionally, she summons slime minions to aid her in the fight." },
+        { "tag": "multi-phase", "quote": "The Queen Slime fight consists of two phases." },
+        { "tag": "flies", "quote": "she grows large wings and begins flying above the player while passing through blocks" },
+        { "tag": "despawn-leash", "quote": "If the player dies or if the horizontal distance of the player from Queen Slime is greater than 500 tiles, she begins moving away from the player" }
+      ]
+    },
+    {
+      "id": "the-twins", "name": "The Twins", "page": "The Twins", "stage": "early-hm",
+      "primary": { "npcId": 125 },
+      "statsUnknown": "Two separate bosses (Retinazer and Spazmatism) with their own health; no boss-level row.",
+      "summon": { "items": ["Mechanical Eye"], "conditions": ["night"], "quote": "The Twins can be summoned manually using a Mechanical Eye at night (from 7:30 PM to 4:30 AM)." },
+      "time": { "value": "night", "quote": "using a Mechanical Eye at night" },
+      "attackPatternTags": [
+        { "tag": "flies", "quote": "The Twins are two separate flying entities, Retinazer and Spazmatism, connected by a tendril" },
+        { "tag": "multi-phase", "quote": "it spins before transitioning into its second form" },
+        { "tag": "charges", "quote": "Retinazer charges four times while traveling much greater distances than Spazmatism" },
+        { "tag": "inflicts-debuffs", "quote": "fires green balls of Cursed Flames, which have a 11/16 (68.75%) chance of inflicting the Cursed Inferno debuff" },
+        { "tag": "projectile-spam", "page": "Bosses", "quote": "it will shoot Death Lasers extremely fast, sometimes having the same fire rate as a Megashark" },
+        { "tag": "despawn-leash", "quote": "The Twins will flee and despawn if they are not defeated by dawn (4:30 AM), if all players die, or if they go too far off-screen." }
+      ]
+    },
+    {
+      "id": "the-destroyer", "name": "The Destroyer", "page": "The Destroyer", "stage": "early-hm",
+      "primary": { "npcId": 134, "variant": "The Destroyer Head" },
+      "statsUnknown": "Segments share one health pool but have different defense (head, body and tail rows); the wiki states no single boss-level defense.",
+      "summon": { "items": ["Mechanical Worm"], "conditions": ["night"], "quote": "The Destroyer can be summoned manually using a Mechanical Worm at night (from 7:30 PM to 4:30 AM)." },
+      "time": { "value": "night", "quote": "using a Mechanical Worm at night" },
+      "attackPatternTags": [
+        { "tag": "burrows", "quote": "It has limited mobility when fully in the air, requiring blocks or platforms to \"burrow\" through." },
+        { "tag": "summons-adds", "quote": "It releases flying Probes from its body" }
+      ]
+    },
+    {
+      "id": "skeletron-prime", "name": "Skeletron Prime", "page": "Skeletron Prime", "stage": "early-hm",
+      "primary": { "npcId": 127 },
+      "summon": { "items": ["Mechanical Skull"], "conditions": ["night"], "quote": "Skeletron Prime can be summoned manually using a Mechanical Skull at night (from 7:30 PM to 4:30 AM)." },
+      "time": { "value": "night", "quote": "using a Mechanical Skull at night" },
+      "attackPatternTags": [
+        { "tag": "enrage-mechanic", "quote": "If Skeletron Prime is not killed before dawn (4:30 AM), it will enrage" },
+        { "tag": "despawn-leash", "quote": "If the player is more than 375 tiles away, Skeletron Prime will start moving downwards and will quickly despawn." }
+      ]
+    },
+    {
+      "id": "plantera", "name": "Plantera", "page": "Plantera", "stage": "mid-hm",
+      "primary": { "npcId": 262 },
+      "summon": { "items": [], "conditions": ["post-mechanical-bosses", "jungle"], "quote": "After all three mechanical bosses have been defeated, Plantera's Bulbs will randomly spawn in the Underground Jungle (indicated by the status message \"The jungle grows restless...\"). These bulbs emit a faint pink light in dark areas and immediately summon Plantera nearby upon being destroyed, usually a fair distance off-screen." },
+      "attackPatternTags": [
+        { "tag": "multi-phase", "quote": "In the second phase, Plantera gains the ability to grapple onto background walls." },
+        { "tag": "projectile-spam", "quote": "instead focusing on rapidly bombarding them with high-velocity projectile attacks" },
+        { "tag": "inflicts-debuffs", "quote": "The green Poison Seeds have a 1/2 (50%) / 100% chance to inflict the Poisoned debuff" },
+        { "tag": "enrage-mechanic", "quote": "Being enraged causes Plantera to gain double damage" }
+      ]
+    },
+    {
+      "id": "golem", "name": "Golem", "page": "Golem", "stage": "mid-hm",
+      "primary": { "npcId": 245, "variant": "Golem Body" },
+      "sprite": { "npcId": 246 },
+      "statsUnknown": "Multi-part boss (body, head and two fists, each with its own health and defense); no boss-level row.",
+      "summon": { "items": ["Lihzahrd Power Cell"], "conditions": ["post-plantera"], "quote": "Golem is summoned by using a Lihzahrd Power Cell at the Lihzahrd Altar located in the final chamber of the Jungle Temple, at any time, and only if the current world is in Hardmode after Plantera is defeated." },
+      "time": { "value": "any", "quote": "located in the final chamber of the Jungle Temple, at any time" },
+      "attackPatternTags": [
+        { "tag": "multi-phase", "quote": "Once the health of Golem's stone head is depleted, it detaches from its body, becomes immune to damage, and begins hovering above the player while passing through blocks." },
+        { "tag": "enrage-mechanic", "quote": "Golem becomes enraged while outside the Underground Jungle" },
+        { "tag": "inflicts-debuffs", "quote": "Golem's head shoots ricocheting fireballs from its mouth which have a 1/2 (50%) chance of inflicting the On Fire! debuff" },
+        { "tag": "despawn-leash", "quote": "Golem will despawn if the head chases the player too far away" }
+      ]
+    },
+    {
+      "id": "empress-of-light", "name": "Empress of Light", "page": "Empress of Light", "stage": "mid-hm",
+      "primary": { "npcId": 636 },
+      "summon": { "items": ["Prismatic Lacewing"], "conditions": ["hallow", "post-plantera"], "quote": "The Empress of Light is summoned by killing a Prismatic Lacewing, at any time. Prismatic Lacewings spawn in The Hallow on the Surface between dusk (7:30 PM) and midnight (12:00 AM) once Plantera has been defeated." },
+      "time": { "value": "any", "quote": "is summoned by killing a Prismatic Lacewing, at any time" },
+      "attackPatternTags": [
+        { "tag": "dashes", "quote": "positions herself to the left or right of the player before charging horizontally in their direction" },
+        { "tag": "homing-projectiles", "quote": "before accelerating and homing in on the player after a short delay" },
+        { "tag": "projectile-spam", "quote": "The Empress of Light performs a multitude of complex, projectile-focused attacks." },
+        { "tag": "enrage-mechanic", "quote": "The Empress of Light can be fought at any time, but she becomes \"enraged\" during daytime" },
+        { "tag": "multi-phase", "quote": "she will disappear and reappear above the next estimated location of the player and enters her second phase" }
+      ]
+    },
+    {
+      "id": "duke-fishron", "name": "Duke Fishron", "page": "Duke Fishron", "stage": "mid-hm",
+      "primary": { "npcId": 370 },
+      "summon": { "items": ["Truffle Worm"], "conditions": ["ocean"], "quote": "Duke Fishron is summoned by fishing in the Ocean at any time, using a Truffle Worm as bait" },
+      "time": { "value": "any", "quote": "summoned by fishing in the Ocean at any time" },
+      "attackPatternTags": [
+        { "tag": "charges", "quote": "Duke Fishron lunges at the player exactly five times, traveling through blocks" },
+        { "tag": "multi-phase", "quote": "he remains stationary for a second and transforms" },
+        { "tag": "enrage-mechanic", "quote": "Straying too far from the surface Ocean area during the fight causes Duke Fishron to \"enrage\"" },
+        { "tag": "inflicts-debuffs", "quote": "before exploding and dealing damage while inflicting the Wet debuff for 3–8 seconds" },
+        { "tag": "despawn-leash", "quote": "Duke Fishron will despawn if all players are dead or if the targeted player is more than 350 tiles away from him." }
+      ]
+    },
+    {
+      "id": "lunatic-cultist", "name": "Lunatic Cultist", "page": "Lunatic Cultist", "stage": "endgame",
+      "primary": { "npcId": 439 },
+      "summon": { "items": [], "conditions": ["dungeon", "post-golem", "post-skeletron"], "quote": "The Lunatic Cultist is summoned after killing the Cultists that spawn at the Dungeon's entrance after Skeletron and Golem have been defeated." },
+      "attackPatternTags": [
+        { "tag": "teleports", "quote": "Between each attack, the Lunatic Cultist teleports to a position above the player's current location." },
+        { "tag": "homing-projectiles", "quote": "Fires a burst of three / four homing, high-velocity Fireballs" },
+        { "tag": "summons-adds", "quote": "Performs a ritual to summon extra enemies." },
+        { "tag": "inflicts-debuffs", "quote": "that explode upon contact with the player or solid blocks, inflicting the On Fire! debuff" },
+        { "tag": "despawn-leash", "quote": "if one is too far away from it (e.g. by using a Magic Mirror or Recall Potion), it will despawn" }
+      ]
+    },
+    {
+      "id": "moon-lord", "name": "Moon Lord", "page": "Moon Lord", "stage": "endgame",
+      "primary": { "npcId": 396 },
+      "statsUnknown": "Multi-part boss (head, two hands and core, each with its own health and defense); no boss-level row.",
+      "summon": { "items": ["Celestial Sigil"], "conditions": ["post-golem"], "quote": "The Moon Lord will spawn after destroying the four Celestial Pillars or can be summoned manually using a Celestial Sigil in any world where Golem has been defeated." },
+      "attackPatternTags": [
+        { "tag": "teleports", "quote": "The Moon Lord will teleport to the nearest player in a large flash of white light" },
+        { "tag": "summons-adds", "quote": "When destroyed, each eye then spawns an invulnerable True Eye of Cthulhu." },
+        { "tag": "homing-projectiles", "page": "Bosses", "quote": "The Moon Lord's hands shoot two projectiles at once which home onto the player" },
+        { "tag": "inflicts-debuffs", "quote": "Moon Leech inflicts the Moon Bite debuff to the associated player" }
+      ]
+    }
+  ]
+}

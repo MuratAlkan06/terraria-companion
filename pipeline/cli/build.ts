@@ -14,20 +14,22 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { SpriteManifest, type Condition, type DropSource, type Recipe } from '../../src/schemas'
+import { SpriteManifest, STAGE_ORDER, type Condition, type DropSource, type Recipe } from '../../src/schemas'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { renderGapReport } from '../emit/gapReport'
 import { checkBudgets, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
 import { writeFiles } from '../emit/write'
+import { bossAttribution, buildBosses, buildProgression } from '../merge/bosses'
 import { buildDrops, indexNpcs } from '../merge/drops'
 import { buildEnemies } from '../merge/enemies'
+import { Evidence } from '../merge/evidence'
 import { createGatingDeriver, GATING_BLOCKERS, type GatingBlocker } from '../merge/gating'
-import { conditionMatchers, loadConditionsOverlay } from '../merge/overlays'
+import { conditionMatchers, loadBossesOverlay, loadConditionsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
 import { buildRecipes } from '../merge/recipes'
 import { PAGE_BUCKET_LABEL, reconcileCategories, reconcileWeaponLists, type PageBucket } from '../merge/reconcile'
 import { buildConditions, buildItemUniverse } from '../merge/registry'
 import { buildSearchDocs } from '../merge/search'
-import { buildWeapons } from '../merge/weapons'
+import { buildWeapons, type WithheldField } from '../merge/weapons'
 import { parseIteminfo } from '../parse/iteminfo'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from '../parse/recipeModules'
 import { formatError, formatWarning, validateDataset } from '../validate'
@@ -49,7 +51,8 @@ import { projectList } from '../validate/listDetail'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..')
 
-const PENDING: CollectionKey[] = ['armor', 'accessories', 'items', 'armorSets', 'bosses', 'nodes', 'edges', 'buffs', 'scenarios']
+// P2-S6: bosses / nodes / edges are produced — references into them are hard checks now (B12)
+const PENDING: CollectionKey[] = ['armor', 'accessories', 'items', 'armorSets', 'buffs', 'scenarios']
 
 const SPRITE_RIGHTS_NOTE =
   'Item sprites are Terraria content © Re-Logic, downloaded from terraria.wiki.gg (each file links its wiki file page). They are not covered by the wiki text license (CC BY-NC-SA 4.0), are never committed to the repository (AMENDMENTS-001 A10) and are replaced by original placeholder art when fallbackMode is true (ADR-001 D3).'
@@ -61,7 +64,7 @@ const STATIC_RESOLUTIONS = [
   },
   {
     id: '#3 drop NPC ids / multi-part bosses',
-    text: 'Cargo Drops `id` carries NPC ids for most NPC rows (single, comma lists, ranges, per-variant notes, negative variant netIDs); container rows (crates, chests, treasure bags) carry none or the boss id. Ids are cross-checked against Cargo NPCs by name (mismatches withheld + gap); empty ids are filled from NPCs. Multi-part bosses: every part/segment NPC is typed `boss Part` and lives on the boss article (`_page`), so drops attribute to that boss. bossId stays absent + listed until the P2-S6 boss registry exists.',
+    text: 'Cargo Drops `id` carries NPC ids for most NPC rows (single, comma lists, ranges, per-variant notes, negative variant netIDs); container rows (crates, chests, treasure bags) carry none or the boss id. Ids are cross-checked against Cargo NPCs by name (mismatches withheld + gap); empty ids are filled from NPCs. Multi-part bosses: every part/segment NPC is typed `boss Part` and lives on the boss article (`_page`), so drops attribute to that boss. P2-S6: the boss registry resolves each boss-typed / treasure-bag row by its article (bossId, cross-checked against the boss\'s NPC ids); rows on event-boss articles get no bossId (not applicable — events are markers, A3).',
   },
   {
     id: '#8 Imageinfo → sprite file resolution',
@@ -119,12 +122,42 @@ async function main(): Promise<number> {
     conditions: matchers,
   })
   const npcIndex = indexNpcs(sync.tables.NPCs.rows)
-  const drops = buildDrops({ rows: sync.tables.Drops.rows, fetchedAt: sync.tables.Drops.fetchedAt, npcs: npcIndex, npcsFetchedAt: sync.tables.NPCs.fetchedAt, iteminfo, conditions: matchers })
+  // P2-S6 curated overlays; every quote they cite is checked against the cached article revision
+  const bossesOverlay = loadBossesOverlay()
+  const progressionOverlay = loadProgressionOverlay()
+  const withheldOverlay = loadWithheldOverlay()
+  const evidence = new Evidence(sync.articles)
+  const drops = buildDrops({
+    rows: sync.tables.Drops.rows,
+    fetchedAt: sync.tables.Drops.fetchedAt,
+    npcs: npcIndex,
+    npcsFetchedAt: sync.tables.NPCs.fetchedAt,
+    iteminfo,
+    conditions: matchers,
+    bosses: { byPage: bossAttribution(bossesOverlay, sync.tables.NPCs.rows), authoredAt: bossesOverlay.authoredAt },
+  })
   const enemies = buildEnemies(sync.tables.NPCs.rows, drops.drops, sync.tables.NPCs.fetchedAt, sync.tables.Drops.fetchedAt)
   const universe = buildItemUniverse(iteminfo)
+  const progression = buildProgression({ overlay: progressionOverlay, bosses: bossesOverlay, evidence })
+  const bosses = buildBosses({
+    overlay: bossesOverlay,
+    npcRows: sync.tables.NPCs.rows,
+    npcsFetchedAt: sync.tables.NPCs.fetchedAt,
+    dropsFetchedAt: sync.tables.Drops.fetchedAt,
+    drops: drops.drops,
+    evidence,
+    iteminfo,
+    images: sync.bossImages,
+  })
+  // B19: wiki self-conflicts (quoted evidence) → withheld weapon fields
+  const withheld = new Map<number, WithheldField>(
+    withheldOverlay.entries.map((e) => [
+      e.itemId,
+      { field: e.field, detail: e.detail, cargoTag: e.cargoTag, sources: e.evidence.map((x, i) => evidence.quote(x.page, x.quote, `overlay withheld/i:${e.itemId} evidence ${i}`).url) },
+    ]),
+  )
 
-  // §7b gating over the recipes/drops/conditions now in the dataset; the progression graph is
-  // pending (P2-S6), so the deriver gets no graph.
+  // §7b gating over the recipes/drops/conditions and the progression graph
   const byKey = <T, K>(list: readonly T[], key: (t: T) => K) => {
     const m = new Map<K, T[]>()
     for (const t of list) m.set(key(t), [...(m.get(key(t)) ?? []), t])
@@ -135,6 +168,11 @@ async function main(): Promise<number> {
     dropsByItem: byKey<DropSource, number>(drops.drops, (d) => d.itemId),
     groups: new Map(recipes.groups.map((g) => [g.id, g])),
     conditions: new Map<string, Condition>(conditions.map((c) => [c.id, c])),
+    graph: {
+      nodes: new Map(progression.nodes.map((n) => [n.id, n])),
+      edges: progression.edges,
+      bossNode: new Map(bosses.bosses.map((b) => [b.id, b.nodeId])),
+    },
   })
   const weapons = buildWeapons({
     itemRows: sync.tables.Items.rows,
@@ -145,8 +183,9 @@ async function main(): Promise<number> {
     categories: sync.weaponCategories,
     images: sync.weaponImages,
     gating: derive,
+    withheld,
   })
-  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps]
+  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps]
 
   const generatedAt = [
     sync.iteminfo.fetchedAt,
@@ -154,6 +193,8 @@ async function main(): Promise<number> {
     ...Object.values(sync.tables).map((t) => t.fetchedAt),
     sync.weaponCategories.fetchedAt,
     sync.weaponImages.fetchedAt,
+    sync.bossImages.fetchedAt,
+    ...[...sync.articles.values()].map((a) => a.fetchedAt),
   ]
     .sort()
     .at(-1) as string
@@ -161,19 +202,21 @@ async function main(): Promise<number> {
   const manifest: DatasetManifest = {
     name: 'wiki-sync',
     description:
-      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory/item detail records, bosses and progression are produced by later slices (partial.pending).',
+      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory/item detail records, buffs and Lab scenarios are produced by later slices (partial.pending).',
     iteminfo: { rev: iteminfo.rev, syncedTo: iteminfo.terrariaVersion },
     notes: [
       `Sources: Module:Iteminfo/data rev ${iteminfo.rev} (generated ${iteminfo.generated}, game ${iteminfo.terrariaVersion}); ${Object.values(mods).map((m) => `${m.title} rev ${m.rev}`).join('; ')}; Cargo tables fetched ${Object.values(sync.tables).map((t) => `${t.table} ${t.fetchedAt}`).join(', ')}; weapon category tree ${sync.weaponCategories.fetchedAt}; imageinfo ${sync.weaponImages.fetchedAt}.`,
       'Weapons: Cargo Items rows whose infobox type contains "weapon" and whose itemid is the same item in Module:Iteminfo/data (display name, or internal name for unnamed IDs). Stats from Module:Iteminfo/data, cross-checked against the Cargo infobox (a disagreement withholds the value as Unknown + source-mismatch gap). See pipeline/merge/weapons.ts for every field rule.',
       'useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki\'s displayed "Use time" (TO-VERIFY #10). critPct = the weapon\'s crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.',
-      'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b and are Unknown wherever any input is unverified (gap report lists the blockers).',
+      'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).',
       'Weapon labBehavior defaults to a limitation card (in-game tooltip text where the wiki has one); archetype parameters are assigned by P3-S0.',
       'Recipes: desktop rows only (legacy=0 and version empty or containing "desktop"); result = Cargo resultid checked against the Iteminfo name; ingredients from `ings`; "Any X" → Module:Recipes groups; stations split on " and " → registered environment condition, else Module:Recipes/l10n station category group (B3), else item; "By Hand" = no stations.',
       'Recipe result notes (#note_post_moon_lord, #note_moon_N, …) are availability conditions in Recipe.conditions (AMENDMENTS-003 B9); environment stations are only genuine crafting environments.',
       'Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs (i:/grp:/cond:, availability conditions included as cond:), i: sorted "ref*amount"})); same canonical recipe with a different result amount gets a -2 suffix. Drop ids: itemId-slug(npcName)-fnv1a32hex(JSON.stringify(sorted conditions)), -N suffix on collision.',
       'Drops: rows whose platform icons exclude Desktop are skipped; normal/expert/master flags give the applicable difficulties; rate/quantity cells are parsed per pipeline/parse/dropCells.ts; anything else is absent + listed (Unknown). Unregistered notes make conditions Unknown ([] + "conditions" listed).',
-      'Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag) list source.bossId as unverified until the P2-S6 boss registry exists.',
+      'Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag): source.bossId = the registry boss of the row\'s article (pipeline/overlays/bosses.json), cross-checked against the boss\'s NPC ids (a mismatch keeps it Unknown + gap). Rows on event-boss articles (Pumpking, Betsy, Celestial Pillars…) carry no bossId: they are not Boss records (A3), so the field is not applicable.',
+      'Bosses (P2-S6): the REQUIREMENTS §6 registry in pipeline/overlays/bosses.json; npcIds, environment and per-difficulty stats from Cargo NPCs (pipeline/parse/npcStats.ts withholds every cell that is not one integer per difficulty, incl. cells flagged as based on outdated source code; multi-part bosses without a boss-level row are Unknown; values are the representative NPC\'s BASE stats = the article\'s first infobox — later-phase changes such as the second forms of Eye of Cthulhu, Plantera and Empress of Light are fight behavior and not modeled); summon items resolved through Module:Iteminfo/data; summon text, location time and attack-pattern tags only as verbatim quotes checked against the cited article revision; stage editorial; prep/suggested equipment/strategies absent + listed (A1 staging, enforced at P5).',
+      'Progression (P2-S6): boss nodes 1:1 with bosses + milestone/event markers (A3) from pipeline/overlays/progression.json; every edge is typed, its note is a verbatim quote of its sourceUrl article (checked at build). Edges model one world; the hardmode condition is satisfied by the Hardmode milestone (required-gated by the Wall of Flesh).',
       'Enemies: Cargo NPCs rows with an enemy type and no boss/critter/town/projectile type, merged by name; biomes = NPCs `environment` alternatives verbatim ("/" = or, "+" = and); stage absent + listed; dropIds derived (deriveEnemyDropIds).',
       'Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.',
       'Collections are emitted as JSON arrays (one record per line), incl. weapons.detail.json (AMENDMENTS-003 B11 supersedes the map shapes in DATA_SCHEMA_SPEC §3/§5).',
@@ -189,6 +232,9 @@ async function main(): Promise<number> {
     drops: drops.drops,
     enemies: enemies.enemies,
     conditions,
+    bosses: bosses.bosses,
+    nodes: progression.nodes,
+    edges: progression.edges,
   }
   const first = validateDataset({ manifest, collections, lists: {}, itemUniverse: universe, stageGaps }, { now: new Date(generatedAt) })
   if (!first.ok) {
@@ -199,7 +245,7 @@ async function main(): Promise<number> {
   }
   const weaponDetails = first.dataset.weapons
   const weaponList = weaponDetails.map((w) => projectList('weapons', w as unknown as Record<string, unknown>))
-  const searchDocs = buildSearchDocs({ weapons: weaponDetails, enemies: enemies.enemies })
+  const searchDocs = buildSearchDocs({ weapons: weaponDetails, enemies: enemies.enemies, bosses: first.dataset.bosses })
 
   // validate pass 2 over exactly what is emitted (details + list + search docs)
   const raw: RawDataset = { manifest, collections: { ...collections, weapons: weaponDetails }, lists: { weapons: weaponList }, searchDocs, itemUniverse: universe, stageGaps }
@@ -212,11 +258,12 @@ async function main(): Promise<number> {
   }
 
   // sprite manifest (public/, committed; binaries are local-only)
-  const spriteManifest = SpriteManifest.parse({ fallbackMode: false, rightsNote: SPRITE_RIGHTS_NOTE, files: [...weapons.sprites].sort((a, b) => a.path.localeCompare(b.path)) })
+  const spriteManifest = SpriteManifest.parse({ fallbackMode: false, rightsNote: SPRITE_RIGHTS_NOTE, files: [...weapons.sprites, ...bosses.sprites].sort((a, b) => a.path.localeCompare(b.path)) })
   const spritePaths = new Set(spriteManifest.files.map((f) => f.path))
-  const unlisted = weaponDetails.filter((w) => w.sprite !== undefined && !spritePaths.has(w.sprite))
-  if (unlisted.length > 0 || spritePaths.size !== spriteManifest.files.length) {
-    console.error(`FAIL — sprite manifest: ${unlisted.length} weapon sprite path(s) missing from the manifest or duplicate paths`)
+  const usedSprites = [...weaponDetails, ...first.dataset.bosses].flatMap((r) => (r.sprite ? [r.sprite] : []))
+  const unlisted = usedSprites.filter((p) => !spritePaths.has(p))
+  if (unlisted.length > 0 || spritePaths.size !== spriteManifest.files.length || usedSprites.length !== spritePaths.size) {
+    console.error(`FAIL — sprite manifest: ${unlisted.length} sprite path(s) missing from the manifest, or duplicate / unused paths`)
     return 1
   }
   const spriteManifestText = `{"fallbackMode":${JSON.stringify(spriteManifest.fallbackMode)},"rightsNote":${JSON.stringify(spriteManifest.rightsNote)},"files":${serializeRecords(spriteManifest.files).trimEnd()}}\n`
@@ -233,6 +280,8 @@ async function main(): Promise<number> {
     [collectionFile('drops'), serializeRecords(drops.drops)],
     [collectionFile('enemies'), serializeRecords(enemies.enemies)],
     [collectionFile('conditions'), serializeRecords(conditions)],
+    [collectionFile('bosses'), serializeRecords(first.dataset.bosses)],
+    ['progression.json', `{"nodes":${serializeRecords(first.dataset.nodes).trimEnd()},"edges":${serializeRecords(first.dataset.edges).trimEnd()}}\n`],
     ['meta.json', serializeObject(result.meta)],
     ['gaps.json', `{"generatedAt":${JSON.stringify(result.gaps.generatedAt)},"gameVersion":${JSON.stringify(result.gaps.gameVersion)},"summary":${JSON.stringify(result.gaps.summary)},"entries":${serializeRecords(result.gaps.entries).trimEnd()}}\n`],
   ])
@@ -279,6 +328,10 @@ async function main(): Promise<number> {
   const list = (xs: readonly string[], max = 400) => (xs.length === 0 ? 'none' : xs.length > max ? `${xs.slice(0, max).join('; ')}; … (+${xs.length - max})` : xs.join('; '))
 
   const resolutions = [
+    {
+      id: '#4 NPCs table per-difficulty hp/defense',
+      text: `Cargo NPCs \`life\` / \`defense\` / \`damage\` are rendered infobox cells: a per-difficulty block (\`npcstat\` or \`mode-content\` with m-normal / m-expert / m-master / m-expert-master / m-all spans), or a bare integer for every difficulty (6 of 1,538 cells). Additional lines are alternative values (enraged, per-health, with minions) or — after a "(contact)" note — projectile damages; cells can carry the wiki's "based on outdated versions of Terraria's source code" category flag. pipeline/parse/npcStats.ts keeps only one integer per difficulty and withholds everything else; a boss difficulty is emitted only with both hp and defense verified (${bosses.stats.filter((r) => Object.values(r.byDifficulty).some((v) => v !== 'Unknown')).length}/${bosses.stats.length} bosses).`,
+    },
     {
       id: '#1 Cargo Items columns / class / rarity',
       text: `Cargo Items has ${Object.keys(sync.tables.Items.fields).length} columns (${Object.keys(sync.tables.Items.fields).join(', ')}). \`type\` is a ^-list of infobox types ("weapon", "tool", "ammunition", …); \`damagetype\` is the class as text (Melee/Ranged/Magic/Summon, empty for classless) and agrees with the Iteminfo class flags for every identified weapon (${xc('damageClass').agree} agree, ${xc('damageClass').mismatch} mismatch, ${xc('damageClass').noWikiValue} with no wiki class: ${classlessCount} classless in both sources, ${xc('damageClass').noWikiValue - classlessCount} with an Iteminfo class only); \`rare\` is the game rarity number (plain or wrapped in the rarity template "Rarity level: N"; ${rarity.agree}/${rarity.agree + rarity.mismatch} weapons agree with Iteminfo); \`critical\` = 4 + Iteminfo crit (${crit.agree} agree, ${crit.mismatch} mismatch); \`usetime\` = Iteminfo useAnimation; \`velocity\` is the effective projectile velocity (equals Iteminfo shootSpeed for ${velocity.agree} weapons, differs for ${velocity.mismatch} — extra updates / ammo), so it is not cross-checked. \`tag\` carries vendor:<NPC> (purchase routes), \`listcat\` route hints; \`stack\` reports 9999 for weapons (B7 — maxStack only for consumable weapons, from Iteminfo).`,
@@ -358,7 +411,7 @@ async function main(): Promise<number> {
     {
       title: 'Weapons — why gatedBy / stage are Unknown (§7b blockers)',
       lines: [
-        `gatedBy derived: ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length}. A route is derivable only when every input in its chain is verified; the progression graph and boss registry are pending (P2-S6), enemy stages are Unknown and base materials have no acquisition data yet (P6-S0), so no weapon is derivable in this sync. Each weapon below is Unknown → never "obtainable now" (A3 safe direction).`,
+        `gatedBy derived: ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length} (P2-S2: 0/${weaponDetails.length}, before the boss registry and progression graph existed). A route is derivable only when every input in its chain is verified: boss drops (incl. treasure bags) now gate on their boss node, conditions with satisfiedByNode on their node, transitively reduced over the required-gate DAG; enemy and event-boss stages are Unknown and base materials have no acquisition data yet (P6-S0), so those chains stay underivable. Derived weapons by stage: ${(Object.keys(STAGE_ORDER) as (keyof typeof STAGE_ORDER)[]).map((st) => `${st} ${weaponDetails.filter((w) => w.gatedBy?.stage === st).length}`).join(', ')}. Each weapon below is Unknown → never "obtainable now" (A3 safe direction).`,
         '',
         '| Blockers met on every route | Weapons | Examples |',
         '|---|---:|---|',
@@ -368,16 +421,40 @@ async function main(): Promise<number> {
       ],
     },
     {
+      title: 'Bosses — stats per difficulty (Cargo NPCs) and why the rest is Unknown',
+      lines: [
+        'hp / defense / contact damage of the representative Cargo NPCs row (pipeline/overlays/bosses.json `primary`) — the NPC\'s BASE stats as in the article\'s first infobox. Later-phase changes shown only in secondary infoboxes (e.g. second-form defense of Eye of Cthulhu, Plantera, Empress of Light) are not modeled. Bosses whose simultaneous parts have different stats (Wall of Flesh mouth/eyes, segments, Twins, Golem, Moon Lord) are Unknown rather than represented by one part. "none" = the wiki gives 0 contact damage (not applicable); Unknown = absent + listed in _prov.unverifiedFields.',
+        '',
+        '| Boss | Classic | Expert | Master | Why (Unknown parts) |',
+        '|---|---|---|---|---|',
+        ...bosses.stats.map((r) => `| ${r.name} | ${r.byDifficulty.classic} | ${r.byDifficulty.expert} | ${r.byDifficulty.master} | ${r.reasons.join('; ').replaceAll('|', '\\|') || '—'} |`),
+        '',
+        `Attack-pattern tags (editorial, A1 staging — each backed by a verbatim behavior quote): ${first.dataset.bosses.map((b) => `${b.name} ${b.attackPatternTags?.length ?? 0}`).join(', ')}. Location time Unknown (no quote states it): ${first.dataset.bosses.filter((b) => !b.location.time).map((b) => b.name).join(', ') || 'none'}. prepChecklist / suggestedEquipment / strategies are absent + listed on every boss (P5 overlays, E_BOSS_CURATION gate).`,
+      ],
+    },
+    {
+      title: 'Progression graph — typed edges with provenance',
+      lines: [
+        'Each edge note is a verbatim quote of its source article (checked against the cached revision at build). Edges model one world (pipeline/overlays/progression.json notes).',
+        '',
+        '| From | To | Type | Source |',
+        '|---|---|---|---|',
+        ...first.dataset.edges.map((e) => `| ${e.from} | ${e.to} | ${e.type} | ${e.sourceUrl} |`),
+        '',
+        `Nodes without edges: ${first.dataset.nodes.filter((n) => !first.dataset.edges.some((e) => e.from === n.id || e.to === n.id)).map((n) => n.id).join(', ') || 'none'}.`,
+      ],
+    },
+    {
       title: 'Weapons — sprites',
       lines: [
-        `public/sprites/manifest.json lists ${spriteManifest.files.length}/${weaponDetails.length} weapon sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - spriteManifest.files.length} weapons have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
+        `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites and ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
       ],
     },
   ]
 
   const sizes: EmittedFile[] = [...budget.sizes, { file: relative(repoRoot, spriteManifestPath), bytes: Buffer.byteLength(spriteManifestText), gzBytes: gzSize(spriteManifestText) }]
   const report = renderGapReport({
-    slice: 'P2-S2',
+    slice: 'P2-S6',
     meta: result.meta,
     gaps: result.gaps,
     warnings: result.warnings,
@@ -411,6 +488,31 @@ async function main(): Promise<number> {
         ],
       },
       {
+        title: 'Boss drops — registry attribution (AMENDMENTS-003 B12)',
+        rows: [
+          ['boss-typed / treasure-bag drop records (source.bossId pending before P2-S6)', d.bossLinkedRecords + d.eventBossRecords + d.bossMismatchRecords],
+          ['→ linked to a registry boss (source.bossId)', d.bossLinkedRecords],
+          ['→ event-boss article: bossId not applicable (events are A3 markers)', d.eventBossRecords],
+          ['→ NPC ids disagree with the registry boss: bossId Unknown + gap', d.bossMismatchRecords],
+          ...[...d.eventBossPages].sort(([a], [b]) => a.localeCompare(b)).map(([page, n]): [string, number] => [`    event boss: ${page}`, n]),
+        ],
+      },
+      {
+        title: 'Bosses + progression graph (P2-S6)',
+        rows: [
+          ['bosses (REQUIREMENTS §6 registry, EoW/BoC as world-evil alternatives)', first.dataset.bosses.length],
+          ['  with stats for every difficulty / for none', `${bosses.stats.filter((r) => Object.values(r.byDifficulty).every((v) => v !== 'Unknown')).length} / ${bosses.stats.filter((r) => Object.values(r.byDifficulty).every((v) => v === 'Unknown')).length}`],
+          ['  with quoted attack-pattern tags', first.dataset.bosses.filter((b) => b.attackPatternTags).length],
+          ['  with a wiki sprite (manifest)', bosses.sprites.length],
+          ['  derived dropIds (sum)', first.dataset.bosses.reduce((n, b) => n + b.dropIds.length, 0)],
+          ['progression nodes', first.dataset.nodes.length],
+          ...(['boss', 'milestone', 'event'] as const).map((k): [string, number] => [`  ${k}`, first.dataset.nodes.filter((n) => n.kind === k).length]),
+          ['progression edges (each with a wiki sourceUrl + verbatim note)', first.dataset.edges.length],
+          ...(['required-gate', 'recommended-next', 'optional', 'alternative-route', 'early-challenge-possible'] as const).map((t): [string, number] => [`  ${t}`, first.dataset.edges.filter((e) => e.type === t).length]),
+          ['overlay evidence articles (rendered text + revision id)', sync.articles.size],
+        ],
+      },
+      {
         title: `Enemies (Cargo NPCs COUNT(*) ${sync.tables.NPCs.cargoCount})`,
         rows: [
           ['NPC rows fetched', enemies.ledger.npcRows],
@@ -428,11 +530,11 @@ async function main(): Promise<number> {
           ['  drop (drop ids)', weaponDetails.filter((w) => w.acquisition.some((a) => a.method === 'drop')).length],
           ['  purchase (vendor tags)', weaponDetails.filter((w) => w.acquisition.some((a) => a.method === 'purchase')).length],
           ['acquisition Unknown (no route on the wiki structured data)', weaponDetails.filter((w) => w.acquisition.length === 0).length],
-          ['with a wiki sprite (manifest) / placeholder', `${spriteManifest.files.length} / ${weaponDetails.length - spriteManifest.files.length}`],
+          ['with a wiki sprite (manifest) / placeholder', `${weapons.sprites.length} / ${weaponDetails.length - weapons.sprites.length}`],
           ['Lab: limitation (default) / archetype / custom', `${result.gaps.summary.labCoverage.limitation} / ${result.gaps.summary.labCoverage.archetype} / ${result.gaps.summary.labCoverage.customScenario}`],
         ],
       },
-      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + enemies)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
+      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + enemies + bosses)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
     ],
     reasonTallies: [
       { title: 'Why drop fields are Unknown (rows per reason)', tally: drops.reasons },
@@ -454,6 +556,7 @@ async function main(): Promise<number> {
   console.log(`  recipes ${r.emitted}/${r.cargoRows} Cargo rows (legacy ${r.legacyRows}, non-desktop ${r.nonDesktopRows}, duplicate ${r.duplicateRows}, excluded ${r.excludedRows}); with conditions ${r.withConditions}; note stations ${r.availabilityNoteStations}; groups ${recipes.groups.length}`)
   console.log(`  drops ${d.emittedRecords} records from ${d.emittedRows}/${d.cargoRows} rows (non-desktop ${d.nonDesktopRows}, excluded ${d.excludedRows}, split rows ${d.splitRows}, id collisions ${d.idCollisions})`)
   console.log(`  enemies ${enemies.ledger.enemies}; conditions ${conditions.length}; search docs ${searchDocs.length}; item universe ${universe.items.length}`)
+  console.log(`  bosses ${first.dataset.bosses.length}; nodes ${first.dataset.nodes.length}; edges ${first.dataset.edges.length}; boss drops linked ${d.bossLinkedRecords}, event-boss n/a ${d.eventBossRecords}, mismatch ${d.bossMismatchRecords}; weapons with gatedBy ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length}`)
   console.log(`  sprites: manifest ${spriteManifest.files.length} files; binaries present locally ${spriteBinaries}/${spriteManifest.files.length} (npm run pipeline:sprites)`)
   console.log(`  gaps ${result.meta.gapSummary.total} (${Object.entries(result.meta.gapSummary.byKind).map(([k, n]) => `${k} ${n}`).join(', ')})`)
   for (const f of sizes) console.log(`  ${f.file.padEnd(28)} ${String(f.bytes).padStart(9)} B  ${(f.gzBytes / 1024).toFixed(1).padStart(7)} KB gz`)

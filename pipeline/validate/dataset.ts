@@ -19,6 +19,8 @@
  * - stage-gaps.json: gap entries produced by parse/merge/cross-check that no emitted record
  *   carries (excluded Cargo rows, source mismatches, count reconciliation). Validate merges
  *   them into gaps.json so re-validating a committed dataset reproduces the same report.
+ * - `fixtures`: the §7a-13 fixture checks run whenever bosses/nodes/edges are produced; a subset
+ *   dataset may restrict them to the facts its records can express (validate/fixtures.ts).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -46,6 +48,7 @@ import {
   WikiUrl,
 } from '../../src/schemas'
 import type { PipelineError } from './errors'
+import { FIXTURE_NAMES } from './fixtures'
 
 export const COLLECTIONS = {
   weapons: { file: 'weapons.detail.json', schema: Weapon }, // §5 list/detail split (detail = array, B11)
@@ -100,6 +103,8 @@ export const DatasetManifest = z.strictObject({
       pending: z.array(z.enum(Object.keys(COLLECTIONS) as [CollectionKey, ...CollectionKey[]])),
     })
     .optional(),
+  /** §7a-13 fixtures this dataset is checked against (validate/fixtures.ts); absent = all. Only subsets (the P2-S1 sample) restrict them. */
+  fixtures: z.array(z.enum(FIXTURE_NAMES)).optional(),
 })
 export type DatasetManifest = z.infer<typeof DatasetManifest>
 

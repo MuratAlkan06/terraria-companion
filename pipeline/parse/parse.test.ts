@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { customNotesOf, desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf, plainTextOf } from './dropCells'
 import { parseIteminfo, resolveItemName } from './iteminfo'
+import { parseNpcStat } from './npcStats'
 import { findCalls, parseLua, returnedValue } from './lua'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from './recipeModules'
 import { fnv1a32hex, slugify, stripMarkup } from './text'
@@ -154,5 +155,38 @@ describe('text helpers', () => {
   it('fnv1a32hex reproduces the P2-S1 sample ids', () => {
     expect(fnv1a32hex('[]')).toBe('741638a5')
     expect(`36-${fnv1a32hex(JSON.stringify({ s: [], i: ['i:9*10'] }))}`).toBe('36-4cee494e')
+  })
+})
+
+describe('npcStats (Cargo NPCs life/defense/damage, P2-S6)', () => {
+  // verbatim cell shapes from the 2026-10-13 Cargo NPCs sync
+  const npcstat = (n: string, e: string, m: string) =>
+    `<span class="npcstat"><span class="m-normal m-journey">${n}</span><span class="ssep">/</span><span class="m-expert mode-exclusive expert"><span class="s">${e}</span></span><span class="ssep">/</span><span class="m-master mode-exclusive master"><span class="s">${m}</span></span></span>`
+  const modeContent = (n: string, e: string, m: string) =>
+    `<span class="mode-content"><span class="m-normal m-journey">${n}</span><span class="m-expert">[[Expert Mode|<span class="mode-exclusive expert" >${e}</span>]]</span><span class="m-master">[[Master Mode|<abbr class="mode-exclusive master" title="Master Mode ">${m}</abbr>]]</span></span>`
+
+  it('reads one per-difficulty block (npcstat, mode-content, m-all, m-expert-master) and a bare integer for every difficulty', () => {
+    expect(parseNpcStat(npcstat('2000', '2800', '3570'), 'life')).toEqual({ ok: true, value: { classic: 2000, expert: 2800, master: 3570 } })
+    expect(parseNpcStat(modeContent('30000', '42000', '53550'), 'life')).toEqual({ ok: true, value: { classic: 30000, expert: 42000, master: 53550 } })
+    expect(parseNpcStat('<span class="npcstat"><span class="m-all">10</span></span>', 'defense')).toEqual({ ok: true, value: { classic: 10, expert: 10, master: 10 } })
+    expect(parseNpcStat('<span class="npcstat"><span class="m-normal m-journey">12</span><span class="ssep">/</span><span class="m-expert-master mode-exclusive expert"><span class="s">18</span></span></span>', 'defense')).toEqual({ ok: true, value: { classic: 12, expert: 18, master: 18 } })
+    expect(parseNpcStat('36', 'defense')).toEqual({ ok: true, value: { classic: 36, expert: 36, master: 36 } })
+  })
+
+  it('damage: further lines only after an explicit "(contact)" note, which makes line 1 the contact damage', () => {
+    const contact = `${modeContent('20', '40', '60')} <span class="note-text small">(contact)</span><br/>${modeContent('26', '52', '78')} <span class="note-text small">(<span class="gameText">Ice Spike</span>)</span>`
+    expect(parseNpcStat(contact, 'damage')).toEqual({ ok: true, value: { classic: 20, expert: 40, master: 60 } })
+    expect(parseNpcStat(contact, 'life')).toMatchObject({ ok: false })
+  })
+
+  it('withholds outdated-source flags, ranges / state-dependent values, alternatives and stray text — never guesses', () => {
+    const flagged = `${npcstat('1250', '2125', '2709')}<br/>[[Category:Pages with information based on outdated versions of Terraria's source code]]`
+    expect(parseNpcStat(flagged, 'life')).toEqual({ ok: false, reason: 'flagged by the wiki as based on outdated source code' })
+    const ranged = '<span class="mode-content"><span class="m-normal m-journey">8</span><span class="m-expert-master">[[Expert Mode|<span class="mode-exclusive expert" >8–28</span>]] <span class="note-text small">(depending on health)</span></span></span>'
+    expect(parseNpcStat(ranged, 'defense')).toMatchObject({ ok: false })
+    expect(parseNpcStat('<span class="npcstat"><span class="m-all">50</span></span><br/>100 <span class="note-text small">(when enraged)</span>', 'defense')).toEqual({ ok: false, reason: 'several values (alternatives on further lines)' })
+    expect(parseNpcStat('<span class="npcstat"><span class="m-all">42</span></span>&#32;/ 27 <span class="note-text small">(≤50% health)</span>', 'defense')).toMatchObject({ ok: false, reason: expect.stringContaining('text next to the value') })
+    expect(parseNpcStat(`${modeContent('8000', '13600', '20400')} <span class="note-text small">(4 cannons)</span>`, 'life')).toEqual({ ok: false, reason: 'value noted "4 cannons"' })
+    expect(parseNpcStat('', 'damage')).toEqual({ ok: false, reason: 'empty cell' })
   })
 })

@@ -19,8 +19,13 @@
  *   `boss` / `boss Part` in the NPCs table (multi-part bosses: every segment/part id —
  *   EoW 13–15, Twins 125/126, Golem 245–249, Moon Lord 396–398, Destroyer 134–136,
  *   Skeletron 35/36, WoF 113/114 — belongs to the boss article `_page` of that NPCs row) or
- *   when it is a treasure bag. bossId must resolve to bosses.json (P2-S6, pending), so it is
- *   absent + listed in unverifiedFields until the boss registry exists.
+ *   when it is a treasure bag. P2-S6 resolves every such row through the boss registry
+ *   (overlays/bosses.json, B12): the row's article is a registry boss → `bossId` = that boss,
+ *   cross-checked (the row's NPC ids must be the boss's NPC ids; a mismatch keeps bossId Unknown
+ *   + source-mismatch gap). An article that is not a registry boss is an EVENT boss (Pumpking,
+ *   Betsy, Celestial Pillars…): REQUIREMENTS §6 bosses are the registry and A3 keeps events as
+ *   progression markers without Boss records, so bossId is not applicable (absent, not listed) —
+ *   counted per article in the ledger, never guessed.
  */
 import type { GapEntry, ProvSource } from '../../src/schemas'
 import { type DropSource } from '../../src/schemas'
@@ -118,6 +123,18 @@ export interface DropLedger {
   emittedRecords: number
   splitRows: number
   idCollisions: number
+  /** Boss-typed / treasure-bag records (B12): linked to a registry boss, event boss (n/a), NPC-id mismatch (Unknown). */
+  bossLinkedRecords: number
+  eventBossRecords: number
+  bossMismatchRecords: number
+  /** Event-boss records per article (not registry bosses). */
+  eventBossPages: Map<string, number>
+}
+
+/** Registry boss by article (merge/bosses.ts bossAttribution) + the overlay date for provenance. */
+export interface DropBossRegistry {
+  byPage: ReadonlyMap<string, { id: string; npcIds: ReadonlySet<number> }>
+  authoredAt: string
 }
 
 export interface DropBuildInput {
@@ -127,6 +144,7 @@ export interface DropBuildInput {
   npcsFetchedAt: string
   iteminfo: Iteminfo
   conditions: ConditionMatchers
+  bosses: DropBossRegistry
 }
 
 export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: GapEntry[]; ledger: DropLedger; reasons: ReasonTally; ambiguousNames: Map<string, number[]> } {
@@ -135,7 +153,19 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
   const ambiguousNames = new Map<string, number[]>()
   const fetchedAt = isoDate(input.fetchedAt)
   const iteminfoSrc = moduleSource('iteminfo', { title: 'Module:Iteminfo/data', rev: iteminfo.rev, fetchedAt: iteminfo.fetchedAt })
-  const ledger: DropLedger = { cargoRows: input.rows.length, nonDesktopRows: 0, excludedRows: 0, emittedRows: 0, emittedRecords: 0, splitRows: 0, idCollisions: 0 }
+  const ledger: DropLedger = {
+    cargoRows: input.rows.length,
+    nonDesktopRows: 0,
+    excludedRows: 0,
+    emittedRows: 0,
+    emittedRecords: 0,
+    splitRows: 0,
+    idCollisions: 0,
+    bossLinkedRecords: 0,
+    eventBossRecords: 0,
+    bossMismatchRecords: 0,
+    eventBossPages: new Map(),
+  }
   const drops = new Map<string, DropSource>()
   const reasons: ReasonTally = new Map()
 
@@ -242,7 +272,28 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
       if (known) sources.push({ kind: 'cargo:NPCs', url: pageUrl, fetchedAt: isoDate(input.npcsFetchedAt) })
     }
     if (treasureBag) source.treasureBag = true
-    if (isBoss) unverified.push('source.bossId')
+    let bossKind: 'linked' | 'event' | 'mismatch' | undefined
+    if (isBoss) {
+      const boss = input.bosses.byPage.get(page)
+      const foreign = boss ? (source.npcIds ?? []).filter((id) => !boss.npcIds.has(id)) : []
+      if (!boss) bossKind = 'event'
+      else if (foreign.length > 0) {
+        bossKind = 'mismatch'
+        unverified.push('source.bossId')
+        crossCheckFailed = true
+        gaps.add({
+          ref: `drop:cargo-row-${rowId}`,
+          field: 'source.bossId',
+          kind: 'source-mismatch',
+          detail: `Cargo Drops row ${rowId} (${page}: ${sourceName}) lists NPC id(s) ${foreign.join(', ')} that are not NPCs of the registry boss "${boss.id}" (${[...boss.npcIds].join(', ')}); bossId withheld.`,
+          sources: [pageUrl],
+        })
+      } else {
+        bossKind = 'linked'
+        source.bossId = boss.id
+        sources.push({ kind: 'curated', overlay: 'bosses', url: pageUrl, fetchedAt: input.bosses.authoredAt })
+      }
+    }
 
     // applicable difficulties
     const applicable = DIFFICULTIES.filter((d) => str(row[d === 'classic' ? 'normal' : d]) === '1')
@@ -342,6 +393,12 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
       }
       drops.set(id, record)
       ledger.emittedRecords += 1
+      if (bossKind === 'linked') ledger.bossLinkedRecords += 1
+      else if (bossKind === 'mismatch') ledger.bossMismatchRecords += 1
+      else if (bossKind === 'event') {
+        ledger.eventBossRecords += 1
+        ledger.eventBossPages.set(page, (ledger.eventBossPages.get(page) ?? 0) + 1)
+      }
     }
   }
   const list = [...drops.values()].sort((a, b) => a.itemId - b.itemId || a.id.localeCompare(b.id))

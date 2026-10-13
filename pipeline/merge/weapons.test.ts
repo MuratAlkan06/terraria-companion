@@ -8,7 +8,7 @@ import type { Iteminfo } from '../parse/iteminfo'
 import type { GatingResult } from './gating'
 import { reconcileCategories, reconcileWeaponLists } from './reconcile'
 import { buildSearchDocs } from './search'
-import { ammoClassSlug, buildWeapons, cargoRarity, coinPrice, identifyWeapons, leadingNumber, rarityOf, tooltipText } from './weapons'
+import { ammoClassSlug, buildWeapons, cargoRarity, coinPrice, identifyWeapons, leadingNumber, rarityOf, tooltipText, type WithheldField } from './weapons'
 
 const DEFAULTS = { damage: -1, crit: 0, useTime: 100, useAnimation: 100, knockBack: 0, autoReuse: false, mana: 0, useAmmo: 0, shootSpeed: 0, rare: 0, value: 0, ammo: 0, maxStack: 9999, consumable: false, melee: false, ranged: false, magic: false, summon: false, pick: 0, axe: 0, hammer: 0, headSlot: -1, bodySlot: -1, legSlot: -1, accessory: false }
 const ITEMS: { id: number; name?: string; internalName: string; stats: Record<string, unknown> }[] = [
@@ -73,7 +73,7 @@ const images: ImageInfoFetch = {
 }
 const NOT_DERIVABLE: GatingResult = { ok: false, blockers: ['no-known-route'] }
 
-function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE) {
+function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE, withheld?: ReadonlyMap<number, WithheldField>) {
   return buildWeapons({
     itemRows: ROWS,
     itemsFetchedAt: '2026-10-13T04:21:00.000Z',
@@ -83,6 +83,7 @@ function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE) {
     categories: tree,
     images,
     gating,
+    ...(withheld ? { withheld } : {}),
   })
 }
 const byName = (out: ReturnType<typeof build>, name: string) => out.weapons.find((w) => w.name === name) as Weapon
@@ -158,10 +159,35 @@ describe('buildWeapons', () => {
     expect(derived.gatingBlockers.get('no-known-route + vendor-conditions-unknown')?.examples).toContain('Minishark')
   })
 
-  it('search docs: one per weapon and enemy, schema-valid', () => {
-    const docs = buildSearchDocs({ weapons: out.weapons, enemies: [{ id: 'zombie', name: 'Zombie', dropIds: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Zombie', _prov: byName(out, 'Zenith')._prov }] })
-    expect(docs.map((d) => SearchDoc.parse(d).id)).toEqual(['i:98', 'i:112', 'i:166', 'i:4722', 'i:4956', 'i:5005', 'enemy:zombie'])
+  it('a vendor route (conditions Unknown) next to a derived, gated craft/drop route makes gating Unknown (§7b minimum over routes)', () => {
+    const gated = build((id) => (id === 98 || id === 166 ? { ok: true, gatedBy: { bosses: ['skeletron'], conditions: [], stage: 'late-prehm' } } : NOT_DERIVABLE))
+    expect(byName(gated, 'Minishark').gatedBy).toBeUndefined()
+    expect(byName(gated, 'Minishark')._prov.unverifiedFields).toEqual(expect.arrayContaining(['gatedBy', 'stage']))
+    expect(gated.gatingBlockers.get('alternative-route-unverified + vendor-conditions-unknown')?.count).toBe(2)
+    // a gate-free derived route is already the minimum: the vendor route cannot be less gated
+    const free = build((id) => (id === 98 ? { ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } } : NOT_DERIVABLE))
+    expect(byName(free, 'Minishark')).toMatchObject({ gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' }, stage: 'early-prehm' })
+  })
+
+  it('B19: a withheld wiki self-conflict empties acquisition (Unknown + source-mismatch gap, gating Unknown); a stale entry fails the build', () => {
+    const withheld = new Map<number, WithheldField>([[98, { field: 'acquisition', detail: 'test conflict', cargoTag: 'vendor:Arms Dealer', sources: ['https://terraria.wiki.gg/wiki/1.4.5.7'] }]])
+    const out2 = build(() => ({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } }), withheld)
+    const mini = byName(out2, 'Minishark')
+    expect(Weapon.parse(mini).acquisition).toEqual([])
+    expect(mini._prov).toMatchObject({ verified: false, unverifiedFields: expect.arrayContaining(['acquisition', 'gatedBy', 'stage']) })
+    expect(mini._prov.unverifiedFields).not.toContain('acquisition.0.conditions')
+    expect(out2.gaps).toContainEqual({ ref: 'i:98', field: 'acquisition', kind: 'source-mismatch', detail: 'Minishark: test conflict; value withheld (Unknown)', sources: ['https://terraria.wiki.gg/wiki/Minishark', 'https://terraria.wiki.gg/wiki/1.4.5.7'] })
+    expect(out2.gatingBlockers.get('acquisition-withheld')?.examples).toEqual(['Minishark'])
+    expect(() => build(undefined, new Map([[98, { ...withheld.get(98)!, cargoTag: 'vendor:Clothier' }]]))).toThrow(/no longer carries the conflicting tag/)
+  })
+
+  it('search docs: one per weapon, enemy and boss, schema-valid', () => {
+    const prov = byName(out, 'Zenith')._prov
+    const boss = { id: 'eater-of-worlds', name: 'Eater of Worlds', nodeId: 'eater-of-worlds', wikiUrl: 'https://terraria.wiki.gg/wiki/Eater_of_Worlds', stage: 'early-prehm' as const, worldEvil: 'corruption' as const, summon: { items: [], conditions: [] }, location: { biomes: [] }, statsByDifficulty: {}, dropIds: [], _prov: prov }
+    const docs = buildSearchDocs({ weapons: out.weapons, enemies: [{ id: 'zombie', name: 'Zombie', dropIds: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Zombie', _prov: prov }], bosses: [boss] })
+    expect(docs.map((d) => SearchDoc.parse(d).id)).toEqual(['i:98', 'i:112', 'i:166', 'i:4722', 'i:4956', 'i:5005', 'enemy:zombie', 'boss:eater-of-worlds'])
     expect(docs[4]).toEqual({ id: 'i:4956', name: 'Zenith', type: 'weapon', class: 'melee', rarity: 10, tags: ['broadswords'] })
+    expect(docs[7]).toEqual({ id: 'boss:eater-of-worlds', name: 'Eater of Worlds', type: 'boss', stage: 'early-prehm', tags: ['corruption'] })
   })
 })
 

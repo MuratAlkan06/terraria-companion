@@ -30,5 +30,13 @@
   { "kind": "weapon", "page": "Kaleidoscope", "item": "Kaleidoscope", "why": "P2-S2 AC2: summon whip, boss drop + treasure bag" },
   { "kind": "weapon", "page": "Night's Edge", "item": "Night's Edge", "why": "P2-S2 AC2: melee, world-evil alternative recipes" },
   { "kind": "weapon", "page": "Toxikarp", "item": "Toxikarp", "why": "P2-S2 AC2: ranged; fishing-only (Corruption) → acquisition must be Unknown, never guessed (fishing not modeled)" },
-  { "kind": "weapon", "page": "Celebration Mk2", "item": "Celebration Mk2", "why": "P2-S2 AC2: ranged launcher, rocket ammo class, Moon Lord drop" }
+  { "kind": "weapon", "page": "Celebration Mk2", "item": "Celebration Mk2", "why": "P2-S2 AC2: ranged launcher, rocket ammo class, Moon Lord drop" },
+
+  { "kind": "boss", "page": "King Slime", "boss": "king-slime", "item": "Slime Staff", "why": "P2-S6: summon item, per-difficulty stats (npcstat cells), boss + treasure-bag drop rates" },
+  { "kind": "boss", "page": "Eye of Cthulhu", "boss": "eye-of-cthulhu", "item": "Binoculars", "why": "P2-S6: night summon, stats, classic vs bag rate" },
+  { "kind": "boss", "page": "Deerclops", "boss": "deerclops", "item": "Pew-matic Horn", "why": "P2-S6: optional boss, mode-content damage cell with (contact) note" },
+  { "kind": "boss", "page": "Queen Slime", "boss": "queen-slime", "item": "Blade Staff", "why": "P2-S6: Hardmode boss, Hallow summon condition, stats" },
+  { "kind": "boss", "page": "Plantera", "boss": "plantera", "item": "Temple Key", "why": "P2-S6: no summon item, bare-integer defense, contact damage Unknown (outdated-source flag)" },
+  { "kind": "boss", "page": "Wall of Flesh", "boss": "wall-of-flesh", "item": "Breaker Blade", "why": "P2-S6: required gate to Hardmode; multi-part stats Unknown (mouth vs eye defense)" },
+  { "kind": "boss", "page": "Golem", "boss": "golem", "item": "Stynger", "why": "P2-S6: multi-part boss → stats Unknown; summon item + post-Plantera condition" }
 ]

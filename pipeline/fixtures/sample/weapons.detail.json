@@ -169,7 +169,8 @@
     "damageClass": "ranged",
     "damage": 17,
     "critPct": 0,
-    "useTimeTicks": 12,
+    "useTimeTicks": 4,
+    "useAnimationTicks": 12,
     "knockback": 0,
     "ammoClass": "bullet",
     "shootSpeedTps": 29.0625,
@@ -183,6 +184,7 @@
       "gameVersion": "1.4.5.8",
       "sources": [
         { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle", "fetchedAt": "2026-10-12" },
+        { "kind": "iteminfo", "url": "https://terraria.wiki.gg/wiki/Module:Iteminfo/data", "rev": 1023241, "fetchedAt": "2026-10-13" },
         { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" },
         { "kind": "curated", "overlay": "lab-archetypes", "url": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle", "fetchedAt": "2026-10-12" }
       ],

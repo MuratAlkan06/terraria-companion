@@ -1,19 +1,27 @@
 /**
  * §7b `gatedBy` derivation (DATA_SCHEMA_SPEC §7b, AMENDMENTS-001 A1/A3) — pure + deterministic.
  *
- * Per item: every acquisition route yields a gate set; the item's gate set is the MINIMUM over
- * routes that are fully derivable (any one obtainable route suffices). A route is derivable only
+ * Per item: every acquisition route yields a gate set; the item's gate set is the MINIMUM over its
+ * routes (any one obtainable route suffices). The minimum is only known when EVERY route is
+ * derivable (§7b "any unverified input in the chain → omit gatedBy"): an underivable route might
+ * be the less gated one (Mud Ball is crafted from a Mud Block by hand AND dropped by the Moon Lord;
+ * Slime Staff drops from common slimes AND King Slime), so taking the best derivable route would
+ * state a false gate. Exception: a derivable route with no gate at all is already the minimum.
+ * The same rule applies to a recipe group (minimum over its members). A route is derivable only
  * when every input in its chain is verified:
  * - craft: the recipe's availability conditions (B9 `Recipe.conditions`) ∪ the gating of every
- *   ingredient and station item, recursively (a group = minimum over its members; crafting
- *   environments such as Water or Shimmer are places, not progression gates). Cycles (shimmer
- *   round-trips) are cut — a route that needs the item itself is not a route. Every result is
- *   memoized, including ones computed while a cycle was cut: cutting only REMOVES routes, so a
- *   memoized result is equal or more conservative (more gated, or not derivable) — never less.
+ *   ingredient and station item, recursively (crafting environments such as Water or Shimmer are
+ *   places, not progression gates).
+ * - cycles (Shimmer round-trips, mutual recipes): every item is evaluated as one global fixed point
+ *   (Gauss-Seidel in item-ID order, so deterministic). Phase 1 ignores routes through items not
+ *   derived yet, so a cycle grounded elsewhere takes the grounded value (A ⇄ B by Shimmer with A
+ *   dropped by a boss → B gated like A). Phase 2 turns whatever is still underived — cycles with no
+ *   grounded route anywhere, i.e. items the datasets cannot acquire — into a failing input, so no
+ *   item that could come through them gets an exact gate.
  * - drop: the drop's conditions ∪ the gating of its SOURCE. A boss source gates on the boss's
  *   progression node; an enemy or container source has no verified gating yet (Enemy.stage is
  *   Unknown, containers carry no gating data) ⇒ the route is not derivable.
- * Conditions with `satisfiedByNode` become boss-node gates (hardmode ⇐ wall-of-flesh); the rest
+ * Conditions with `satisfiedByNode` become node gates (hardmode ⇐ the Hardmode milestone); the rest
  * stay conditions. Boss gates are transitively reduced against the required-gate DAG and
  * `stage` = max stage of the gating nodes (early-prehm when there are none).
  *
@@ -36,11 +44,13 @@ import {
 
 export const GATING_BLOCKERS = {
   'no-known-route': 'an input item has no recipe or drop in the datasets (base materials, vendor/fishing/chest-only items: item corpus P6-S0)',
-  'drop-source-ungated': 'a drop comes from an enemy or container whose own gating is not verified (Enemy.stage Unknown; containers carry no gating data)',
-  'boss-attribution-pending': 'a boss drop has no verified boss → progression-node attribution yet (source.bossId pending the P2-S6 boss registry)',
+  'drop-source-ungated': 'a drop comes from an enemy, an event boss or a container whose own gating is not verified (Enemy.stage Unknown; event bosses are progression markers, not Boss records; containers carry no gating data)',
+  'boss-attribution-pending': 'a boss drop has no verified boss → progression-node attribution (source.bossId Unknown: the row\'s NPC ids disagree with the registry boss)',
   'drop-conditions-unknown': 'a drop lists its conditions as Unknown',
   'vendor-conditions-unknown': 'a purchase route exists but the shop availability conditions are not structured on the wiki',
-  'progression-graph-pending': 'a gate maps to a progression node that is not in the dataset yet (P2-S6), so the stage cannot be computed',
+  'progression-graph-pending': 'a gate maps to a progression node that is not in the dataset, so the stage cannot be computed',
+  'acquisition-withheld': 'the item\'s acquisition is withheld because wiki sources conflict (AMENDMENTS-004 B19)',
+  'alternative-route-unverified': 'one route is derivable, but another route is not, and it could be the less gated one — the minimum over routes is unknown (§7b)',
   cycle: 'every route needs the item itself (recipe cycle)',
 } as const
 export type GatingBlocker = keyof typeof GATING_BLOCKERS
@@ -71,7 +81,6 @@ export type GatingResult = { ok: true; gatedBy: GatedBy } | { ok: false; blocker
 const fail = (...b: GatingBlocker[]): Derived => ({ ok: false, blockers: new Set(b) })
 
 export function createGatingDeriver(ctx: GatingContext): (itemId: number) => GatingResult {
-  const memo = new Map<number, Derived>()
 
   // required-gate DAG ancestors, for the transitive reduction
   const parents = new Map<string, string[]>()
@@ -115,65 +124,119 @@ export function createGatingDeriver(ctx: GatingContext): (itemId: number) => Gat
     for (let i = 0; i < ra.length; i += 1) if (ra[i] !== rb[i]) return ra[i] < rb[i]
     return false
   }
-  /** Minimum over alternatives; failures union their blockers. */
-  const minOf = (alternatives: Derived[]): Derived => {
+  const ungated = (d: Extract<Derived, { ok: true }>) => d.gates.bosses.length === 0 && d.gates.conditions.length === 0
+
+  // ---- global fixed point (DATA_SCHEMA_SPEC §7b; see the header) --------------------------------
+  // `undefined` = no derivation established yet (a route through an item not yet derived).
+  type Val = Derived | undefined
+
+  /**
+   * Minimum over alternatives (routes of an item, members of a group). Exact only when every
+   * alternative is derivable — or the best one is gate-free, which nothing can beat. Pending
+   * alternatives are ignored while iterating (phase 1) and are failures afterwards (phase 2).
+   */
+  const minOf = (alternatives: readonly Val[]): Val => {
     let best: Extract<Derived, { ok: true }> | undefined
     const blockers = new Set<GatingBlocker>()
+    let pending = false
     for (const a of alternatives) {
-      if (a.ok) {
+      if (a === undefined) pending = true
+      else if (a.ok) {
         if (!best || better(a, best)) best = a
       } else for (const b of a.blockers) blockers.add(b)
     }
-    return best ?? { ok: false, blockers: blockers.size > 0 ? blockers : new Set(['no-known-route']) }
+    if (best && ungated(best)) return best
+    if (blockers.size > 0) {
+      if (best) blockers.add('alternative-route-unverified')
+      return { ok: false, blockers }
+    }
+    if (best) return best
+    return pending ? undefined : fail('no-known-route')
   }
-  /** Union of required parts (all must hold). */
-  const allOf = (parts: Derived[], extraConditions: readonly string[] = []): Derived => {
+  /** Union of required parts (all must hold); pending while any part is. */
+  const allOf = (parts: readonly Val[], extraConditions: readonly string[] = []): Val => {
     const bosses: string[] = []
     const conditions: string[] = [...extraConditions]
     const blockers = new Set<GatingBlocker>()
+    let pending = false
     for (const p of parts) {
-      if (!p.ok) for (const b of p.blockers) blockers.add(b)
+      if (p === undefined) pending = true
+      else if (!p.ok) for (const b of p.blockers) blockers.add(b)
       else {
         bosses.push(...p.gates.bosses)
         conditions.push(...p.gates.conditions)
       }
     }
-    return blockers.size > 0 ? { ok: false, blockers } : finish(bosses, conditions)
+    if (blockers.size > 0) return { ok: false, blockers }
+    return pending ? undefined : finish(bosses, conditions)
   }
 
-  const derive = (itemId: number, visiting: Set<number>): Derived => {
-    const cached = memo.get(itemId)
-    if (cached) return cached
-    if (visiting.has(itemId)) return fail('cycle')
-    visiting.add(itemId)
-    const of = (id: number) => derive(id, visiting)
-    const group = (groupId: string) => minOf((ctx.groups.get(groupId)?.memberItemIds ?? []).map(of))
-    const routes: Derived[] = []
-    for (const r of ctx.recipesByResult.get(itemId) ?? []) {
-      const parts: Derived[] = []
-      for (const s of r.stations) {
-        if (s.kind === 'item') parts.push(of(s.itemId))
-        else if (s.kind === 'group') parts.push(group(s.groupId))
+  // every item any route mentions; drop routes are fixed leaves
+  const ids = new Set<number>([...ctx.recipesByResult.keys(), ...ctx.dropsByItem.keys()])
+  for (const rs of ctx.recipesByResult.values()) {
+    for (const r of rs) {
+      for (const st of r.stations) if (st.kind === 'item') ids.add(st.itemId)
+      for (const ing of r.ingredients) if (ing.ref.kind === 'item') ids.add(ing.ref.itemId)
+    }
+  }
+  for (const g of ctx.groups.values()) for (const m of g.memberItemIds) ids.add(m)
+  const order = [...ids].sort((x, y) => x - y)
+  const dropRoutes = new Map<number, Derived[]>()
+  for (const id of order) {
+    dropRoutes.set(
+      id,
+      (ctx.dropsByItem.get(id) ?? []).map((d) => {
+        if (isCoveredBy(d._prov.unverifiedFields, 'conditions')) return fail('drop-conditions-unknown')
+        if (d.source.bossId !== undefined) {
+          const node = ctx.graph?.bossNode.get(d.source.bossId)
+          return node ? finish([node], d.conditions) : fail('progression-graph-pending')
+        }
+        return isCoveredBy(d._prov.unverifiedFields, 'source.bossId') ? fail('boss-attribution-pending') : fail('drop-source-ungated')
+      }),
+    )
+  }
+
+  const values = new Map<number, Val>()
+  const of = (id: number): Val => (ids.has(id) ? values.get(id) : fail('no-known-route'))
+  const group = (groupId: string): Val => minOf((ctx.groups.get(groupId)?.memberItemIds ?? []).map(of))
+  const evaluate = (id: number): Val => {
+    const routes: Val[] = [...(dropRoutes.get(id) ?? [])]
+    for (const r of ctx.recipesByResult.get(id) ?? []) {
+      const parts: Val[] = []
+      for (const st of r.stations) {
+        if (st.kind === 'item') parts.push(of(st.itemId))
+        else if (st.kind === 'group') parts.push(group(st.groupId))
       }
       for (const ing of r.ingredients) parts.push(ing.ref.kind === 'item' ? of(ing.ref.itemId) : group(ing.ref.groupId))
       routes.push(allOf(parts, r.conditions))
     }
-    for (const d of ctx.dropsByItem.get(itemId) ?? []) {
-      if (isCoveredBy(d._prov.unverifiedFields, 'conditions')) routes.push(fail('drop-conditions-unknown'))
-      else if (d.source.bossId !== undefined) {
-        const node = ctx.graph?.bossNode.get(d.source.bossId)
-        routes.push(node ? finish([node], d.conditions) : fail('progression-graph-pending'))
-      } else if (isCoveredBy(d._prov.unverifiedFields, 'source.bossId')) routes.push(fail('boss-attribution-pending'))
-      else routes.push(fail('drop-source-ungated'))
-    }
-    const result = routes.length === 0 ? fail('no-known-route') : minOf(routes)
-    visiting.delete(itemId)
-    memo.set(itemId, result)
-    return result
+    return minOf(routes)
   }
+  const key = (v: Val) => (v === undefined ? '' : v.ok ? JSON.stringify([v.gates, v.stage]) : `!${[...v.blockers].sort().join('+')}`)
+  const settle = (phase: string) => {
+    for (let pass = 0; ; pass += 1) {
+      if (pass > 10_000) throw new Error(`gating fixed point did not converge (${phase})`)
+      let changed = false
+      for (const id of order) {
+        const next = evaluate(id)
+        if (key(next) !== key(values.get(id))) {
+          values.set(id, next)
+          changed = true
+        }
+      }
+      if (!changed) return
+    }
+  }
+  // phase 1: a route through a not-yet-derived item is not counted, so a cycle that is grounded
+  // elsewhere resolves to the grounded value (A ⇄ B by Shimmer, A dropped by a boss → B = A).
+  settle('phase 1')
+  // phase 2: what is still underived depends only on cycles with no grounded route — the data has
+  // no acquisition for it, so it is a failing (unverified) input from here on.
+  for (const id of order) if (values.get(id) === undefined) values.set(id, fail('cycle'))
+  settle('phase 2')
 
   return (itemId) => {
-    const d = derive(itemId, new Set())
+    const d = of(itemId) ?? fail('cycle')
     if (!d.ok) {
       // a cut cycle only explains the failure when nothing else blocked
       const blockers = [...d.blockers].filter((b) => b !== 'cycle' || d.blockers.size === 1).sort()

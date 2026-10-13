@@ -1,0 +1,21 @@
+{
+  "overlay": "withheld",
+  "authoredAt": "2026-10-13",
+  "notes": [
+    "Wiki self-conflicts the cross-checks cannot see (AMENDMENTS-004 B19). The named field is withheld: Unknown + a source-mismatch gap, consistent with the automatic cross-check withholds (Chik, Flower of Fire, Inferno Fork, Starlight). Never pick a side on conflicting sources.",
+    "evidence quotes are checked verbatim against the cached articles; cargoTag is the conflicting Cargo Items tag — when the wiki drops it the build fails so the entry is removed instead of withholding a resolved value."
+  ],
+  "entries": [
+    {
+      "itemId": 5577,
+      "field": "acquisition",
+      "ruling": "AMENDMENTS-004 B19",
+      "detail": "the Cargo Items infobox tag names the Clothier as vendor (vendor:Clothier), while the article says the Stylist sells it in a Graveyard and the 1.4.5.7 patch notes say the Stylist sells it instead of the Clothier — conflicting wiki sources, so no vendor is picked",
+      "cargoTag": "vendor:Clothier",
+      "evidence": [
+        { "page": "Pretty Mirror", "quote": "The Pretty Mirror can be purchased from the Stylist while in a Graveyard for 1 Gold." },
+        { "page": "1.4.5.7", "quote": "Stylist now sells Pretty Mirrors when in the graveyard, instead of the Clothier." }
+      ]
+    }
+  ]
+}

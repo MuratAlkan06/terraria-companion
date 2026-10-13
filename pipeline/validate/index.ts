@@ -8,7 +8,7 @@
  *  2. §2.1-3 Lab downgrade on raw weapons (pre-parse; unverified sim inputs → limitation)
  *  3. strict schema parse of every record (E_SCHEMA) — stops here on failure
  *  4. A1 rule 10 ammo downgrade (warning)
- *  5. integrity, graph, suggestion gating, list⊂detail, search docs
+ *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, list⊂detail, search docs
  *  6. gaps + meta
  */
 import type * as z from 'zod'
@@ -27,6 +27,7 @@ import {
   type RawDataset,
 } from './dataset'
 import type { PipelineError, PipelineWarning } from './errors'
+import { checkFixtures } from './fixtures'
 import { checkGraph } from './graph'
 import { checkIntegrity, type RefScope } from './integrity'
 import { downgradeUnmatchedAmmo, downgradeUnverifiedArchetype } from './labDowngrade'
@@ -129,6 +130,7 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
   errors.push(
     ...integrity.errors,
     ...checkGraph(dataset),
+    ...(['bosses', 'nodes', 'edges'].some((k) => scope.pending.has(k as CollectionKey)) ? [] : checkFixtures(dataset, manifest.data.fixtures)),
     ...checkSuggestionGating(dataset),
     ...checkListDetail(raw.lists, dataset),
     ...(raw.searchDocs !== undefined ? checkSearchDocs(raw.searchDocs, dataset) : []),
