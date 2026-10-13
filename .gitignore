@@ -8,7 +8,9 @@ dist-ssr/
 *.local
 .DS_Store
 coverage/
+pipeline/out/
 *.log
 npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
+.playwright-mcp/
