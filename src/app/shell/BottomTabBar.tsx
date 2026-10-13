@@ -41,6 +41,8 @@ export function BottomTabBar() {
   return (
     <nav
       aria-label="Primary"
+      // Popovers treat this as a collision edge (see components/fixedBottomInset.ts).
+      data-fixed-bottom=""
       className="fixed inset-x-0 bottom-0 z-(--z-nav) border-t-2 border-panel-border bg-surface pb-safe lg:hidden"
     >
       <ul className="mx-auto flex h-tabbar max-w-xl items-stretch">

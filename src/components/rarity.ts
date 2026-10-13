@@ -25,6 +25,14 @@ const RARITY_NAMES: Record<string, string> = {
   amber: 'Amber (Quest)',
 }
 
+const SPECIAL_RARITIES: readonly string[] = ['rainbow', 'fiery-red', 'amber']
+
+/** Narrows a schema rarity value (int | special tier) to a known tier; undefined if out of range. */
+export function asRarity(value: number | string | undefined): Rarity | undefined {
+  if (typeof value === 'number') return Number.isInteger(value) && value >= -1 && value <= 11 ? (value as NumericRarity) : undefined
+  return value !== undefined && SPECIAL_RARITIES.includes(value) ? (value as Rarity) : undefined
+}
+
 /** CSS colour reference for a rarity, e.g. `var(--rarity-3)`. */
 export function rarityColor(rarity: Rarity): string {
   return `var(--rarity-${rarity})`

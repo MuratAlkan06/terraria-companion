@@ -3,6 +3,7 @@ import { APP_ROUTES } from './routes'
 import NotFoundPage from './routes/NotFoundPage'
 import RouteErrorPage from './routes/RouteErrorPage'
 import AppShell from './shell/AppShell'
+import { publishRouterLocation } from './shell/navigationPending'
 
 /** Registry entry -> React Router child of the shell ("/" becomes the index route). */
 function toRouteObject({ path, Component }: (typeof APP_ROUTES)[number]): RouteObject {
@@ -24,3 +25,7 @@ export const router = createBrowserRouter([
     ],
   },
 ])
+
+// The shell's pending-navigation indicator compares this with the committed location.
+publishRouterLocation(router.state.location.key)
+router.subscribe((state) => publishRouterLocation(state.location.key))

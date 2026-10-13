@@ -7,9 +7,12 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { House, Scale, type LucideIcon } from 'lucide-react'
+import { House, Scale, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
+
+/** All database pages live in one lazy chunk (`chunk-db`, UX_SPEC §1). */
+const chunkDb = () => import('./routes/db/chunk-db')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -38,6 +41,17 @@ export const APP_ROUTES: readonly AppRoute[] = [
     path: '/',
     Component: HomePage,
     nav: { label: 'Home', icon: House, surfaces: ['header', 'tabbar'], order: 0 },
+  },
+  {
+    id: 'weapons',
+    path: '/weapons',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.WeaponsListPage }))),
+    nav: { label: 'Weapons', icon: Swords, surfaces: ['header', 'tabbar'], order: 10 },
+  },
+  {
+    id: 'weapon-detail',
+    path: '/weapons/:id',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.WeaponDetailPage }))),
   },
   {
     id: 'licensing',

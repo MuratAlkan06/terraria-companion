@@ -8,7 +8,7 @@ import { PixelCanvas } from './pixelCanvas'
  * sprite manifest's `fallbackMode` is on. Deliberately muted stone silhouettes, so a placeholder
  * never passes for the real item art. Rendered by <SpritePlaceholder>.
  */
-export type SpritePlaceholderVariant = 'melee' | 'ranged' | 'magic' | 'summon' | 'other' | 'unknown'
+export type SpritePlaceholderVariant = 'melee' | 'ranged' | 'magic' | 'summon' | 'other' | 'unknown' | 'material'
 
 export const PLACEHOLDER_PALETTE: PixelPalette = {
   k: 'var(--color-night-950)',
@@ -43,12 +43,50 @@ export const PLACEHOLDER_ROWS: Record<SpritePlaceholderVariant, readonly string[
   ),
   // staff topped with a gem
   magic: draw((c) => c.line(3, 13, 9, 7, 'w').line(4, 13, 10, 7, 'h').rect(10, 3, 3, 3, 'm').set(11, 2, 'm').set(13, 4, 'm').set(10, 3, 's')),
-  // whip: grip and a curling lash
-  summon: draw((c) => c.line(2, 13, 4, 11, 'h').line(3, 13, 5, 11, 'h').line(5, 10, 8, 6, 'B').line(8, 6, 12, 4, 'B').line(12, 4, 13, 7, 'B').line(13, 7, 11, 9, 'B')),
+  // whip: two-tone grip with a pommel and the lash coiled inward in an open spiral to its tip
+  // (an open coil, not a closed loop — a ring on a handle reads as a magnifying glass)
+  summon: draw((c) =>
+    c
+      .line(2, 13, 4, 11, 'h')
+      .line(3, 13, 5, 11, 'w')
+      .set(1, 14, 'g')
+      .set(2, 14, 'g')
+      .line(5, 10, 4, 8, 'B')
+      .line(4, 7, 4, 5, 'B')
+      .line(5, 4, 6, 3, 'B')
+      .line(7, 2, 11, 2, 'B')
+      .line(12, 3, 13, 4, 'B')
+      .line(14, 5, 14, 8, 'B')
+      .line(13, 9, 12, 10, 'B')
+      .line(11, 10, 9, 10, 'B')
+      .line(8, 9, 8, 7, 'B')
+      .line(9, 6, 10, 6, 'B')
+      .set(11, 7, 's')
+      .set(8, 2, 'b')
+      .set(9, 2, 'b')
+      .set(4, 6, 'b')
+      .set(14, 6, 'b'),
+  ),
   // bomb with a lit fuse (classless explosives)
   other: draw((c) => c.rect(4, 7, 7, 6, 'B').rect(5, 6, 5, 8, 'B').set(6, 8, 'b').set(5, 9, 'b').line(9, 6, 11, 3, 'h').set(12, 2, 'g')),
   // question mark
   unknown: draw((c) => c.line(5, 4, 6, 3, 'b').line(7, 2, 9, 2, 'b').line(10, 3, 11, 4, 'b').line(11, 5, 9, 7, 'b').line(8, 8, 8, 9, 'b').rect(8, 11, 1, 2, 'b')),
+  // generic item (recipe materials without a local sprite): a cloth pouch tied at the neck —
+  // deliberately not the "?" so a known material never reads as an Unknown value
+  material: draw((c) =>
+    c
+      .rect(5, 7, 7, 6, 'w')
+      .rect(4, 8, 9, 4, 'w')
+      .rect(6, 13, 5, 1, 'w')
+      .line(6, 6, 10, 6, 'h')
+      .rect(7, 4, 3, 2, 'w')
+      .set(6, 3, 'w')
+      .set(10, 3, 'w')
+      .line(5, 8, 5, 11, 'h')
+      .line(6, 12, 10, 12, 'h')
+      .set(7, 8, 'b')
+      .set(6, 9, 'b'),
+  ),
 }
 
 /** Placeholder variant for a weapon: its damage class; unknown class ⇒ "unknown". */

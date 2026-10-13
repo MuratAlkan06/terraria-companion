@@ -23,13 +23,19 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P1 ships exactly Home and Licensing in nav', () => {
-    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/'])
+  it('P2-S3 nav: Home + Weapons in header and tab bar; Licensing in More + footer', () => {
+    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons'])
     expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/about/licensing'])
     expect(tabBarLayout()).toMatchObject({
-      tabs: [{ to: '/' }],
+      tabs: [{ to: '/' }, { to: '/weapons', label: 'Weapons' }],
       more: [{ to: '/about/licensing' }],
     })
+  })
+
+  it('registers the weapon detail route without a nav entry', () => {
+    const detail = APP_ROUTES.find((r) => r.path === '/weapons/:id')
+    expect(detail).toBeDefined()
+    expect(detail?.nav).toBeUndefined()
   })
 
   it('sorts by order and omits routes without nav metadata', () => {

@@ -8,8 +8,8 @@ import { SpritePlaceholder } from './SpritePlaceholder'
 describe('SpritePlaceholder (A12 placeholder set)', () => {
   const variants = Object.keys(PLACEHOLDER_ROWS) as SpritePlaceholderVariant[]
 
-  it('has one distinct 16x16 original sprite per damage class plus "unknown"', () => {
-    expect(variants.sort()).toEqual(['magic', 'melee', 'other', 'ranged', 'summon', 'unknown'])
+  it('has one distinct 16x16 original sprite per damage class plus "unknown" and a generic "material"', () => {
+    expect(variants.sort()).toEqual(['magic', 'material', 'melee', 'other', 'ranged', 'summon', 'unknown'])
     for (const v of variants) {
       const rows = PLACEHOLDER_ROWS[v]
       expect(rows).toHaveLength(16)
