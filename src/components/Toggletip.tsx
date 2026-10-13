@@ -20,11 +20,15 @@ export interface ToggletipProps {
   className?: string
   /** `data-*` attributes for the trigger, e.g. audit hooks. */
   data?: Record<`data-${string}`, string>
+  /** Replaces the popover's default size classes (e.g. a wider, scrollable tip). */
+  contentClassName?: string
 }
+
+const CONTENT_SIZE = 'w-max max-w-[min(--spacing(72),var(--radix-popover-content-available-width,--spacing(72)))]'
 
 const HOVER_CLOSE_DELAY_MS = 150
 
-export function Toggletip({ label, children, className, data }: ToggletipProps) {
+export function Toggletip({ label, children, className, data, contentClassName }: ToggletipProps) {
   const [open, setOpen] = useState(false)
   // Opened by mouse hover (closes on leave, keeps focus on the trigger) vs pinned by click/tap/key.
   const hoverOpened = useRef(false)
@@ -74,8 +78,9 @@ export function Toggletip({ label, children, className, data }: ToggletipProps) 
         }}
         className={cx(
           'relative cursor-help',
-          // >= 44px tap target without changing the inline line box (UX_SPEC §9).
-          "before:absolute before:inset-x-0 before:top-1/2 before:h-tap before:-translate-y-1/2 before:content-['']",
+          // >= 44 × 44px tap target, centred, without changing the inline line box (UX_SPEC §9):
+          // short triggers such as the "est." chip get the full width too.
+          "before:absolute before:top-1/2 before:left-1/2 before:h-tap before:w-[max(100%,var(--spacing-tap))] before:-translate-1/2 before:content-['']",
           className,
         )}
       >
@@ -96,7 +101,10 @@ export function Toggletip({ label, children, className, data }: ToggletipProps) 
           }}
           onPointerEnter={cancelClose}
           onPointerLeave={onPointerLeave}
-          className="z-(--z-popover) w-max max-w-[min(--spacing(72),var(--radix-popover-content-available-width,--spacing(72)))] border-2 border-tooltip-border bg-tooltip-bg px-3 py-2 text-sm text-fg shadow-pixel-drop"
+          className={cx(
+            'z-(--z-popover) border-2 border-tooltip-border bg-tooltip-bg px-3 py-2 text-sm text-fg shadow-pixel-drop',
+            contentClassName ?? CONTENT_SIZE,
+          )}
         >
           {children}
         </Popover.Content>

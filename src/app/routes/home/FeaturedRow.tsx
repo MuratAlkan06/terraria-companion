@@ -38,9 +38,11 @@ const TITLE_ID = 'featured-title'
 
 const CARD =
   'group flex h-full flex-col gap-3 border-2 border-panel-border bg-panel p-4 text-fg shadow-pixel transition-colors duration-(--dur-ui) ease-out-strong hover:border-gold-600 md:p-5'
-const ROW = 'flex flex-1 items-center gap-4'
+// Below 375px (B43) the sprite slot stacks above the text: the slot never shrinks and no-break
+// stage terms stay whole; the trailing affordance moves up into the eyebrow row.
+const ROW = 'flex flex-1 flex-col items-start gap-3 xs:flex-row xs:items-center xs:gap-4'
 const SLOT = 'grid size-28 shrink-0 place-items-center border-2 border-slot-border bg-slot lg:size-40'
-const EYEBROW = 'text-xs font-semibold tracking-wide text-fg-muted uppercase'
+const EYEBROW = 'flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-fg-muted uppercase'
 const NAME = 'text-lg leading-snug font-semibold'
 const TRAILING_ICON =
   'size-5 shrink-0 text-fg-muted transition-colors duration-(--dur-ui) ease-out-strong group-hover:text-accent'
@@ -122,7 +124,10 @@ function FeaturedWeaponCard({ weapon, sprites, box }: CardProps & { weapon: Weap
   const rarity = asRarity(weapon.rarity)
   return (
     <Link to={weaponHref(weapon.id)} className={CARD}>
-      <span className={EYEBROW}>Weapon of the day</span>
+      <span className={EYEBROW}>
+        Weapon of the day
+        <ChevronRight aria-hidden="true" className={cx(TRAILING_ICON, 'xs:hidden')} />
+      </span>
       <span className={ROW}>
         <span className={SLOT}>
           <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={box} maxScale={MAX_UPSCALE} />
@@ -140,7 +145,7 @@ function FeaturedWeaponCard({ weapon, sprites, box }: CardProps & { weapon: Weap
             <span className="font-semibold tabular-nums">{weapon.damage}</span>
           </span>
         </span>
-        <ChevronRight aria-hidden="true" className={TRAILING_ICON} />
+        <ChevronRight aria-hidden="true" className={cx(TRAILING_ICON, 'max-xs:hidden')} />
       </span>
     </Link>
   )
@@ -150,7 +155,10 @@ function FeaturedBossCard({ boss, sprites, box, className }: CardProps & { boss:
   const stage = getField(boss, 'stage')
   return (
     <div className={cx(CARD, 'relative', className)}>
-      <span className={EYEBROW}>Boss of the day</span>
+      <span className={EYEBROW}>
+        Boss of the day
+        <ExternalLink aria-hidden="true" className={cx(TRAILING_ICON, 'xs:hidden')} />
+      </span>
       <span className={ROW}>
         <span className={SLOT}>
           {/* Same generic creature placeholder as search rows (B32), never the "?" Unknown glyph. */}
@@ -184,7 +192,7 @@ function FeaturedBossCard({ boss, sprites, box, className }: CardProps & { boss:
             via Terraria Wiki
           </span>
         </span>
-        <ExternalLink aria-hidden="true" className={TRAILING_ICON} />
+        <ExternalLink aria-hidden="true" className={cx(TRAILING_ICON, 'max-xs:hidden')} />
       </span>
     </div>
   )

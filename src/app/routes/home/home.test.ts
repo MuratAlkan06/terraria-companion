@@ -11,8 +11,10 @@ import weaponsDetailJson from '../../../data/weapons.detail.json'
 import weaponsListJson from '../../../data/weapons.list.json'
 import { getField } from '../../../schemas/getField'
 import type { StorageBackend } from '../../../storage'
+import { pathFor } from '../../routes'
 import HomePage from '../HomePage'
 import { FeaturedRow, MAX_UPSCALE } from './FeaturedRow'
+import { heroActions } from './heroActions'
 import {
   featuredWeaponPool,
   localDayNumber,
@@ -249,12 +251,31 @@ describe('HomePage render (SSR markup)', () => {
     expect(html).not.toContain('/weapons/999999')
   })
 
-  it('AC3 (N/A until P3-S1): no "Test Weapons" button and no link into /lab; no saved-builds rail either', () => {
+  it('AC3 (P3-S1 shipped): a working "Test Weapons" button links into /lab; unshipped actions and rails stay absent', () => {
     const html = renderHome(day(13))
-    expect(html).not.toMatch(/test weapons/i)
-    expect(html).not.toMatch(/href="\/lab/)
+    const start = html.indexOf('data-hero-actions')
+    const actions = html.slice(start, html.indexOf('</ul>', start))
+    // Exactly one action, a real link to the registered Lab route — never a disabled control.
+    expect(heroActions().map((a) => [a.label, a.to])).toEqual([['Test Weapons', pathFor('lab')]])
+    expect(pathFor('lab')).toBe('/lab')
+    expect(actions.match(/<a [^>]*>/g)).toHaveLength(1)
+    expect(actions).toMatch(/<a [^>]*href="\/lab"[^>]*>.*Test Weapons<\/a>/s)
+    expect(actions).not.toMatch(/disabled/)
+    // /loadout and /bosses don't exist yet: their buttons are absent (PRD P1-S2 AC3), as is the saved-builds rail.
+    expect(html).not.toMatch(/Build My Loadout|What Should I Do Next/i)
     expect(html).not.toMatch(/saved builds/i)
-    expect(html).not.toMatch(/href="\/(loadout|builds)/)
+    expect(html).not.toMatch(/href="\/(loadout|builds|bosses)/)
+  })
+
+  it('B43: below 375px the featured cards stack full-width and each stacks its slot above the text (no slot shrink)', () => {
+    const html = renderHome(day(13))
+    const featured = html.slice(html.indexOf('id="featured-title"'), html.indexOf('Recently viewed'))
+    // Cards: one column below md.
+    expect(featured).toMatch(/class="grid gap-x-6 gap-y-2 md:grid-cols-2"/)
+    // Inside each card: slot over text below xs (375px), side by side from xs.
+    expect(featured.match(/class="flex flex-1 flex-col items-start gap-3 xs:flex-row xs:items-center xs:gap-4"/g)).toHaveLength(2)
+    expect(featured.match(/class="grid size-28 shrink-0 /g)).toHaveLength(2)
+    expect(featured).not.toMatch(/(max-)?xs:size-/)
   })
 
   it('FeaturedRow without boss records shows the weapon card only (A17)', () => {

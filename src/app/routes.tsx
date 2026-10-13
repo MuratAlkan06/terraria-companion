@@ -7,12 +7,17 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { House, Scale, Swords, type LucideIcon } from 'lucide-react'
+import { FlaskConical, House, Scale, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
 /** All database pages live in one lazy chunk (`chunk-db`, UX_SPEC §1). */
 const chunkDb = () => import('./routes/db/chunk-db')
+/**
+ * The Weapon Lab (`chunk-lab`, UX_SPEC §1). PixiJS sits behind a second dynamic import inside it
+ * (src/lab/arena), so no other route ever downloads the renderer.
+ */
+const chunkLab = () => import('./routes/lab/chunk-lab')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -54,6 +59,18 @@ export const APP_ROUTES: readonly AppRoute[] = [
     Component: lazy(() => chunkDb().then((m) => ({ default: m.WeaponDetailPage }))),
   },
   {
+    id: 'lab',
+    path: '/lab',
+    Component: lazy(() => chunkLab().then((m) => ({ default: m.LabPage }))),
+    nav: {
+      label: 'Lab',
+      icon: FlaskConical,
+      surfaces: ['header', 'tabbar'],
+      order: 20,
+      description: 'Swing weapons at a training dummy — a browser simulation',
+    },
+  },
+  {
     id: 'licensing',
     path: '/about/licensing',
     Component: lazy(() => import('./routes/LicensingPage')),
@@ -66,6 +83,11 @@ export const APP_ROUTES: readonly AppRoute[] = [
     },
   },
 ]
+
+/** True when a route with this id ships (data-driven entry points, PRD P1-S2 AC3 pattern). */
+export function hasRoute(id: string): boolean {
+  return APP_ROUTES.some((r) => r.id === id)
+}
 
 export function pathFor(id: string): string {
   const route = APP_ROUTES.find((r) => r.id === id)

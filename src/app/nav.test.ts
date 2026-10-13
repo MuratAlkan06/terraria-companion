@@ -23,13 +23,24 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P2-S3 nav: Home + Weapons in header and tab bar; Licensing in More + footer', () => {
-    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons'])
+  it('P3-S1 nav: Home + Weapons + Lab in header and tab bar; Licensing in More + footer', () => {
+    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab'])
     expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/about/licensing'])
-    expect(tabBarLayout()).toMatchObject({
-      tabs: [{ to: '/' }, { to: '/weapons', label: 'Weapons' }],
+    const { tabs, more } = tabBarLayout()
+    expect({ tabs, more }).toMatchObject({
+      tabs: [{ to: '/' }, { to: '/weapons', label: 'Weapons' }, { to: '/lab', label: 'Lab' }],
       more: [{ to: '/about/licensing' }],
     })
+    // 3 tabs + the More tab: within the UX_SPEC §10.12 cap.
+    expect(tabs.length + (more.length > 0 ? 1 : 0)).toBeLessThanOrEqual(TAB_BAR_MAX)
+  })
+
+  it('the Lab is registered as a lazy route (its own chunk), never an eager import', () => {
+    const lab = APP_ROUTES.find((r) => r.id === 'lab')
+    if (!lab) throw new Error('no /lab route')
+    expect(lab.path).toBe('/lab')
+    // React.lazy components are exotic objects tagged with the lazy symbol, not plain functions.
+    expect((lab.Component as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.lazy'))
   })
 
   it('registers the weapon detail route without a nav entry', () => {
@@ -69,8 +80,8 @@ describe('route registry + data-driven nav', () => {
     // Up to 3 links: no More menu at all; a 4th goes into it.
     expect(headerNavLayout(six.slice(0, 3)).more).toEqual([])
     expect(headerNavLayout(six.slice(0, 4)).more.map((i) => i.id)).toEqual(['bosses'])
-    // Today's registry: Home + Weapons, nothing collapsed.
-    expect(headerNavLayout()).toMatchObject({ inline: [{ to: '/' }, { to: '/weapons' }], more: [] })
+    // Today's registry: Home + Weapons + Lab — exactly the inline limit, nothing collapsed.
+    expect(headerNavLayout()).toMatchObject({ inline: [{ to: '/' }, { to: '/weapons' }, { to: '/lab' }], more: [] })
   })
 
   it('reserves a More slot when there are more-only items', () => {

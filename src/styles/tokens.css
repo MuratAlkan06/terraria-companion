@@ -24,6 +24,8 @@
    so var(--rarity-*) / var(--edge-*) lookups always resolve. */
 @theme static {
   /* ---------- Breakpoints (UX_SPEC §7: 375 base / 768 / 1024 / 1440) ---------- */
+  /* 375px, the design base width: below it, side-by-side compositions stack (AMENDMENTS-009 B43). */
+  --breakpoint-xs: 23.4375rem;
   --breakpoint-md: 48rem;
   --breakpoint-lg: 64rem;
   --breakpoint-xl: 90rem;

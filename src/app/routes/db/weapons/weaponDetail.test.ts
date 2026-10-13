@@ -167,10 +167,12 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
     expect(html).toContain('href="/weapons/757"') // ingredient that is itself a weapon links to its page
     expect(html).toContain('href="https://terraria.wiki.gg/wiki/Zenith"')
     expect(html).toContain('Partially verified')
-    expect(html).toContain('Weapon Lab simulation coming')
+    // States that the Lab doesn't simulate it — no forward promise (design review P3-S1).
+    expect(html).toContain('Not simulated in the Weapon Lab')
+    expect(html).not.toMatch(/simulation coming|Until then/)
     // No tooltip text and only the wiki pointer: no "here's what it does" promise before a bare link.
     expect(html).not.toContain('here’s what it does in-game')
-    expect(html).toContain('Until then, the wiki describes how it behaves in-game.')
+    expect(html).toContain('The wiki describes how it behaves in-game.')
   })
 
   it('crafting materials render as ItemSlots in an InventoryGrid, spanning the panel for a single recipe', () => {

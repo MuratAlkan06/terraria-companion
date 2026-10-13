@@ -5,10 +5,12 @@ import { PixelPanel } from '../../../../components/PixelPanel'
 import { ProvenanceLink } from '../../../../components/ProvenanceLink'
 import { asRarity, rarityColor, rarityLabel } from '../../../../components/rarity'
 import { RarityText } from '../../../../components/RarityText'
+import { SendToLabButton } from '../../../../components/SendToLabButton'
 import { SpriteImg } from '../../../../components/SpriteImg'
 import { UnknownValue } from '../../../../components/UnknownValue'
 import type { AcquisitionData } from '../../../../data-access'
 import type { SpriteIndex, Weapon } from '../../../../data-access/types'
+import { offersLab } from '../../../../lab/labLinks'
 import type { DamageClass } from '../../../../schemas'
 import { getField, type FieldView } from '../../../../schemas/getField'
 import { ClassBadge } from './WeaponBits'
@@ -124,6 +126,8 @@ function DetailHeader({
           <ProvenanceLink href={weapon.wikiUrl} srContext={`for ${weapon.name}`} />
           <PartiallyVerifiedBadge items={unknowns} />
         </div>
+        {/* ActionRow (UX_SPEC §3.3): renders nothing when no action applies to this weapon. */}
+        <SendToLabButton weapon={weapon} className="w-full md:w-auto" />
       </div>
     </PixelPanel>
   )
@@ -169,6 +173,8 @@ function BehaviorPanel({ weapon }: { weapon: Weapon }) {
   const labText =
     lab.kind === 'limitation' && lab.inGameBehavior !== text && lab.inGameBehavior !== wikiPointer ? lab.inGameBehavior : undefined
   const labSource = lab.kind === 'limitation' ? lab.sourceUrl : weapon.wikiUrl
+  // Equippable in the Lab now (the header's "Test in Weapon Lab" opens it); otherwise still coming.
+  const inLab = offersLab(weapon)
 
   return (
     <PixelPanel as="section" aria-labelledby="behavior-title" className="space-y-4">
@@ -185,15 +191,19 @@ function BehaviorPanel({ weapon }: { weapon: Weapon }) {
       <div className="space-y-2 border-l-4 border-gold-600 bg-night-900 px-4 py-3">
         <p className="flex items-center gap-2 font-semibold">
           <FlaskConical aria-hidden="true" className="size-5 shrink-0 text-accent" />
-          {labText ? 'Weapon Lab simulation coming — here’s what it does in-game' : 'Weapon Lab simulation coming'}
+          {/* No forward promise: the Lab doesn't simulate it, and that's all this says (design review P3-S1). */}
+          {inLab ? 'Simulated in the Weapon Lab' : labText ? 'Not simulated in the Weapon Lab — here’s what it does in-game' : 'Not simulated in the Weapon Lab'}
         </p>
-        {labText ? (
+        {inLab ? (
+          <p className="text-sm text-fg-muted">
+            Swing it at the Infinite Dummy to see per-hit damage, crits and an estimated DPS — a browser simulation, so the
+            values are approximations, not Terraria engine output.
+          </p>
+        ) : labText ? (
           <p className="text-sm whitespace-pre-line text-fg-muted">{labText}</p>
         ) : (
           <p className="text-sm text-fg-muted">
-            {text
-              ? 'Until then, the item tooltip above and the wiki describe how it behaves in-game.'
-              : 'Until then, the wiki describes how it behaves in-game.'}
+            {text ? 'The item tooltip above and the wiki describe how it behaves in-game.' : 'The wiki describes how it behaves in-game.'}
           </p>
         )}
         <ProvenanceLink href={labSource} label="How it behaves, on the wiki" srContext={`(${weapon.name})`} />

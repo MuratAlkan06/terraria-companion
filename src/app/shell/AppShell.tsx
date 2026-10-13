@@ -6,6 +6,7 @@ import { useDelayedFlag } from '../useResource'
 import { BottomTabBar } from './BottomTabBar'
 import { useNavigationPending } from './navigationPending'
 import { scrollRestorationKey } from './scrollRestorationKey'
+import { useShellChrome } from './shellChrome'
 import { SiteFooter } from './SiteFooter'
 import { SiteHeader } from './SiteHeader'
 
@@ -29,6 +30,8 @@ export default function AppShell() {
   const settledPath = useRef(pathname)
   const navigationPending = useNavigationPending()
   const pending = useDelayedFlag(navigationPending, PENDING_BAR_DELAY_MS)
+  // Lab fullscreen (UX_SPEC §2): the page takes the whole viewport, no shell chrome.
+  const immersive = useShellChrome((s) => s.immersive)
 
   useEffect(() => {
     if (settledPath.current === pathname) return
@@ -45,15 +48,19 @@ export default function AppShell() {
         >
           Skip to content
         </a>
-        <SiteHeader />
+        {immersive ? null : <SiteHeader />}
         <RoutePendingBar active={pending} />
         <main id="main" ref={mainRef} tabIndex={-1} aria-busy={pending || undefined} className="flex-1 focus:outline-none">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
         </main>
-        <SiteFooter />
-        <BottomTabBar />
+        {immersive ? null : (
+          <>
+            <SiteFooter />
+            <BottomTabBar />
+          </>
+        )}
       </div>
       <ScrollRestoration getKey={scrollRestorationKey} />
     </Tooltip.Provider>

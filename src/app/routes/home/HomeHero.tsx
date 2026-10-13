@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { HeroScene } from '../../../components/art/HeroScene'
 import {
   DEFAULT_HERO_SCENE,
@@ -5,15 +6,17 @@ import {
   type HeroSceneDef,
   type HeroSceneId,
 } from '../../../components/art/hero/heroScenes'
+import { buttonClass } from '../../../components/buttonStyles'
 import { HeroSearch } from '../../../components/OmniSearch'
 import { meta } from '../../../data/meta'
 import { SITE } from '../../site'
+import { heroActions } from './heroActions'
 
 /**
  * Homepage hero (UX_SPEC §3.2, PRD P1-S2 AC1): full-bleed original pixel-art
  * scene with the site identity over the sky and the large search instance
- * (B28). No primary-action buttons yet — their targets (/loadout, /lab,
- * /bosses) haven't shipped, so they are absent.
+ * (B28), then the primary actions — each present only once its target route
+ * ships (./heroActions.ts; P3-S1 adds "Test Weapons" → /lab).
  */
 function heroScene(): HeroSceneDef {
   // Dev-only variant preview for design review: `/?hero=<id>`. The branch is
@@ -54,7 +57,25 @@ export function HomeHero() {
         {/* Large OmniSearch instance (UX_SPEC §3.2, B28). Opaque field + strong border, so it needs
             no scrim; its box is kept clear of the moon (HERO_SEARCH_ZONES in heroScenes.ts). */}
         <HeroSearch className="mt-6 w-full max-w-xl md:mt-8 lg:max-w-2xl" />
+        <PrimaryActions />
       </div>
     </section>
+  )
+}
+
+function PrimaryActions() {
+  const actions = heroActions()
+  if (actions.length === 0) return null
+  return (
+    <ul aria-label="Get started" className="mt-5 flex w-full max-w-xl flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap" data-hero-actions="">
+      {actions.map(({ routeId, label, icon: Icon, to }) => (
+        <li key={routeId}>
+          <Link to={to} className={buttonClass('primary', 'w-full md:w-auto')}>
+            <Icon aria-hidden="true" className="size-5" />
+            {label}
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
