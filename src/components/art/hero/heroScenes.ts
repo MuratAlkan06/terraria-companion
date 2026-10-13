@@ -75,6 +75,16 @@ export const HERO_TAGLINE_ZONES: readonly TextZone[] = [
 ]
 
 /**
+ * The hero search box (AMENDMENTS-007 B28): the overlay trigger at md (max-w-xl) and the inline
+ * field at lg+ (max-w-2xl), measured the same way (2026-10-13). The box is opaque, so stars under
+ * it don't matter; the moon must stay clear of it so the field never covers the focal point.
+ */
+export const HERO_SEARCH_ZONES: readonly TextZone[] = [
+  { x0: 102, x1: 303, y0: 50.6, y1: 66.4, pxPerCell: MD_SCALE },
+  { x0: 87, x1: 288, y0: 56.1, y1: 70, pxPerCell: LG_SCALE },
+]
+
+/**
  * True when cell (x, y) is within `pad` cells of a tagline zone. Stars and
  * sparkles skip these cells: a lone bright pixel beside body-size text reads as
  * stray punctuation (N5). The display-size title is left starry on purpose.

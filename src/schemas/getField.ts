@@ -16,7 +16,8 @@
  * Never throws; an unknown/malformed path reads as not-applicable.
  *
  * UI contract: "unverified" renders "Unknown" (P2-S3); "not-applicable" omits the row;
- * "editorial" is labeled "editorial guidance". Sim contract: only "verified" values are
+ * "editorial" is labeled "curated" with an explanatory toggletip (CuratedLabel; display wording per
+ * AMENDMENTS-007 B33 — the status name stays "editorial"). Sim contract: only "verified" values are
  * consumable — the pipeline downgrades Lab behavior otherwise (§2.1 rule 3).
  */
 

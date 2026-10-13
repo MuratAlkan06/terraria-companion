@@ -10,22 +10,31 @@ import { pathFor } from '../routes'
 import { useSelectedStage, useSettingsStore } from '../settingsStore'
 import { SITE } from '../site'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { useResource } from '../useResource'
+import { FeaturedRow } from './home/FeaturedRow'
 import { HomeHero } from './home/HomeHero'
+import { loadHomeData, peekHomeData } from './home/homeData'
+import { RecentRail } from './home/RecentRail'
 
 /**
- * Homepage v1 (PRD P1-S2; UX_SPEC §3.2): pixel-art hero with the site identity,
- * the full stage selector, and a short "what this is" row. Primary actions,
- * OmniSearch and the featured/recent/saved rails arrive with their target
- * features (P2–P5); until then they are absent, never disabled placeholders.
+ * Homepage v2 (PRD P1-S2 → P2-S5; UX_SPEC §3.2): pixel-art hero with the site identity, the
+ * full stage selector, today's featured weapon + boss, the "Recently viewed" rail, and a short
+ * "what this is" row. Primary actions (e.g. "Test Weapons" → /lab) and the saved-builds rail
+ * arrive with their target features (P3–P4); until then they are absent, never disabled
+ * placeholders (A8).
  */
 export default function HomePage() {
   useDocumentTitle()
+  // One load (weapon list + bosses + sprite manifest) shared by the featured row and the rail.
+  const home = useResource('home', loadHomeData, peekHomeData)
 
   return (
     <>
       <HomeHero />
       <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 md:space-y-8 md:px-6 md:py-10">
         <StageSection />
+        <FeaturedRow home={home} />
+        <RecentRail home={home} />
         <AboutSection />
       </div>
     </>

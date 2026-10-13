@@ -5,6 +5,7 @@ import {
   DEFAULT_HERO_SCENE,
   HERO_H,
   HERO_SCENES,
+  HERO_SEARCH_ZONES,
   HERO_TAGLINE_ZONES,
   HERO_TITLE_ZONES,
   HERO_W,
@@ -108,10 +109,10 @@ describe('hero scenes', () => {
       expect(liveCells.length).toBeLessThan(400)
     })
 
-    it('keeps the moon >= 16px clear of the hero title and tagline at md and lg+ (design review H1)', () => {
+    it('keeps the moon >= 16px clear of the hero title, tagline and search box at md and lg+ (H1, B28)', () => {
       const moon = moonCells(data.rows)
       expect(moon.length).toBeGreaterThan(50)
-      for (const zone of [...HERO_TITLE_ZONES, ...HERO_TAGLINE_ZONES]) {
+      for (const zone of [...HERO_TITLE_ZONES, ...HERO_TAGLINE_ZONES, ...HERO_SEARCH_ZONES]) {
         const nearest = Math.min(...moon.map(([x, y]) => cellToZonePx(x, y, zone)))
         expect(nearest).toBeGreaterThanOrEqual(16)
       }
