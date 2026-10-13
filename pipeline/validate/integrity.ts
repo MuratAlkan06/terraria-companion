@@ -2,7 +2,7 @@
  * Referential integrity + derived-field consistency (DATA_SCHEMA_SPEC §7a, §1 denormalization
  * rule, AMENDMENTS-001 A5, AMENDMENTS-002 B3/B4/B6). Pure functions over a strictly-parsed Dataset.
  *
- * Rules: 1 recipes (incl. B3 station groups) · 2 drops · 3 Boss.dropIds (and A5 Enemy.dropIds)
+ * Rules: 1 recipes (incl. B3 station groups, B9 conditions) · 2 drops · 3 Boss.dropIds (and A5 Enemy.dropIds)
  * · 4 Boss↔Node · 5 boss summon/prep/suggestion refs (gating in suggestions.ts) · 6 armor sets
  * · 7 tinkering symmetry · 9 slug registries (incl. B4 loot/other conditions) · Item.isStation
  * consistency · present+listed values (E_UNVERIFIED_VALUE_EMITTED). Rule 8 lives in graph.ts,
@@ -218,6 +218,7 @@ function checkRecipes(c: Checker, ds: Dataset) {
       else if (s.kind === 'group') c.group(ref, `stations.${i}.groupId`, s.groupId) // B3
       else c.condition(ref, `stations.${i}.condition`, s.condition)
     })
+    r.conditions.forEach((s, i) => c.condition(ref, `conditions.${i}`, s)) // B9
   }
   for (const g of ds.recipeGroups) g.memberItemIds.forEach((id, i) => c.item(`grp:${g.id}`, `memberItemIds.${i}`, id))
 }

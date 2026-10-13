@@ -22,8 +22,10 @@ import {
   Prov,
   ProgressionNode,
   ReadinessV1,
+  Recipe,
   SearchDoc,
   SettingsV1,
+  SpriteManifest,
   TypedRef,
   Weapon,
 } from './index'
@@ -185,6 +187,26 @@ describe('AMENDMENTS-003 schema deltas', () => {
     expect(accepts([-3, 0])).toEqual([false, false, false])
     expect(accepts([1.5])).toEqual([false, false, false])
     expect(NpcId.safeParse(0).error?.issues[0].message).toBe('B10: NPC id must be nonzero')
+  })
+
+  it('B9: Recipe.conditions holds availability conditions and defaults to empty', () => {
+    const recipe = { id: '5134-1a2b3c4d', resultItemId: 5134, resultAmount: 1, stations: [{ kind: 'environment', condition: 'shimmer', name: 'Shimmer' }], ingredients: [{ amount: 1, ref: { kind: 'item', itemId: 5011 } }], _prov: prov }
+    expect(Recipe.parse(recipe).conditions).toEqual([])
+    expect(Recipe.parse({ ...recipe, conditions: ['post-moon-lord'] }).conditions).toEqual(['post-moon-lord'])
+    expect(Recipe.safeParse({ ...recipe, conditions: ['Post Moon Lord'] }).success).toBe(false)
+  })
+})
+
+describe('sprite manifest (A10 / D3)', () => {
+  const file = { path: '/sprites/weapons/4956.png', ref: 'i:4956', wikiFileUrl: 'https://terraria.wiki.gg/wiki/File:Zenith.png', sha1: '6d467f'.padEnd(40, '0'), bytes: 1200, width: 56, height: 56, rights: 're-logic' }
+  it('records each file with its wiki file page and Re-Logic rights', () => {
+    expect(SpriteManifest.safeParse({ fallbackMode: false, rightsNote: 'Terraria content © Re-Logic.', files: [file] }).success).toBe(true)
+  })
+  it('rejects non-wiki provenance, other rights and paths outside /sprites/<type>/<id>.<png|gif>', () => {
+    const bad = (over: Record<string, unknown>) => SpriteManifest.safeParse({ fallbackMode: false, rightsNote: 'x', files: [{ ...file, ...over }] }).success
+    expect(bad({ wikiFileUrl: 'https://example.com/Zenith.png' })).toBe(false)
+    expect(bad({ rights: 'cc-by-nc-sa' })).toBe(false)
+    expect(bad({ path: '/sprites/weapons/zenith.webp' })).toBe(false)
   })
 })
 

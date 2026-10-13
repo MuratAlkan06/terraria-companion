@@ -19,5 +19,16 @@
   { "kind": "drop", "page": "Zombie", "item": "Shackle", "source": "Zombie", "why": "common enemy drop" },
   { "kind": "drop", "page": "Present", "item": "Red Ryder", "why": "rate split pre-Hardmode / Hardmode" },
   { "kind": "drop", "page": "Gold Chest", "item": "Magic Mirror", "why": "chest loot with layer notes incl. unregistered 'lava layer' → Unknown" },
-  { "kind": "drop", "page": "Pumpking", "item": "The Horseman's Blade", "why": "event boss drop with a rate range → Unknown (honesty)" }
+  { "kind": "drop", "page": "Pumpking", "item": "The Horseman's Blade", "why": "event boss drop with a rate range → Unknown (honesty)" },
+
+  { "kind": "weapon", "page": "Zenith", "item": "Zenith", "why": "P2-S2 AC2: melee, useTime 10 ≠ useAnimation 30 (TO-VERIFY #10), deep recipe chain" },
+  { "kind": "weapon", "page": "Terra Blade", "item": "Terra Blade", "why": "P2-S2 AC2: melee, crafted (True Night's Edge + True Excalibur)" },
+  { "kind": "weapon", "page": "Minishark", "item": "Minishark", "why": "P2-S2 AC2: ranged gun, ammo class, vendor purchase (Arms Dealer)" },
+  { "kind": "weapon", "page": "Daedalus Stormbow", "item": "Daedalus Stormbow", "why": "P2-S2 AC2: ranged bow, Hallowed Mimic drop" },
+  { "kind": "weapon", "page": "Razorblade Typhoon", "item": "Razorblade Typhoon", "why": "P2-S2 AC2: magic, mana cost, boss drop (Duke Fishron)" },
+  { "kind": "weapon", "page": "Terraprisma", "item": "Terraprisma", "why": "P2-S2 AC2: summon minion, no crit (not applicable), boss drop" },
+  { "kind": "weapon", "page": "Kaleidoscope", "item": "Kaleidoscope", "why": "P2-S2 AC2: summon whip, boss drop + treasure bag" },
+  { "kind": "weapon", "page": "Night's Edge", "item": "Night's Edge", "why": "P2-S2 AC2: melee, world-evil alternative recipes" },
+  { "kind": "weapon", "page": "Toxikarp", "item": "Toxikarp", "why": "P2-S2 AC2: ranged; fishing-only (Corruption) → acquisition must be Unknown, never guessed (fishing not modeled)" },
+  { "kind": "weapon", "page": "Celebration Mk2", "item": "Celebration Mk2", "why": "P2-S2 AC2: ranged launcher, rocket ammo class, Moon Lord drop" }
 ]

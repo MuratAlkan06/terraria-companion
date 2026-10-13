@@ -48,7 +48,7 @@ import {
 import type { PipelineError } from './errors'
 
 export const COLLECTIONS = {
-  weapons: { file: 'weapons.json', schema: Weapon },
+  weapons: { file: 'weapons.detail.json', schema: Weapon }, // §5 list/detail split (detail = array, B11)
   armor: { file: 'armor.json', schema: ArmorPiece },
   accessories: { file: 'accessories.json', schema: Accessory },
   items: { file: 'items.json', schema: Item },

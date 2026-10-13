@@ -29,7 +29,8 @@ export const AMMO_UNVERIFIED_REASON = 'compatible ammo data unverified'
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-function limitation(record: { name?: unknown; behaviorText?: unknown; wikiUrl?: unknown }, reason: string): LabBehavior {
+/** Limitation card: verified in-game text (behaviorText) when known, else a pointer to the wiki page. */
+export function limitation(record: { name?: unknown; behaviorText?: unknown; wikiUrl?: unknown }, reason: string): LabBehavior {
   const name = typeof record.name === 'string' ? record.name : 'this weapon'
   const inGameBehavior =
     typeof record.behaviorText === 'string' && record.behaviorText.length > 0
@@ -65,10 +66,20 @@ export function downgradeUnverifiedArchetype(raw: unknown): { record: unknown; w
   }
 }
 
-/** Post-parse A1 rule-10 check. Returns the (possibly downgraded) weapons and warnings. */
-export function downgradeUnmatchedAmmo(weapons: readonly Weapon[], items: readonly Item[]): { weapons: Weapon[]; warnings: PipelineWarning[] } {
+/**
+ * Post-parse A1 rule-10 check. Returns the (possibly downgraded) weapons and warnings.
+ * `itemsPending` (partial dataset, ammo items not produced yet): archetype weapons are still
+ * downgraded (the sim never consumes unverified ammo data), but weapons that already are
+ * limitations get no per-weapon warning — their ammo classes are returned as `deferred` refs.
+ */
+export function downgradeUnmatchedAmmo(
+  weapons: readonly Weapon[],
+  items: readonly Item[],
+  itemsPending = false,
+): { weapons: Weapon[]; warnings: PipelineWarning[]; deferred: Set<string> } {
   const ammoClasses = new Set(items.flatMap((i) => (i.ammoStats ? [i.ammoStats.ammoClass] : [])))
   const warnings: PipelineWarning[] = []
+  const deferred = new Set<string>()
   const out = weapons.map((weapon) => {
     const lab = weapon.labBehavior
     const declared = new Set<string>()
@@ -78,6 +89,10 @@ export function downgradeUnmatchedAmmo(weapons: readonly Weapon[], items: readon
     if (unmatched.length === 0) return weapon
     const ref = `i:${weapon.id}`
     const downgrade = lab.kind !== 'limitation'
+    if (itemsPending && !downgrade) {
+      for (const c of unmatched) deferred.add(c)
+      return weapon
+    }
     warnings.push({
       code: 'W_AMMO_CLASS_UNMATCHED',
       ref,
@@ -87,5 +102,5 @@ export function downgradeUnmatchedAmmo(weapons: readonly Weapon[], items: readon
     })
     return downgrade ? { ...weapon, labBehavior: limitation(weapon, AMMO_UNVERIFIED_REASON) } : weapon
   })
-  return { weapons: out, warnings }
+  return { weapons: out, warnings, deferred }
 }

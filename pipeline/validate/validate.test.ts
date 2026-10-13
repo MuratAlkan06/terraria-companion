@@ -155,6 +155,12 @@ describe('corrupted records fail with named errors', () => {
     )
   })
 
+  it('E_DANGLING_REF: B9 recipe availability condition not in the registry', () => {
+    const raw = sample()
+    find(raw, 'recipes', '48-5d2fabc3').conditions = ['blood-moon']
+    expect(expectOnly(run(raw), 'E_DANGLING_REF')).toEqual([expect.objectContaining({ fromRef: 'rcp:48-5d2fabc3', field: 'conditions.0', toRef: 'cond:blood-moon' })])
+  })
+
   it('E_DANGLING_REF: acquisition recipe produces a different item', () => {
     const raw = sample()
     find(raw, 'weapons', 39).acquisition[0].recipeIds = ['36-4cee494e']
@@ -405,6 +411,20 @@ describe('partial datasets (manifest.partial: item universe + pending collection
     expect(expectOnly(run(revMismatch), 'E_SCHEMA')[0].message).toContain('!= manifest iteminfo.rev')
   })
 
+  it('A1 rule 10 is deferred while ammo items are pending: limitation weapons yield one deferred ref, no per-weapon warning', () => {
+    const base = sample()
+    const raw = partialSample()
+    raw.collections.weapons = base.collections.weapons
+    ;(raw.manifest as Rec).partial.pending = PENDING.filter((k) => k !== 'weapons')
+    const universe = raw.itemUniverse as Rec
+    const known = new Set(universe.items.map((i: Rec) => i.id))
+    for (const w of records(base, 'weapons')) if (!known.has(w.id)) universe.items.push({ id: w.id, internalName: `Item${w.id}` })
+    const result = run(raw)
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    expect(result.warnings.filter((w) => w.code === 'W_AMMO_CLASS_UNMATCHED')).toEqual([])
+    expect(result.warnings.find((w) => w.ref === 'collection:items')?.message).toContain('ammoClass:bullet')
+  })
+
   it('stage gap entries are merged into gaps.json (and must be valid GapEntry records)', () => {
     const raw = partialSample()
     const entry = { ref: 'rcp:cargo-row-1', kind: 'count-reconciliation', detail: 'Cargo Recipes row 1 not emitted: test.', sources: ['https://terraria.wiki.gg/wiki/Wood'] }
@@ -490,8 +510,9 @@ describe('§7a-11 search docs (when provided)', () => {
 
 describe('list projection + loader', () => {
   it('projectList keeps list fields only and derives labKind', () => {
-    const projected = projectList('weapons', { id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, knockback: 1, labBehavior: { kind: 'limitation' } })
-    expect(projected).toEqual({ id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, labKind: 'limitation' })
+    const projected = projectList('weapons', { id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, knockback: 1, useTimeTicks: 10, useAnimationTicks: 30, labBehavior: { kind: 'limitation' } })
+    // useAnimationTicks is a list field since P2-S2 (TO-VERIFY #10: the wiki's "Use time")
+    expect(projected).toEqual({ id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, useTimeTicks: 10, useAnimationTicks: 30, labKind: 'limitation' })
   })
 
   it('reports unknown files, invalid JSON and a missing manifest as E_SCHEMA', () => {

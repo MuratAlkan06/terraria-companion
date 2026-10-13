@@ -37,6 +37,13 @@ async function main(): Promise<number> {
           { cargoCount: t.cargoCount, rowsFetched: t.rows.length, requestedLimit: t.requestedLimit, rowsPerPage: t.rowsPerPage, fetchedAt: t.fetchedAt, fields: t.selected },
         ]),
       ),
+      weaponCategories: {
+        roots: result.weaponCategories.roots,
+        categories: Object.fromEntries([...result.weaponCategories.categories].map(([t, c]) => [t, { pages: c.pages.length, subcats: c.subcats }])),
+        distinctPages: result.weaponCategories.pages.length,
+        fetchedAt: result.weaponCategories.fetchedAt,
+      },
+      weaponImages: { resolved: result.weaponImages.found.size, missing: result.weaponImages.missing, fetchedAt: result.weaponImages.fetchedAt },
     }
     writeFileSync(join(RAW_DIR, 'fetch-record.json'), `${JSON.stringify(record, null, 2)}\n`)
     console.log('\nfetch summary')
@@ -47,6 +54,9 @@ async function main(): Promise<number> {
     for (const t of Object.values(result.tables)) {
       console.log(`  ${t.table}: ${t.rows.length}/${t.cargoCount} rows; requested limit ${t.requestedLimit}; rows per page [${t.rowsPerPage.join(', ')}]`)
     }
+    const wc = result.weaponCategories
+    console.log(`  weapon category tree: ${wc.categories.size} categories, ${wc.pages.length} distinct article pages`)
+    console.log(`  weapon images (imageinfo): ${result.weaponImages.found.size} resolved, ${result.weaponImages.missing.length} missing${result.weaponImages.missing.length ? ` (${result.weaponImages.missing.join(', ')})` : ''}`)
     const s = client.stats
     console.log(`  this run: ${s.networkRequests} network requests (${s.attempts} attempts, ${s.retries} retries), ${s.cacheHits} cache hits, ${(durationMs / 1000).toFixed(1)}s wall`)
     console.log(`  cumulative network attempts logged in pipeline/raw/requests.log.jsonl: ${cumulative}`)

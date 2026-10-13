@@ -15,8 +15,9 @@
  *   Module:Recipes/l10n `en.station_cate` names ≥2 interchangeable station items for it
  *   ("Iron Anvil" → "Iron or Lead Anvil"), else a single station item; "By Hand" = [].
  * - result notes (`resulttext` "#note_…", texts in l10n `en.result_note`) are availability
- *   conditions ("After Moon Lord is defeated", moon phases). The Recipe schema has no
- *   conditions field, so they are emitted as `environment` stations referencing the condition.
+ *   conditions ("After Moon Lord is defeated", moon phases) → `Recipe.conditions`
+ *   (AMENDMENTS-003 B9; until P2-S2 they were stored as environment stations). The recipe id
+ *   canonicalization keeps them in the station list as `cond:` refs, so ids did not change.
  * - Anything unresolvable → the row is NOT emitted and a gap entry names the reason.
  */
 import { type GapEntry, type ProvSource, type Recipe, type RecipeGroup, type RecipeStation } from '../../src/schemas'
@@ -48,8 +49,10 @@ export interface RecipeLedger {
   excludedRows: number
   emitted: number
   byStation: Record<string, number>
-  /** AMENDMENTS-003 B9 debt: emitted recipes whose result note is still an environment station. */
+  /** AMENDMENTS-003 B9 debt: emitted recipes whose result note is still an environment station (0 since P2-S2). */
   availabilityNoteStations: number
+  /** B9: emitted recipes whose result note is an availability condition in `Recipe.conditions`. */
+  withConditions: number
 }
 
 export interface RecipeBuild {
@@ -178,7 +181,7 @@ export function buildRecipes(input: RecipeBuildInput): RecipeBuild {
   }
 
   // ---- rows ----
-  const ledger: RecipeLedger = { cargoRows: input.rows.length, legacyRows: 0, nonDesktopRows: 0, duplicateRows: 0, excludedRows: 0, emitted: 0, byStation: {}, availabilityNoteStations: 0 }
+  const ledger: RecipeLedger = { cargoRows: input.rows.length, legacyRows: 0, nonDesktopRows: 0, duplicateRows: 0, excludedRows: 0, emitted: 0, byStation: {}, availabilityNoteStations: 0, withConditions: 0 }
   const recipes = new Map<string, Recipe>()
   const usedGroups = new Map<string, RecipeGroup>()
 
@@ -218,9 +221,10 @@ export function buildRecipes(input: RecipeBuildInput): RecipeBuild {
       continue
     }
 
-    // stations (+ result notes as condition stations)
+    // stations + availability conditions (result notes, B9)
     const stationText = stripMarkup(str(row.station))
     const stations: RecipeStation[] = []
+    const conditions: string[] = []
     let failed: string | undefined
     if (stationText !== '' && stationText !== 'By Hand') {
       for (const part of stationText.split(' and ').map((s) => s.trim())) {
@@ -233,7 +237,7 @@ export function buildRecipes(input: RecipeBuildInput): RecipeBuild {
     if (note !== '') {
       const cond = input.conditions.recipeNote.get(note)
       if (!cond) failed ??= `result note "${note}" (${stripMarkup(input.l10n.resultNotes[note] ?? 'no l10n text')}) maps to no registered condition`
-      else stations.push({ kind: 'environment', condition: cond.id, name: cond.name })
+      else conditions.push(cond.id)
     }
     if (failed) {
       exclude('stations', 'count-reconciliation', failed)
@@ -271,10 +275,12 @@ export function buildRecipes(input: RecipeBuildInput): RecipeBuild {
       exclude('ingredients', 'count-reconciliation', failed ?? 'no ingredients')
       continue
     }
-    // id (§3; canonicalization reproduces the P2-S1 sample ids)
+    // id (§3; canonicalization reproduces the P2-S1 sample ids). Availability conditions stay in
+    // the canonical station list as `cond:` refs — exactly how they were hashed before B9 — so
+    // the migration did not change any recipe id.
     const stationRef = (s: RecipeStation) => (s.kind === 'item' ? `i:${s.itemId}` : s.kind === 'group' ? `grp:${s.groupId}` : `cond:${s.condition}`)
     const ingRef = (i: Recipe['ingredients'][number]) => `${i.ref.kind === 'item' ? `i:${i.ref.itemId}` : `grp:${i.ref.groupId}`}*${i.amount}`
-    const canonical = JSON.stringify({ s: stations.map(stationRef).sort(), i: ingredients.map(ingRef).sort() })
+    const canonical = JSON.stringify({ s: [...stations.map(stationRef), ...conditions.map((c) => `cond:${c}`)].sort(), i: ingredients.map(ingRef).sort() })
     const baseId = `${resultId}-${fnv1a32hex(canonical)}`
     const existing = recipes.get(baseId)
     if (existing && existing.resultAmount === amount) {
@@ -285,13 +291,14 @@ export function buildRecipes(input: RecipeBuildInput): RecipeBuild {
     for (let n = 2; recipes.has(id); n += 1) id = `${baseId}-${n}`
 
     const sources: ProvSource[] = [{ kind: 'cargo:Recipes', url: pageUrl, fetchedAt }, iteminfoSrc]
-    recipes.set(id, { id, resultItemId: resultId, resultAmount: amount, stations, ingredients, _prov: makeProv(sources) })
+    recipes.set(id, { id, resultItemId: resultId, resultAmount: amount, stations, conditions, ingredients, _prov: makeProv(sources) })
     for (const groupId of [...stations.flatMap((s) => (s.kind === 'group' ? [s.groupId] : [])), ...ingredients.flatMap((i) => (i.ref.kind === 'group' ? [i.ref.groupId] : []))]) {
       const group = groupsById.get(groupId)
       if (group) usedGroups.set(groupId, group)
     }
     ledger.emitted += 1
-    if (note !== '') ledger.availabilityNoteStations += 1
+    if (conditions.length > 0) ledger.withConditions += 1
+    ledger.availabilityNoteStations += stations.filter((s) => s.kind === 'environment' && input.conditions.recipeNote.has(s.condition)).length
     ledger.byStation[stationText || 'By Hand'] = (ledger.byStation[stationText || 'By Hand'] ?? 0) + 1
   }
 

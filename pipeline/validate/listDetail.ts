@@ -11,7 +11,9 @@ import type { PipelineError } from './errors'
 const BASE_FIELDS = ['id', 'name', 'slug', 'type', 'stage', 'rarity', 'sprite', 'tags'] as const
 
 export const LIST_FIELDS: Record<ItemCollectionKey, readonly string[]> = {
-  weapons: [...BASE_FIELDS, 'damageClass', 'damage', 'useTimeTicks', 'labKind'],
+  // useAnimationTicks added in P2-S2: TO-VERIFY #10 showed the wiki's "Use time" is the game's
+  // useAnimation (487/487 weapons), so lists need it to show use time with wiki parity.
+  weapons: [...BASE_FIELDS, 'damageClass', 'damage', 'useTimeTicks', 'useAnimationTicks', 'labKind'],
   armor: [...BASE_FIELDS, 'slot', 'defense', 'setId'],
   accessories: [...BASE_FIELDS, 'categories'],
   items: [...BASE_FIELDS, 'category'],

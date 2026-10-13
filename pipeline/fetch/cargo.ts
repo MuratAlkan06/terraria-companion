@@ -11,6 +11,13 @@ import { FetchError } from './client'
 
 export type CargoRow = Record<string, string | number | null>
 
+/** Cargo Items `type` list (`^`-delimited) contains `type` ("weapon", "tool", …). */
+export const itemTypeIncludes = (row: CargoRow, type: string): boolean =>
+  String(row.type ?? '')
+    .split('^')
+    .map((t) => t.trim())
+    .includes(type)
+
 export interface CargoFieldInfo {
   type: string
   isList?: boolean

@@ -1,9 +1,9 @@
 /* ADR-001 D2 etiquette is enforced by the client itself: pacing, maxlag, UA, cache, backoff, stop. */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FetchError, WikiClient } from './client'
+import { FetchError, sha1Hex, WikiClient } from './client'
 
 type Reply = { status: number; body?: unknown; headers?: Record<string, string> }
 
@@ -58,6 +58,23 @@ describe('WikiClient etiquette', () => {
     expect(h.sleeps).toEqual([900, 900])
   })
 
+  it('never starts early when a timer fires before the requested delay has elapsed', async () => {
+    let clock = 1_000_000
+    const sleeps: number[] = []
+    const starts: number[] = []
+    const fetchImpl = (async () => {
+      starts.push(clock)
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    // the first sleep of each wait returns 1 ms early (as real timers can)
+    let early = true
+    const client = new WikiClient({ cacheDir: dir, fetchImpl, now: () => clock, sleep: async (ms) => { sleeps.push(ms); clock += early ? ms - 1 : ms; early = !early }, minIntervalMs: 1100 })
+    await client.get({ a: '1' }, 'x/1')
+    await client.get({ a: '2' }, 'x/2')
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(1100)
+    expect(sleeps).toEqual([1100, 1])
+  })
+
   it('serves identical requests from the cache (resumable) and refetches when params change', async () => {
     const h = harness([{ status: 200, body: { v: 1 } }, { status: 200, body: { v: 2 } }])
     expect((await h.client.get({ a: '1' }, 'x/a')).response).toEqual({ v: 1 })
@@ -104,5 +121,58 @@ describe('WikiClient etiquette', () => {
   it('rejects cache names that could escape the cache directory', () => {
     const h = harness([])
     expect(() => h.client.cachePath('../etc/passwd')).toThrow(/invalid cache name/)
+  })
+})
+
+describe('WikiClient.download (P2-S2 sprites)', () => {
+  const ORIGINAL = new Uint8Array([137, 80, 78, 71, 1, 2, 3, 4, 5, 6])
+  const POLISHED = new Uint8Array([137, 80, 78, 71, 9, 9])
+  const URL_ = 'https://terraria.wiki.gg/images/Zenith.png?6d467f'
+  function binHarness(replies: { status: number; body: Uint8Array; headers?: Record<string, string> }[]) {
+    let clock = 1_000_000
+    const sleeps: number[] = []
+    const calls: string[] = []
+    const fetchImpl = (async (url: string) => {
+      calls.push(url)
+      clock += 50
+      const r = replies.shift() ?? { status: 404, body: new Uint8Array() }
+      return new Response(r.body, { status: r.status, headers: { 'content-type': 'image/png', ...r.headers } })
+    }) as unknown as typeof fetch
+    const client = new WikiClient({ cacheDir: dir, fetchImpl, now: () => clock, sleep: async (ms) => { sleeps.push(ms); clock += ms }, minIntervalMs: 1100, backoffBaseMs: 5000, maxRetries: 2 })
+    return { client, calls, sleeps }
+  }
+  const expected = { sha1: sha1Hex(ORIGINAL), bytes: ORIGINAL.length }
+
+  it('writes a byte-exact file and serves it from the cache afterwards (resumable)', async () => {
+    const h = binHarness([{ status: 200, body: ORIGINAL }])
+    const dest = join(dir, 'sprites/4956.png')
+    expect(await h.client.download(URL_, dest, expected, 'sprite:4956')).toMatchObject({ fromCache: false, verification: 'exact' })
+    expect(new Uint8Array(readFileSync(dest))).toEqual(ORIGINAL)
+    expect(await h.client.download(URL_, dest, expected, 'sprite:4956')).toMatchObject({ fromCache: true })
+    expect(h.calls).toHaveLength(1)
+  })
+
+  it('accepts a CDN-optimized rendition only when cf-polished orig_size equals the wiki size; caches it by its served SHA-1', async () => {
+    const h = binHarness([
+      { status: 200, body: POLISHED, headers: { 'cf-polished': `ok, orig_size=${ORIGINAL.length}` } },
+      { status: 200, body: POLISHED, headers: { 'cf-polished': 'ok, orig_size=999' } },
+      { status: 200, body: POLISHED },
+    ])
+    const dest = join(dir, 'sprites/1.png')
+    const ok = await h.client.download(URL_, dest, expected, 'sprite:1')
+    expect(ok).toMatchObject({ verification: 'cdn-optimized', servedSha1: sha1Hex(POLISHED) })
+    expect(await h.client.download(URL_, dest, expected, 'sprite:1', ok.servedSha1)).toMatchObject({ fromCache: true })
+    await expect(h.client.download(URL_, join(dir, 'sprites/2.png'), expected, 'sprite:2')).rejects.toThrow(/original size 999/)
+    await expect(h.client.download(URL_, join(dir, 'sprites/3.png'), expected, 'sprite:3')).rejects.toThrow(/no CDN optimization header/)
+    expect(existsSync(join(dir, 'sprites/2.png'))).toBe(false)
+  })
+
+  it('paces downloads like API requests and never downloads from outside the wiki', async () => {
+    const h = binHarness([{ status: 200, body: ORIGINAL }, { status: 200, body: ORIGINAL }])
+    await Promise.all([h.client.download(URL_, join(dir, 'a.png'), expected, 'a'), h.client.download(URL_, join(dir, 'b.png'), expected, 'b')])
+    expect(h.sleeps).toEqual([1050])
+    await expect(h.client.download('https://example.com/x.png', join(dir, 'c.png'), expected, 'c')).rejects.toThrow(/refusing/)
+    const missing = binHarness([{ status: 404, body: new Uint8Array() }])
+    await expect(missing.client.download(URL_, join(dir, 'd.png'), expected, 'd')).rejects.toMatchObject({ status: 404 })
   })
 })

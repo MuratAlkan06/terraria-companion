@@ -27,6 +27,7 @@ import { type DropSource } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import {
+  customNotesOf,
   DIFFICULTIES,
   desktopSegments,
   modeParts,
@@ -276,7 +277,7 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
 
     // extra conditions from the custom cell's notes
     let conditionsUnknown = false
-    const customNotes = notesOf(str(row.custom)).filter((n) => n !== '')
+    const customNotes = customNotesOf(str(row.custom)).filter((n) => n !== '')
     const customConds = mapNotes(customNotes)
     if (!customConds.ok) conditionsUnknown = true
 

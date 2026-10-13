@@ -1,7 +1,7 @@
 /* Parse stage: Lua modules, Iteminfo, recipe modules, Cargo Drops cell grammar, text helpers.
  * Fixtures mirror the real shapes verified against terraria.wiki.gg on 2026-10-13. */
 import { describe, expect, it } from 'vitest'
-import { desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf } from './dropCells'
+import { customNotesOf, desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf, plainTextOf } from './dropCells'
 import { parseIteminfo, resolveItemName } from './iteminfo'
 import { findCalls, parseLua, returnedValue } from './lua'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from './recipeModules'
@@ -128,6 +128,14 @@ describe('Cargo Drops cell grammar', () => {
       { d: 'all', segs: [{ text: '20%', notes: ['(Halloween)'], platforms: [] }] },
     ])
     expect(notesOf('<span class="chance">1%<br/>2% <span class="note-text ">(Hardmode)</span></span>')).toEqual(['Hardmode'])
+  })
+
+  it('custom-cell note2 spans: a condition is a note, an amount is not (P2-S2 spot-check finding)', () => {
+    const terraprisma = '<span class="i -w">[[File:Terraprisma.png|link=Terraprisma|Terraprisma]]<span><span>[[Terraprisma]]</span><span class="note2">(if 100% of damage is dealt at daytime)</span></span></span>'
+    const happyGrenade = '<span class="i -w">[[File:Happy Grenade.png|link=Happy Grenade|Happy Grenade]]<span><span>[[Happy Grenade]]</span><span class="note2">(30–60)</span></span></span>'
+    expect(customNotesOf(terraprisma)).toEqual(['if 100% of damage is dealt at daytime'])
+    expect(customNotesOf(happyGrenade)).toEqual([])
+    expect(plainTextOf(happyGrenade)).toBe('Happy Grenade(30–60)') // the amount stays readable for the quantity fallback
   })
 
   it('rejects text outside a per-difficulty block', () => {

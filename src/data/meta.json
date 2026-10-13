@@ -1,13 +1,13 @@
 {
   "gameVersion": "1.4.5.8",
   "dataSchemaVersion": 1,
-  "generatedAt": "2026-10-13T02:47:14.188Z",
+  "generatedAt": "2026-10-13T04:32:00.341Z",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
   },
   "counts": {
-    "weapons": 0,
+    "weapons": 488,
     "armor": 0,
     "accessories": 0,
     "items": 0,
@@ -20,17 +20,19 @@
     "nodes": 0,
     "edges": 0,
     "buffs": 0,
-    "conditions": 32,
+    "conditions": 33,
     "scenarios": 0
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 1739,
+    "total": 3414,
     "byKind": {
-      "source-mismatch": 22,
-      "count-reconciliation": 50,
-      "missing-field": 1275,
-      "unverified-drop-rate": 392
+      "source-mismatch": 27,
+      "count-reconciliation": 53,
+      "missing-field": 1966,
+      "gating-underived": 488,
+      "unverified-drop-rate": 392,
+      "lab-limitation-default": 488
     }
   }
 }

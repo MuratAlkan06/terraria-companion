@@ -108,11 +108,16 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
   errors.push(...parsed.errors)
   if (errors.length > 0 || !manifest.success) return { ok: false, errors, warnings }
 
-  const ammo = downgradeUnmatchedAmmo(parsed.dataset.weapons, parsed.dataset.items)
+  const ammo = downgradeUnmatchedAmmo(parsed.dataset.weapons, parsed.dataset.items, scope.pending.has('items'))
   warnings.push(...ammo.warnings)
   const dataset: Dataset = { ...parsed.dataset, weapons: ammo.weapons }
 
   const integrity = checkIntegrity(dataset, scope)
+  if (ammo.deferred.size > 0) {
+    const items = integrity.deferred.get('items') ?? new Set<string>()
+    for (const c of ammo.deferred) items.add(`ammoClass:${c}`)
+    integrity.deferred.set('items', items)
+  }
   for (const [key, refs] of integrity.deferred) {
     const sample = [...refs].slice(0, 5).join(', ')
     warnings.push({

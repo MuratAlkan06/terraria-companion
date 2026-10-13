@@ -13,6 +13,8 @@
  *   Desktop segment is kept.
  * - notes: `<span class="note-text">(Hardmode)</span>` after a value → a condition (curated
  *   registry match); several noted values (Underground/Cavern…) → one variant per condition.
+ *   In the `custom` cell a `note2` span is either the amount ("(30–60)", Happy Grenade) or a
+ *   condition ("(if 100% of damage is dealt at daytime)", Terraprisma) — see customNotesOf.
  *   "A<br/>B (Hardmode)" reads as A outside Hardmode and B in Hardmode → pre-hardmode/hardmode.
  *
  * Anything else (ranges of rates, "~2–3", "More info", unregistered notes, mixed shapes) is
@@ -166,6 +168,22 @@ export function platformsOf(cell: string): string[] {
 /** All note texts in a cell (normalized with noteKey). */
 export function notesOf(cell: string): string[] {
   return findAll(parseHtml(cell), isNote).map((n) => noteKey(stripMarkup(rawText(n.type === 'el' ? n.children : []))))
+}
+
+/** A parenthesized amount ("(30–60)") — used by some `custom` cells for the quantity, not a condition. */
+const QTY_NOTE = /^\(?\s*\d+(?:\s?[–-]\s?\d+)?\s*\)?$/
+
+/**
+ * Notes of a Drops `custom` cell: note/note-text spans, plus `note2` spans that are not an amount
+ * (found by the P2-S2 spot-check: Terraprisma's daytime condition was silently dropped before).
+ */
+export function customNotesOf(cell: string): string[] {
+  const nodes = parseHtml(cell)
+  const text = (n: HNode) => stripMarkup(rawText(n.type === 'el' ? n.children : []))
+  const note2 = findAll(nodes, (n) => hasClass(n, 'note2'))
+    .map(text)
+    .filter((t) => !QTY_NOTE.test(t))
+  return [...findAll(nodes, isNote).map(text), ...note2].map(noteKey)
 }
 
 /** Plain text of a cell without notes and platform icons. */

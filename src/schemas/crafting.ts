@@ -31,6 +31,9 @@ export const Recipe = z.strictObject({
   resultItemId: ItemId,
   resultAmount: z.int().positive(),
   stations: z.array(RecipeStation), // empty = by-hand (explicit, not unknown)
+  // AMENDMENTS-003 B9: availability requirements ("after Moon Lord", moon phases, Torch God's
+  // Favor). Environment stations remain only for genuine crafting environments (water, Ecto Mist…).
+  conditions: z.array(ConditionSlug).default([]),
   ingredients: z
     .array(
       z.strictObject({

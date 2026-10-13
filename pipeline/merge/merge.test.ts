@@ -6,6 +6,7 @@ import type { Iteminfo } from '../parse/iteminfo'
 import { buildDrops, indexNpcs, parseNpcIdCell } from './drops'
 import { buildEnemies } from './enemies'
 import { conditionMatchers, type ConditionsOverlay } from './overlays'
+import { fnv1a32hex } from '../parse/text'
 import { buildRecipes } from './recipes'
 
 const NAMES: Record<number, string> = {
@@ -78,19 +79,24 @@ describe('buildRecipes', () => {
     expect(out.ledger).toMatchObject({ cargoRows: 4, legacyRows: 1, nonDesktopRows: 1, duplicateRows: 1, emitted: 1 })
   })
 
-  it('B3: "Iron Anvil" becomes the Iron-or-Lead station group; environments and result notes become condition stations', () => {
+  it('B3: "Iron Anvil" becomes the Iron-or-Lead station group; environments stay stations; B9: result notes become Recipe.conditions', () => {
     const out = recipes([
       recipeRow({ _rowid: '5', result: 'Cobalt Hat', resultid: '371', station: 'Iron Anvil', ings: '¦Cobalt Bar¦10' }),
       recipeRow({ _rowid: '6', result: 'Terraformer', resultid: '5134', station: 'Shimmer', resulttext: '#note_post_moon_lord', ings: '¦Clentaminator¦1' }),
     ])
     const [hat, terraformer] = out.recipes
     expect(hat.stations).toEqual([{ kind: 'group', groupId: 'iron-or-lead-anvil' }])
+    expect(hat.conditions).toEqual([])
     expect(out.groups.find((g) => g.id === 'iron-or-lead-anvil')?.memberItemIds.sort()).toEqual([35, 716])
-    expect(terraformer.stations).toEqual([
-      { kind: 'environment', condition: 'shimmer', name: 'Shimmer' },
-      { kind: 'environment', condition: 'post-moon-lord', name: 'Moon Lord defeated' },
-    ])
-    expect(out.ledger.availabilityNoteStations).toBe(1) // B9 migration debt, reported in the gap report
+    expect(Recipe.parse(terraformer)).toMatchObject({ stations: [{ kind: 'environment', condition: 'shimmer', name: 'Shimmer' }], conditions: ['post-moon-lord'] })
+    expect(out.ledger).toMatchObject({ availabilityNoteStations: 0, withConditions: 1 }) // B9 migrated
+  })
+
+  it('B9 keeps recipe ids stable: conditions hash exactly like the former condition stations', () => {
+    // id computed before B9 from stations [shimmer, cond:post-moon-lord] (P2-S2a emitted dataset)
+    const [terraformer] = recipes([recipeRow({ _rowid: '6', result: 'Terraformer', resultid: '5134', station: 'Shimmer', resulttext: '#note_post_moon_lord', ings: '¦Clentaminator¦1' })]).recipes
+    const legacyCanonical = JSON.stringify({ s: ['cond:post-moon-lord', 'cond:shimmer'], i: ['i:5011*1'] })
+    expect(terraformer.id).toBe(`5134-${fnv1a32hex(legacyCanonical)}`)
   })
 
   it('excludes unresolvable rows with a gap entry, never guessing', () => {
