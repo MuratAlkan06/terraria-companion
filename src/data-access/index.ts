@@ -8,6 +8,9 @@
  * | loadList(type)            | ChunkLoadError; DataValidationError (dev-only Zod parse)   |
  * | loadDetail(type, id)      | ChunkLoadError; NotFoundError{ref} → styled 404            |
  * | loadProgression()         | ChunkLoadError; DataValidationError (dev)                  |
+ * | loadBosses()              | ChunkLoadError; DataValidationError (dev)                  |
+ * | loadEnemies()             | ChunkLoadError; DataValidationError (dev)                  |
+ * | loadSearchDocs()          | ChunkLoadError → search UI shows its designed error state  |
  * | load*Index / loadItemNames| ChunkLoadError; DataValidationError (dev)                  |
  * | loadSpriteIndex()         | ChunkLoadError (manifest fetch)                            |
  *
@@ -15,11 +18,12 @@
  * in UI for verified-or-Unknown fields. `createDataAccess` takes injectable importers so the
  * error paths are unit-testable; the module-level functions use the real data files.
  */
-import type { DATA_SCHEMA_VERSION } from '../schemas'
+import type { DATA_SCHEMA_VERSION, Enemy, SearchDoc } from '../schemas'
 import { ChunkLoadError, NotFoundError, SchemaVersionError } from './errors'
 import { memo, type Memo } from './memo'
 import { DEFAULT_IMPORTERS, DEFAULT_VALIDATOR, FETCHED_FILES, type DataFile, type Importers, type Validator } from './sources'
 import type {
+  Boss,
   Condition,
   ConditionIndex,
   DetailRecordMap,
@@ -146,6 +150,9 @@ export function createDataAccess(options: DataAccessOptions = {}) {
     const data = await loadFile<{ nodes: ProgressionNode[]; edges: ProgressionEdge[] }>('progression')
     return { nodes: data.nodes, edges: data.edges, nodeById: byKey(data.nodes, (n) => n.id) }
   })
+  const bosses = memo(() => loadFile<Boss[]>('bosses'))
+  const enemies = memo(() => loadFile<Enemy[]>('enemies'))
+  const searchDocs = memo(() => loadFile<SearchDoc[]>('search-docs'))
   const spriteIndex = memo(async (): Promise<SpriteIndex> => {
     const manifest = await loadFile<SpriteManifest>('sprite-manifest')
     return { fallbackMode: manifest.fallbackMode, byPath: byKey(manifest.files, (f) => f.path) }
@@ -182,6 +189,13 @@ export function createDataAccess(options: DataAccessOptions = {}) {
 
     /** Progression graph (nodes + typed edges) with a node lookup (§4a "Load graph"). */
     loadProgression: () => progression.get(),
+    /** Boss records (P2-S6, emitted as an array per B11). Empty when the dataset has none. */
+    loadBosses: (): Promise<Boss[]> => bosses.get(),
+    peekBosses: (): Boss[] | undefined => bosses.peek(),
+    /** Enemy records (A5, produced in P2-S2a). */
+    loadEnemies: (): Promise<Enemy[]> => enemies.get(),
+    /** Compact SearchDocs (§2.10) — the MiniSearch input; loaded on the first search interaction. */
+    loadSearchDocs: (): Promise<SearchDoc[]> => searchDocs.get(),
     loadRecipeIndex: () => recipeIndex.get(),
     loadDropIndex: () => dropIndex.get(),
     loadConditionIndex: () => conditionIndex.get(),
@@ -228,6 +242,10 @@ export const {
   loadDetailIndex,
   peekDetailIndex,
   loadProgression,
+  loadBosses,
+  peekBosses,
+  loadEnemies,
+  loadSearchDocs,
   loadRecipeIndex,
   loadDropIndex,
   loadConditionIndex,

@@ -3,6 +3,7 @@
  * schemas keep Zod out of the runtime bundle (validation is dev-only, see ./devValidate.ts).
  */
 import type {
+  Boss,
   Condition,
   DropSource,
   LabBehavior,
@@ -89,6 +90,7 @@ export interface SpriteIndex {
 }
 
 export type {
+  Boss,
   Condition,
   DropSource,
   Meta,

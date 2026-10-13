@@ -6,9 +6,10 @@ import { PixelCanvas } from './pixelCanvas'
  * fallback mode). ORIGINAL 16x16 pixel art drawn here — not derived from any Re-Logic asset.
  * Shown when a record has no `sprite` (absent ⇒ placeholder, DATA_SCHEMA_SPEC §2.2) or when the
  * sprite manifest's `fallbackMode` is on. Deliberately muted stone silhouettes, so a placeholder
- * never passes for the real item art. Rendered by <SpritePlaceholder>.
+ * never passes for the real item art — and never for a specific in-game creature (B32). Rendered
+ * by <SpritePlaceholder>.
  */
-export type SpritePlaceholderVariant = 'melee' | 'ranged' | 'magic' | 'summon' | 'other' | 'unknown' | 'material'
+export type SpritePlaceholderVariant = 'melee' | 'ranged' | 'magic' | 'summon' | 'other' | 'unknown' | 'material' | 'creature'
 
 export const PLACEHOLDER_PALETTE: PixelPalette = {
   k: 'var(--color-night-950)',
@@ -86,6 +87,33 @@ export const PLACEHOLDER_ROWS: Record<SpritePlaceholderVariant, readonly string[
       .line(6, 12, 10, 12, 'h')
       .set(7, 8, 'b')
       .set(6, 9, 'b'),
+  ),
+  // creature (search rows for bosses/enemies without a local sprite, P2-S4): a paw print — the
+  // generic "creature" mark, four toe pads over a main pad (AMENDMENTS-007 B32). Deliberately a
+  // symbol, not a figure: no body, no face, nothing that could pass for a slime, zombie or any
+  // other in-game creature (honesty rule, UX_SPEC §8).
+  creature: draw((c) =>
+    c
+      .rect(1, 6, 3, 3, 'B')
+      .set(1, 6, '.')
+      .rect(4, 2, 3, 4, 'B')
+      .set(4, 2, '.')
+      .set(6, 2, '.')
+      .rect(9, 2, 3, 4, 'B')
+      .set(9, 2, '.')
+      .set(11, 2, '.')
+      .rect(12, 6, 3, 3, 'B')
+      .set(14, 6, '.')
+      .rect(6, 8, 4, 1, 'B')
+      .rect(5, 9, 6, 1, 'B')
+      .rect(4, 10, 8, 3, 'B')
+      .rect(5, 13, 6, 1, 'B')
+      .set(2, 7, 'b')
+      .set(5, 3, 'b')
+      .set(10, 3, 'b')
+      .set(13, 7, 'b')
+      .set(6, 9, 'b')
+      .set(5, 10, 'b'),
   ),
 }
 

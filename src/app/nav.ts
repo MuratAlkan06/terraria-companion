@@ -11,11 +11,24 @@ export interface NavItem extends NavMeta {
 /** Max entries in the mobile bottom tab bar, including "More" (UX_SPEC §2, §10.12). */
 export const TAB_BAR_MAX = 5
 
+/**
+ * Header links shown inline on desktop; the rest go into the header's "More" menu
+ * (AMENDMENTS-007 B29). Holds at every desktop width: measured at 1440, six inline links plus
+ * the wordmark and a selected stage chip leave the search under its 240px minimum.
+ */
+export const HEADER_INLINE_MAX = 3
+
 export function navItemsFor(surface: NavSurface, routes: readonly AppRoute[] = APP_ROUTES): NavItem[] {
   return routes
     .filter((r): r is AppRoute & { nav: NavMeta } => r.nav !== undefined && r.nav.surfaces.includes(surface))
     .map((r) => ({ ...r.nav, id: r.id, to: r.path }))
     .sort((a, b) => a.order - b.order)
+}
+
+/** Splits header nav: the first HEADER_INLINE_MAX links inline, the overflow in a "More" menu. */
+export function headerNavLayout(routes: readonly AppRoute[] = APP_ROUTES): { inline: NavItem[]; more: NavItem[] } {
+  const items = navItemsFor('header', routes)
+  return { inline: items.slice(0, HEADER_INLINE_MAX), more: items.slice(HEADER_INLINE_MAX) }
 }
 
 /**

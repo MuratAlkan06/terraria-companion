@@ -1,6 +1,6 @@
 import { House } from 'lucide-react'
 import { describe, expect, it } from 'vitest'
-import { navItemsFor, TAB_BAR_MAX, tabBarLayout } from './nav'
+import { HEADER_INLINE_MAX, headerNavLayout, navItemsFor, TAB_BAR_MAX, tabBarLayout } from './nav'
 import { APP_ROUTES, type AppRoute, type NavSurface } from './routes'
 
 const SURFACES: NavSurface[] = ['header', 'tabbar', 'more', 'footer']
@@ -58,6 +58,19 @@ describe('route registry + data-driven nav', () => {
     const routes = Array.from({ length: 5 }, (_, i) => route(`t${i}`, ['tabbar'], i))
     expect(tabBarLayout(routes)).toMatchObject({ more: [] })
     expect(tabBarLayout(routes).tabs).toHaveLength(5)
+  })
+
+  it('header (B29): the first 3 links inline, the rest in the header "More" menu, order kept', () => {
+    const six = ['weapons', 'lab', 'loadout', 'bosses', 'items', 'guides'].map((id, i) => route(id, ['header'], i))
+    const { inline, more } = headerNavLayout(six)
+    expect(HEADER_INLINE_MAX).toBe(3)
+    expect(inline.map((i) => i.id)).toEqual(['weapons', 'lab', 'loadout'])
+    expect(more.map((i) => i.id)).toEqual(['bosses', 'items', 'guides'])
+    // Up to 3 links: no More menu at all; a 4th goes into it.
+    expect(headerNavLayout(six.slice(0, 3)).more).toEqual([])
+    expect(headerNavLayout(six.slice(0, 4)).more.map((i) => i.id)).toEqual(['bosses'])
+    // Today's registry: Home + Weapons, nothing collapsed.
+    expect(headerNavLayout()).toMatchObject({ inline: [{ to: '/' }, { to: '/weapons' }], more: [] })
   })
 
   it('reserves a More slot when there are more-only items', () => {

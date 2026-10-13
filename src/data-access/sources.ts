@@ -15,6 +15,9 @@ export type DataFile =
   | 'conditions'
   | 'item-universe'
   | 'progression'
+  | 'bosses'
+  | 'enemies'
+  | 'search-docs'
   | 'meta'
   | 'sprite-manifest'
 
@@ -41,6 +44,9 @@ export const DEFAULT_IMPORTERS: Importers = {
   conditions: () => import('../data/conditions.json').then((m) => m.default),
   'item-universe': () => import('../data/item-universe.json').then((m) => m.default),
   progression: () => import('../data/progression.json').then((m) => m.default),
+  bosses: () => import('../data/bosses.json').then((m) => m.default),
+  enemies: () => import('../data/enemies.json').then((m) => m.default),
+  'search-docs': () => import('../data/search-docs.json').then((m) => m.default),
   // meta.json is already in the shell bundle (footer version pin), so it is not re-split.
   meta: async () => rawMeta,
   'sprite-manifest': () => fetchJson(`${import.meta.env.BASE_URL}sprites/manifest.json`),

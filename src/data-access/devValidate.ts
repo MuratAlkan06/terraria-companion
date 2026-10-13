@@ -5,14 +5,17 @@
  */
 import * as z from 'zod'
 import {
+  Boss,
   Condition,
   DropSource,
+  Enemy,
   ItemId,
   Meta,
   ProgressionEdge,
   ProgressionNode,
   Recipe,
   RecipeGroup,
+  SearchDoc,
   SpriteManifest,
   Weapon,
 } from '../schemas'
@@ -57,6 +60,9 @@ const SCHEMAS: Record<DataFile, z.ZodType> = {
   conditions: z.array(Condition),
   'item-universe': ItemUniverseSchema,
   progression: z.strictObject({ nodes: z.array(ProgressionNode), edges: z.array(ProgressionEdge) }),
+  bosses: z.array(Boss),
+  enemies: z.array(Enemy),
+  'search-docs': z.array(SearchDoc),
   meta: Meta,
   'sprite-manifest': SpriteManifest,
 }

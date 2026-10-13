@@ -1,0 +1,119 @@
+/**
+ * Builds the global search index (ADR-001 D4/D7). LAZY chunk: `./index.ts` imports this module
+ * dynamically on the first search interaction, so MiniSearch, the search docs and the interim
+ * wiki-link data stay out of the shell bundle.
+ *
+ * Everything shown in a row is resolved once here (target, sprite, detail line), so the shell UI
+ * renders any entity type generically (P2-S4 AC5).
+ */
+import { CLASS_LABELS } from '../app/routes/db/weapons/weaponDisplay'
+import { getStageInfo, isStage } from '../app/stages'
+import { asRarity, rarityLabel } from '../components/rarity'
+import { loadBosses, loadEnemies, loadSearchDocs, loadSpriteIndex } from '../data-access'
+import type { SpriteIndex } from '../data-access/types'
+import type { SearchDoc } from '../schemas'
+import { createSearchEngine } from './engine'
+import { DEFAULT_PER_GROUP, groupByType } from './group'
+import { resolveTarget } from './links'
+import type { SearchIndex, SearchResultItem, SearchSuggestions, SuggestOptions } from './types'
+
+type WikiUrlEntries = Iterable<readonly [ref: string, url: string]>
+
+export interface BuildDeps {
+  loadDocs: () => Promise<SearchDoc[]>
+  loadSprites: () => Promise<SpriteIndex>
+  /** INTERIM ref → wiki URL sources for types without a local page (see ./links.ts). */
+  wikiUrlSources: ReadonlyArray<() => Promise<WikiUrlEntries>>
+  now: () => number
+}
+
+export const DEFAULT_DEPS: BuildDeps = {
+  loadDocs: loadSearchDocs,
+  loadSprites: loadSpriteIndex,
+  wikiUrlSources: [
+    // Remove each source when its entity page ships (P5 boss pages; A5 /enemies/:id).
+    () => loadBosses().then((bosses) => bosses.map((b) => [`boss:${b.id}`, b.wikiUrl] as const)),
+    () => loadEnemies().then((enemies) => enemies.map((e) => [`enemy:${e.id}`, e.wikiUrl] as const)),
+  ],
+  now: () => performance.now(),
+}
+
+/** "Melee · Red (10)", "Early Pre-Hardmode" — only fields the doc actually carries. */
+export function detailLine(doc: SearchDoc): string {
+  const parts: string[] = []
+  if (doc.class) parts.push(CLASS_LABELS[doc.class])
+  const rarity = asRarity(doc.rarity)
+  if (rarity !== undefined) parts.push(rarityLabel(rarity))
+  if (doc.stage && isStage(doc.stage)) parts.push(getStageInfo(doc.stage).label)
+  return parts.join(' · ')
+}
+
+function spritesByRef(sprites: SpriteIndex | null): Map<string, string> {
+  const byRef = new Map<string, string>()
+  if (!sprites) return byRef
+  for (const file of sprites.byPath.values()) if (!byRef.has(file.ref)) byRef.set(file.ref, file.path)
+  return byRef
+}
+
+function measure(name: string, start: number, end: number): void {
+  try {
+    performance.measure(name, { start, end })
+  } catch {
+    // User timings are evidence only; never let them break search.
+  }
+}
+
+/**
+ * @param startedAt `deps.now()` when the first search interaction asked for the index (before the
+ *   lazy chunk downloaded), so `timing.loadMs` covers the whole wait.
+ */
+export async function buildSearchIndex(startedAt: number, deps: BuildDeps = DEFAULT_DEPS): Promise<SearchIndex> {
+  const [docs, sprites, ...wikiSources] = await Promise.all([
+    deps.loadDocs(),
+    deps.loadSprites().catch((error: unknown) => {
+      console.warn('[search] Sprite manifest unavailable; showing placeholder art.', error)
+      return null
+    }),
+    ...deps.wikiUrlSources.map((source) => source()),
+  ])
+  const loadedAt = deps.now()
+
+  const engine = createSearchEngine(docs)
+  const wikiUrls = new Map<string, string>()
+  for (const entries of wikiSources) for (const [ref, url] of entries) wikiUrls.set(ref, url)
+  const spritePaths = spritesByRef(sprites)
+  const items = new Map<string, SearchResultItem>()
+  for (const doc of docs) {
+    items.set(doc.id, {
+      ref: doc.id,
+      name: doc.name,
+      type: doc.type,
+      damageClass: doc.class,
+      stage: doc.stage,
+      rarity: doc.rarity,
+      detail: detailLine(doc),
+      sprite: spritePaths.get(doc.id),
+      target: resolveTarget(doc, wikiUrls),
+    })
+  }
+  const builtAt = deps.now()
+
+  const timing = { loadMs: loadedAt - startedAt, buildMs: builtAt - loadedAt, totalMs: builtAt - startedAt }
+  measure('tc:search-index', startedAt, builtAt)
+  measure('tc:search-index-build', loadedAt, builtAt)
+
+  return {
+    docCount: engine.size,
+    sprites,
+    timing,
+    suggest(query: string, options: SuggestOptions = {}): SearchSuggestions {
+      const hits = engine.search(query, { types: options.types })
+      const scored = hits.flatMap(({ doc, score }) => {
+        const item = items.get(doc.id)
+        return item ? [{ item, score }] : []
+      })
+      const groups = groupByType(scored, options.perGroup ?? DEFAULT_PER_GROUP)
+      return { query, groups, options: groups.flatMap((group) => group.items) }
+    },
+  }
+}

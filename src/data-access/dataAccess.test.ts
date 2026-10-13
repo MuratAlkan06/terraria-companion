@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import bosses from '../data/bosses.json'
 import conditions from '../data/conditions.json'
 import drops from '../data/drops.json'
 import itemUniverse from '../data/item-universe.json'
@@ -168,6 +169,22 @@ describe('data access: loadProgression (§4a "Load graph")', () => {
   })
 })
 
+describe('data access: loadBosses (P2-S6 boss records)', () => {
+  it('loads the boss array once with a synchronous peek afterwards; a failed chunk is a ChunkLoadError', async () => {
+    const importer = vi.fn(async () => bosses)
+    const da = access({ bosses: importer })
+    expect(da.peekBosses()).toBeUndefined()
+    const loaded = await da.loadBosses()
+    await da.loadBosses()
+    expect(importer).toHaveBeenCalledTimes(1)
+    expect(loaded.map((b) => b.id)).toContain('wall-of-flesh')
+    expect(da.peekBosses()).toBe(loaded)
+    const failing = access({ bosses: async () => Promise.reject(new Error('offline')) })
+    await expect(failing.loadBosses()).rejects.toBeInstanceOf(ChunkLoadError)
+    expect(failing.peekBosses()).toBeUndefined()
+  })
+})
+
 describe('helpers', () => {
   it('parseItemId accepts only positive integer ids', () => {
     expect(['4956', 4956, '1'].map(parseItemId)).toEqual([4956, 4956, 1])
@@ -191,6 +208,7 @@ describe('dev validation accepts the current emitted data (app ⇄ pipeline cont
     ['conditions', conditions],
     ['item-universe', itemUniverse],
     ['progression', progression],
+    ['bosses', bosses],
     ['meta', meta],
     ['sprite-manifest', spriteManifest],
   ]
