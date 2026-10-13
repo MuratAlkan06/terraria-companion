@@ -5,7 +5,14 @@
  * plain-language copy. `LabSim.approximations` returns the subset relevant to the equipped weapon
  * so the HUD can render it verbatim next to each EstimateLabel. `sourceUrl` points at the wiki page
  * the underlying rule came from when there is one; its absence means the value is a Lab choice.
+ *
+ * Modeling conventions (AMENDMENTS-010 B46 / B47, record marker B49): a weapon whose params came from a
+ * convention lists those paths in `_prov.modeledFields`; the guard maps each listed path to its
+ * convention (src/schemas MODELING_CONVENTIONS) and adds the entry below that carries the same `ruling`.
+ * B44 (swing arc/reach) is labeled by the Lab UI's own `swing-reach-arc` assumption (src/lab), so the
+ * engine does not add a second copy of it.
  */
+import type { ModelingConvention } from '../schemas'
 
 export type ApproximationId =
   | 'fixed-tick'
@@ -14,13 +21,16 @@ export type ApproximationId =
   | 'damage-variance'
   | 'no-equipment'
   | 'cadence'
+  | 'reuse-delay'
   | 'auto-reuse'
   | 'melee-once-per-use'
   | 'swing-geometry'
   | 'thrust-geometry'
+  | 'thrust-reach'
   | 'projectile-point'
   | 'projectile-damage'
   | 'spread'
+  | 'slight-spread'
   | 'gravity'
   | 'projectile-lifetime'
   | 'no-shared-immunity'
@@ -28,6 +38,8 @@ export type ApproximationId =
   | 'mana-cost'
   | 'mana-regen'
   | 'insufficient-mana'
+  | 'slow-cast-cooldown'
+  | 'cooldown-mana-regen'
   | 'homing'
   | 'dot'
   | 'multi-hit'
@@ -39,6 +51,8 @@ export interface Approximation {
   title: string
   detail: string
   sourceUrl?: string
+  /** Modeling conventions only: the ruling that ratified the convention (e.g. "AMENDMENTS-010 B46"). */
+  ruling?: ModelingConvention['ruling']
 }
 
 const WIKI = 'https://terraria.wiki.gg/wiki/'
@@ -81,7 +95,14 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     id: 'cadence',
     title: 'Attack rate = 60 ÷ use time',
     detail:
-      "One attack every 'use time' ticks (the wiki's use time, which is the game's useAnimation); auto-swing melee weapons attack one tick sooner, as the wiki documents. Shots inside one attack repeat every useTime ticks.",
+      "One attack every 'use time' ticks (the wiki's use time — how long the attack animation lasts); auto-swing melee weapons attack one tick sooner, as the wiki documents. A weapon that fires several shots per attack fires them at its per-shot interval within that time.",
+    sourceUrl: `${WIKI}Use_time`,
+  },
+  'reuse-delay': {
+    id: 'reuse-delay',
+    title: 'Cooldown after each attack',
+    detail:
+      'This weapon waits a fixed number of extra ticks after each attack before it can attack again, as the wiki documents; the Lab adds that cooldown to the time between attacks.',
     sourceUrl: `${WIKI}Use_time`,
   },
   'auto-reuse': {
@@ -106,6 +127,13 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     title: 'Thrust hitbox is an extending line',
     detail: 'A thrust is a line that extends to full reach toward the aim point and retracts over one attack.',
   },
+  'thrust-reach': {
+    id: 'thrust-reach',
+    title: 'Thrust reach is modeled',
+    detail:
+      "The wiki gives no thrust reach for this weapon. The Lab's thrust reaches the length of the weapon sprite's diagonal × the item's scale, plus 1 tile for the arm. This is a Lab modeling choice, not game data.",
+    ruling: 'AMENDMENTS-010 B46',
+  },
   'projectile-point': {
     id: 'projectile-point',
     title: 'Point projectiles, no tile collision',
@@ -116,7 +144,7 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     id: 'projectile-damage',
     title: 'Projectile damage = weapon damage',
     detail:
-      "Projectiles deal the weapon's damage (plus ammo damage for bows and guns). Per-projectile damage multipliers are not in the data.",
+      "Projectiles deal the weapon's damage (plus ammo damage for bows and guns). Where the wiki states that a projectile deals a percentage of the weapon's damage, the Lab applies it, rounded down as in the wiki's own numbers; no other per-projectile damage changes are modeled.",
     sourceUrl: `${WIKI}Damage`,
   },
   spread: {
@@ -124,6 +152,13 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     title: 'Even spread fan',
     detail:
       'Multi-projectile attacks fan out evenly across the spread angle; single projectiles with spread get seeded random inaccuracy. The game randomizes many of these per pellet.',
+  },
+  'slight-spread': {
+    id: 'slight-spread',
+    title: "'Slight spread' modeled as 10°",
+    detail:
+      'The wiki says this gun fires at a slight spread but gives no angle. The Lab uses a 10° spread for it. This is a Lab modeling choice, not game data.',
+    ruling: 'AMENDMENTS-010 B47',
   },
   gravity: {
     id: 'gravity',
@@ -145,7 +180,7 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     id: 'ammo',
     title: 'One ammo per shot',
     detail:
-      'Each shot uses one ammo regardless of projectile count; ammo-saving chances are not modeled. Speed = (weapon speed + ammo bonus) × ammo multiplier; damage = weapon + ammo damage.',
+      'Each shot uses one ammo regardless of projectile count; ammo-saving effects are not modeled (chances to not use ammo, or bursts where only the first shot uses ammo). Speed = (weapon speed + ammo bonus) × ammo multiplier; damage = weapon + ammo damage.',
     sourceUrl: `${WIKI}Damage`,
   },
   'mana-cost': {
@@ -166,6 +201,19 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     detail:
       'Without enough mana, casting continues at 40% attack speed, as the game does since 1.4.5.7 (paying no mana on such casts is an assumption). A "stop at zero" test setting instead stops casting until mana covers the cost.',
     sourceUrl: `${WIKI}Mana`,
+  },
+  // AMENDMENTS-012 B57(e): the two undocumented interactions of a cooldown with mana (weapons with both)
+  'slow-cast-cooldown': {
+    id: 'slow-cast-cooldown',
+    title: 'Low-mana casts keep the normal cooldown',
+    detail:
+      'When this weapon casts without enough mana, the cast itself takes 2.5 times as long, but the cooldown after it keeps its normal length. The wiki does not say whether the slowdown also lengthens the cooldown; this is a Lab choice.',
+  },
+  'cooldown-mana-regen': {
+    id: 'cooldown-mana-regen',
+    title: 'Full mana regeneration during the cooldown',
+    detail:
+      'During the cooldown after each attack, mana regenerates at the full rate, as when not casting, instead of the reduced rate while casting. The wiki does not say which rate applies then; this is a Lab choice.',
   },
   homing: {
     id: 'homing',
@@ -212,6 +260,16 @@ export const COMMON_APPROXIMATIONS: readonly ApproximationId[] = [
   'knockback',
   'dummy-hitbox',
 ]
+
+/**
+ * B49: the engine label of each modeling convention, added when the weapon lists the convention's
+ * paths in `_prov.modeledFields` (each entry carries the convention's ruling). `swing-geometry` (B44)
+ * has none here: the Lab UI labels it (see header).
+ */
+export const CONVENTION_APPROXIMATIONS: Readonly<Partial<Record<ModelingConvention['id'], ApproximationId>>> = {
+  'thrust-reach': 'thrust-reach',
+  'slight-spread': 'slight-spread',
+}
 
 export const PROJECTILE_APPROXIMATIONS: readonly ApproximationId[] = [
   'projectile-point',

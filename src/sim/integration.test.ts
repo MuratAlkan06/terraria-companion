@@ -1,10 +1,11 @@
 /**
  * Integration with COMMITTED data (src/data/weapons.detail.json, read-only).
  *
- * Core combat numbers come from the committed records. The Lab archetype params are TEST
- * FIXTURES: no committed weapon carries archetype params yet (P3-S0 authors them), so each test
- * swaps in fixture params and re-validates the record with the real Weapon schema. Expectations
- * are computed from the records, never hard-coded, so a data refresh can't silently pass/fail.
+ * Core combat numbers come from the committed records. The Lab archetype params used below are TEST
+ * FIXTURES swapped in per test (the committed P3-S0 params are covered by
+ * pipeline/merge/labParams.test.ts), and each record is re-validated with the real Weapon schema.
+ * Expectations are computed from the records, never hard-coded, so a data refresh can't silently
+ * pass/fail.
  */
 import { describe, expect, it } from 'vitest'
 import weaponsDetailJson from '../data/weapons.detail.json'

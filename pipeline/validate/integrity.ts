@@ -5,7 +5,8 @@
  * Rules: 1 recipes (incl. B3 station groups, B9 conditions) · 2 drops · 3 Boss.dropIds (and A5 Enemy.dropIds)
  * · 4 Boss↔Node · 5 boss summon/prep/suggestion refs (gating in suggestions.ts) · 6 armor sets
  * · 7 tinkering symmetry · 9 slug registries (incl. B4 loot/other conditions) · Item.isStation
- * consistency · present+listed values (E_UNVERIFIED_VALUE_EMITTED). Rule 8 lives in graph.ts,
+ * consistency · present+listed values (E_UNVERIFIED_VALUE_EMITTED) · B49 modeledFields (present +
+ * governed by a ratified convention; `always` conventions listed). Rule 8 lives in graph.ts,
  * rule 10 (A1-demoted) in labDowngrade.ts, rule 12 in the schemas.
  *
  * Partial datasets (dataset.ts header): references are resolved through a `RefScope` that knows
@@ -13,6 +14,8 @@
  */
 import {
   isCoveredBy,
+  MODELING_CONVENTIONS,
+  modelingConventionFor,
   resolvePath,
   type Accessory,
   type ArmorPiece,
@@ -491,6 +494,42 @@ export function checkUnverifiedValues(ds: Dataset): PipelineError[] {
   return errors
 }
 
+/**
+ * AMENDMENTS-010 B49 `_prov.modeledFields`: every listed path must be PRESENT in the record and be
+ * governed by a ratified modeling convention for the weapon's archetype (MODELING_CONVENTIONS: B44 /
+ * B46 / B47 — the convention names its ruling); conversely, an archetype whose params can only come from
+ * a convention (`always`) must list them, so a modeled value is never silent. Only Lab archetype params
+ * can be modeled.
+ */
+export function checkModeledFields(ds: Dataset): PipelineError[] {
+  const errors: PipelineError[] = []
+  const fail = (ref: string, message: string) => errors.push({ code: 'E_SCHEMA', ref, zodIssues: [], message: `${ref} ${message}` })
+  for (const key of COLLECTION_KEYS) {
+    for (const record of ds[key] as readonly { _prov: { modeledFields?: string[] } }[]) {
+      const ref = recordRef(key, record)
+      const modeled = record._prov.modeledFields ?? []
+      if (modeled.length === 0) continue
+      const lab = key === 'weapons' ? (record as unknown as Weapon).labBehavior : undefined
+      for (const path of modeled) {
+        if (resolvePath(record, path) === undefined) fail(ref, `_prov.modeledFields ${path}: the path is not present in the record (B49)`)
+        if (lab?.kind !== 'archetype') fail(ref, `_prov.modeledFields ${path}: only Lab archetype params can be modeled (B49)`)
+        else if (!modelingConventionFor(lab.params.archetype, path)) fail(ref, `_prov.modeledFields ${path}: no ratified modeling convention (AMENDMENTS-010 B44/B46/B47) governs this path for ${lab.params.archetype}`)
+      }
+    }
+  }
+  for (const w of ds.weapons) {
+    if (w.labBehavior.kind !== 'archetype') continue
+    const archetype = w.labBehavior.params.archetype
+    for (const c of MODELING_CONVENTIONS) {
+      if (!c.always || c.archetype !== archetype) continue
+      for (const path of c.paths) {
+        if (!(w._prov.modeledFields ?? []).includes(path)) fail(`i:${w.id}`, `_prov.modeledFields: ${path} can only come from the ${c.id} convention (${c.ruling}) and must be listed (B49)`)
+      }
+    }
+  }
+  return errors
+}
+
 export function checkIntegrity(ds: Dataset, scope: RefScope = { pending: new Set() }): { errors: PipelineError[]; deferred: DeferredRefs } {
   const c = new Checker(buildIndex(ds), scope)
   checkRecipes(c, ds)
@@ -502,5 +541,5 @@ export function checkIntegrity(ds: Dataset, scope: RefScope = { pending: new Set
   checkAccessories(c, ds)
   checkBossesAndNodes(c, ds)
   checkEnemies(c, ds)
-  return { errors: [...checkDuplicates(ds), ...c.errors, ...checkUnverifiedValues(ds)], deferred: c.deferred }
+  return { errors: [...checkDuplicates(ds), ...c.errors, ...checkUnverifiedValues(ds), ...checkModeledFields(ds)], deferred: c.deferred }
 }

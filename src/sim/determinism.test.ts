@@ -34,6 +34,13 @@ const SCENARIOS: Record<string, () => LabSimOptions> = {
     settings: { maxMana: 40, insufficientMana: 'slow-cast' },
     seed: 5,
   }),
+  // AMENDMENTS-010 B48(a): Clockwork Assault Rifle-shaped burst (useTime 4 / useAnimation 12) + reuse delay 14.
+  'burst rifle (reuse delay, slight spread)': () => ({
+    weapon: bowFixture({ spreadDegrees: 10 }, { useTimeTicks: 4, useAnimationTicks: 12, reuseDelayTicks: 14, autoReuse: true, critPct: 0 }),
+    ammo: ammoFixture({ damage: 7, velocityBonusTps: 2 }),
+    dummies: [{ x: 10, y: 0 }],
+    seed: 434,
+  }),
 }
 
 function create(options: LabSimOptions): LabSim {
@@ -153,21 +160,42 @@ describe('seeded reproducibility', () => {
     expect(sim.snapshot()).toEqual(first)
   })
 
-  it('cross-run stability: pinned fingerprint of a reference scenario', () => {
+  it('cross-run stability: pinned fingerprint of every reference scenario', () => {
     // Golden values pin the engine's observable semantics. If a deliberate engine change alters
     // them, update these numbers in the same change with a changelog note in README.md (AMENDMENTS-008 B38).
-    const { result } = runTimed(SCENARIOS['staff (inaccuracy, homing, DoT ranges, mana regen)'](), 30, PATTERNS['144 fps'])
-    expect({ total: result.totalDamage, dot: result.dotDamage, hits: result.hits, crits: result.crits, uses: result.uses, digest: result.eventDigest }).toEqual(
-      GOLDEN_STAFF_30S,
-    )
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const { result } = runTimed(scenario(), 30, PATTERNS['144 fps'])
+      expect({ total: result.totalDamage, dot: result.dotDamage, hits: result.hits, crits: result.crits, uses: result.uses, digest: result.eventDigest }, name).toEqual(
+        GOLDEN_30S[name],
+      )
+    }
+  })
+
+  it('the reuse-delay scenario attacks once per useAnimation + reuseDelay (12 + 14 = 26 ticks)', () => {
+    const { result } = runTimed(SCENARIOS['burst rifle (reuse delay, slight spread)'](), 30, PATTERNS['60 fps'])
+    expect(result.uses).toBe(Math.ceil(1800 / 26)) // uses start at ticks 0, 26, 52, … < 1800
+    // 3 shots per burst at use start + 0/4/8 (useTime 4 inside 12 ticks), none during the cooldown
+    let shots = 0
+    for (let start = 0; start < 1800; start += 26) for (const offset of [0, 4, 8]) if (start + offset < 1800) shots++
+    expect(result.ammoConsumed).toBe(shots)
   })
 })
 
 /**
- * Re-pinned 2026-10-13 (Node 23.11 / V8) for the B35 `slow-cast` default (README changelog).
- * Mana-limited at max mana 60: 10 paid casts, then 32 slow casts (use time × 2.5) in 30 s.
+ * 30 s @ 144 fps fingerprints (Node 23.11 / V8; README changelog, AMENDMENTS-008 B38).
+ * - The first four were computed BEFORE the 2026-10-13 reuse-delay change (B48(a)) and re-pinned
+ *   unchanged after it: weapons without a reuse delay behave bit-identically.
+ * - staff: re-pinned 2026-10-13 for the B35 `slow-cast` default — mana-limited at max mana 60: 10 paid
+ *   casts, then 32 slow casts (use time × 2.5) in 30 s.
+ * - burst rifle: pinned 2026-10-13 with the reuse-delay change (new scenario).
  */
-const GOLDEN_STAFF_30S = { total: 799, dot: 97, hits: 42, crits: 4, uses: 42, digest: '876a8729' }
+const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
+  'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
+  'shotgun (spread, gravity, pierce, armored row)': { total: 5278, dot: 0, hits: 360, crits: 48, uses: 45, digest: '97dabadc' },
+  'staff (inaccuracy, homing, DoT ranges, mana regen)': { total: 799, dot: 97, hits: 42, crits: 4, uses: 42, digest: '876a8729' },
+  'burst staff (useTime < useAnimation, slow-cast)': { total: 4073, dot: 0, hits: 258, crits: 13, uses: 43, digest: 'b6630161' },
+  'burst rifle (reuse delay, slight spread)': { total: 3278, dot: 0, hits: 207, crits: 11, uses: 70, digest: '9bcbb3a6' },
+}
 
 describe('timed-test controller (P3-S3 AC3)', () => {
   const options = () => SCENARIOS['sword (variance + crits)']()

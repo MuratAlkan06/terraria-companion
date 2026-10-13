@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createLabSim, type LabSim, type LabSimOptions, type SimEvent } from './index'
+import { APPROXIMATIONS, createLabSim, type LabSim, type LabSimOptions, type SimEvent } from './index'
 import { ammoFixture, bowFixture, spearFixture, staffFixture, swordFixture } from './testing/fixtures'
 
 function sim(options: LabSimOptions): LabSim {
@@ -306,5 +306,116 @@ describe('magic-bolt + mana', () => {
     expect(st.activations).toBe(30)
     expect(st.projectilesSpawned).toBe(30)
     expect(st.manaConsumed).toBe(50) // paid once per use
+  })
+})
+
+describe('reuse delay (AMENDMENTS-010 B48(a); wiki Use_time: "reuseDelay is applied after the itemAnimation counter turns to zero")', () => {
+  // Clockwork Assault Rifle shape: useTime 4, useAnimation 12, reuseDelay 14 ("adding 14-tick interval between the three round bursts").
+  const rifle = (over = {}) => bowFixture({}, { useTimeTicks: 4, useAnimationTicks: 12, reuseDelayTicks: 14, autoReuse: true, ...over })
+
+  it('the cooldown follows each use: cadence = useAnimation + reuseDelay; no shots during it', () => {
+    const s = sim({ weapon: rifle(), ammo: ammoFixture(), settings: noVariance, dummies: [{ x: 6, y: 0 }] })
+    expect(s.weapon).toMatchObject({ cadenceTicks: 26, reuseDelayTicks: 14, activationsPerUse: 3 })
+    expect(s.weapon.nominalAttacksPerSec).toBeCloseTo(60 / 26, 12)
+    const events = hold(s, 600)
+    expect(of(events, 'use-start').map((e) => e.tick).slice(0, 4)).toEqual([0, 26, 52, 78])
+    expect(of(events, 'use-start').every((e) => e.durationTicks === 12)).toBe(true) // the use itself is not stretched
+    expect(of(events, 'projectile-spawn').map((e) => e.tick).slice(0, 6)).toEqual([0, 4, 8, 26, 30, 34])
+    expect(s.snapshot().stats.uses).toBe(Math.ceil(600 / 26))
+    expect(s.approximations.map((a) => a.id)).toContain('reuse-delay')
+  })
+
+  it('weapons without a reuse delay are unchanged (no cooldown, no reuse-delay label)', () => {
+    const s = sim({ weapon: rifle({ reuseDelayTicks: undefined }), ammo: ammoFixture() })
+    expect(s.weapon).toMatchObject({ cadenceTicks: 12, reuseDelayTicks: 0 })
+    hold(s, 120)
+    expect(s.snapshot().stats.uses).toBe(10)
+    expect(s.approximations.map((a) => a.id)).not.toContain('reuse-delay')
+  })
+
+  it('autoswing melee: the −1 tick applies to the use, then the full cooldown follows', () => {
+    const s = sim({ weapon: swordFixture({ autoReuse: true, useTimeTicks: 20, useAnimationTicks: 20, reuseDelayTicks: 5 }) })
+    expect(s.weapon.cadenceTicks).toBe(24)
+    hold(s, 240)
+    expect(s.snapshot().stats.uses).toBe(10)
+    expect(s.renderState().blade).toBeNull() // tick 240 = 10 × 24: between swings
+  })
+
+  it('slow-cast stretches the use (× 2.5) but not the cooldown after it', () => {
+    const s = sim({ weapon: staffFixture({}, { useTimeTicks: 12, useAnimationTicks: 12, reuseDelayTicks: 6, manaCost: 500 }), settings: { maxMana: 100, manaRegen: 'none' } })
+    const events = hold(s, 200)
+    expect(of(events, 'use-start').map((e) => [e.tick, e.durationTicks, e.slowCast])).toEqual([
+      [0, 30, true],
+      [36, 30, true],
+      [72, 30, true],
+      [108, 30, true],
+      [144, 30, true],
+      [180, 30, true],
+    ])
+    expect(s.approximations.map((a) => a.id)).toEqual(expect.arrayContaining(['slow-cast-cooldown', 'cooldown-mana-regen']))
+  })
+
+  it('AMENDMENTS-012 B57(e): the two undocumented cooldown × mana choices are labeled only for a weapon with both', () => {
+    const ids = (weapon: LabSimOptions['weapon'], ammo?: LabSimOptions['ammo']) => sim({ weapon, ...(ammo ? { ammo } : {}) }).approximations.map((a) => a.id)
+    const B57E = ['slow-cast-cooldown', 'cooldown-mana-regen'] as const
+    expect(ids(staffFixture({}, { reuseDelayTicks: 6, manaCost: 5 }))).toEqual(expect.arrayContaining([...B57E]))
+    for (const list of [ids(staffFixture({}, { manaCost: 5 })), ids(rifle(), ammoFixture())]) for (const id of B57E) expect(list).not.toContain(id)
+    for (const id of B57E) expect(APPROXIMATIONS[id]).toMatchObject({ id, detail: expect.stringMatching(/The wiki does not say .*; this is a Lab choice\.$/) })
+  })
+
+  it('a reuse delay listed unverified, or malformed, is refused — never defaulted to 0', () => {
+    const listed = rifle({ reuseDelayTicks: undefined, _prov: { ...rifle()._prov, verified: false, unverifiedFields: ['reuseDelayTicks'] } })
+    expect(createLabSim({ weapon: listed, ammo: ammoFixture() })).toMatchObject({ ok: false, refusal: { reason: 'unverified-required-field', fields: ['reuseDelayTicks'] } })
+    expect(createLabSim({ weapon: rifle({ reuseDelayTicks: 1.5 }), ammo: ammoFixture() })).toMatchObject({ ok: false, refusal: { reason: 'invalid-data', fields: ['reuseDelayTicks'] } })
+  })
+})
+
+describe('per-projectile damage multiplier (AMENDMENTS-010 B48(b))', () => {
+  const hitAmounts = (events: SimEvent[]) => of(events, 'damage').filter((e) => !e.crit).map((e) => e.amount)
+
+  it('magic-bolt: the bolt deals ⌊damage × pct / 100⌋ (wiki: Ruby Staff 50% of 18 = "9 base damage", Sapphire 60% of 18 = "10")', () => {
+    for (const [pct, expected] of [[50, 9], [60, 10], [80, 14]] as const) {
+      const s = sim({ weapon: staffFixture({ projectile: { velocityTps: 30, damageMultiplierPct: pct } }, { damage: 18 }), settings: { ...noVariance, ignoreMana: true }, dummies: [{ x: 4, y: 0 }] })
+      expect(s.weapon.baseHitDamage).toBe(expected)
+      expect(new Set(hitAmounts(hold(s, 120)))).toEqual(new Set([expected]))
+    }
+    const plain = sim({ weapon: staffFixture({}, { damage: 18 }), settings: noVariance })
+    expect(plain.weapon.baseHitDamage).toBe(18) // absent = 100%
+  })
+
+  it('swing-melee: an emitted projectile uses its own multiplier, the blade keeps full damage', () => {
+    const weapon = swordFixture({ damage: 20 }, { emitted: { velocityTps: 30, damageMultiplierPct: 50 } })
+    const s = sim({ weapon, settings: noVariance, dummies: [{ x: 10, y: 0 }] })
+    expect(s.weapon.baseHitDamage).toBe(20)
+    const events = hold(s, 120)
+    expect(new Set(of(events, 'damage').filter((e) => e.source === 'projectile' && !e.crit).map((e) => e.amount))).toEqual(new Set([10]))
+  })
+})
+
+describe('modeling-convention labels (AMENDMENTS-010 B46 / B47, B49 modeledFields)', () => {
+  const modeled = <W extends { _prov: object }>(w: W, paths: string[]): W => ({ ...w, _prov: { ...w._prov, modeledFields: paths } })
+
+  it('thrust reach listed as modeled → the B46 label, with its ruling', () => {
+    const s = sim({ weapon: modeled(spearFixture(4), ['labBehavior.params.reachTiles']) })
+    expect(s.approximations.find((a) => a.id === 'thrust-reach')).toMatchObject({ ruling: 'AMENDMENTS-010 B46', detail: expect.stringMatching(/modeling choice, not game data/) })
+    expect(sim({ weapon: spearFixture(4) }).approximations.map((a) => a.id)).not.toContain('thrust-reach') // only when modeled
+  })
+
+  it('slight spread listed as modeled → the B47 label', () => {
+    const s = sim({ weapon: modeled(bowFixture({ spreadDegrees: 10 }), ['labBehavior.params.spreadDegrees']), ammo: ammoFixture() })
+    expect(s.approximations.find((a) => a.id === 'slight-spread')).toMatchObject({ ruling: 'AMENDMENTS-010 B47' })
+    expect(sim({ weapon: bowFixture({ spreadDegrees: 45, projectilesPerUse: 8 }), ammo: ammoFixture() }).approximations.map((a) => a.id)).not.toContain('slight-spread')
+  })
+
+  it('B44 swing geometry is labeled by the Lab UI, so the engine adds no duplicate entry', () => {
+    const s = sim({ weapon: modeled(swordFixture(), ['labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles']) })
+    expect(s.approximations.map((a) => a.id)).toEqual(sim({ weapon: swordFixture() }).approximations.map((a) => a.id))
+  })
+
+  it('a modeled path no ratified convention governs is refused (never a silent modeled value)', () => {
+    const r = createLabSim({ weapon: modeled(spearFixture(4), ['labBehavior.params.reachTiles', 'damage']) })
+    expect(r).toMatchObject({ ok: false, refusal: { kind: 'not-simulable', reason: 'invalid-data', fields: ['damage'] } })
+    const wrongArchetype = createLabSim({ weapon: modeled(swordFixture(), ['labBehavior.params.spreadDegrees']) })
+    expect(wrongArchetype).toMatchObject({ ok: false, refusal: { reason: 'invalid-data' } })
   })
 })

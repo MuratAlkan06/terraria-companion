@@ -213,8 +213,10 @@ export interface WeaponSummary {
   name: string
   archetype: Archetype
   damage: number
-  /** Effective ticks per attack (see README "Cadence"). */
+  /** Effective ticks per attack, incl. any reuse delay (see README "Cadence"). */
   cadenceTicks: number
+  /** Cooldown after each attack (Weapon.reuseDelayTicks; 0 = none), included in cadenceTicks. */
+  reuseDelayTicks: number
   /** Ticks between activations inside one attack (useTimeTicks). */
   activationTicks: number
   activationsPerUse: number

@@ -15,7 +15,8 @@
  * - damage (Iteminfo `damage` > 0; ≤ 0 means the item carries no damage of its own — explosives,
  *   ammo-driven launchers — so damage AND knockback are Unknown), knockback (`knockBack`),
  *   useTimeTicks (`useTime`) and useAnimationTicks (`useAnimation`; TO-VERIFY #10: the wiki's
- *   "Use time" equals useAnimation for every weapon), autoReuse (`autoReuse` ⇔ Cargo
+ *   "Use time" equals useAnimation for every weapon), reuseDelayTicks (`reuseDelay` > 0: a cooldown
+ *   after each use, AMENDMENTS-010 B48(a); no Cargo column to cross-check), autoReuse (`autoReuse` ⇔ Cargo
  *   `autoswing`), manaCost (`mana` > 0), rarity (`rare`, special tiers per TO-VERIFY #9),
  *   ammoClass (`useAmmo` = the AmmoID representative item → slug of its name, e.g. 40 →
  *   "wooden-arrow"), shootSpeedTps (`shootSpeed` px/tick × 60/16; the item stat, not the
@@ -309,6 +310,12 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     if (useAnimation === undefined || useAnimation <= 0) unknown('useAnimationTicks', 'no positive useAnimation in Module:Iteminfo/data')
     else if (!agrees('useAnimationTicks (wiki "Use time")', cargoUse, useAnimation)) mismatch('useAnimationTicks', `Module:Iteminfo/data useAnimation ${useAnimation}, wiki infobox use time ${cargoUse}`)
     else w.useAnimationTicks = useAnimation
+    // reuse delay (AMENDMENTS-010 B48(a)): Iteminfo reuseDelay > 0 = a cooldown after each use (wiki Use time)
+    const reuseDelay = n('reuseDelay') ?? 0
+    if (reuseDelay > 0) {
+      if (Number.isInteger(reuseDelay)) w.reuseDelayTicks = reuseDelay
+      else unknown('reuseDelayTicks', 'Module:Iteminfo/data reuseDelay is not a whole number of ticks')
+    }
 
     // autoReuse
     const auto = s.autoReuse === true
@@ -401,6 +408,7 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
       ...(w.critPct !== undefined ? { critPct: w.critPct } : {}),
       ...(w.useTimeTicks !== undefined ? { useTimeTicks: w.useTimeTicks } : {}),
       ...(w.useAnimationTicks !== undefined ? { useAnimationTicks: w.useAnimationTicks } : {}),
+      ...(w.reuseDelayTicks !== undefined ? { reuseDelayTicks: w.reuseDelayTicks } : {}),
       ...(w.knockback !== undefined ? { knockback: w.knockback } : {}),
       ...(w.autoReuse !== undefined ? { autoReuse: w.autoReuse } : {}),
       ...(w.manaCost !== undefined ? { manaCost: w.manaCost } : {}),

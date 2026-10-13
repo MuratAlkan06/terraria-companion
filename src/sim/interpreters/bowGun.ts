@@ -1,7 +1,7 @@
 /**
  * bow-gun (PRD P3-S4): each activation consumes one ammo and fires `projectilesPerUse` projectiles
  * (even fan across `spreadDegrees`). VERIFIED (wiki Damage): final damage = weapon damage + ammo
- * damage. Speed = (weapon shootSpeedTps + ammo velocityBonusTps) × ammo velocityMultiplier — the
+ * damage (× an inherited ammo projectile's `damageMultiplierPct`, if one is ever set). Speed = (weapon shootSpeedTps + ammo velocityBonusTps) × ammo velocityMultiplier — the
  * order of bonus vs multiplier is a labeled approximation (`ammo`). With `inheritsAmmoProjectile`,
  * the ammo's ProjectileSpec supplies gravity/pierce/lifetime (its `velocityTps` is NOT used for
  * speed — ammo speed enters only through the ammo bonus/multiplier fields).
@@ -9,7 +9,7 @@
 import { getField, type Item } from '../../schemas'
 import type { ArchetypeInterpreter, Behavior, KernelApi } from '../contracts'
 import type { SimRefusal } from '../types'
-import { fireVolley, shapeFromSpec, volleyApproximations, type Volley } from './shared'
+import { fireVolley, projectileDamage, shapeFromSpec, volleyApproximations, type Volley } from './shared'
 
 type AmmoResolution =
   | { ok: true; damage: number; velocityBonusTps: number; velocityMultiplier: number; stats: NonNullable<Item['ammoStats']> }
@@ -85,13 +85,14 @@ export const bowGun: ArchetypeInterpreter<'bow-gun'> = {
         },
       }
     }
-    const damage = (weapon.damage ?? 0) + resolved.damage
+    const spec = params.inheritsAmmoProjectile ? resolved.stats.projectile : undefined
+    const damage = projectileDamage((weapon.damage ?? 0) + resolved.damage, spec)
     const volley: Volley = {
       count: params.projectilesPerUse,
       spreadDegrees: params.spreadDegrees,
       speedTps,
       damage,
-      shape: shapeFromSpec(params.inheritsAmmoProjectile ? resolved.stats.projectile : undefined),
+      shape: shapeFromSpec(spec),
     }
     const behavior: Behavior = {
       archetype: 'bow-gun',

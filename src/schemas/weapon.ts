@@ -134,6 +134,9 @@ export const Weapon = z.strictObject({
   critPct: z.int().min(0).max(100).optional(), // weapon bonus; sim adds universal base 4% (sim-core constant, labeled)
   useTimeTicks: z.int().positive().optional(),
   useAnimationTicks: z.int().positive().optional(), // attacksPerSec = 60/useAnimationTicks — TO-VERIFY-IN-P2
+  // AMENDMENTS-010 B48(a): Iteminfo `reuseDelay` — a cooldown after each use (wiki Use time: "reuseDelay
+  // is applied after the itemAnimation counter turns to zero"); absent = no cooldown.
+  reuseDelayTicks: z.int().positive().optional(),
   knockback: z.number().nonnegative().optional(),
   autoReuse: z.boolean().optional(),
   manaCost: z.int().positive().optional(),
@@ -166,8 +169,9 @@ export type CustomScenario = z.infer<typeof CustomScenario>
  * AMENDMENTS-008 B36: `useAnimationTicks` is the attack cadence (AMENDMENTS-004 B14), and
  * `autoReuse` changes the cadence of melee-class weapons (autoswing melee attacks one tick
  * sooner — src/sim/README.md "Cadence"), so it is required for the melee archetypes.
+ * AMENDMENTS-010 B48(a): `reuseDelayTicks` is part of the cadence too (a cooldown after each use).
  */
-const SIM_FIELDS_ALL_ARCHETYPES = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks', 'knockback', 'manaCost'] as const
+const SIM_FIELDS_ALL_ARCHETYPES = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks', 'reuseDelayTicks', 'knockback', 'manaCost'] as const
 const SIM_FIELDS_BY_ARCHETYPE: Partial<Record<Archetype, readonly string[]>> = {
   'swing-melee': ['autoReuse'],
   thrust: ['autoReuse'],
@@ -176,4 +180,58 @@ const SIM_FIELDS_BY_ARCHETYPE: Partial<Record<Archetype, readonly string[]>> = {
 }
 export function simRequiredWeaponFields(archetype: Archetype): readonly string[] {
   return [...SIM_FIELDS_ALL_ARCHETYPES, ...(SIM_FIELDS_BY_ARCHETYPE[archetype] ?? [])]
+}
+
+/**
+ * Lab MODELING CONVENTIONS (AMENDMENTS-010 B44 / B46 / B47; record marker B49). Archetype params the
+ * wiki does not state, derived by a ratified rule and always labeled as modeled — never presented as
+ * game data. A weapon lists every param it took from a convention in `_prov.modeledFields`; each listed
+ * path resolves here (archetype + path) to exactly one convention and its ruling. `always`: the
+ * archetype has no other source for these paths, so every record of that archetype lists them
+ * (not thrust since AMENDMENTS-012 B56: a range the article states is used as the reach).
+ * The derivations live in pipeline/merge/labParams.ts; the user-facing labels in the sim's
+ * approximations registry (src/sim/approximations.ts) and the Lab UI.
+ */
+export interface ModelingConvention {
+  id: 'swing-geometry' | 'thrust-reach' | 'slight-spread'
+  /** The binding ruling that ratified the convention. */
+  ruling: 'AMENDMENTS-010 B44' | 'AMENDMENTS-010 B46' | 'AMENDMENTS-010 B47'
+  archetype: Archetype
+  paths: readonly string[]
+  always: boolean
+  /** Plain-language rule (reports). */
+  rule: string
+}
+
+export const MODELING_CONVENTIONS: readonly ModelingConvention[] = [
+  {
+    id: 'swing-geometry',
+    ruling: 'AMENDMENTS-010 B44',
+    archetype: 'swing-melee',
+    paths: ['labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles'],
+    always: true,
+    rule: 'arc 180° (broadswords are swung over the head); reach = item sprite diagonal × item scale ÷ 16 px',
+  },
+  {
+    id: 'thrust-reach',
+    ruling: 'AMENDMENTS-010 B46',
+    archetype: 'thrust',
+    paths: ['labBehavior.params.reachTiles'],
+    // AMENDMENTS-012 B56: a range the article states is the reach (wiki data, not modeled); B46 only where none is stated
+    always: false,
+    rule: 'reach = item sprite diagonal × item scale ÷ 16 px + 1 tile arm extension, only where the article states no range (AMENDMENTS-012 B56)',
+  },
+  {
+    id: 'slight-spread',
+    ruling: 'AMENDMENTS-010 B47',
+    archetype: 'bow-gun',
+    paths: ['labBehavior.params.spreadDegrees'],
+    always: false,
+    rule: 'a gun whose article says it fires at a "slight" / "small" spread without an angle uses a 10° spread',
+  },
+]
+
+/** The convention governing `path` for an archetype, if any (B49 modeledFields resolution). */
+export function modelingConventionFor(archetype: Archetype, path: string): ModelingConvention | undefined {
+  return MODELING_CONVENTIONS.find((c) => c.archetype === archetype && c.paths.includes(path))
 }

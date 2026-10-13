@@ -2,9 +2,9 @@
  * TEST FIXTURES ONLY — not game data and never shipped to the Lab UI.
  *
  * Schema-conformant records (validated with the real Zod schemas in sim tests) used to exercise the
- * engine. Weapon combat numbers below are illustrative unless a test says it loaded a committed
- * record from src/data/weapons.detail.json. All Lab archetype params are fixtures: no committed
- * weapon has archetype params yet (P3-S0 authors them).
+ * engine. Weapon combat numbers and the Lab archetype params below are illustrative fixtures, not the
+ * committed data: committed weapons carry their own pipeline-derived params (P3-S0, B48 —
+ * pipeline/merge/labParams.ts), and a test that needs them loads src/data/weapons.detail.json.
  */
 import type { ArchetypeParams, Buff, Item, LabModifiers, Prov, Weapon } from '../../schemas'
 

@@ -197,8 +197,9 @@ export const loadBuffsOverlay = (dir = OVERLAY_DIR): BuffsOverlay => BuffsOverla
  * screen alone. Param semantics are binding as documented in src/sim/README.md (AMENDMENTS-008 B37).
  * - `archetype`: the screen flagged the weapon, a reviewer read its article and confirms it fits the
  *   archetype; supplies the per-weapon params no data module carries (bow-gun: projectilesPerUse,
- *   spreadDegrees, inheritsAmmoProjectile; magic-bolt: projectilesPerUse, spreadDegrees, pierce,
- *   lifetimeTicks). Every residual value must be stated by one of the entry's quotes (checked).
+ *   spreadDegrees or slightSpread, inheritsAmmoProjectile; magic-bolt: projectilesPerUse, spreadDegrees,
+ *   pierce, lifetimeTicks, damageMultiplierPct). Every residual value must be stated by one of the
+ *   entry's quotes (checked).
  * - `limitation`: the article documents behavior the archetype params cannot express; `reason` is the
  *   emitted (user-facing) limitation reason, backed by the quotes.
  * Every quote is checked verbatim against the cached article revision (merge/evidence.ts).
@@ -223,6 +224,13 @@ const LabArchetypeEntry = z.strictObject({
   pierce: z.union([z.int().nonnegative(), z.literal('infinite')]).optional(),
   /** magic-bolt only: the projectile lifetime the article states. */
   lifetimeTicks: z.int().positive().optional(),
+  /**
+   * bow-gun guns only — AMENDMENTS-010 B47: the article says the gun fires at a "slight" / "small" spread
+   * and states no angle → spreadDegrees = 10, a labeled modeling convention (listed in _prov.modeledFields).
+   */
+  slightSpread: z.literal(true).optional(),
+  /** magic-bolt only — AMENDMENTS-010 B48(b): the bolt deals this % of the weapon's damage (quoted). */
+  damageMultiplierPct: z.int().positive().optional(),
 })
 const LabLimitationEntry = z.strictObject({ ...LabEntryBase, decision: z.literal('limitation'), reason: PlainText1 })
 export const LabParamsEntry = z.discriminatedUnion('decision', [LabArchetypeEntry, LabLimitationEntry])

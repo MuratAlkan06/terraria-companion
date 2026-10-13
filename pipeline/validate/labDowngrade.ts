@@ -40,6 +40,17 @@ export function limitation(record: { name?: unknown; behaviorText?: unknown; wik
   return { kind: 'limitation', inGameBehavior, reason, sourceUrl: String(record.wikiUrl) }
 }
 
+/**
+ * AMENDMENTS-010 B49: once labBehavior becomes a limitation its params are gone, so the record no
+ * longer carries the modeled values `_prov.modeledFields` pointed at — drop those paths.
+ */
+function dropModeledLab<T>(prov: T): T {
+  if (!isObject(prov) || !Array.isArray(prov.modeledFields)) return prov
+  const { modeledFields, ...rest } = prov
+  const kept = (modeledFields as unknown[]).filter((p) => !(typeof p === 'string' && (p === 'labBehavior' || p.startsWith('labBehavior.'))))
+  return (kept.length > 0 ? { ...rest, modeledFields: kept } : rest) as T
+}
+
 /** Unverified listed paths that block simulation of this archetype. */
 export function blockingUnverifiedFields(archetype: string, unverifiedFields: readonly string[]): string[] {
   const required = ARCHETYPES.includes(archetype) ? simRequiredWeaponFields(archetype as Archetype) : []
@@ -62,7 +73,7 @@ export function downgradeUnverifiedArchetype(raw: unknown): { record: unknown; w
   if (blocking.length === 0) return { record: raw }
   const reason = `required simulation parameter unverified: ${blocking.join(', ')}`
   return {
-    record: { ...raw, labBehavior: limitation(raw, reason) },
+    record: { ...raw, labBehavior: limitation(raw, reason), _prov: dropModeledLab(raw._prov) },
     warning: { code: 'W_LAB_DOWNGRADE', ref: `i:${String(raw.id)}`, message: `labBehavior archetype "${archetype}" -> limitation (${reason})` },
   }
 }
@@ -107,7 +118,7 @@ export function checkAmmoClasses(
       ref,
       message: `ammoClass ${unmatched.map((c) => `"${c}"`).join(', ')} matches no ammoStats.ammoClass while ammo items are pending — labBehavior "${lab.kind}" -> limitation (${AMMO_UNVERIFIED_REASON}) (A1 rule 10)`,
     })
-    return { ...weapon, labBehavior: limitation(weapon, AMMO_UNVERIFIED_REASON) }
+    return { ...weapon, labBehavior: limitation(weapon, AMMO_UNVERIFIED_REASON), _prov: dropModeledLab(weapon._prov) }
   })
   return { weapons: out, warnings, deferred, errors }
 }

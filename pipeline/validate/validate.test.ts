@@ -504,6 +504,79 @@ describe('A1 downgrades (never build-fatal)', () => {
 
 })
 
+describe('AMENDMENTS-010 B49 _prov.modeledFields', () => {
+  /** Minishark with fully specified bow-gun params whose spread came from the B47 convention. */
+  const modeledGun = (raw: RawDataset, modeledFields: string[]) => {
+    const gun = find(raw, 'weapons', 98)
+    gun.labBehavior = { kind: 'archetype', params: { archetype: 'bow-gun', ammoClass: 'bullet', projectilesPerUse: 1, spreadDegrees: 10, inheritsAmmoProjectile: true } }
+    gun._prov.unverifiedFields = []
+    gun._prov.verified = true
+    gun._prov.modeledFields = modeledFields
+    raw.lists.weapons = (raw.lists.weapons as Rec[]).map((l) => (l.id === 98 ? { ...l, labKind: 'archetype' } : l))
+    return gun
+  }
+  const schemaMessages = (result: ValidationResult) => errorsOf(result).filter((e) => e.code === 'E_SCHEMA').map((e) => e.message)
+
+  it('passes when every listed path is present and governed by a ratified convention (B47 spread)', () => {
+    const raw = sample()
+    modeledGun(raw, ['labBehavior.params.spreadDegrees'])
+    const result = run(raw)
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    expect(result.dataset.weapons.find((w) => w.id === 98)?._prov.modeledFields).toEqual(['labBehavior.params.spreadDegrees'])
+  })
+
+  it('E_SCHEMA: a listed path that is absent, or that no convention governs for the archetype', () => {
+    const raw = sample()
+    modeledGun(raw, ['labBehavior.params.reachTiles', 'damage'])
+    const messages = schemaMessages(run(raw))
+    expect(messages).toContainEqual(expect.stringContaining('labBehavior.params.reachTiles: the path is not present'))
+    expect(messages).toContainEqual(expect.stringContaining('damage: no ratified modeling convention'))
+  })
+
+  it('E_SCHEMA: an always-modeled archetype (B44 swing-melee) must list its convention paths; non-Lab records cannot model', () => {
+    const raw = sample()
+    const yoyo = find(raw, 'weapons', 3278)
+    yoyo.labBehavior = { kind: 'archetype', params: { archetype: 'swing-melee', arcDegrees: 180, reachTiles: 2 } }
+    expect(schemaMessages(run(raw))).toContainEqual(expect.stringContaining('labBehavior.params.reachTiles can only come from the swing-geometry convention (AMENDMENTS-010 B44)'))
+    yoyo._prov.modeledFields = ['labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles']
+    const ok = run(raw)
+    if (!ok.ok) throw new Error(ok.errors.map(formatError).join('\n'))
+    find(raw, 'items', 22)._prov.modeledFields = ['name']
+    expect(schemaMessages(run(raw))).toContainEqual(expect.stringContaining('only Lab archetype params can be modeled'))
+  })
+
+  it('AMENDMENTS-012 B56: a thrust record lists its reach only when modeled (B46) — an article-stated range is wiki data', () => {
+    const raw = sample()
+    const spear = find(raw, 'weapons', 3278)
+    spear.labBehavior = { kind: 'archetype', params: { archetype: 'thrust', reachTiles: 5.05 } }
+    const stated = run(raw)
+    if (!stated.ok) throw new Error(stated.errors.map(formatError).join('\n'))
+    expect(stated.dataset.weapons.find((w) => w.id === 3278)?._prov.modeledFields).toBeUndefined()
+    spear._prov.modeledFields = ['labBehavior.params.reachTiles']
+    const modeled = run(raw)
+    if (!modeled.ok) throw new Error(modeled.errors.map(formatError).join('\n'))
+    expect(modeled.dataset.weapons.find((w) => w.id === 3278)?._prov.modeledFields).toEqual(['labBehavior.params.reachTiles'])
+  })
+
+  it('a §2.1-3 downgrade to a limitation drops the modeled Lab paths with the params', () => {
+    const raw = sample()
+    const gun = modeledGun(raw, ['labBehavior.params.spreadDegrees'])
+    delete gun.damage
+    gun._prov.verified = false
+    gun._prov.unverifiedFields = ['damage']
+    raw.lists.weapons = (raw.lists.weapons as Rec[]).map((l) => {
+      if (l.id !== 98) return l
+      const { damage: _damage, ...rest } = l
+      return { ...rest, labKind: 'limitation' }
+    })
+    const result = run(raw)
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    const weapon = result.dataset.weapons.find((w) => w.id === 98)!
+    expect(weapon.labBehavior.kind).toBe('limitation')
+    expect(weapon._prov.modeledFields).toBeUndefined()
+  })
+})
+
 describe('§7a-10 ammo classes (hard check once ammo items are produced, P2-S7)', () => {
   it('an ammoClass that matches no ammo record is E_DANGLING_REF (never a silent downgrade)', () => {
     const raw = sample()

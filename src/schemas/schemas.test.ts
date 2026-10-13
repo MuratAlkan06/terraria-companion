@@ -16,6 +16,8 @@ import {
   LabBehavior,
   LabModifiers,
   LoadoutSlots,
+  MODELING_CONVENTIONS,
+  modelingConventionFor,
   NpcId,
   RecipeStation,
   PlainText,
@@ -27,6 +29,7 @@ import {
   SettingsV1,
   SpriteManifest,
   TypedRef,
+  simRequiredWeaponFields,
   Weapon,
 } from './index'
 
@@ -263,6 +266,39 @@ describe('Weapon Lab behavior (§2.4)', () => {
   it('limitation behavior requires in-game text, reason and a wiki source', () => {
     expect(LabBehavior.safeParse(limitation).success).toBe(true)
     expect(LabBehavior.safeParse({ ...limitation, sourceUrl: undefined }).success).toBe(false)
+  })
+})
+
+describe('AMENDMENTS-010 B48 / B49 schema deltas', () => {
+  it('Weapon.reuseDelayTicks is an optional positive tick count', () => {
+    expect(Weapon.safeParse({ ...weapon, reuseDelayTicks: 14 }).success).toBe(true)
+    expect(Weapon.safeParse({ ...weapon, reuseDelayTicks: 0 }).success).toBe(false)
+    expect(Weapon.safeParse({ ...weapon, reuseDelayTicks: 1.5 }).success).toBe(false)
+  })
+
+  it('ProjectileSpec.damageMultiplierPct is an optional positive whole percentage', () => {
+    const bolt = { archetype: 'magic-bolt', projectilesPerUse: 1, spreadDegrees: 0, projectile: { velocityTps: 33.75, damageMultiplierPct: 50 } }
+    expect(ArchetypeParams.safeParse(bolt).success).toBe(true)
+    expect(ArchetypeParams.safeParse({ ...bolt, projectile: { velocityTps: 33.75, damageMultiplierPct: 0 } }).success).toBe(false)
+    expect(ArchetypeParams.safeParse({ ...bolt, projectile: { velocityTps: 33.75, damageMultiplierPct: 12.5 } }).success).toBe(false)
+  })
+
+  it('Prov.modeledFields: optional dot-paths, never also listed (or covered) as unverified', () => {
+    expect(Prov.safeParse({ ...prov, modeledFields: ['labBehavior.params.reachTiles'] }).success).toBe(true)
+    const open = { ...prov, verified: false, unverifiedFields: ['labBehavior.params'] }
+    expect(Prov.safeParse({ ...open, modeledFields: ['labBehavior.params.reachTiles'] }).success).toBe(false)
+    expect(Prov.safeParse({ ...open, modeledFields: ['labBehavior.params.reachTiles'], unverifiedFields: ['gatedBy'] }).success).toBe(true)
+  })
+
+  it('every modeling convention names its B44/B46/B47 ruling and resolves by archetype + path', () => {
+    expect(MODELING_CONVENTIONS.map((c) => [c.id, c.ruling, c.archetype, c.always])).toEqual([
+      ['swing-geometry', 'AMENDMENTS-010 B44', 'swing-melee', true],
+      ['thrust-reach', 'AMENDMENTS-010 B46', 'thrust', false], // AMENDMENTS-012 B56: a stated range is the reach (not modeled)
+      ['slight-spread', 'AMENDMENTS-010 B47', 'bow-gun', false],
+    ])
+    expect(modelingConventionFor('thrust', 'labBehavior.params.reachTiles')?.id).toBe('thrust-reach')
+    expect(modelingConventionFor('bow-gun', 'labBehavior.params.reachTiles')).toBeUndefined()
+    expect(simRequiredWeaponFields('bow-gun')).toContain('reuseDelayTicks')
   })
 })
 

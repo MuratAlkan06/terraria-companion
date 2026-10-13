@@ -137,6 +137,10 @@ export const ProjectileSpec = z.strictObject({
   lifetimeTicks: z.int().positive().optional(),
   pierce: z.union([z.int().nonnegative(), z.literal('infinite')]).optional(),
   spriteKey: z.string().optional(),
+  // AMENDMENTS-010 B48(b): the projectile deals this percentage of the damage it would otherwise deal
+  // (weapon damage, + ammo damage for bows/guns), rounded down — e.g. "deals 50% of the weapon's
+  // damage" (gem staffs). Wiki-sourced per weapon (quote-checked); absent = 100%.
+  damageMultiplierPct: z.int().positive().optional(),
 })
 export type ProjectileSpec = z.infer<typeof ProjectileSpec>
 

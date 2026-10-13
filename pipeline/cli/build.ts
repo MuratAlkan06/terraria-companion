@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { isCoveredBy, SpriteManifest, STAGE_ORDER, StatKind, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
+import { isCoveredBy, MODELING_CONVENTIONS, SpriteManifest, STAGE_ORDER, StatKind, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
@@ -261,6 +261,8 @@ async function main(): Promise<number> {
     pageOf: weapons.pageOf,
     rows: new Map(weapons.identification.included.map((c) => [c.item.id, c.row])),
     sprites: new Map(weapons.sprites.map((f) => [Number(f.ref.slice(2)), f])),
+    buffs: buffs.buffs,
+    buffTable: buffTable.rows,
     overlay: labOverlay,
   })
   // P2-S8 armor pieces + armor sets, accessories (merge/armor.ts, merge/accessories.ts, merge/effects.ts)
@@ -309,9 +311,10 @@ async function main(): Promise<number> {
     notes: [
       `Sources: Module:Iteminfo/data rev ${iteminfo.rev} (generated ${iteminfo.generated}, game ${iteminfo.terrariaVersion}); ${Object.values(mods).map((m) => `${m.title} rev ${m.rev}`).join('; ')}; Cargo tables fetched ${Object.values(sync.tables).map((t) => `${t.table} ${t.fetchedAt}`).join(', ')}; weapon category tree ${sync.weaponCategories.fetchedAt}; imageinfo ${sync.weaponImages.fetchedAt}.`,
       'Weapons: Cargo Items rows whose infobox type contains "weapon" and whose itemid is the same item in Module:Iteminfo/data (display name, or internal name for unnamed IDs). Stats from Module:Iteminfo/data, cross-checked against the Cargo infobox (a disagreement withholds the value as Unknown + source-mismatch gap). See pipeline/merge/weapons.ts for every field rule.',
-      'useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki\'s displayed "Use time" (TO-VERIFY #10). critPct = the weapon\'s crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.',
+      'useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki\'s displayed "Use time" (TO-VERIFY #10); reuseDelayTicks = Iteminfo reuseDelay (cooldown after each use; absent = none). critPct = the weapon\'s crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.',
       'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).',
       'Weapon labBehavior (P3-S0, pipeline/merge/labParams.ts + pipeline/overlays/lab-params.json): weapons in the wiki categories Broadswords / Shortswords + Spears / Bows + Repeaters + Guns / Wands + Magic guns + Spell books are classified into the swing-melee / thrust / bow-gun / magic-bolt archetypes from Iteminfo useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo and mana; params are derived from Module:Iteminfo/data, Module:Projectileinfo/data and the wiki sprite metadata where a formula exists, and single-projectile / no-spread / ammo-unchanged defaults only when the article screen finds no statement of other behavior — flagged weapons need a reviewed overlay entry with verbatim, revision-checked quotes. Semantics follow src/sim/README.md (AMENDMENTS-008 B37). Everything else keeps a limitation card (tooltip text where the wiki has one) with the specific reason; every emitted archetype weapon passes the sim guard (assessWeapon).',
+      'Lab coverage expansion (AMENDMENTS-010 B48): Weapon.reuseDelayTicks = Iteminfo reuseDelay (a cooldown after each use, part of the sim cadence); modeling conventions — swing arc/reach (B44), thrust reach = sprite diagonal × scale ÷ 16 + 1 tile where the article states no range (B46; a range the article states is the reach as extracted wiki data, AMENDMENTS-012 B56), 10° for a gun whose article says slight/small spread without an angle (B47) — are listed per record in _prov.modeledFields (B49) and labeled in the Lab; labBehavior.modifiers.dot comes from the weapon infobox debuff rows (buff registry, verified damage per second); ProjectileSpec.damageMultiplierPct only from a quoted percentage.',
       'Recipes: desktop rows only (legacy=0 and version empty or containing "desktop"); result = Cargo resultid checked against the Iteminfo name; ingredients from `ings`; "Any X" → Module:Recipes groups; stations split on " and " → registered environment condition, else Module:Recipes/l10n station category group (B3), else item; "By Hand" = no stations.',
       'Recipe result notes (#note_post_moon_lord, #note_moon_N, …) are availability conditions in Recipe.conditions (AMENDMENTS-003 B9); environment stations are only genuine crafting environments.',
       'Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs (i:/grp:/cond:, availability conditions included as cond:), i: sorted "ref*amount"})); same canonical recipe with a different result amount gets a -2 suffix. Drop ids: itemId-slug(npcName)-fnv1a32hex(JSON.stringify(sorted conditions)), -N suffix on collision.',
@@ -487,17 +490,31 @@ async function main(): Promise<number> {
     const fields = w._prov.unverifiedFields.filter((f) => f === 'useAnimationTicks' || f === 'autoReuse')
     return fields.length ? [{ name: w.name, fields, family: lab.decisions.find((d) => d.id === w.id)?.family, lab: w.labBehavior.kind }] : []
   })
+  // ---- AMENDMENTS-010 B48 report inputs ----
+  // P3-S0 baseline (gap report of 2026-10-13 before B48; AMENDMENTS-010 B48: "the existing 71")
+  const P3S0_BASELINE: Record<string, number> = { 'swing-melee': 35, thrust: 0, 'bow-gun': 34, 'magic-bolt': 2 }
+  const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
+  const labFinal = (id: number) => weaponDetails.find((w) => w.id === id)
+  const labSimulated = (id: number) => labFinal(id)?.labBehavior.kind === 'archetype'
+  const reuseDelayWeapons = weaponDetails.filter((w) => w.reuseDelayTicks !== undefined)
+  const dotDerived = lab.decisions.filter((d) => d.modifiers?.dot && labSimulated(d.id))
+  const pctQuote = /\d+(?:\.\d+)?% of (?:the weapon's |its |the )?(?:base )?damage/i
+  const multiplierWeapons = weaponDetails.filter((w) => w.labBehavior.kind === 'archetype' && JSON.stringify(w.labBehavior.params).includes('damageMultiplierPct'))
+  const multiplierStatedLimitations = labOverlay.entries.filter((e) => e.decision === 'limitation' && e.evidence.some((x) => pctQuote.test(x.quote)))
+  const thrustReach = lab.decisions.filter((d) => d.thrustReach).sort((a, b) => a.name.localeCompare(b.name))
+  // AMENDMENTS-012 B56: simulated thrust weapons whose reach is the article-stated range (not modeled)
+  const statedThrust = lab.decisions.filter((d) => d.archetype === 'thrust' && labSimulated(d.id) && !(d.modeled ?? []).includes('labBehavior.params.reachTiles')).sort((a, b) => a.name.localeCompare(b.name))
   const labFlagCounts = new Map<string, number>()
   for (const d of lab.decisions) for (const id of new Set(d.flags.map((f) => f.id))) labFlagCounts.set(id, (labFlagCounts.get(id) ?? 0) + 1)
   const LAB_REASON_LABEL: Record<string, string> = {
     flagged: 'article/data describe behavior beyond the plain archetype — not reviewed yet',
     overlay: 'reviewed: the article documents behavior the archetype params cannot express (overlay)',
-    'thrust-reach-undocumented': 'thrust reach undocumented (stab projectile travel distance)',
     'not-swing': 'game data is not a plain swing (use style / no contact damage / held use)',
+    'not-thrust': 'game data is not a plain stab (use style / held use / projectile is not the stab)',
     'not-bow-gun': 'game data is not a plain ammo-firing weapon',
     'not-magic-bolt': 'game data is not a plain magic projectile',
-    'no-sprite': 'no sprite / scale to derive the swing reach',
-    'reuse-delay': 'cooldown after each use (Iteminfo reuseDelay) not in the Lab cadence',
+    'no-sprite': 'no sprite / scale to derive the swing or thrust reach',
+    'dot-underivable': 'inflicts a debuff whose damage over time cannot be derived from the infobox',
     'velocity-mismatch': 'wiki infobox velocity disagrees with Iteminfo × Projectileinfo',
     ...Object.fromEntries(['unverified-required-field', 'missing-required-field', 'invalid-data', 'modifier-not-implemented'].map((r) => [`guard:${r}`, `sim guard refusal (${r})`])),
   }
@@ -806,7 +823,7 @@ async function main(): Promise<number> {
     {
       title: 'Weapon Lab — archetype params and coverage (P3-S0)',
       lines: [
-        `Rules: pipeline/merge/labParams.ts (header = the tooling doc). Param semantics are binding as documented in src/sim/README.md ("Cadence" and "Open questions" #2; AMENDMENTS-008 B37): pierce = extra dummies after the first; projectilesPerUse = projectiles per activation (bursts come from useTime < useAnimation); ammo speed only from the ammo's velocityBonusTps / velocityMultiplier; magic-bolt speed = params.projectile.velocityTps. Family = the wiki category of the weapon's article (${Object.entries(FAMILY_CATEGORIES).map(([f, cats]) => `${f}: ${cats.map((c) => c.replace('Category:', '')).join(' + ')}`).join('; ')}). "Derived" = every param computed from the data modules / sprite metadata and the article screen found nothing the params cannot express; "overlay" = the screen flagged the weapon and a reviewed entry in pipeline/overlays/lab-params.json (verbatim quotes, checked against the cached article revision) decided it; "downgraded" = params were assigned but a core field the sim needs is unverified, so the validate stage's §2.1-3 rule (incl. AMENDMENTS-008 B36) emits a limitation. Every emitted archetype weapon passed src/sim assessWeapon (build-time guard contract).`,
+        `Rules: pipeline/merge/labParams.ts (header = the tooling doc). Param semantics are binding as documented in src/sim/README.md ("Cadence" and "Param semantics"; AMENDMENTS-008 B37): pierce = extra dummies after the first; projectilesPerUse = projectiles per activation (bursts come from useTime < useAnimation); ammo speed only from the ammo's velocityBonusTps / velocityMultiplier; magic-bolt speed = params.projectile.velocityTps. Family = the wiki category of the weapon's article (${Object.entries(FAMILY_CATEGORIES).map(([f, cats]) => `${f}: ${cats.map((c) => c.replace('Category:', '')).join(' + ')}`).join('; ')}). "Derived" = every param computed from the data modules / sprite metadata and the article screen found nothing the params cannot express; "overlay" = the screen flagged the weapon and a reviewed entry in pipeline/overlays/lab-params.json (verbatim quotes, checked against the cached article revision) decided it; "downgraded" = params were assigned but a core field the sim needs is unverified, so the validate stage's §2.1-3 rule (incl. AMENDMENTS-008 B36) emits a limitation. Every emitted archetype weapon passed src/sim assessWeapon (build-time guard contract).`,
         '',
         '| Family (archetype) | Weapons | Derived | Overlay (reviewed) | Downgraded at validate | Limitation | **Simulable** | Simulable % |',
         '|---|---:|---:|---:|---:|---:|---:|---:|',
@@ -820,7 +837,30 @@ async function main(): Promise<number> {
         '',
         `**AMENDMENTS-008 B36** (simRequiredWeaponFields += useAnimationTicks for every archetype, + autoReuse for swing-melee / thrust / returning): of ${labWithParams} weapons given params, ${labB36.length} are downgraded by the validate rule${labB36.length ? ` (${labB36.map((x) => `${x.name} — ${x.fields.join(', ')}`).join('; ')})` : ''}; ${labB36Only.length} of them only because of the B36 fields (${labB36Only.map((x) => x.name).join(', ') || 'none'}). Weapons in the whole dataset with an unverified B36 field: ${labB36Sensitive.map((w) => `${w.name} (${w.fields.join(', ')}; ${w.family ?? 'no family'} → ${w.lab})`).join('; ') || 'none'} — none of them had params to lose (a thrust limitation and a reviewed magic limitation), so B36 changes no emitted record in this build; it now guarantees that any future params on them are downgraded with a proper limitation card. B36 adds requirements only, so it upgrades nothing; the slice's upgrades are the ${labArchetypeTotal} weapons whose labBehavior went from the P2 default limitation to a simulable archetype. Guard-only refusals turned into limitations at merge time: ${lab.decisions.filter((d) => d.reasonKey?.startsWith('guard:')).map((d) => `${d.name} (${d.reason})`).join('; ') || 'none'}.`,
         '',
-        `**Article screen** (high recall; a flag only routes a weapon to review, it never sets a value): ${SCREEN_RULES.map((r) => `${r.id} — ${r.label} (${r.families.join(', ')})`).join('; ')}; the tooltip is screened with the same rules; plus data flags: shoots-projectile (Iteminfo shoot > 0, melee), infobox-projectile, inflicts-debuff (Cargo debuffs / infobox buff), burst (useTime < useAnimation). Hard (non-overridable) data rules: Iteminfo reuseDelay > 0 (a cooldown the sim cadence omits), use style / class / ammo / mana / channel signals per archetype, thrust reach unsourced. Flag counts among family weapons: ${[...labFlagCounts].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}.`,
+        `**Coverage expansion (AMENDMENTS-010 B48; AMENDMENTS-012 B56 stated thrust ranges: thrust +${statedThrust.length})** — simulable vs the P3-S0 baseline (${Object.entries(P3S0_BASELINE).map(([f, n]) => `${f} ${n}`).join(' · ')} = ${sum(Object.values(P3S0_BASELINE))}): ${labCoverage.map((c) => `${c.family} **${c.simulable}** (${signed(c.simulable - (P3S0_BASELINE[c.family] ?? 0))})`).join(' · ')} = **${sum(labCoverage.map((c) => c.simulable))}** (${signed(sum(labCoverage.map((c) => c.simulable)) - sum(Object.values(P3S0_BASELINE)))}). Every P3-S0 archetype weapon kept its params; B49 adds \`_prov.modeledFields\` to the convention-derived ones.`,
+        '',
+        '| Modeling convention (src/schemas MODELING_CONVENTIONS) | Ruling | Archetype | Modeled param paths (`_prov.modeledFields`) | Emitted weapons listing them |',
+        '|---|---|---|---|---:|',
+        ...MODELING_CONVENTIONS.map((c) => `| ${c.id}: ${c.rule} | ${c.ruling} | ${c.archetype} | ${c.paths.join(', ')}${c.always ? ' (every record of the archetype)' : ''} | ${weaponDetails.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === c.archetype && c.paths.some((p) => (w._prov.modeledFields ?? []).includes(p))).length} |`),
+        '',
+        `modeledFields sample: ${[weaponDetails.find((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee' && w._prov.modeledFields), weaponDetails.find((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'thrust' && w._prov.modeledFields), weaponDetails.find((w) => (w._prov.modeledFields ?? []).includes('labBehavior.params.spreadDegrees'))].flatMap((w) => (w ? [`${w.name} (i:${w.id}) → ${JSON.stringify(w._prov.modeledFields)}`] : [])).join('; ')}. The validate stage requires every listed path to be present and governed by a convention for the record's archetype, and every ${MODELING_CONVENTIONS.filter((c) => c.always).map((c) => c.archetype).join(' / ')} record to list its convention paths (a thrust record lists its reach only when it comes from the B46 convention — AMENDMENTS-012 B56).`,
+        '',
+        `**Reuse delay (B48(a))**: ${reuseDelayWeapons.length} weapons carry \`reuseDelayTicks\` (Iteminfo reuseDelay > 0; the sim adds it after each use — wiki Use time: "reuseDelay is applied after the itemAnimation counter turns to zero"): ${reuseDelayWeapons.map((w) => `${w.name} ${w.reuseDelayTicks}${w.labBehavior.kind === 'archetype' ? ' (simulated)' : ''}`).join(', ')}.`,
+        '',
+        `**Damage over time from the infobox (B48(c))**: modifiers.dot derived for ${dotDerived.length} simulated weapons — ${dotDerived.map((d) => `${d.name}: ${d.modifiers?.dot?.buffId} ${d.modifiers?.dot?.chancePct}% for ${JSON.stringify(d.modifiers?.dot?.durationTicks)} ticks`).join('; ') || 'none'}. Underivable damaging debuffs (limitation): ${lab.decisions.filter((d) => d.reasonKey === 'dot-underivable').map((d) => `${d.name} (${d.reason})`).join('; ') || 'none (every such weapon also has a reviewed limitation for other behavior)'}.`,
+        '',
+        `**Per-projectile damage multipliers (B48(b))**: \`ProjectileSpec.damageMultiplierPct\` is supported end to end (schema, sim rounding ⌊damage × pct / 100⌋ as in the wiki's own figures, quote-checked overlay residual incl. a "(N base damage)" cross-check). Emitted on ${multiplierWeapons.length} weapons${multiplierWeapons.length ? ` (${multiplierWeapons.map((w) => w.name).join(', ')})` : ''}: every family weapon whose article states a per-projectile percentage also has behavior the Lab cannot express, so it stays a reviewed limitation — ${multiplierStatedLimitations.map((e) => e.name).join(', ')}.`,
+        '',
+        `**B46 thrust reach vs the range the article states (calibration record)**: AMENDMENTS-010 B46 rests on the thrust reach being undocumented, but ${thrustReach.filter((d) => d.thrustReach?.statedTiles !== undefined).length} of the ${thrustReach.length} thrust-family weapons' articles state a range ("maximum range of approximately N tiles"; some include a tip shockwave). AMENDMENTS-012 B56: where the article states a range, that range is the reach — an extracted wiki value whose sentence is checked verbatim on the cached revision (normal article provenance, not in \`_prov.modeledFields\`); the convention applies only where none is stated. Simulated with a stated range: ${statedThrust.map((d) => `${d.name} ${d.params?.archetype === 'thrust' ? d.params.reachTiles : '?'}`).join(', ') || 'none'} (${statedThrust.length}); with the B46 convention: ${thrustReach.filter((d) => labSimulated(d.id) && d.thrustReach?.statedTiles === undefined).length}. Convention reach vs stated range (every thrust-family weapon with a sprite and scale):`,
+        '',
+        '| Weapon | B46 reach (tiles) | Article-stated range (tiles) | B46 ÷ stated | Result |',
+        '|---|---:|---:|---:|---|',
+        ...thrustReach.map((d) => {
+          const r = d.thrustReach as NonNullable<typeof d.thrustReach>
+          return `| ${d.name} (${d.id}) | ${r.conventionTiles} | ${r.statedTiles ?? '— (none stated)'}${r.quote && /shockwave/i.test(r.quote) ? ' (incl. shockwave)' : ''} | ${r.statedTiles ? (r.conventionTiles / r.statedTiles).toFixed(2) : '—'} | ${labSimulated(d.id) ? (r.statedTiles !== undefined ? 'simulated (stated range, B56)' : 'simulated (B46)') : `limitation (${d.reasonKey})`} |`
+        }),
+        '',
+        `**Article screen** (high recall; a flag only routes a weapon to review, it never sets a value): ${SCREEN_RULES.map((r) => `${r.id} — ${r.label} (${r.families.join(', ')})`).join('; ')}; the tooltip is screened with the same rules; plus data flags: shoots-projectile (Iteminfo shoot > 0, melee), infobox-projectile, inflicts-debuff (Cargo debuffs / infobox buff), burst (useTime < useAnimation). Hard (non-overridable) data rules: use style / class / ammo / mana / channel signals per archetype; thrust: the Iteminfo projectile must be the stab itself (Projectileinfo name = weapon name); the reach is the range the article states (AMENDMENTS-012 B56) or, where none is stated, the B46 convention; a debuff with damage over time must be derivable from the infobox debuff rows (B48(c)). Since B48(a) Iteminfo reuseDelay is part of the sim cadence (no longer a limitation). Flag counts among family weapons: ${[...labFlagCounts].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}.`,
         '',
         '| Family | Weapon | Result | Params | How (derivation / overlay rationale / flags) |',
         '|---|---|---|---|---|',
@@ -830,7 +870,16 @@ async function main(): Promise<number> {
           .map((d) => {
             const final = weaponDetails.find((w) => w.id === d.id)
             const result = final?.labBehavior.kind === 'archetype' ? `simulated (${d.method})` : d.method === 'limitation' ? `limitation: ${LAB_REASON_LABEL[d.reasonKey ?? ''] ?? d.reasonKey}` : 'limitation (downgraded at validate)'
-            const params = d.params && final?.labBehavior.kind === 'archetype' ? Object.entries(d.params).filter(([k]) => k !== 'archetype').map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(', ') : '—'
+            const modeled = new Set((d.modeled ?? []).map((m) => m.replace('labBehavior.params.', '')))
+            const params =
+              d.params && final?.labBehavior.kind === 'archetype'
+                ? [
+                    ...Object.entries(d.params)
+                      .filter(([k]) => k !== 'archetype')
+                      .map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}${modeled.has(k) ? ' (modeled)' : ''}`),
+                    ...(d.modifiers?.dot ? [`dot ${JSON.stringify(d.modifiers.dot)}`] : []),
+                  ].join(', ')
+                : '—'
             const how = [...d.derivation, ...(d.reason ? [`reason: ${d.reason}`] : []), ...(d.flags.length ? [`flags: ${d.flags.map((f) => `${f.id} ${f.evidence}`).join('; ')}`] : [])].join(' · ')
             return `| ${d.family} | ${d.name} (${d.id}) | ${result} | ${params} | ${how.replaceAll('|', '\\|')} |`
           }),

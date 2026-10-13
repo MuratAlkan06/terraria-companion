@@ -3,8 +3,9 @@
  *
  * Tick order (fixed — part of the determinism contract):
  *   1. resolve aim/facing from the latched input
- *   2. use cycle: end finished use → start a new one if attacking (mana gate) →
- *      activation (every activationTicks) → behavior.tickUse (melee hit detection)
+ *   2. use cycle: end finished use (its reuse delay starts) → start a new one if attacking and the
+ *      reuse delay has passed (mana gate) → activation (every activationTicks) → behavior.tickUse
+ *      (melee hit detection)
  *   3. projectiles in spawn order: modifier steer → gravity → swept move/collide → age/lifetime → bounds
  *   4. debuffs: DoT accrual → duration countdown → expiry
  *   5. mana regeneration
@@ -41,8 +42,10 @@ export interface WorldConfig {
   dummies: readonly DummySpec[]
   arena: ArenaBounds
   settings: LabSettings
-  /** Effective ticks per use (cadence). */
-  cadenceTicks: number
+  /** Ticks one use lasts (the attack animation; autoswing melee already −1). */
+  useTicks: number
+  /** Cooldown after each use before the next may start (reuse delay; 0 = none). */
+  reuseDelayTicks: number
   /** Ticks between activations inside one use. */
   activationTicks: number
   critChancePct: number
@@ -72,6 +75,8 @@ export class World implements KernelApi {
   private projectiles: ProjectileState[] = []
   private nextProjectileId = 1
   private use: ActiveUse | null = null
+  /** First tick a new use may start: end of the last use + the reuse delay. */
+  private readyAt = 0
   private useCount = 0
   private blocked = false
   private mana: ManaPool | null
@@ -118,9 +123,13 @@ export class World implements KernelApi {
   }
 
   private stepUse(): void {
-    if (this.use && this.tick - this.use.startTick >= this.use.durationTicks) this.use = null
+    if (this.use && this.tick - this.use.startTick >= this.use.durationTicks) {
+      // wiki Use_time: "reuseDelay is applied after the itemAnimation counter turns to zero"
+      this.readyAt = this.use.startTick + this.use.durationTicks + this.cfg.reuseDelayTicks
+      this.use = null
+    }
     if (!this.input.attacking) this.blocked = false
-    if (!this.use && this.input.attacking) this.tryStartUse()
+    if (!this.use && this.input.attacking && this.tick >= this.readyAt) this.tryStartUse()
     const use = this.use
     if (!use) return
     use.elapsed = this.tick - use.startTick
@@ -149,7 +158,8 @@ export class World implements KernelApi {
       }
     }
     this.blocked = false
-    const durationTicks = slowCast ? Math.max(1, Math.floor(this.cfg.cadenceTicks * INSUFFICIENT_MANA_USE_TIME_MULTIPLIER)) : this.cfg.cadenceTicks
+    // slow-cast stretches the use itself; the reuse delay after it is not scaled (README "Cadence")
+    const durationTicks = slowCast ? Math.max(1, Math.floor(this.cfg.useTicks * INSUFFICIENT_MANA_USE_TIME_MULTIPLIER)) : this.cfg.useTicks
     const activationTicks = slowCast
       ? Math.max(1, Math.floor(this.cfg.activationTicks * INSUFFICIENT_MANA_USE_TIME_MULTIPLIER))
       : this.cfg.activationTicks

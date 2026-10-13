@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { Buff, Item, Weapon, type ArchetypeParams } from '../schemas'
+import { Buff, Item, MODELING_CONVENTIONS, Weapon, type ArchetypeParams } from '../schemas'
+import { APPROXIMATIONS, CONVENTION_APPROXIMATIONS } from './approximations'
 import { assessWeapon, createLabSim, type SimRefusal } from './index'
 import { modifierEntry, NotImplementedError } from './modifiers'
 import {
@@ -93,6 +94,17 @@ describe('honesty guard — NotSimulable, never a guess', () => {
     expect(notSimulable(swordFixture({ knockback: undefined, _prov: fixtureProv(['knockback']) })).fields).toEqual(['knockback'])
     expect(notSimulable(swordFixture({ autoReuse: undefined, _prov: fixtureProv(['autoReuse']) })).fields).toEqual(['autoReuse'])
     expect(notSimulable(staffFixture({}, { manaCost: undefined, _prov: fixtureProv(['manaCost']) })).fields).toEqual(['manaCost'])
+  })
+
+  it('every modeling convention names its ruling, and its engine label carries the same ruling (B49)', () => {
+    expect(MODELING_CONVENTIONS.map((c) => c.ruling)).toEqual(['AMENDMENTS-010 B44', 'AMENDMENTS-010 B46', 'AMENDMENTS-010 B47'])
+    for (const c of MODELING_CONVENTIONS) {
+      const id = CONVENTION_APPROXIMATIONS[c.id]
+      if (id) expect(APPROXIMATIONS[id].ruling, c.id).toBe(c.ruling)
+      else expect(c.id).toBe('swing-geometry') // B44: labeled by the Lab UI (approximations.ts header)
+    }
+    // only convention labels carry a ruling
+    expect(Object.values(APPROXIMATIONS).filter((a) => a.ruling).map((a) => a.id).sort()).toEqual(['slight-spread', 'thrust-reach'])
   })
 
   it('absent required fields (not listed) are missing-required-field', () => {

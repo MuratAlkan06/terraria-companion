@@ -1,8 +1,10 @@
 /**
  * P3-S0 — Weapon Lab archetype params: classification, derivation, article screen, curated overlay,
- * per-archetype coverage (AMENDMENTS-001 A3; DATA_SCHEMA_SPEC §2.4 ArchetypeParams).
+ * per-archetype coverage (AMENDMENTS-001 A3; DATA_SCHEMA_SPEC §2.4 ArchetypeParams). Extended by the
+ * B48 coverage-expansion slice (AMENDMENTS-010 B44–B49): reuse delay in the sim cadence, thrust reach
+ * (B46), slight spread (B47), per-projectile damage multipliers, DoT from the infobox, modeledFields (B49).
  *
- * PARAM SEMANTICS ARE BINDING as documented in src/sim/README.md ("Open questions" #2 and "Cadence";
+ * PARAM SEMANTICS ARE BINDING as documented in src/sim/README.md ("Param semantics" and "Cadence";
  * AMENDMENTS-008 B37): `ProjectileSpec.pierce` = extra dummies passed through AFTER the first hit
  * (0/absent = stops at the first); `projectilesPerUse` = projectiles per ACTIVATION (shot) within one
  * attack — bursts come from useTime < useAnimation, never from projectilesPerUse; an ammo projectile's
@@ -21,15 +23,30 @@
  * - The weapon's own item infobox (rendered article): "Internal Projectile ID" / "Internal Buff ID".
  * - Cargo Items `debuffs` (on-hit debuffs) and the tooltip (Weapon.behaviorText).
  *
- * DERIVED PARAMS (formula + inputs recorded per weapon in the coverage report):
+ * DERIVED PARAMS (formula + inputs recorded per weapon in the coverage report). Params taken from a
+ * MODELING CONVENTION (src/schemas MODELING_CONVENTIONS) are listed in `_prov.modeledFields` (B49) and
+ * labeled in the Lab — never presented as game data:
  * - swing-melee `reachTiles` = √(w² + h²) × scale ÷ 16 — w×h = the item's wiki sprite (imageinfo,
  *   SHA-1 pinned), scale = Iteminfo `scale`: the drawn blade's diagonal at the item's scale.
- *   LAB MODELING DERIVATION: the wiki documents no swing reach (checked: Swords, Melee weapons,
- *   Modifiers articles); the swing itself is the sim's labeled `swing-geometry` approximation.
+ *   MODELING CONVENTION (AMENDMENTS-010 B44): the wiki documents no swing reach (checked: Swords, Melee
+ *   weapons, Modifiers articles); the swing itself is the sim's labeled `swing-geometry` approximation.
  * - swing-melee `arcDegrees` = 180 — the wiki states "broadswords are swung over the player's head"
  *   (Swords article); the sim's swing is centered on the facing direction (README swing-geometry),
- *   and 180° is the smallest such arc that reaches straight over the head. Same modeling status.
+ *   and 180° is the smallest such arc that reaches straight over the head. Same convention (B44).
+ * - thrust `reachTiles` = √(w² + h²) × scale ÷ 16 + 1 (tile of arm extension) — MODELING CONVENTION
+ *   (AMENDMENTS-010 B46), same sprite/scale inputs as B44. A thrust weapon is a melee item with use
+ *   style Rapier (13, "Shortswords") or Shoot (5, "…spears…") whose Iteminfo `shoot` projectile is the
+ *   stab itself — Projectileinfo names it after the weapon (Spear → projectile 49 "Spear"); other
+ *   projectiles (infobox / Iteminfo) are screen flags. Held (`channel`) stabs are not plain thrusts.
+ *   B46 rests on the reach being UNDOCUMENTED, so it applies only where the article states no range.
+ * - thrust `reachTiles` = N where the weapon's article states "maximum range of approximately N tiles"
+ *   (AMENDMENTS-012 B56) — an EXTRACTED wiki value (normal article provenance, not in modeledFields),
+ *   its sentence checked verbatim on the cached article revision. The coverage report keeps the B46
+ *   convention-vs-stated table as a calibration record.
  * - bow-gun `ammoClass` = Weapon.ammoClass (Iteminfo `useAmmo`).
+ * - bow-gun `spreadDegrees` = 10 for a gun whose article says it fires at a "slight" / "small" spread
+ *   and states no angle — MODELING CONVENTION (AMENDMENTS-010 B47), set only by a reviewed overlay entry
+ *   (`slightSpread: true`) whose quote says so. Unstated non-slight spreads stay limitations.
  * - magic-bolt `projectile.velocityTps` = Iteminfo `shootSpeed` × (1 + Projectileinfo `extraUpdates`)
  *   × 60/16 — the wiki's Velocity article: extra updates multiply the distance moved per tick;
  *   cross-checked against the item infobox "Velocity" row (the wiki's effective velocity), a
@@ -44,12 +61,21 @@
  *   alternate use). A flagged weapon is NEVER auto-parameterized: it stays a limitation unless the
  *   curated overlay (pipeline/overlays/lab-params.json) records a reviewed decision with verbatim
  *   quotes (checked against the cached article revision) — residual params come only from there
- *   (bow-gun: projectilesPerUse, spreadDegrees, inheritsAmmoProjectile; magic-bolt: projectilesPerUse,
- *   spreadDegrees, pierce, lifetimeTicks — each value must be stated by one of the entry's quotes).
- * - thrust: the stab is a projectile whose travel distance neither the wiki nor the data modules
- *   state, so `reachTiles` has no source → limitation (never guessed).
- * - Iteminfo `reuseDelay` > 0 → limitation: the sim's cadence is useAnimation and omits that cooldown,
- *   so the simulated attack rate would be overstated (e.g. Clockwork Assault Rifle: 14 extra ticks).
+ *   (bow-gun: projectilesPerUse, spreadDegrees or slightSpread (B47), inheritsAmmoProjectile;
+ *   magic-bolt: projectilesPerUse, spreadDegrees, pierce, lifetimeTicks, damageMultiplierPct — each
+ *   value must be stated by one of the entry's quotes).
+ * - magic-bolt `projectile.damageMultiplierPct` (AMENDMENTS-010 B48(b)): only from a reviewed entry
+ *   whose quote states "<n>% of the weapon's damage"; a quoted "(<m> base damage)" must equal
+ *   ⌊damage × n / 100⌋ (the sim's rounding).
+ * - `modifiers.dot` (B48(c)) from the weapon's own infobox debuff rows ("Debuff" / "Chance" /
+ *   "Duration"; a duration range is AMENDMENTS-002 B5's {minTicks, maxTicks} union), when the debuff is
+ *   in the buff registry with a verified damage per second, it is the weapon's only debuff and Cargo
+ *   `debuffs` / the infobox buff ID agree. A damaging debuff that cannot be derived that way makes the
+ *   weapon a limitation (its damage over time would be missing); a debuff without damage over time
+ *   adds no modifier and stays a screen flag (reviewed, e.g. Confused).
+ * - Iteminfo `reuseDelay` (Weapon.reuseDelayTicks) is part of the sim cadence since B48(a) (wiki Use
+ *   time: "reuseDelay is applied after the itemAnimation counter turns to zero"); before, it forced a
+ *   limitation because the simulated attack rate would have been overstated.
  *
  * GUARD CONTRACT: every candidate is run through the sim's own `assessWeapon` (src/sim, pure TS). A
  * candidate blocked by an unverified field the pipeline rule covers (`simRequiredWeaponFields`,
@@ -58,13 +84,13 @@
  * Lab as a generic refusal.
  */
 import { assessWeapon } from '../../src/sim'
-import { ArchetypeParams, type LabBehavior, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
+import { ArchetypeParams, getField, modelingConventionFor, type Buff, type LabBehavior, type LabModifiers, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
 import { articleText, normalizeQuote, type Article } from '../fetch/articles'
 import { itemTypeIncludes, type CargoRow } from '../fetch/cargo'
 import type { CategoryTree } from '../fetch/categories'
 import { wikiPageUrl } from '../fetch/config'
 import { findAll, hasClass, parseHtml, rawText, type HNode } from '../parse/html'
-import { infoboxForItem, parseItemInfoboxes } from '../parse/infobox'
+import { infoboxForItem, parseItemInfoboxes, type BuffIdRow, type ItemInfobox } from '../parse/infobox'
 import type { Iteminfo } from '../parse/iteminfo'
 import type { Projectileinfo } from '../parse/projectileinfo'
 import { slugify, stripMarkup } from '../parse/text'
@@ -109,6 +135,7 @@ export const RULE_QUOTES = {
   swingOverHead: { page: 'Broadswords', quote: "broadswords are swung over the player's head" },
   extraUpdates: { page: 'Velocity', quote: 'It determines how many times the projectile moves by its listed velocity in each tick.' },
   tilesPerSecond: { page: 'Velocity', quote: 'this is equivalent to a speed of 3.75 tiles/second' },
+  reuseDelay: { page: 'Use time', quote: 'reuseDelay is applied after the itemAnimation counter turns to zero.' },
 } as const
 
 /** Mechanics articles the derivation rules quote (fetched with the family articles). */
@@ -255,8 +282,135 @@ const round3 = (n: number) => Math.round(n * 1e3) / 1e3
 /** Swing arc convention (see header): 180° = the smallest facing-centered arc reaching over the head. */
 export const SWING_ARC_DEGREES = 180
 
-/** swing-melee reach (tiles) from the wiki sprite and the Iteminfo scale (see header). */
+/** swing-melee reach (tiles) from the wiki sprite and the Iteminfo scale (see header; AMENDMENTS-010 B44). */
 export const swingReachTiles = (widthPx: number, heightPx: number, scale: number): number => round3((Math.hypot(widthPx, heightPx) * scale) / 16)
+
+/** AMENDMENTS-010 B46: tiles of arm extension added to the thrust's sprite reach. */
+export const THRUST_ARM_EXTENSION_TILES = 1
+
+/** thrust reach (tiles): sprite diagonal × scale ÷ 16 + the arm extension (see header; AMENDMENTS-010 B46). */
+export const thrustReachTiles = (widthPx: number, heightPx: number, scale: number): number =>
+  round3((Math.hypot(widthPx, heightPx) * scale) / 16 + THRUST_ARM_EXTENSION_TILES)
+
+/**
+ * A range the article states in tiles ("The Spear has a maximum range of approximately 5.05 tiles.").
+ * AMENDMENTS-012 B56: it is the thrust reach (quote-checked); B46 applies only where none is stated.
+ */
+export function statedRangeTiles(text: string): { tiles: number; quote: string } | undefined {
+  const m = /[^.]*\b(?:maximum )?range of (?:approximately |about |roughly |around )?(\d+(?:\.\d+)?) tiles\b[^.]*/i.exec(text)
+  return m ? { tiles: Number(m[1]), quote: m[0].trim() } : undefined
+}
+
+/** AMENDMENTS-010 B47: spread (degrees) of a gun whose article says "slight spread" without an angle. */
+export const SLIGHT_SPREAD_DEGREES = 10
+
+/** A quote saying the weapon fires at a slight / small spread and stating no angle (B47). */
+export const statesSlightSpread = (quote: string): boolean => /\b(?:slight|small)\s+spread\b/i.test(quote) && !/\d\s*(?:°|degrees?\b)/i.test(quote)
+
+/** A quote stating a per-projectile damage percentage ("deals 50% of the weapon's damage"). */
+export const statesDamagePct = (quote: string, pct: number): boolean =>
+  new RegExp(`(?:^|[^\\d.])${pct}% of (?:the weapon's |its |the )?(?:base )?damage`, 'i').test(quote)
+
+// ---------------------------------------------------------------------------------------------
+// Damage over time from the item infobox (AMENDMENTS-010 B48(c))
+// ---------------------------------------------------------------------------------------------
+
+export interface InfoboxDebuff {
+  name: string
+  chance?: string
+  duration?: string
+}
+
+/** The infobox's debuff sections: a "Debuff" row followed by its "Debuff tooltip" / "Chance" / "Duration" rows. */
+export function infoboxDebuffs(box: ItemInfobox | undefined): InfoboxDebuff[] {
+  const out: InfoboxDebuff[] = []
+  let current: InfoboxDebuff | undefined
+  for (const r of box?.rows ?? []) {
+    if (r.label === 'Debuff') {
+      current = { name: r.value }
+      out.push(current)
+    } else if (current && r.label === 'Chance' && current.chance === undefined) current.chance = r.value
+    else if (current && r.label === 'Duration' && current.duration === undefined) current.duration = r.value
+    else if (r.label !== 'Debuff tooltip') current = undefined // the next infobox section starts
+  }
+  return out
+}
+
+/** "100%" → 100; anything else (fractions, ranges, words) → undefined. */
+export function chancePctOf(value: string | undefined): number | undefined {
+  const m = /^(\d+)%$/.exec((value ?? '').trim())
+  const n = m ? Number(m[1]) : NaN
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? n : undefined
+}
+
+/** "7 seconds" → 420; "1−4 seconds" / "4–5 seconds" → {minTicks, maxTicks} (B5); not whole ticks / other text → undefined. */
+export function durationTicksOf(value: string | undefined): number | { minTicks: number; maxTicks: number } | undefined {
+  const m = /^(\d+(?:\.\d+)?)(?:\s*[−–-]\s*(\d+(?:\.\d+)?))?\s*seconds?$/.exec((value ?? '').trim())
+  if (!m) return undefined
+  const ticks = (s: string): number | undefined => {
+    const t = Math.round(Number(s) * 60)
+    return t > 0 && Math.abs(t - Number(s) * 60) < 1e-9 ? t : undefined
+  }
+  const lo = ticks(m[1])
+  if (lo === undefined) return undefined
+  if (m[2] === undefined) return lo
+  const hi = ticks(m[2])
+  return hi === undefined || hi < lo ? undefined : hi === lo ? lo : { minTicks: lo, maxTicks: hi }
+}
+
+export type DotDerivation =
+  | { kind: 'none' }
+  | { kind: 'dot'; dot: NonNullable<LabModifiers['dot']>; text: string }
+  /** The weapon's debuffs deal no damage over time (registry: no dot) — nothing to model, still a screen flag. */
+  | { kind: 'no-dot'; names: string[] }
+  | { kind: 'fail'; reason: string }
+
+/**
+ * DoT modifier from the weapon's infobox debuff rows, cross-checked with Cargo `debuffs` and the
+ * infobox buff IDs, resolved through the buff registry (buffs.json). See the header for the rule.
+ */
+export function deriveDot(
+  box: ItemInfobox | undefined,
+  cargoDebuffs: readonly string[],
+  buffs: readonly Buff[],
+  buffTable: readonly Pick<BuffIdRow, 'id' | 'name' | 'isDebuff'>[],
+): DotDerivation {
+  const rows = infoboxDebuffs(box)
+  // infobox buff IDs the wiki's Buff IDs table types "Buff" are granted to the player (e.g. Striking Moment), not inflicted
+  const tableById = new Map(buffTable.map((r) => [r.id, r]))
+  const ids = (box?.buffIds ?? []).filter((id) => tableById.get(id)?.isDebuff !== false)
+  const byName = new Map(buffs.map((b) => [b.name, b]))
+  const named = [...new Set([...rows.map((r) => r.name), ...cargoDebuffs])].map((name) => ({ name, buff: byName.get(name) }))
+  const byId = ids.filter((id) => !named.some((n) => n.buff?.gameBuffId === id)).map((id) => {
+    const buff = buffs.find((b) => b.gameBuffId === id)
+    return { name: buff?.name ?? tableById.get(id)?.name ?? `buff ID ${id}`, buff }
+  })
+  const inflicted = [...named, ...byId]
+  if (inflicted.length === 0) return { kind: 'none' }
+  const damaging = inflicted.filter((x) => x.buff && getField(x.buff, 'dot.dps').status === 'verified')
+  const unknown = inflicted.filter((x) => !x.buff || getField(x.buff, 'dot.dps').status === 'unverified')
+  const list = inflicted.map((x) => x.name).join(', ')
+  if (damaging.length === 0) {
+    if (unknown.length > 0) return { kind: 'fail', reason: `whether ${unknown.map((x) => x.name).join(', ')} deals damage over time is not known (${unknown.some((x) => !x.buff) ? 'not in the buff registry' : 'its damage per second is unverified'})` }
+    return { kind: 'no-dot', names: inflicted.map((x) => x.name) }
+  }
+  if (inflicted.length > 1) return { kind: 'fail', reason: `it inflicts several debuffs (${list}); the Lab models one damage-over-time debuff per weapon` }
+  const buff = damaging[0].buff as Buff
+  const row = rows.find((r) => r.name === buff.name)
+  if (!row) return { kind: 'fail', reason: `the wiki infobox lists no chance and duration for ${buff.name}` }
+  if (cargoDebuffs.length > 0 && (cargoDebuffs.length !== 1 || cargoDebuffs[0] !== buff.name)) return { kind: 'fail', reason: `the wiki infobox (${buff.name}) and the item data (${cargoDebuffs.join(', ')}) disagree about the debuff` }
+  if (ids.length > 0 && (ids.length !== 1 || ids[0] !== buff.gameBuffId)) return { kind: 'fail', reason: `the infobox buff ID ${ids.join(', ')} is not ${buff.name}'s` }
+  const chancePct = chancePctOf(row.chance)
+  const durationTicks = durationTicksOf(row.duration)
+  if (chancePct === undefined) return { kind: 'fail', reason: `the ${buff.name} chance "${row.chance ?? 'not stated'}" is not a whole percentage` }
+  if (durationTicks === undefined) return { kind: 'fail', reason: `the ${buff.name} duration "${row.duration ?? 'not stated'}" is not a whole number of ticks` }
+  const ticks = typeof durationTicks === 'number' ? `${durationTicks}` : `${durationTicks.minTicks}–${durationTicks.maxTicks}`
+  return {
+    kind: 'dot',
+    dot: { buffId: buff.id, chancePct, durationTicks },
+    text: `dot ${buff.name} (${buff.id}, ${buff.dot?.dps} HP/s): chance ${chancePct}%, duration "${row.duration}" = ${ticks} ticks (infobox debuff rows; Cargo debuffs / infobox buff ID agree)`,
+  }
+}
 
 /** Effective projectile speed (tiles/s): shootSpeed px/tick × (1 + extraUpdates) × 60/16. */
 export const projectileVelocityTps = (shootSpeedPxPerTick: number, extraUpdates: number): number => round6(shootSpeedPxPerTick * (1 + extraUpdates) * 3.75)
@@ -277,6 +431,10 @@ export interface LabDecision {
   /** Emitted archetype (method derived/overlay). */
   archetype?: LabFamily
   params?: ArchetypeParams
+  /** Emitted modifiers (B48(c): damage over time from the infobox). */
+  modifiers?: LabModifiers
+  /** Param paths taken from a modeling convention (emitted as `_prov.modeledFields`, B49). */
+  modeled?: string[]
   /** Screen + data flags (why a weapon needed curation). */
   flags: ScreenFlag[]
   /** How each param was obtained (report). */
@@ -287,6 +445,8 @@ export interface LabDecision {
   reasonKey?: string
   /** Fields the validate stage will downgrade on (pipeline rule incl. B36), when params were kept for it. */
   pipelineBlocked?: string[]
+  /** thrust: the B46 convention reach vs the range the article states, if any (report: B56 calibration record). */
+  thrustReach?: { conventionTiles: number; statedTiles?: number; quote?: string }
 }
 
 export interface LabBuildInput {
@@ -301,6 +461,10 @@ export interface LabBuildInput {
   rows: ReadonlyMap<number, CargoRow>
   /** Weapon item ID → its sprite manifest entry (imageinfo width/height). */
   sprites: ReadonlyMap<number, SpriteManifestFile>
+  /** The buff registry (buffs.json records): debuff names, game buff IDs, verified dot.dps (B48(c)). */
+  buffs: readonly Buff[]
+  /** The wiki's Buff IDs table (id → name, Buff/Debuff): tells inflicted debuffs from granted buffs in an infobox. */
+  buffTable: readonly Pick<BuffIdRow, 'id' | 'name' | 'isDebuff'>[]
   overlay: LabParamsOverlay
 }
 
@@ -356,20 +520,37 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     const shoot = num('shoot') ?? 0
     const boxes = parseItemInfoboxes(article.html)
     const box = infoboxForItem(boxes, w.id)
+    // thrust: the stab is the weapon's own projectile (Projectileinfo names it after the weapon), not an extra one
+    const shootProjectile = shoot > 0 ? proj.projectiles.get(shoot) : undefined
+    const stabId = family === 'thrust' && shootProjectile?.name === w.name ? shoot : undefined
     const flags: ScreenFlag[] = []
     if (family === 'swing-melee' || family === 'thrust') {
-      if (shoot > 0) flags.push({ id: 'shoots-projectile', evidence: `Iteminfo shoot ${shoot}` })
-      if (box && box.projectileIds.length > 0) flags.push({ id: 'infobox-projectile', evidence: `infobox projectile ${box.projectileIds.join(', ')}` })
+      if (shoot > 0 && shoot !== stabId) flags.push({ id: 'shoots-projectile', evidence: `Iteminfo shoot ${shoot}` })
+      const extra = (box?.projectileIds ?? []).filter((id) => id !== stabId)
+      if (extra.length > 0) flags.push({ id: 'infobox-projectile', evidence: `infobox projectile ${extra.join(', ')}` })
     }
-    const debuffs = stripMarkup(str(input.rows.get(w.id)?.debuffs))
-    if (debuffs !== '') flags.push({ id: 'inflicts-debuff', evidence: `Cargo debuffs "${debuffs}"` })
+    const cargoDebuffs = str(input.rows.get(w.id)?.debuffs).split('^').map((d) => stripMarkup(d).trim()).filter(Boolean)
+    if (cargoDebuffs.length > 0) flags.push({ id: 'inflicts-debuff', evidence: `Cargo debuffs "${cargoDebuffs.join('^')}"` })
     else if (box && box.buffIds.length > 0) flags.push({ id: 'inflicts-debuff', evidence: `infobox buff ${box.buffIds.join(', ')}` })
     if (family !== 'swing-melee' && w.useTimeTicks !== undefined && w.useAnimationTicks !== undefined && w.useTimeTicks < w.useAnimationTicks) {
       flags.push({ id: 'burst', evidence: `useTime ${w.useTimeTicks} < useAnimation ${w.useAnimationTicks}` })
     }
-    flags.push(...screenText(family, behaviorText(article.html)))
+    const text = behaviorText(article.html)
+    flags.push(...screenText(family, text))
     if (w.behaviorText) for (const f of screenText(family, w.behaviorText.replace(/\n/g, ' '))) if (!flags.some((x) => x.id === f.id)) flags.push({ id: f.id, evidence: `tooltip ${f.evidence}` })
     decision.flags = flags
+    const spriteOf = () => {
+      const sprite = input.sprites.get(w.id)
+      const scale = num('scale')
+      return sprite && scale !== undefined && scale > 0 ? { sprite, scale } : undefined
+    }
+    // thrust family: the B46 reach vs any range the article states (report: calibration record, every thrust weapon)
+    const thrustGeo = family === 'thrust' ? spriteOf() : undefined
+    const statedRange = family === 'thrust' ? statedRangeTiles(text) : undefined
+    if (thrustGeo) {
+      const conventionTiles = thrustReachTiles(thrustGeo.sprite.width, thrustGeo.sprite.height, thrustGeo.scale)
+      decision.thrustReach = { conventionTiles, ...(statedRange ? { statedTiles: statedRange.tiles, quote: statedRange.quote } : {}) }
+    }
 
     // ---- overlay limitation decisions win (reviewed) ----
     if (entry?.decision === 'limitation') {
@@ -381,13 +562,8 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     const archetype: LabFamily = entry?.decision === 'archetype' ? entry.archetype : family
     if (archetype !== family && !isLabFamily(archetype)) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: unknown archetype`)
     const fail = (key: string, reason: string) => asLimitation(key, reason)
-    // The sim's attack cadence is useAnimation (src/sim/README.md "Cadence"); a reuseDelay cooldown after
-    // each use is not part of it, so the simulated rate would be overstated.
-    const reuseDelay = num('reuseDelay') ?? 0
-    if (reuseDelay > 0) {
-      return fail('reuse-delay', `Not simulated: after each use this weapon waits an extra ${reuseDelay} ticks (reuseDelay in the game data), which the Lab's attack cadence does not include, so its attack rate would be overstated.`)
-    }
     const derivation: string[] = []
+    const modeled: string[] = []
     let params: ArchetypeParams
     const sources: ProvSource[] = [articleSrc]
     switch (archetype) {
@@ -395,20 +571,43 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         if (useStyle !== 1 || s.noMelee === true || s.channel === true || w.damageClass !== 'melee') {
           return fail('not-swing', `Not simulated: the game data does not describe a plain swing for this weapon (use style ${useStyle ?? 'Unknown'}${s.noMelee === true ? ', the item itself deals no contact damage' : ''}${s.channel === true ? ', held use' : ''}), so the swing parameters would not represent it.`)
         }
-        const sprite = input.sprites.get(w.id)
-        const scale = num('scale')
-        if (!sprite || scale === undefined || !(scale > 0)) return fail('no-sprite', 'Not simulated: the swing reach is derived from the item sprite and scale, and the wiki has no sprite file or the game data no scale for this weapon.')
-        const reachTiles = swingReachTiles(sprite.width, sprite.height, scale)
+        const geo = spriteOf()
+        if (!geo) return fail('no-sprite', 'Not simulated: the swing reach is derived from the item sprite and scale, and the wiki has no sprite file or the game data no scale for this weapon.')
+        const reachTiles = swingReachTiles(geo.sprite.width, geo.sprite.height, geo.scale)
         params = { archetype: 'swing-melee', arcDegrees: SWING_ARC_DEGREES, reachTiles }
-        derivation.push(`reach √(${sprite.width}²+${sprite.height}²)×${scale}÷16 = ${reachTiles} tiles (sprite ${sprite.wikiFileUrl}, Iteminfo scale)`, `arc ${SWING_ARC_DEGREES}° (rule: "${RULE_QUOTES.swingOverHead.quote}")`)
-        sources.push({ kind: 'cargo:Imageinfo', url: sprite.wikiFileUrl, fetchedAt: articleSrc.fetchedAt }, ruleSource(rules.useStyleSwing), ruleSource(rules.swingOverHead))
+        modeled.push('labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles')
+        derivation.push(
+          `reach √(${geo.sprite.width}²+${geo.sprite.height}²)×${geo.scale}÷16 = ${reachTiles} tiles (modeling convention AMENDMENTS-010 B44; sprite ${geo.sprite.wikiFileUrl}, Iteminfo scale)`,
+          `arc ${SWING_ARC_DEGREES}° (modeling convention AMENDMENTS-010 B44; rule: "${RULE_QUOTES.swingOverHead.quote}")`,
+        )
+        sources.push({ kind: 'cargo:Imageinfo', url: geo.sprite.wikiFileUrl, fetchedAt: articleSrc.fetchedAt }, ruleSource(rules.useStyleSwing), ruleSource(rules.swingOverHead))
         break
       }
-      case 'thrust':
-        return fail(
-          'thrust-reach-undocumented',
-          'Not simulated yet: a stab is a projectile whose reach (how far it travels from the player) neither the wiki nor the game data modules state, so the Lab does not guess it.',
+      case 'thrust': {
+        if (w.damageClass !== 'melee' || (useStyle !== 13 && useStyle !== 5) || s.channel === true || stabId === undefined) {
+          const why = s.channel === true ? 'held use' : useStyle !== 13 && useStyle !== 5 ? `use style ${useStyle ?? 'Unknown'}` : w.damageClass !== 'melee' ? 'not a melee weapon' : 'its projectile is not the stab itself'
+          return fail('not-thrust', `Not simulated: the game data does not describe a plain stab for this weapon (${why}), so the thrust parameters would not represent it.`)
+        }
+        // AMENDMENTS-012 B56: a range the article states IS the reach — extracted wiki data, its sentence checked verbatim
+        if (statedRange !== undefined) {
+          evidence.quote(page, statedRange.quote, `lab-params ${w.name}: stated thrust range`)
+          params = { archetype: 'thrust', reachTiles: statedRange.tiles }
+          derivation.push(`reach ${statedRange.tiles} tiles = the range the article states: "${statedRange.quote}" (AMENDMENTS-012 B56; quote checked on rev ${article.revid}; stab = projectile #${shoot} "${shootProjectile?.name}")`)
+          sources.push(projSrc, ruleSource(useStyle === 13 ? rules.useStyleRapier : rules.useStyleShoot))
+          break
+        }
+        // B46 models the reach only where it is undocumented
+        const geo = spriteOf()
+        if (!geo) return fail('no-sprite', 'Not simulated: the thrust reach is derived from the item sprite and scale, and the wiki has no sprite file or the game data no scale for this weapon.')
+        const reachTiles = thrustReachTiles(geo.sprite.width, geo.sprite.height, geo.scale)
+        params = { archetype: 'thrust', reachTiles }
+        modeled.push('labBehavior.params.reachTiles')
+        derivation.push(
+          `reach √(${geo.sprite.width}²+${geo.sprite.height}²)×${geo.scale}÷16 + ${THRUST_ARM_EXTENSION_TILES} = ${reachTiles} tiles (modeling convention AMENDMENTS-010 B46; sprite ${geo.sprite.wikiFileUrl}, Iteminfo scale; stab = projectile #${shoot} "${shootProjectile?.name}")`,
         )
+        sources.push({ kind: 'cargo:Imageinfo', url: geo.sprite.wikiFileUrl, fetchedAt: articleSrc.fetchedAt }, projSrc, ruleSource(useStyle === 13 ? rules.useStyleRapier : rules.useStyleShoot))
+        break
+      }
       case 'bow-gun': {
         if (w.ammoClass === undefined || w.damageClass !== 'ranged' || useStyle !== 5 || s.channel === true || w.shootSpeedTps === undefined) {
           return fail('not-bow-gun', `Not simulated: the game data does not describe a plain ammo-firing weapon (${w.ammoClass === undefined ? 'no ammo class' : s.channel === true ? 'held use' : useStyle !== 5 ? `use style ${useStyle}` : 'no shoot speed'}), so the bow/gun parameters would not represent it.`)
@@ -419,7 +618,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         break
       }
       case 'magic-bolt': {
-        const p = shoot > 0 ? proj.projectiles.get(shoot) : undefined
+        const p = shootProjectile
         const xu = p ? p.stats.extraUpdates : undefined
         const shootSpeed = num('shootSpeed')
         if (w.damageClass !== 'magic' || w.manaCost === undefined || s.channel === true || !p || typeof xu !== 'number' || shootSpeed === undefined || !(shootSpeed > 0)) {
@@ -442,19 +641,33 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         break
       }
     }
+    if (w.reuseDelayTicks !== undefined) {
+      derivation.push(`cadence includes the reuse delay: ${w.useAnimationTicks ?? '?'} + ${w.reuseDelayTicks} ticks (Iteminfo reuseDelay; rule: "${RULE_QUOTES.reuseDelay.quote}")`)
+      sources.push(ruleSource(rules.reuseDelay))
+    }
+
+    // ---- damage over time from the infobox debuff rows (B48(c)) ----
+    const dot = deriveDot(box, cargoDebuffs, input.buffs, input.buffTable)
+    if (dot.kind === 'fail') return fail('dot-underivable', `Not simulated: this weapon inflicts a debuff, but ${dot.reason}, so its damage over time cannot be modeled.`)
+    const modifiers: LabModifiers | undefined = dot.kind === 'dot' ? { dot: dot.dot } : undefined
+    if (dot.kind === 'dot') derivation.push(dot.text)
+    // a derived DoT modifier expresses the data flag; text flags still need a reviewer (B45: a human read)
+    const open = dot.kind === 'dot' ? flags.filter((f) => f.id !== 'inflicts-debuff') : flags
 
     // ---- flagged → overlay decision required ----
     let editorial = false
-    if (flags.length > 0) {
+    if (open.length > 0) {
       if (entry?.decision !== 'archetype') {
         return asLimitation(
           'flagged',
-          `Not simulated yet: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${[...new Set(flags.map((f) => SCREEN_LABEL[f.id]))].join('; ')}) that has not been reviewed for the Lab.`,
+          `Not simulated yet: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${[...new Set(open.map((f) => SCREEN_LABEL[f.id]))].join('; ')}) that has not been reviewed for the Lab.`,
         )
       }
       const pages = checkEntryEvidence(entry, evidence, page)
-      params = applyResidual(params, entry, w.id)
-      derivation.push(`overlay: ${entry.why}`)
+      const residual = applyResidual(params, entry, w)
+      params = residual.params
+      modeled.push(...residual.modeled)
+      derivation.push(...residual.derivation, `overlay: ${entry.why}`)
       sources.push(...pages.map((pg) => Evidence.source('lab-params', pg)))
       editorial = true
     } else if (entry) {
@@ -462,12 +675,17 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     }
     const checked = ArchetypeParams.safeParse(params)
     if (!checked.success) throw new OverlayError(`[E_SCHEMA] lab-params ${w.name}: params fail the archetype schema: ${checked.error.issues.map((i) => i.message).join('; ')}`)
-    const lab: LabBehavior = { kind: 'archetype', params: checked.data }
+    for (const path of modeled) {
+      if (!modelingConventionFor(archetype, path)) throw new OverlayError(`[E_SCHEMA] lab-params ${w.name}: modeled path ${path} has no ratified convention for ${archetype} (B49)`)
+    }
+    const lab: LabBehavior = { kind: 'archetype', params: checked.data, ...(modifiers ? { modifiers } : {}) }
     decision.params = checked.data
+    decision.modifiers = modifiers
+    decision.modeled = [...modeled].sort()
     decision.archetype = archetype
     decision.derivation = derivation
     decision.method = editorial ? 'overlay' : 'derived'
-    const candidate = withLab(w, lab, sources, editorial)
+    const candidate = withLab(w, lab, sources, editorial, modeled)
 
     // ---- guard contract ----
     const pipelineBlocked = blockingUnverifiedFields(archetype, candidate._prov.unverifiedFields)
@@ -478,6 +696,8 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     const verdict = assessWeapon(candidate)
     if (!verdict.simulable) {
       decision.params = undefined
+      decision.modifiers = undefined
+      decision.modeled = undefined
       decision.archetype = undefined
       return asLimitation(`guard:${verdict.refusal.reason}`, `required simulation parameter unverified: ${(verdict.refusal.fields ?? []).join(', ') || verdict.refusal.message}`)
     }
@@ -509,38 +729,77 @@ export const statesLifetime = (quote: string, ticks: number): boolean =>
 
 /**
  * Residual params from a reviewed overlay entry. Every value must be stated by one of its quotes:
- * a count > 1 (number or number word), a spread > 0 (degrees), a pierce (B37 semantics), a lifetime.
+ * a count > 1 (number or number word), a spread > 0 (degrees) or a slight/small spread without an
+ * angle (B47 convention → modeled), a pierce (B37 semantics), a lifetime, a damage percentage.
  */
-function applyResidual(params: ArchetypeParams, entry: Extract<LabParamsEntry, { decision: 'archetype' }>, id: number): ArchetypeParams {
-  const where = `overlay lab-params/i:${id}`
+function applyResidual(
+  params: ArchetypeParams,
+  entry: Extract<LabParamsEntry, { decision: 'archetype' }>,
+  w: Weapon,
+): { params: ArchetypeParams; modeled: string[]; derivation: string[] } {
+  const where = `overlay lab-params/i:${w.id}`
   const quotes = entry.evidence.map((x) => x.quote)
   const stated = (test: (q: string) => boolean, what: string) => {
     if (!quotes.some(test)) throw new OverlayError(`[E_SCHEMA] ${where}: no quote states ${what}`)
   }
-  const { projectilesPerUse: n, spreadDegrees: spread, inheritsAmmoProjectile: inherits, pierce, lifetimeTicks } = entry
-  const any = [n, spread, inherits, pierce, lifetimeTicks].some((v) => v !== undefined)
+  const { projectilesPerUse: n, spreadDegrees: spread, slightSpread, inheritsAmmoProjectile: inherits, pierce, lifetimeTicks, damageMultiplierPct: pct } = entry
+  const any = [n, spread, slightSpread, inherits, pierce, lifetimeTicks, pct].some((v) => v !== undefined)
   if (params.archetype !== 'bow-gun' && params.archetype !== 'magic-bolt') {
     if (any) throw new OverlayError(`[E_SCHEMA] ${where}: ${params.archetype} takes no residual params`)
-    return params
+    return { params, modeled: [], derivation: [] }
   }
+  if (slightSpread && spread !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: slightSpread (B47) and spreadDegrees are exclusive`)
   if (n !== undefined && n > 1) stated((q) => statesNumber(q, n), `the projectile count ${n}`)
   if (spread !== undefined && spread > 0) stated((q) => statesNumber(q, spread) && /degree|°/i.test(q), `a spread of ${spread}°`)
   if (params.archetype === 'bow-gun') {
-    if (pierce !== undefined || lifetimeTicks !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: bow-gun projectile shape comes from the ammo (B37)`)
-    return { ...params, ...(n !== undefined ? { projectilesPerUse: n } : {}), ...(spread !== undefined ? { spreadDegrees: spread } : {}), ...(inherits !== undefined ? { inheritsAmmoProjectile: inherits } : {}) }
+    if (pierce !== undefined || lifetimeTicks !== undefined || pct !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: bow-gun projectile shape and damage come from the ammo (B37)`)
+    const modeled: string[] = []
+    const derivation: string[] = []
+    let spreadDegrees = spread
+    if (slightSpread) {
+      // AMENDMENTS-010 B47: guns only; the article says "slight" / "small" spread and states no angle
+      if (!w.tags.includes('guns')) throw new OverlayError(`[E_SCHEMA] ${where}: the B47 slight-spread convention applies to guns (Category:Guns) only`)
+      stated(statesSlightSpread, 'a slight or small spread without an angle (B47)')
+      spreadDegrees = SLIGHT_SPREAD_DEGREES
+      modeled.push('labBehavior.params.spreadDegrees')
+      derivation.push(`spread ${SLIGHT_SPREAD_DEGREES}° (modeling convention AMENDMENTS-010 B47: the article says slight/small spread and states no angle)`)
+    }
+    return {
+      params: { ...params, ...(n !== undefined ? { projectilesPerUse: n } : {}), ...(spreadDegrees !== undefined ? { spreadDegrees } : {}), ...(inherits !== undefined ? { inheritsAmmoProjectile: inherits } : {}) },
+      modeled,
+      derivation,
+    }
   }
   if (inherits !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: magic-bolt has no ammo`)
+  if (slightSpread) throw new OverlayError(`[E_SCHEMA] ${where}: the B47 slight-spread convention applies to guns only`)
   if (pierce !== undefined) stated((q) => statesPierce(q, pierce), `a pierce of ${pierce}`)
   if (lifetimeTicks !== undefined) stated((q) => statesLifetime(q, lifetimeTicks), `a lifetime of ${lifetimeTicks} ticks`)
-  const projectile = { ...params.projectile, ...(pierce !== undefined ? { pierce } : {}), ...(lifetimeTicks !== undefined ? { lifetimeTicks } : {}) }
-  return { ...params, ...(n !== undefined ? { projectilesPerUse: n } : {}), ...(spread !== undefined ? { spreadDegrees: spread } : {}), projectile }
+  const derivation: string[] = []
+  if (pct !== undefined) {
+    // AMENDMENTS-010 B48(b): "<pct>% of the weapon's damage"; a quoted "(<m> base damage)" must match the sim's rounding
+    stated((q) => statesDamagePct(q, pct), `that the projectile deals ${pct}% of the weapon's damage`)
+    const base = Math.floor(((w.damage ?? 0) * pct) / 100)
+    for (const q of quotes) {
+      for (const m of q.matchAll(/\((\d+) base damage\)/g)) {
+        if (Number(m[1]) !== base) throw new OverlayError(`[E_SCHEMA] ${where}: the quote states ${m[1]} base damage, but ⌊${w.damage} × ${pct}%⌋ = ${base}`)
+      }
+    }
+    derivation.push(`projectile damage ${pct}% of ${w.damage} = ${base} (rounded down; quoted)`)
+  }
+  const projectile = { ...params.projectile, ...(pierce !== undefined ? { pierce } : {}), ...(lifetimeTicks !== undefined ? { lifetimeTicks } : {}), ...(pct !== undefined ? { damageMultiplierPct: pct } : {}) }
+  return { params: { ...params, ...(n !== undefined ? { projectilesPerUse: n } : {}), ...(spread !== undefined ? { spreadDegrees: spread } : {}), projectile }, modeled: [], derivation }
 }
 
-/** Replace labBehavior and add provenance (editorial = reviewed overlay decision, DATA_SCHEMA_SPEC §2.1 rule 4). */
-function withLab(w: Weapon, lab: LabBehavior, sources: readonly ProvSource[], editorial: boolean): Weapon {
+/**
+ * Replace labBehavior and add provenance (editorial = reviewed overlay decision, DATA_SCHEMA_SPEC §2.1
+ * rule 4; modeled = params from a modeling convention, AMENDMENTS-010 B49).
+ */
+function withLab(w: Weapon, lab: LabBehavior, sources: readonly ProvSource[], editorial: boolean, modeled: readonly string[] = []): Weapon {
   const unique = new Map([...w._prov.sources, ...sources].map((s) => [`${s.kind}|${s.url}`, s]))
   const editorialFields = editorial ? [...new Set([...w._prov.editorialFields, 'labBehavior'])].sort() : w._prov.editorialFields
-  return { ...w, labBehavior: lab, _prov: { ...w._prov, sources: [...unique.values()], editorialFields } }
+  const { modeledFields: previous, ...prov } = w._prov
+  const modeledFields = [...new Set([...(previous ?? []).filter((p) => p !== 'labBehavior' && !p.startsWith('labBehavior.')), ...modeled])].sort()
+  return { ...w, labBehavior: lab, _prov: { ...prov, sources: [...unique.values()], editorialFields, ...(modeledFields.length > 0 ? { modeledFields } : {}) } }
 }
 
 // ---------------------------------------------------------------------------------------------

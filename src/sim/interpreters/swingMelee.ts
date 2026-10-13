@@ -4,13 +4,14 @@
  * facing, not the cursor). Hit detection: each tick the swept sector is sampled with sub-steps so
  * the blade tip moves ≤ SWING_MAX_TIP_STEP_TILES between samples; each sample is an exact
  * segment-vs-AABB test. One hit per dummy per swing (use-scoped immunity) unless multiHit.
- * Optional `emitted` projectile fires toward the aim on every activation (e.g. sword beams).
+ * Optional `emitted` projectile fires toward the aim on every activation (e.g. sword beams), dealing
+ * the weapon damage × its `damageMultiplierPct` when the wiki states one.
  */
 import { SWING_MAX_TIP_STEP_TILES } from '../constants'
 import type { ActiveUse, ArchetypeInterpreter, Behavior, KernelApi } from '../contracts'
 import { DEG_TO_RAD, segmentAabbEntry } from '../geometry'
 import type { BladePose } from '../types'
-import { fireVolley, shapeFromSpec, volleyApproximations, type Volley } from './shared'
+import { fireVolley, projectileDamage, shapeFromSpec, volleyApproximations, type Volley } from './shared'
 
 /** Blade angle at swing progress p ∈ [0, 1]. Facing right: −arc/2 (up) → +arc/2 (down). */
 export function swingAngle(facing: 1 | -1, arcRad: number, p: number): number {
@@ -26,7 +27,7 @@ export const swingMelee: ArchetypeInterpreter<'swing-melee'> = {
     const reach = params.reachTiles
     const damage = weapon.damage ?? 0
     const volley: Volley | null = params.emitted
-      ? { count: 1, spreadDegrees: 0, speedTps: params.emitted.velocityTps, damage, shape: shapeFromSpec(params.emitted) }
+      ? { count: 1, spreadDegrees: 0, speedTps: params.emitted.velocityTps, damage: projectileDamage(damage, params.emitted), shape: shapeFromSpec(params.emitted) }
       : null
 
     const pose = (use: ActiveUse): BladePose => ({

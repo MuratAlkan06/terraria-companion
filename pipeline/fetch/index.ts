@@ -20,7 +20,8 @@
  * registry may contain (debuffs inflicted by weapon/ammo rows, ammo-granted buffs, overlays/buffs.json).
  * Plan (P3-S0): + the article of every weapon row in the Weapon Lab family categories (merge/labParams.ts
  * FAMILY_CATEGORIES: the article screen + overlay evidence), the mechanics articles its rules quote
- * (Use Style IDs, Broadswords, Velocity) and every page the lab-params overlay cites.
+ * (Use Style IDs, Broadswords, Velocity; + Use time for the B48 reuse-delay rule) and every page the
+ * lab-params overlay cites.
  * Plan (P2-S8): + Cargo Equipinfo (the wiki's machine transcription of each equipable item's UpdateEquip
  * effects — cross-check of tooltip-derived stat effects; 184 columns → compact field list) · the
  * Category:Armor items and Category:Accessory items trees and their pages' existence (count

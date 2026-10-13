@@ -2,12 +2,33 @@
   "overlay": "lab-params",
   "authoredAt": "2026-10-13",
   "notes": [
-    "P3-S0 Weapon Lab archetype params — the RESIDUAL, reviewed decisions. Everything derivable is computed by pipeline/merge/labParams.ts (its header is the tooling doc): family = the wiki category of the weapon article; classification from Module:Iteminfo/data useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo, mana; swing reach/arc, magic-bolt velocity/pierce, bow-gun ammo class derived; single-projectile / no-spread / ammo-unchanged defaults only when the article screen is clean.",
-    "PARAM SEMANTICS (AMENDMENTS-008 B37, binding — see src/sim/README.md 'Cadence' and 'Open questions' #2): pierce = extra dummies passed through AFTER the first hit (0 = stops at the first); projectilesPerUse = projectiles per activation (shot) within one attack — bursts come from useTime < useAnimation, never from projectilesPerUse; an ammo projectile's speed comes only from the ammo's velocityBonusTps / velocityMultiplier (bow-gun entries carry no speed); magic-bolt speed = params.projectile.velocityTps (derived from Iteminfo shootSpeed x (1 + Projectileinfo extraUpdates)), never weapon.shootSpeedTps.",
-    "An entry exists only for a weapon the article screen flagged (the build fails on an entry for a clean weapon — residuals only). decision 'archetype': a reviewer read the article and confirms the archetype fits; residual values (projectilesPerUse, spreadDegrees, inheritsAmmoProjectile, pierce, lifetimeTicks) must each be stated by one of the quotes (number / number word, degrees, pierce wording, seconds) — checked by the build. decision 'limitation': `reason` is emitted on the Lab's limitation card; the quotes document the behavior the params cannot express.",
-    "Every quote is checked verbatim against the cached revision of the cited article; the weapon's own article must be cited. `why` is pipeline-only reviewer rationale. NEVER guess: a weapon whose behavior the wiki does not pin down stays a limitation (e.g. guns whose spread angle is unstated, homing whose strength is undocumented, thrust reach)."
+    "P3-S0 Weapon Lab archetype params \u2014 the RESIDUAL, reviewed decisions. Everything derivable is computed by pipeline/merge/labParams.ts (its header is the tooling doc): family = the wiki category of the weapon article; classification from Module:Iteminfo/data useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo, mana; swing reach/arc, magic-bolt velocity/pierce, bow-gun ammo class derived; single-projectile / no-spread / ammo-unchanged defaults only when the article screen is clean.",
+    "PARAM SEMANTICS (AMENDMENTS-008 B37, binding \u2014 see src/sim/README.md 'Cadence' and 'Param semantics'): pierce = extra dummies passed through AFTER the first hit (0 = stops at the first); projectilesPerUse = projectiles per activation (shot) within one attack \u2014 bursts come from useTime < useAnimation, never from projectilesPerUse; an ammo projectile's speed comes only from the ammo's velocityBonusTps / velocityMultiplier (bow-gun entries carry no speed); magic-bolt speed = params.projectile.velocityTps (derived from Iteminfo shootSpeed x (1 + Projectileinfo extraUpdates)), never weapon.shootSpeedTps.",
+    "An entry exists only for a weapon the article screen flagged (the build fails on an entry for a clean weapon \u2014 residuals only). decision 'archetype': a reviewer read the article and confirms the archetype fits; residual values (projectilesPerUse, spreadDegrees, inheritsAmmoProjectile, pierce, lifetimeTicks, damageMultiplierPct) must each be stated by one of the quotes (number / number word, degrees, pierce wording, seconds, '<n>% of the weapon's damage') \u2014 checked by the build. slightSpread: true = AMENDMENTS-010 B47 (a gun whose quote says slight / small spread with no angle \u2192 the labeled 10\u00b0 modeling convention, listed in _prov.modeledFields). decision 'limitation': `reason` is emitted on the Lab's limitation card; the quotes document the behavior the params cannot express.",
+    "Every quote is checked verbatim against the cached revision of the cited article; the weapon's own article must be cited. `why` is pipeline-only reviewer rationale. NEVER guess: a weapon whose behavior the wiki does not pin down stays a limitation (e.g. guns whose non-slight spread angle is unstated, homing whose strength is undocumented). Modeling conventions (B44 swing geometry, B46 thrust reach, B47 slight spread) are ratified rulings, always labeled \u2014 never silent.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "AMENDMENTS-012 B56 (2026-10-13): a range the thrust weapon's article states ('maximum range of approximately N tiles') is its reach \u2014 extracted by pipeline/merge/labParams.ts and checked verbatim on the cached revision (wiki data with normal provenance, not _prov.modeledFields); the B46 convention applies only where no range is stated. The nine plain spears (Trident, Spear, Mythril Halberd, Adamantite Glaive, Cobalt Naginata, Palladium Pike, Orichalcum Halberd, Titanium Trident, Swordfish) have reviewed entries for their screen flags only \u2014 their reach is never an overlay value."
   ],
   "entries": [
+    {
+      "itemId": 6,
+      "name": "Iron Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Iron Shortsword",
+          "quote": "The Iron Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Iron Shortsword",
+          "quote": "In Journey Mode, the Iron Shortsword replaces the Copper Shortsword for newly created characters."
+        }
+      ],
+      "why": "Flag 'spawns' matched 'created' in the starting-inventory note (acquisition), not weapon behavior; the article states no special stab behavior."
+    },
     {
       "itemId": 46,
       "name": "Light's Bane",
@@ -25,7 +46,7 @@
       "itemId": 64,
       "name": "Vilethorn",
       "decision": "limitation",
-      "reason": "It extends a thorn from the player's position rather than firing a bolt — not modeled.",
+      "reason": "It extends a thorn from the player's position rather than firing a bolt \u2014 not modeled.",
       "evidence": [
         {
           "page": "Vilethorn",
@@ -38,7 +59,7 @@
       "itemId": 65,
       "name": "Starfury",
       "decision": "limitation",
-      "reason": "Swings summon stars that fall from the sky to the cursor (150% damage) — not modeled by the swing parameters.",
+      "reason": "Swings summon stars that fall from the sky to the cursor (150% damage) \u2014 not modeled by the swing parameters.",
       "evidence": [
         {
           "page": "Starfury",
@@ -50,21 +71,22 @@
     {
       "itemId": 98,
       "name": "Minishark",
-      "decision": "limitation",
-      "reason": "It fires with a slight spread whose angle the wiki does not state, so its accuracy cannot be modeled without guessing.",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
       "evidence": [
         {
           "page": "Minishark",
-          "quote": "When used, it rapidly fires bullets at a slight spread"
+          "quote": "When used, it rapidly fires bullets at a slight spread, with each shot having a 1/3 (33.33%) chance of not consuming any ammunition."
         }
       ],
-      "why": "unstated spread"
+      "why": "AMENDMENTS-010 B47: 'slight spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. Ammo saving is not modeled (labeled 'ammo'); 'penetration' and 'damage could be reduced' are defense / accessory advice."
     },
     {
       "itemId": 112,
       "name": "Flower of Fire",
       "decision": "limitation",
-      "reason": "Its fireball bounces off blocks and can set enemies On Fire! — not modeled.",
+      "reason": "Its fireball bounces off blocks and can set enemies On Fire! \u2014 not modeled.",
       "evidence": [
         {
           "page": "Flower of Fire",
@@ -77,7 +99,7 @@
       "itemId": 113,
       "name": "Magic Missile",
       "decision": "limitation",
-      "reason": "Its missile follows the cursor while held and then homes — not modeled.",
+      "reason": "Its missile follows the cursor while held and then homes \u2014 not modeled.",
       "evidence": [
         {
           "page": "Magic Missile",
@@ -90,7 +112,7 @@
       "itemId": 120,
       "name": "Molten Fury",
       "decision": "limitation",
-      "reason": "It converts Wooden Arrows into Flaming Arrows that inflict On Fire! — an ammo conversion the Lab does not model.",
+      "reason": "It converts Wooden Arrows into Flaming Arrows that inflict On Fire! \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Molten Fury",
@@ -103,7 +125,7 @@
       "itemId": 121,
       "name": "Volcano",
       "decision": "limitation",
-      "reason": "Hits create an explosion that damages the target and two more enemies, and can set enemies On Fire! — not modeled.",
+      "reason": "Hits create an explosion that damages the target and two more enemies, and can set enemies On Fire! \u2014 not modeled.",
       "evidence": [
         {
           "page": "Volcano",
@@ -116,7 +138,7 @@
       "itemId": 127,
       "name": "Space Gun",
       "decision": "limitation",
-      "reason": "Its lasers gain damage and pierce as they travel — not modeled.",
+      "reason": "Its lasers gain damage and pierce as they travel \u2014 not modeled.",
       "evidence": [
         {
           "page": "Space Gun",
@@ -142,7 +164,7 @@
       "itemId": 157,
       "name": "Aqua Scepter",
       "decision": "limitation",
-      "reason": "It sprays arcing water streams that pierce — not modeled.",
+      "reason": "It sprays arcing water streams that pierce \u2014 not modeled.",
       "evidence": [
         {
           "page": "Aqua Scepter",
@@ -155,7 +177,7 @@
       "itemId": 165,
       "name": "Water Bolt",
       "decision": "limitation",
-      "reason": "Its slow water ball pierces and bounces off blocks — bouncing is not simulated yet.",
+      "reason": "Its slow water ball pierces and bounces off blocks \u2014 bouncing is not simulated yet.",
       "evidence": [
         {
           "page": "Water Bolt",
@@ -181,7 +203,7 @@
       "itemId": 190,
       "name": "Blade of Grass",
       "decision": "limitation",
-      "reason": "Swings fire a homing leaf projectile and can poison enemies — not modeled.",
+      "reason": "Swings fire a homing leaf projectile and can poison enemies \u2014 not modeled.",
       "evidence": [
         {
           "page": "Blade of Grass",
@@ -194,7 +216,7 @@
       "itemId": 218,
       "name": "Flamelash",
       "decision": "limitation",
-      "reason": "Its fireball follows the cursor while held and then homes — not modeled.",
+      "reason": "Its fireball follows the cursor while held and then homes \u2014 not modeled.",
       "evidence": [
         {
           "page": "Flamelash",
@@ -220,7 +242,7 @@
       "itemId": 272,
       "name": "Demon Scythe",
       "decision": "limitation",
-      "reason": "Its scythe starts static and gradually accelerates — not modeled.",
+      "reason": "Its scythe starts static and gradually accelerates \u2014 not modeled.",
       "evidence": [
         {
           "page": "Demon Scythe",
@@ -243,6 +265,65 @@
       "why": "1.4.4 aura swing; item has noMelee"
     },
     {
+      "itemId": 274,
+      "name": "Dark Lance",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Dark Lance",
+          "quote": "The Dark Lance inflicts the Shadowflame debuff for 4\u20135 seconds and creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
+    },
+    {
+      "itemId": 277,
+      "name": "Trident",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Trident",
+          "quote": "The Trident is a pre-Hardmode spear"
+        },
+        {
+          "page": "Trident",
+          "quote": "When held while submerged in water or lava, the player is granted increased movement speed and jump height."
+        },
+        {
+          "page": "Trident",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Trident",
+          "quote": "The Trident emits light when used underwater."
+        }
+      ],
+      "why": "'held' is the held item's movement effect in water or lava (not an attack; the Lab arena has no liquids); 'emits' is light, not a projectile; 'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes). Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 280,
+      "name": "Spear",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Spear",
+          "quote": "The Spear is a pre-Hardmode spear"
+        },
+        {
+          "page": "Spear",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Spear",
+          "quote": "Its knockback can hold back multiple enemies at once, notably Demon Eyes, Eaters of Souls, and Crimeras."
+        }
+      ],
+      "why": "'hold' matched 'Its knockback can hold back multiple enemies' (knockback \u2014 the Lab's dummies never move), not a held use; 'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes). Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
       "itemId": 368,
       "name": "Excalibur",
       "decision": "limitation",
@@ -254,6 +335,40 @@
         }
       ],
       "why": "aura swing"
+    },
+    {
+      "itemId": 390,
+      "name": "Mythril Halberd",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Mythril Halberd",
+          "quote": "The Mythril Halberd is a Hardmode spear."
+        },
+        {
+          "page": "Mythril Halberd",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 406,
+      "name": "Adamantite Glaive",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Adamantite Glaive",
+          "quote": "The Adamantite Glaive is a Hardmode spear."
+        },
+        {
+          "page": "Adamantite Glaive",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
     },
     {
       "itemId": 426,
@@ -269,10 +384,40 @@
       "why": "health-dependent damage"
     },
     {
+      "itemId": 434,
+      "name": "Clockwork Assault Rifle",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Clockwork Assault Rifle",
+          "quote": "When used, it fires in three-shot bursts, with each burst consuming one piece of ammunition."
+        },
+        {
+          "page": "Clockwork Assault Rifle",
+          "quote": "It also has a reuseDelay of 14, adding a cooldown of 14 ticks"
+        }
+      ],
+      "why": "Three-shot bursts = useTime 4 inside useAnimation 12 (B37: bursts come from use time, one bullet per shot); the 14-tick reuse delay is in the sim cadence (B48(a)). The game uses one ammo per burst, the sim counts one per shot (labeled 'ammo' approximation). The Ichor / Crystal Bullet / necklace notes are ammo and accessory advice."
+    },
+    {
+      "itemId": 486,
+      "name": "Ruler",
+      "decision": "limitation",
+      "reason": "It stabs four times per use at varying angles; the Lab's thrust models one stab per use.",
+      "evidence": [
+        {
+          "page": "Ruler",
+          "quote": "It swings four times in quick succession per use, with slightly varying angles with each stab."
+        }
+      ],
+      "why": "multi-stab use (useTime 5 < useAnimation 20)"
+    },
+    {
       "itemId": 495,
       "name": "Rainbow Rod",
       "decision": "limitation",
-      "reason": "Its missile follows the cursor while held and then homes — not modeled.",
+      "reason": "Its missile follows the cursor while held and then homes \u2014 not modeled.",
       "evidence": [
         {
           "page": "Rainbow Rod",
@@ -285,7 +430,7 @@
       "itemId": 514,
       "name": "Laser Rifle",
       "decision": "limitation",
-      "reason": "Its lasers gain damage and pierce as they travel — not modeled.",
+      "reason": "Its lasers gain damage and pierce as they travel \u2014 not modeled.",
       "evidence": [
         {
           "page": "Laser Rifle",
@@ -298,7 +443,7 @@
       "itemId": 518,
       "name": "Crystal Storm",
       "decision": "limitation",
-      "reason": "It fires a slight spread of shards that slow down and bounce — not modeled.",
+      "reason": "It fires a slight spread of shards that slow down and bounce \u2014 not modeled.",
       "evidence": [
         {
           "page": "Crystal Storm",
@@ -311,7 +456,7 @@
       "itemId": 519,
       "name": "Cursed Flames",
       "decision": "limitation",
-      "reason": "Its fireballs fall, bounce and inflict Cursed Inferno — not modeled.",
+      "reason": "Its fireballs fall, bounce and inflict Cursed Inferno \u2014 not modeled.",
       "evidence": [
         {
           "page": "Cursed Flames",
@@ -323,28 +468,59 @@
     {
       "itemId": 533,
       "name": "Megashark",
-      "decision": "limitation",
-      "reason": "It fires with a small spread whose angle the wiki does not state, so its accuracy cannot be modeled without guessing.",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
       "evidence": [
         {
           "page": "Megashark",
           "quote": "When used, it fires bullets very rapidly in a small spread."
         }
       ],
-      "why": "unstated spread"
+      "why": "AMENDMENTS-010 B47 (names the Megashark): 'small spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. The 50% ammo saving is not modeled (labeled 'ammo')."
     },
     {
       "itemId": 534,
       "name": "Shotgun",
       "decision": "limitation",
-      "reason": "It fires a random 4–5 bullets per shot in a spread the wiki does not measure — not modeled.",
+      "reason": "It fires a random 4\u20135 bullets per shot in a spread the wiki does not measure \u2014 not modeled.",
       "evidence": [
         {
           "page": "Shotgun",
-          "quote": "When used, it fires a spread of 4–5 bullets, consuming one piece of ammunition."
+          "quote": "When used, it fires a spread of 4\u20135 bullets, consuming one piece of ammunition."
         }
       ],
       "why": "random count + unstated spread"
+    },
+    {
+      "itemId": 537,
+      "name": "Cobalt Naginata",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Cobalt Naginata",
+          "quote": "The Cobalt Naginata is a Hardmode spear."
+        },
+        {
+          "page": "Cobalt Naginata",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 550,
+      "name": "Gungnir",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Gungnir",
+          "quote": "When thrust, it creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
     },
     {
       "itemId": 578,
@@ -380,7 +556,7 @@
       "itemId": 671,
       "name": "Keybrand",
       "decision": "limitation",
-      "reason": "Its damage depends on the target's missing health (the Lab's dummies have no health), and releasing the attack throws the sword — not modeled.",
+      "reason": "Its damage depends on the target's missing health (the Lab's dummies have no health), and releasing the attack throws the sword \u2014 not modeled.",
       "evidence": [
         {
           "page": "Keybrand",
@@ -393,7 +569,7 @@
       "itemId": 672,
       "name": "Cutlass",
       "decision": "limitation",
-      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) — a stacking bonus the Lab does not model.",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
       "evidence": [
         {
           "page": "Cutlass",
@@ -419,7 +595,7 @@
       "itemId": 675,
       "name": "True Night's Edge",
       "decision": "limitation",
-      "reason": "Its swing is an aura, and it also fires a spinning blade (50% damage, up to 3 hits) — not modeled.",
+      "reason": "Its swing is an aura, and it also fires a spinning blade (50% damage, up to 3 hits) \u2014 not modeled.",
       "evidence": [
         {
           "page": "True Night's Edge",
@@ -432,7 +608,7 @@
       "itemId": 676,
       "name": "Frostbrand",
       "decision": "limitation",
-      "reason": "Swings fire a piercing Frost Bolt on its own cooldown that inflicts Frostbite — not modeled.",
+      "reason": "Swings fire a piercing Frost Bolt on its own cooldown that inflicts Frostbite \u2014 not modeled.",
       "evidence": [
         {
           "page": "Frostbrand",
@@ -445,7 +621,7 @@
       "itemId": 679,
       "name": "Tactical Shotgun",
       "decision": "limitation",
-      "reason": "It fires six bullets in a spread whose angle the wiki does not state — not modeled.",
+      "reason": "It fires six bullets in a spread whose angle the wiki does not state \u2014 not modeled.",
       "evidence": [
         {
           "page": "Tactical Shotgun",
@@ -458,7 +634,7 @@
       "itemId": 682,
       "name": "Marrow",
       "decision": "limitation",
-      "reason": "It converts every arrow into Bone Arrows that shatter into shards — an ammo conversion the Lab does not model.",
+      "reason": "It converts every arrow into Bone Arrows that shatter into shards \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Marrow",
@@ -471,7 +647,7 @@
       "itemId": 683,
       "name": "Unholy Trident",
       "decision": "limitation",
-      "reason": "Its tridents lose speed, ignore 25 defense and inflict Shadowflame — not modeled.",
+      "reason": "Its tridents lose speed, ignore 25 defense and inflict Shadowflame \u2014 not modeled.",
       "evidence": [
         {
           "page": "Unholy Trident",
@@ -484,7 +660,7 @@
       "itemId": 723,
       "name": "Beam Sword",
       "decision": "limitation",
-      "reason": "Swings fire a bouncing Sword Beam on its own cooldown — not modeled by the swing parameters.",
+      "reason": "Swings fire a bouncing Sword Beam on its own cooldown \u2014 not modeled by the swing parameters.",
       "evidence": [
         {
           "page": "Beam Sword",
@@ -497,7 +673,7 @@
       "itemId": 724,
       "name": "Ice Blade",
       "decision": "limitation",
-      "reason": "Swings fire an Ice Bolt on its own 0.92-second cooldown, independent of the swings — not modeled.",
+      "reason": "Swings fire an Ice Bolt on its own 0.92-second cooldown, independent of the swings \u2014 not modeled.",
       "evidence": [
         {
           "page": "Ice Blade",
@@ -510,7 +686,7 @@
       "itemId": 725,
       "name": "Ice Bow",
       "decision": "limitation",
-      "reason": "It converts every arrow into Frost Arrows — an ammo conversion the Lab does not model.",
+      "reason": "It converts every arrow into Frost Arrows \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Ice Bow",
@@ -522,15 +698,19 @@
     {
       "itemId": 726,
       "name": "Frost Staff",
-      "decision": "limitation",
-      "reason": "Its bolt pierces and inflicts Frostbite (damage over time) — the damage-over-time part is not modeled by these params.",
+      "decision": "archetype",
+      "archetype": "magic-bolt",
       "evidence": [
+        {
+          "page": "Frost Staff",
+          "quote": "When used, it fires a frost bolt that pierces one enemy and does not pass through blocks."
+        },
         {
           "page": "Frost Staff",
           "quote": "The Frost Staff also inflicts the Frostbite debuff for 7 seconds on hit."
         }
       ],
-      "why": "DoT"
+      "why": "One straight bolt that pierces one enemy (Projectileinfo penetrate 2 agrees); Frostbite (100%, 7 s) comes from the infobox debuff rows (B48(c))."
     },
     {
       "itemId": 739,
@@ -549,7 +729,7 @@
       "itemId": 740,
       "name": "Topaz Staff",
       "decision": "limitation",
-      "reason": "Its bolt explodes when it dissipates, damaging other nearby enemies — not modeled.",
+      "reason": "Its bolt explodes when it dissipates, damaging other nearby enemies \u2014 not modeled.",
       "evidence": [
         {
           "page": "Topaz Staff",
@@ -562,7 +742,7 @@
       "itemId": 741,
       "name": "Sapphire Staff",
       "decision": "limitation",
-      "reason": "It fires two bolts in a helix, each dealing 60% of the weapon's damage — not modeled.",
+      "reason": "It fires two bolts in a helix, each dealing 60% of the weapon's damage \u2014 not modeled.",
       "evidence": [
         {
           "page": "Sapphire Staff",
@@ -575,7 +755,7 @@
       "itemId": 742,
       "name": "Emerald Staff",
       "decision": "limitation",
-      "reason": "Its bolt slows down, lingers in place and leaves a damaging trail — not modeled.",
+      "reason": "Its bolt slows down, lingers in place and leaves a damaging trail \u2014 not modeled.",
       "evidence": [
         {
           "page": "Emerald Staff",
@@ -588,14 +768,18 @@
       "itemId": 743,
       "name": "Ruby Staff",
       "decision": "limitation",
-      "reason": "Each bolt deals 50% of the weapon's damage (two bolts per use) — a per-projectile damage multiplier the Lab does not model.",
+      "reason": "It fires a second bolt halfway through each use by a rule outside its use-time data, which the Lab's shot timing cannot reproduce; each bolt deals 50% of the weapon's damage.",
       "evidence": [
         {
           "page": "Ruby Staff",
           "quote": "quickly fires a red bolt, which deals 50% of the weapon's damage"
+        },
+        {
+          "page": "Ruby Staff",
+          "quote": "The Ruby Staff fires a 2nd bolt halfway into each use"
         }
       ],
-      "why": "damage multiplier"
+      "why": "Iteminfo useTime = useAnimation = 28, yet two bolts per use in sequence: B37 forbids expressing a sequential burst through projectilesPerUse. The 50% multiplier itself is expressible since B48(b)."
     },
     {
       "itemId": 744,
@@ -617,10 +801,23 @@
       "why": "One straight bolt; the article states pierce once (Projectileinfo penetrate 1 is changed by its AI) and a 5-second lifetime. Its large hitbox is the sim's labeled point-projectile approximation; gem-robe enchantments are armor effects outside the weapon."
     },
     {
+      "itemId": 756,
+      "name": "Mushroom Spear",
+      "decision": "limitation",
+      "reason": "Each thrust also summons seven lingering mushrooms (33% damage each) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Mushroom Spear",
+          "quote": "When thrust, it summons seven spinning mushrooms that linger in midair and deal 33.33% of the weapon's damage (20 base damage) but do not inflict knockback."
+        }
+      ],
+      "why": "extra lingering projectiles"
+    },
+    {
       "itemId": 757,
       "name": "Terra Blade",
       "decision": "limitation",
-      "reason": "Its swing is an aura, and it also fires a piercing slash whose damage drops 25% per target — not modeled.",
+      "reason": "Its swing is an aura, and it also fires a piercing slash whose damage drops 25% per target \u2014 not modeled.",
       "evidence": [
         {
           "page": "Terra Blade",
@@ -633,7 +830,7 @@
       "itemId": 788,
       "name": "Nettle Burst",
       "decision": "limitation",
-      "reason": "It extends a snaking vine from the player's position — not modeled.",
+      "reason": "It extends a snaking vine from the player's position \u2014 not modeled.",
       "evidence": [
         {
           "page": "Nettle Burst",
@@ -673,6 +870,19 @@
       "why": "'damage per shot' compares it with the Musket; the article states no special shot behavior."
     },
     {
+      "itemId": 802,
+      "name": "The Rotted Fork",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "The Rotted Fork",
+          "quote": "When thrust, it creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
+    },
+    {
       "itemId": 921,
       "name": "Shadewood Sword",
       "decision": "archetype",
@@ -689,11 +899,11 @@
       "itemId": 964,
       "name": "Boomstick",
       "decision": "limitation",
-      "reason": "It fires a random 3–4 bullets per shot in a spread the wiki does not measure — not modeled.",
+      "reason": "It fires a random 3\u20134 bullets per shot in a spread the wiki does not measure \u2014 not modeled.",
       "evidence": [
         {
           "page": "Boomstick",
-          "quote": "When used, it fires a spread of 3–4 bullets, consuming one piece of ammunition."
+          "quote": "When used, it fires a spread of 3\u20134 bullets, consuming one piece of ammunition."
         }
       ],
       "why": "random count + unstated spread"
@@ -702,7 +912,7 @@
       "itemId": 989,
       "name": "Enchanted Sword",
       "decision": "limitation",
-      "reason": "Swings fire an Enchanted Beam on its own 0.75-second cooldown, independent of the swings — not modeled.",
+      "reason": "Swings fire an Enchanted Beam on its own 0.75-second cooldown, independent of the swings \u2014 not modeled.",
       "evidence": [
         {
           "page": "Enchanted Sword",
@@ -715,7 +925,7 @@
       "itemId": 1121,
       "name": "Bee Gun",
       "decision": "limitation",
-      "reason": "It fires a burst of homing bees — not modeled.",
+      "reason": "It fires a burst of homing bees \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bee Gun",
@@ -728,11 +938,11 @@
       "itemId": 1123,
       "name": "Bee Keeper",
       "decision": "limitation",
-      "reason": "Hits summon homing bees (extra damage) — not modeled.",
+      "reason": "Hits summon homing bees (extra damage) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bee Keeper",
-          "quote": "It also summons a burst of 1–3 Bee projectiles on hit"
+          "quote": "It also summons a burst of 1\u20133 Bee projectiles on hit"
         }
       ],
       "why": "on-hit projectiles"
@@ -741,11 +951,11 @@
       "itemId": 1155,
       "name": "Wasp Gun",
       "decision": "limitation",
-      "reason": "It fires a random 2–4 homing wasps — not modeled.",
+      "reason": "It fires a random 2\u20134 homing wasps \u2014 not modeled.",
       "evidence": [
         {
           "page": "Wasp Gun",
-          "quote": "When used, it fires 2–4 homing wasp projectiles that ricochet or hit enemies a maximum of three times before dissipating."
+          "quote": "When used, it fires 2\u20134 homing wasp projectiles that ricochet or hit enemies a maximum of three times before dissipating."
         }
       ],
       "why": "homing burst"
@@ -754,7 +964,7 @@
       "itemId": 1166,
       "name": "Bone Sword",
       "decision": "limitation",
-      "reason": "Each hit releases a lobbed bone projectile (75% damage) — not modeled.",
+      "reason": "Each hit releases a lobbed bone projectile (75% damage) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bone Sword",
@@ -767,7 +977,7 @@
       "itemId": 1178,
       "name": "Leaf Blower",
       "decision": "limitation",
-      "reason": "Its leaves spread and then swirl in a spiral — not modeled.",
+      "reason": "Its leaves spread and then swirl in a spiral \u2014 not modeled.",
       "evidence": [
         {
           "page": "Leaf Blower",
@@ -777,10 +987,61 @@
       "why": "spread + motion"
     },
     {
+      "itemId": 1186,
+      "name": "Palladium Pike",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Palladium Pike",
+          "quote": "The Palladium Pike is a Hardmode spear."
+        },
+        {
+          "page": "Palladium Pike",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 1193,
+      "name": "Orichalcum Halberd",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Orichalcum Halberd",
+          "quote": "The Orichalcum Halberd is a Hardmode spear."
+        },
+        {
+          "page": "Orichalcum Halberd",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 1200,
+      "name": "Titanium Trident",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Titanium Trident",
+          "quote": "The Titanium Trident is a Hardmode spear."
+        },
+        {
+          "page": "Titanium Trident",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
       "itemId": 1226,
       "name": "Chlorophyte Claymore",
       "decision": "limitation",
-      "reason": "Its swing is an aura that also covers behind the player, and every third use deals 150% damage — not modeled.",
+      "reason": "Its swing is an aura that also covers behind the player, and every third use deals 150% damage \u2014 not modeled.",
       "evidence": [
         {
           "page": "Chlorophyte Claymore",
@@ -790,14 +1051,48 @@
       "why": "aura + empowered swings"
     },
     {
+      "itemId": 1227,
+      "name": "Chlorophyte Saber",
+      "decision": "limitation",
+      "reason": "It stabs five times per use at varying angles, each stab dealing 70% damage and inflicting Spored \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "When used, the sword is thrusted in repeated stabbing motions with slightly varying angles for each thrust, akin to Gladius and Starlight."
+        },
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "Each thrust deals 70% of the weapon's damage (56 base damage)"
+        },
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "and inflicts the Spored debuff on enemies and other players in PvP for 5 seconds"
+        }
+      ],
+      "why": "multi-stab use + Spored (dps unverified)"
+    },
+    {
+      "itemId": 1228,
+      "name": "Chlorophyte Partisan",
+      "decision": "limitation",
+      "reason": "Each thrust also fires a Spore Cloud that pierces every enemy and slows down \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Partisan",
+          "quote": "When thrust, it fires a Spore Cloud projectile that deals the weapon's damage and knockback, lasts for a short time, can pass through blocks, and pierces an infinite number of enemies."
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
       "itemId": 1229,
       "name": "Chlorophyte Shotbow",
       "decision": "limitation",
-      "reason": "It fires a random 2–3 arrows per shot — not modeled.",
+      "reason": "It fires a random 2\u20133 arrows per shot \u2014 not modeled.",
       "evidence": [
         {
           "page": "Chlorophyte Shotbow",
-          "quote": "When used, it fires 2–3 arrows per shot, consuming one piece of ammunition."
+          "quote": "When used, it fires 2\u20133 arrows per shot, consuming one piece of ammunition."
         }
       ],
       "why": "random count"
@@ -806,7 +1101,7 @@
       "itemId": 1254,
       "name": "Sniper Rifle",
       "decision": "limitation",
-      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets — an ammo conversion the Lab does not model.",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Sniper Rifle",
@@ -819,7 +1114,7 @@
       "itemId": 1255,
       "name": "Venus Magnum",
       "decision": "limitation",
-      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets — an ammo conversion the Lab does not model.",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Venus Magnum",
@@ -832,7 +1127,7 @@
       "itemId": 1260,
       "name": "Rainbow Gun",
       "decision": "limitation",
-      "reason": "It fires a curving rainbow that persists and deals continuous damage — not modeled.",
+      "reason": "It fires a curving rainbow that persists and deals continuous damage \u2014 not modeled.",
       "evidence": [
         {
           "page": "Rainbow Gun",
@@ -845,7 +1140,7 @@
       "itemId": 1264,
       "name": "Flower of Frost",
       "decision": "limitation",
-      "reason": "Its ball of frost bounces off blocks and inflicts Frostbite — not modeled.",
+      "reason": "Its ball of frost bounces off blocks and inflicts Frostbite \u2014 not modeled.",
       "evidence": [
         {
           "page": "Flower of Frost",
@@ -858,7 +1153,7 @@
       "itemId": 1265,
       "name": "Uzi",
       "decision": "limitation",
-      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets — an ammo conversion the Lab does not model.",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Uzi",
@@ -871,7 +1166,7 @@
       "itemId": 1266,
       "name": "Magnet Sphere",
       "decision": "limitation",
-      "reason": "Its sphere fires beams at nearby enemies as it travels — not modeled.",
+      "reason": "Its sphere fires beams at nearby enemies as it travels \u2014 not modeled.",
       "evidence": [
         {
           "page": "Magnet Sphere",
@@ -902,7 +1197,7 @@
       "itemId": 1296,
       "name": "Staff of Earth",
       "decision": "limitation",
-      "reason": "Its boulder rolls with gravity and its damage depends on its speed — not modeled.",
+      "reason": "Its boulder rolls with gravity and its damage depends on its speed \u2014 not modeled.",
       "evidence": [
         {
           "page": "Staff of Earth",
@@ -932,7 +1227,7 @@
       "itemId": 1306,
       "name": "Ice Sickle",
       "decision": "limitation",
-      "reason": "Swings fire a slowing, piercing sickle (67% damage) — not modeled by the swing parameters.",
+      "reason": "Swings fire a slowing, piercing sickle (67% damage) \u2014 not modeled by the swing parameters.",
       "evidence": [
         {
           "page": "Ice Sickle",
@@ -945,11 +1240,11 @@
       "itemId": 1308,
       "name": "Poison Staff",
       "decision": "limitation",
-      "reason": "It fires a random 3–4 fangs in a spread that inflict Poisoned — not modeled.",
+      "reason": "It fires a random 3\u20134 fangs in a spread that inflict Poisoned \u2014 not modeled.",
       "evidence": [
         {
           "page": "Poison Staff",
-          "quote": "When used, it fires a burst of 3–4 Poison Fangs in a roughly 30° spread."
+          "quote": "When used, it fires a burst of 3\u20134 Poison Fangs in a roughly 30\u00b0 spread."
         }
       ],
       "why": "random count + DoT"
@@ -958,7 +1253,7 @@
       "itemId": 1313,
       "name": "Book of Skulls",
       "decision": "limitation",
-      "reason": "Its skulls home in on enemies and pierce — not modeled.",
+      "reason": "Its skulls home in on enemies and pierce \u2014 not modeled.",
       "evidence": [
         {
           "page": "Book of Skulls",
@@ -971,7 +1266,7 @@
       "itemId": 1327,
       "name": "Death Sickle",
       "decision": "limitation",
-      "reason": "Swings fire a sickle that slows to a stop and lingers — not modeled by the swing parameters.",
+      "reason": "Swings fire a sickle that slows to a stop and lingers \u2014 not modeled by the swing parameters.",
       "evidence": [
         {
           "page": "Death Sickle",
@@ -984,7 +1279,7 @@
       "itemId": 1336,
       "name": "Golden Shower",
       "decision": "limitation",
-      "reason": "It sprays arcing streams that pierce and inflict Ichor — not modeled.",
+      "reason": "It sprays arcing streams that pierce and inflict Ichor \u2014 not modeled.",
       "evidence": [
         {
           "page": "Golden Shower",
@@ -997,7 +1292,7 @@
       "itemId": 1444,
       "name": "Shadowbeam Staff",
       "decision": "limitation",
-      "reason": "Its beam bounces off blocks and loses 10% damage per enemy hit — not modeled.",
+      "reason": "Its beam bounces off blocks and loses 10% damage per enemy hit \u2014 not modeled.",
       "evidence": [
         {
           "page": "Shadowbeam Staff",
@@ -1010,7 +1305,7 @@
       "itemId": 1445,
       "name": "Inferno Fork",
       "decision": "limitation",
-      "reason": "Its fireball leaves a lingering explosion and inflicts Hellfire — not modeled.",
+      "reason": "Its fireball leaves a lingering explosion and inflicts Hellfire \u2014 not modeled.",
       "evidence": [
         {
           "page": "Inferno Fork",
@@ -1023,7 +1318,7 @@
       "itemId": 1446,
       "name": "Spectre Staff",
       "decision": "limitation",
-      "reason": "It fires a homing orb — homing strength is not documented, so it is not modeled yet.",
+      "reason": "It fires a homing orb \u2014 homing strength is not documented, so it is not modeled yet.",
       "evidence": [
         {
           "page": "Spectre Staff",
@@ -1048,21 +1343,22 @@
     {
       "itemId": 1553,
       "name": "S.D.M.G.",
-      "decision": "limitation",
-      "reason": "It fires with a small spread whose angle the wiki does not state, so its accuracy cannot be modeled without guessing.",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
       "evidence": [
         {
           "page": "S.D.M.G.",
           "quote": "When used, it very rapidly fires bullets in a small spread."
         }
       ],
-      "why": "unstated spread"
+      "why": "AMENDMENTS-010 B47 (names the S.D.M.G.): 'small spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. 'homing' / 'piercing' / 'emit' describe bullet types and light (ammo advice); the 66% ammo saving is not modeled (labeled 'ammo')."
     },
     {
       "itemId": 1782,
       "name": "Candy Corn Rifle",
       "decision": "limitation",
-      "reason": "Its shots pierce, ricochet and fall with gravity — bouncing is not simulated yet.",
+      "reason": "Its shots pierce, ricochet and fall with gravity \u2014 bouncing is not simulated yet.",
       "evidence": [
         {
           "page": "Candy Corn Rifle",
@@ -1075,11 +1371,11 @@
       "itemId": 1801,
       "name": "Bat Scepter",
       "decision": "limitation",
-      "reason": "It fires a burst of homing bats — not modeled.",
+      "reason": "It fires a burst of homing bats \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bat Scepter",
-          "quote": "When used, it fires a burst of 2–3 homing bats"
+          "quote": "When used, it fires a burst of 2\u20133 homing bats"
         }
       ],
       "why": "homing burst"
@@ -1088,7 +1384,7 @@
       "itemId": 1826,
       "name": "The Horseman's Blade",
       "decision": "limitation",
-      "reason": "Its swing is an aura, and hits summon homing pumpkin heads — not modeled.",
+      "reason": "Its swing is an aura, and hits summon homing pumpkin heads \u2014 not modeled.",
       "evidence": [
         {
           "page": "The Horseman's Blade",
@@ -1118,7 +1414,7 @@
       "itemId": 1835,
       "name": "Stake Launcher",
       "decision": "limitation",
-      "reason": "Its stakes lose 10% damage for each enemy pierced — not modeled.",
+      "reason": "Its stakes lose 10% damage for each enemy pierced \u2014 not modeled.",
       "evidence": [
         {
           "page": "Stake Launcher",
@@ -1131,7 +1427,7 @@
       "itemId": 1928,
       "name": "Christmas Tree Sword",
       "decision": "limitation",
-      "reason": "Swings fire a star ornament that keeps releasing more ornaments — not modeled.",
+      "reason": "Swings fire a star ornament that keeps releasing more ornaments \u2014 not modeled.",
       "evidence": [
         {
           "page": "Christmas Tree Sword",
@@ -1157,11 +1453,11 @@
       "itemId": 1930,
       "name": "Razorpine",
       "decision": "limitation",
-      "reason": "It fires a random 2–4 needles in a spread that later fall — not modeled.",
+      "reason": "It fires a random 2\u20134 needles in a spread that later fall \u2014 not modeled.",
       "evidence": [
         {
           "page": "Razorpine",
-          "quote": "When used, it rapidly fires 2–4 high-velocity pine needles in a spread"
+          "quote": "When used, it rapidly fires 2\u20134 high-velocity pine needles in a spread"
         }
       ],
       "why": "random count + spread"
@@ -1170,7 +1466,7 @@
       "itemId": 1931,
       "name": "Blizzard Staff",
       "decision": "limitation",
-      "reason": "Its icicles rain from the sky toward the cursor — not modeled.",
+      "reason": "Its icicles rain from the sky toward the cursor \u2014 not modeled.",
       "evidence": [
         {
           "page": "Blizzard Staff",
@@ -1180,14 +1476,31 @@
       "why": "sky projectiles"
     },
     {
+      "itemId": 1947,
+      "name": "North Pole",
+      "decision": "limitation",
+      "reason": "Each thrust also fires an icy spear projectile and a trail of falling snowflakes (70% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "North Pole",
+          "quote": "When thrust, it fires an icy spear projectile that is unaffected by gravity until after traveling for 0.5 seconds."
+        },
+        {
+          "page": "North Pole",
+          "quote": "The spear also releases a trail of damaging snowflakes that rain down, dissipating upon contact with an enemy or block."
+        }
+      ],
+      "why": "extra projectiles"
+    },
+    {
       "itemId": 2188,
       "name": "Venom Staff",
       "decision": "limitation",
-      "reason": "It fires a random 4–7 fangs in a spread that inflict Acid Venom — not modeled.",
+      "reason": "It fires a random 4\u20137 fangs in a spread that inflict Acid Venom \u2014 not modeled.",
       "evidence": [
         {
           "page": "Venom Staff",
-          "quote": "When used, it fires a burst of 4–7 Venom Fangs in a spread."
+          "quote": "When used, it fires a burst of 4\u20137 Venom Fangs in a spread."
         }
       ],
       "why": "random count + DoT"
@@ -1196,7 +1509,7 @@
       "itemId": 2223,
       "name": "Pulse Bow",
       "decision": "limitation",
-      "reason": "It converts every arrow into a bouncing Pulse Bolt — an ammo conversion the Lab does not model.",
+      "reason": "It converts every arrow into a bouncing Pulse Bolt \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Pulse Bow",
@@ -1226,11 +1539,11 @@
       "itemId": 2270,
       "name": "Gatligator",
       "decision": "limitation",
-      "reason": "Its bullets fly in a roughly 30° spread at a varying velocity — not modeled.",
+      "reason": "Its bullets fly in a roughly 30\u00b0 spread at a varying velocity \u2014 not modeled.",
       "evidence": [
         {
           "page": "Gatligator",
-          "quote": "When used, it rapidly fires bullets in a roughly 30° spread, at a varying velocity."
+          "quote": "When used, it rapidly fires bullets in a roughly 30\u00b0 spread, at a varying velocity."
         }
       ],
       "why": "approximate spread + varying velocity"
@@ -1243,16 +1556,46 @@
       "evidence": [
         {
           "page": "Purple Clubberfish",
-          "quote": "It has a 1/2 (50%) chance to inflict the Confused debuff for 1–3 seconds on hit."
+          "quote": "It has a 1/2 (50%) chance to inflict the Confused debuff for 1\u20133 seconds on hit."
         }
       ],
       "why": "Confused deals no damage over time (buffs registry: no DoT), so the damage dealt is the plain swing."
     },
     {
+      "itemId": 2331,
+      "name": "Obsidian Swordfish",
+      "decision": "limitation",
+      "reason": "Each thrust also fires 1\u20133 falling embers (50% damage, Hellfire) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Obsidian Swordfish",
+          "quote": "When thrust, it fires 1\u20133 piercing gravity-affected embers that each deal 50% of the weapon's damage (35 base damage) and inflict the Hellfire debuff for 3-6 seconds."
+        }
+      ],
+      "why": "random-count extra projectiles"
+    },
+    {
+      "itemId": 2332,
+      "name": "Swordfish",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Swordfish",
+          "quote": "The Swordfish is a pre-Hardmode spear obtainable through fishing in the Ocean biome."
+        },
+        {
+          "page": "Swordfish",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
       "itemId": 2608,
       "name": "Falcon Blade",
       "decision": "limitation",
-      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) — a stacking bonus the Lab does not model.",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
       "evidence": [
         {
           "page": "Falcon Blade",
@@ -1265,7 +1608,7 @@
       "itemId": 2622,
       "name": "Razorblade Typhoon",
       "decision": "limitation",
-      "reason": "Its typhoon homes in and bounces infinitely — not modeled.",
+      "reason": "Its typhoon homes in and bounces infinitely \u2014 not modeled.",
       "evidence": [
         {
           "page": "Razorblade Typhoon",
@@ -1278,7 +1621,7 @@
       "itemId": 2623,
       "name": "Bubble Gun",
       "decision": "limitation",
-      "reason": "It fires a large spread of slowing bubbles — not modeled.",
+      "reason": "It fires a large spread of slowing bubbles \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bubble Gun",
@@ -1307,7 +1650,7 @@
       "itemId": 2750,
       "name": "Meteor Staff",
       "decision": "limitation",
-      "reason": "Its meteors fall from the sky and explode — not modeled.",
+      "reason": "Its meteors fall from the sky and explode \u2014 not modeled.",
       "evidence": [
         {
           "page": "Meteor Staff",
@@ -1320,7 +1663,7 @@
       "itemId": 2795,
       "name": "Laser Machinegun",
       "decision": "limitation",
-      "reason": "It is a held weapon that fires two inaccurate lasers and speeds up while held — not modeled.",
+      "reason": "It is a held weapon that fires two inaccurate lasers and speeds up while held \u2014 not modeled.",
       "evidence": [
         {
           "page": "Laser Machinegun",
@@ -1333,11 +1676,11 @@
       "itemId": 2797,
       "name": "Xenopopper",
       "decision": "limitation",
-      "reason": "It fires bubbles that each pop into a bullet aimed at the cursor — not modeled.",
+      "reason": "It fires bubbles that each pop into a bullet aimed at the cursor \u2014 not modeled.",
       "evidence": [
         {
           "page": "Xenopopper",
-          "quote": "When used, it fires a burst of 4–5 purple bubbles, consuming one bullet."
+          "quote": "When used, it fires a burst of 4\u20135 purple bubbles, consuming one bullet."
         }
       ],
       "why": "spawning projectiles"
@@ -1346,7 +1689,7 @@
       "itemId": 2880,
       "name": "Influx Waver",
       "decision": "limitation",
-      "reason": "Swings fire a sword projectile that teleports between enemies to hit three times — not modeled.",
+      "reason": "Swings fire a sword projectile that teleports between enemies to hit three times \u2014 not modeled.",
       "evidence": [
         {
           "page": "Influx Waver",
@@ -1359,7 +1702,7 @@
       "itemId": 2882,
       "name": "Charged Blaster Cannon",
       "decision": "limitation",
-      "reason": "Its attack depends on how long it is charged — not modeled.",
+      "reason": "Its attack depends on how long it is charged \u2014 not modeled.",
       "evidence": [
         {
           "page": "Charged Blaster Cannon",
@@ -1372,7 +1715,7 @@
       "itemId": 2888,
       "name": "The Bee's Knees",
       "decision": "limitation",
-      "reason": "It converts Wooden Arrows into Bee Arrows that release homing bees — not modeled.",
+      "reason": "It converts Wooden Arrows into Bee Arrows that release homing bees \u2014 not modeled.",
       "evidence": [
         {
           "page": "The Bee's Knees",
@@ -1385,7 +1728,7 @@
       "itemId": 3006,
       "name": "Life Drain",
       "decision": "limitation",
-      "reason": "It damages enemies near the cursor through an invisible aura — not modeled.",
+      "reason": "It damages enemies near the cursor through an invisible aura \u2014 not modeled.",
       "evidence": [
         {
           "page": "Life Drain",
@@ -1415,11 +1758,11 @@
       "itemId": 3018,
       "name": "Seedler",
       "decision": "limitation",
-      "reason": "Swings fire nuts that explode into several thorns (70% damage each) — not modeled.",
+      "reason": "Swings fire nuts that explode into several thorns (70% damage each) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Seedler",
-          "quote": "When swung, it fires Seedler Nut projectiles that travel in a downwards arc before exploding into 4–7 Seedler Thorns"
+          "quote": "When swung, it fires Seedler Nut projectiles that travel in a downwards arc before exploding into 4\u20137 Seedler Thorns"
         }
       ],
       "why": "splitting projectile"
@@ -1428,7 +1771,7 @@
       "itemId": 3019,
       "name": "Hellwing Bow",
       "decision": "limitation",
-      "reason": "It fires inaccurately and converts Wooden Arrows into piercing flaming bats — not modeled.",
+      "reason": "It fires inaccurately and converts Wooden Arrows into piercing flaming bats \u2014 not modeled.",
       "evidence": [
         {
           "page": "Hellwing Bow",
@@ -1441,7 +1784,7 @@
       "itemId": 3029,
       "name": "Daedalus Stormbow",
       "decision": "limitation",
-      "reason": "Its arrows rain from the sky toward the cursor (2–4 per use) — not modeled.",
+      "reason": "Its arrows rain from the sky toward the cursor (2\u20134 per use) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Daedalus Stormbow",
@@ -1454,7 +1797,7 @@
       "itemId": 3051,
       "name": "Crystal Vile Shard",
       "decision": "limitation",
-      "reason": "It extends a crystal spike from the player's position — not modeled.",
+      "reason": "It extends a crystal spike from the player's position \u2014 not modeled.",
       "evidence": [
         {
           "page": "Crystal Vile Shard",
@@ -1467,7 +1810,7 @@
       "itemId": 3052,
       "name": "Shadowflame Bow",
       "decision": "limitation",
-      "reason": "It converts every arrow into piercing Shadowflame Arrows that inflict Shadowflame — not modeled.",
+      "reason": "It converts every arrow into piercing Shadowflame Arrows that inflict Shadowflame \u2014 not modeled.",
       "evidence": [
         {
           "page": "Shadowflame Bow",
@@ -1480,7 +1823,7 @@
       "itemId": 3063,
       "name": "Meowmere",
       "decision": "limitation",
-      "reason": "Swings fire a bouncing cat head (125% damage) that emits explosions — not modeled.",
+      "reason": "Swings fire a bouncing cat head (125% damage) that emits explosions \u2014 not modeled.",
       "evidence": [
         {
           "page": "Meowmere",
@@ -1493,7 +1836,7 @@
       "itemId": 3065,
       "name": "Star Wrath",
       "decision": "limitation",
-      "reason": "Swings make three stars fall toward the cursor — not modeled.",
+      "reason": "Swings make three stars fall toward the cursor \u2014 not modeled.",
       "evidence": [
         {
           "page": "Star Wrath",
@@ -1506,7 +1849,7 @@
       "itemId": 3069,
       "name": "Wand of Sparking",
       "decision": "limitation",
-      "reason": "Its spark curves, pierces once and can set enemies On Fire! — not modeled.",
+      "reason": "Its spark curves, pierces once and can set enemies On Fire! \u2014 not modeled.",
       "evidence": [
         {
           "page": "Wand of Sparking",
@@ -1519,7 +1862,7 @@
       "itemId": 3106,
       "name": "Psycho Knife",
       "decision": "limitation",
-      "reason": "Standing still puts the player in stealth (+300% melee damage until a hit) — not modeled.",
+      "reason": "Standing still puts the player in stealth (+300% melee damage until a hit) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Psycho Knife",
@@ -1536,11 +1879,11 @@
       "itemId": 3209,
       "name": "Crystal Serpent",
       "decision": "limitation",
-      "reason": "Its charge shatters into bouncing sparks — not modeled.",
+      "reason": "Its charge shatters into bouncing sparks \u2014 not modeled.",
       "evidence": [
         {
           "page": "Crystal Serpent",
-          "quote": "When used, it fires a pink charge that shatters into 3–5 smaller sparks upon impact with an enemy or block"
+          "quote": "When used, it fires a pink charge that shatters into 3\u20135 smaller sparks upon impact with an enemy or block"
         }
       ],
       "why": "splitting projectile"
@@ -1549,11 +1892,11 @@
       "itemId": 3211,
       "name": "Bladetongue",
       "decision": "limitation",
-      "reason": "Hits inflict Ichor and fire an ichor stream (50% damage) — not modeled.",
+      "reason": "Hits inflict Ichor and fire an ichor stream (50% damage) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Bladetongue",
-          "quote": "On enemy hits, it inflicts the Ichor debuff for 5–9 seconds and fires an ichor stream at a random angle in front of the player."
+          "quote": "On enemy hits, it inflicts the Ichor debuff for 5\u20139 seconds and fires an ichor stream at a random angle in front of the player."
         }
       ],
       "why": "on-hit projectile + debuff"
@@ -1575,7 +1918,7 @@
       "itemId": 3349,
       "name": "Exotic Scimitar",
       "decision": "limitation",
-      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) — a stacking bonus the Lab does not model.",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
       "evidence": [
         {
           "page": "Exotic Scimitar",
@@ -1592,7 +1935,7 @@
       "evidence": [
         {
           "page": "Classy Cane",
-          "quote": "In addition, hitting an enemy or NPC with the Classy Cane drops 1–49 Copper Coins."
+          "quote": "In addition, hitting an enemy or NPC with the Classy Cane drops 1\u201349 Copper Coins."
         }
       ],
       "why": "Coin drops and town-NPC damage do not change the damage dealt to a Target Dummy."
@@ -1600,21 +1943,25 @@
     {
       "itemId": 3352,
       "name": "Stylish Scissors",
-      "decision": "limitation",
-      "reason": "It inflicts Bleeding (damage over time) on hit and can be thrown — not modeled.",
+      "decision": "archetype",
+      "archetype": "swing-melee",
       "evidence": [
         {
           "page": "Stylish Scissors",
-          "quote": "The weapon and its projectiles both inflict the Bleeding debuff for 4–6 seconds on hit."
+          "quote": "Letting go of \u2692 Use / Attack while swinging the weapon will throw the scissors in the direction of the cursor."
+        },
+        {
+          "page": "Stylish Scissors",
+          "quote": "The weapon and its projectiles both inflict the Bleeding debuff for 4\u20136 seconds on hit."
         }
       ],
-      "why": "DoT + thrown projectile"
+      "why": "The throw happens only when the attack is released mid-swing; the Lab holds the attack (labeled auto-reuse assumption), so every use is a swing. Bleeding (100%, 4\u20136 s) comes from the infobox debuff rows (B48(c))."
     },
     {
       "itemId": 3377,
       "name": "Amber Staff",
       "decision": "limitation",
-      "reason": "Its bolt deals 80% of the weapon's damage and bounces, losing speed — not modeled.",
+      "reason": "Its bolt deals 80% of the weapon's damage and bounces, losing speed \u2014 not modeled.",
       "evidence": [
         {
           "page": "Amber Staff",
@@ -1627,7 +1974,7 @@
       "itemId": 3475,
       "name": "Vortex Beater",
       "decision": "limitation",
-      "reason": "It is a held weapon that fires inaccurately and adds homing explosive rockets — not modeled.",
+      "reason": "It is a held weapon that fires inaccurately and adds homing explosive rockets \u2014 not modeled.",
       "evidence": [
         {
           "page": "Vortex Beater",
@@ -1637,10 +1984,44 @@
       "why": "held use + extra projectiles"
     },
     {
+      "itemId": 3483,
+      "name": "Platinum Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Platinum Shortsword",
+          "quote": "The Platinum Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Platinum Shortsword",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the invincibility-frame note is about speed modifiers."
+    },
+    {
+      "itemId": 3507,
+      "name": "Copper Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Copper Shortsword",
+          "quote": "The Copper Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Copper Shortsword",
+          "quote": "Newly created characters spawn with a Copper Shortsword (Iron Shortsword in Journey Mode)."
+        }
+      ],
+      "why": "Flag 'spawns' matched 'created' in the starting-inventory note (acquisition), not weapon behavior; the article states no special stab behavior."
+    },
+    {
       "itemId": 3540,
       "name": "Phantasm",
       "decision": "limitation",
-      "reason": "It is a held bow that fires bursts that speed up over time and spawn homing arrows on hit — not modeled.",
+      "reason": "It is a held bow that fires bursts that speed up over time and spawn homing arrows on hit \u2014 not modeled.",
       "evidence": [
         {
           "page": "Phantasm",
@@ -1653,7 +2034,7 @@
       "itemId": 3570,
       "name": "Lunar Flare",
       "decision": "limitation",
-      "reason": "Its flares rain down toward the cursor and explode — not modeled.",
+      "reason": "Its flares rain down toward the cursor and explode \u2014 not modeled.",
       "evidence": [
         {
           "page": "Lunar Flare",
@@ -1680,10 +2061,27 @@
       "why": "The throw happens only when the attack is released mid-swing; the Lab holds the attack (labeled auto-reuse assumption), so every use is a swing."
     },
     {
+      "itemId": 3787,
+      "name": "Sky Fracture",
+      "decision": "limitation",
+      "reason": "Its swords appear 1.25\u20133.75 tiles around the player rather than at the player \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Sky Fracture",
+          "quote": "When used, it summons three energy swords in quick succession around the player, aiming at the cursor's location."
+        },
+        {
+          "page": "Sky Fracture",
+          "quote": "The sword projectiles can spawn between 1.25 to 3.75 tiles away from the player's center,"
+        }
+      ],
+      "why": "Spawn offset around the player (the magic-bolt archetype fires from the player). Its 18-tick reuse delay is in the sim cadence since B48(a); velocity, pierce and lifetime are derivable."
+    },
+    {
       "itemId": 3788,
       "name": "Onyx Blaster",
       "decision": "limitation",
-      "reason": "It fires a spread of bullets plus an exploding crystal (200% damage) — not modeled.",
+      "reason": "It fires a spread of bullets plus an exploding crystal (200% damage) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Onyx Blaster",
@@ -1695,21 +2093,25 @@
     {
       "itemId": 3823,
       "name": "Brand of the Inferno",
-      "decision": "limitation",
-      "reason": "It has a 25% chance to inflict Hellfire (damage over time) on hit and a shield parry that boosts the next attack — not modeled.",
+      "decision": "archetype",
+      "archetype": "swing-melee",
       "evidence": [
         {
           "page": "Brand of the Inferno",
-          "quote": "It has a 1/4 (25%) chance of inflicting the Hellfire debuff for five seconds on hit"
+          "quote": "It has a 1/4 (25%) chance of inflicting the Hellfire debuff for five seconds on hit and also allows the player to parry incoming damage while equipped with a shield."
+        },
+        {
+          "page": "Brand of the Inferno",
+          "quote": "While holding the Brand of the Inferno with any equipped shield (excluding the Huntress's Buckler), pressing the \u26b7 Open / Activate button will cause the player to raise the shield."
         }
       ],
-      "why": "DoT + parry"
+      "why": "The parry needs an equipped shield and the separate Open / Activate button; the Lab equips nothing and only holds attack (base weapon), so it never parries and Striking Moment never applies. Hellfire (25%, 5 s) comes from the infobox debuff rows (B48(c))."
     },
     {
       "itemId": 3827,
       "name": "Flying Dragon",
       "decision": "limitation",
-      "reason": "Swings fire piercing crescent projectiles every 20 ticks — not modeled by the swing parameters.",
+      "reason": "Swings fire piercing crescent projectiles every 20 ticks \u2014 not modeled by the swing parameters.",
       "evidence": [
         {
           "page": "Flying Dragon",
@@ -1726,11 +2128,11 @@
       "itemId": 3852,
       "name": "Tome of Infinite Wisdom",
       "decision": "limitation",
-      "reason": "It fires bursts of pages and has a tornado secondary attack — not modeled.",
+      "reason": "It fires bursts of pages and has a tornado secondary attack \u2014 not modeled.",
       "evidence": [
         {
           "page": "Tome of Infinite Wisdom",
-          "quote": "When used with ⚒ Use / Attack, it fires bursts of four high-velocity pages that dissipate upon contact with enemies or blocks."
+          "quote": "When used with \u2692 Use / Attack, it fires bursts of four high-velocity pages that dissipate upon contact with enemies or blocks."
         }
       ],
       "why": "burst + secondary attack"
@@ -1739,7 +2141,7 @@
       "itemId": 3854,
       "name": "Phantom Phoenix",
       "decision": "limitation",
-      "reason": "It is a held bow that fires two spread arrows and a Phoenix (200% damage) every third use — not modeled.",
+      "reason": "It is a held bow that fires two spread arrows and a Phoenix (200% damage) every third use \u2014 not modeled.",
       "evidence": [
         {
           "page": "Phantom Phoenix",
@@ -1752,7 +2154,7 @@
       "itemId": 3859,
       "name": "Aerial Bane",
       "decision": "limitation",
-      "reason": "It converts every arrow into splitting, exploding arrows — not modeled.",
+      "reason": "It converts every arrow into splitting, exploding arrows \u2014 not modeled.",
       "evidence": [
         {
           "page": "Aerial Bane",
@@ -1762,10 +2164,27 @@
       "why": "conversion"
     },
     {
+      "itemId": 3870,
+      "name": "Betsy's Wrath",
+      "decision": "limitation",
+      "reason": "Its fireballs arc, explode in an area and inflict Betsy's Curse (40 armor penetration) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Betsy's Wrath",
+          "quote": "When used, it fires three fireballs that travel in arcs."
+        },
+        {
+          "page": "Betsy's Wrath",
+          "quote": "The fireballs explode upon impact with an enemy or a block and inflict the Betsy's Curse debuff, which adds 40 armor penetration against affected entities for 10 seconds."
+        }
+      ],
+      "why": "Arcing explosive projectiles + armor-penetration debuff; the 10-tick reuse delay is in the sim cadence since B48(a)."
+    },
+    {
       "itemId": 4058,
       "name": "Skull Bow",
       "decision": "limitation",
-      "reason": "It converts Bone Arrows into the Marrow's Bone Arrows — an ammo conversion the Lab does not model.",
+      "reason": "It converts Bone Arrows into the Marrow's Bone Arrows \u2014 an ammo conversion the Lab does not model.",
       "evidence": [
         {
           "page": "Skull Bow",
@@ -1775,10 +2194,23 @@
       "why": "conversion"
     },
     {
+      "itemId": 4061,
+      "name": "Storm Spear",
+      "decision": "limitation",
+      "reason": "Each thrust also fires an electric bolt (160% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Storm Spear",
+          "quote": "When thrust, it fires an electric bolt that deals 160% of the weapon's damage (21 base damage) and inflicts 50% its knockback (base knockback of 3 (Very weak))."
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
       "itemId": 4062,
       "name": "Thunder Zapper",
       "decision": "limitation",
-      "reason": "Its lightning bolt travels in a zigzag — not modeled.",
+      "reason": "Its lightning bolt travels in a zigzag \u2014 not modeled.",
       "evidence": [
         {
           "page": "Thunder Zapper",
@@ -1791,7 +2223,7 @@
       "itemId": 4347,
       "name": "Gray Zapinator",
       "decision": "limitation",
-      "reason": "Its laser behaves erratically with random effects — not modeled.",
+      "reason": "Its laser behaves erratically with random effects \u2014 not modeled.",
       "evidence": [
         {
           "page": "Gray Zapinator",
@@ -1804,7 +2236,7 @@
       "itemId": 4348,
       "name": "Orange Zapinator",
       "decision": "limitation",
-      "reason": "Its laser behaves erratically with random effects — not modeled.",
+      "reason": "Its laser behaves erratically with random effects \u2014 not modeled.",
       "evidence": [
         {
           "page": "Orange Zapinator",
@@ -1817,11 +2249,11 @@
       "itemId": 4381,
       "name": "Blood Rain Bow",
       "decision": "limitation",
-      "reason": "Its arrows become streams of blood raining from the sky — not modeled.",
+      "reason": "Its arrows become streams of blood raining from the sky \u2014 not modeled.",
       "evidence": [
         {
           "page": "Blood Rain Bow",
-          "quote": "When used, it converts any type of arrow into a spread of 1–3 streams of blood"
+          "quote": "When used, it converts any type of arrow into a spread of 1\u20133 streams of blood"
         },
         {
           "page": "Blood Rain Bow",
@@ -1829,6 +2261,19 @@
         }
       ],
       "why": "sky projectiles"
+    },
+    {
+      "itemId": 4463,
+      "name": "Gladius",
+      "decision": "limitation",
+      "reason": "It stabs three times per use at varying angles; the Lab's thrust models one stab per use.",
+      "evidence": [
+        {
+          "page": "Gladius",
+          "quote": "It attacks three times in quick succession per use, with slightly varying angles with each stab."
+        }
+      ],
+      "why": "multi-stab use (useTime 6 < useAnimation 18)"
     },
     {
       "itemId": 4703,
@@ -1841,16 +2286,16 @@
       "evidence": [
         {
           "page": "Quad-Barrel Shotgun",
-          "quote": "When used, it fires eight bullets at a 45° spread, consuming one piece of ammunition."
+          "quote": "When used, it fires eight bullets at a 45\u00b0 spread, consuming one piece of ammunition."
         }
       ],
-      "why": "Eight bullets over a stated 45° spread; how the bullets are distributed inside it is the sim's labeled even-fan approximation."
+      "why": "Eight bullets over a stated 45\u00b0 spread; how the bullets are distributed inside it is the sim's labeled even-fan approximation."
     },
     {
       "itemId": 4953,
       "name": "Eventide",
       "decision": "limitation",
-      "reason": "It fires bursts of arrows plus a Twilight Lance (200% damage) — not modeled.",
+      "reason": "It fires bursts of arrows plus a Twilight Lance (200% damage) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Eventide",
@@ -1863,7 +2308,7 @@
       "itemId": 5065,
       "name": "Resonance Scepter",
       "decision": "limitation",
-      "reason": "It creates damaging auras at the cursor — not modeled.",
+      "reason": "It creates damaging auras at the cursor \u2014 not modeled.",
       "evidence": [
         {
           "page": "Resonance Scepter",
@@ -1876,7 +2321,7 @@
       "itemId": 5094,
       "name": "Tentacle Spike",
       "decision": "limitation",
-      "reason": "Hits embed stacking spikes that deal damage over time — not modeled.",
+      "reason": "Hits embed stacking spikes that deal damage over time \u2014 not modeled.",
       "evidence": [
         {
           "page": "Tentacle Spike",
@@ -1889,7 +2334,7 @@
       "itemId": 5096,
       "name": "Ham Bat",
       "decision": "limitation",
-      "reason": "Its damage is multiplied while the player has a food buff — not modeled by the Lab.",
+      "reason": "Its damage is multiplied while the player has a food buff \u2014 not modeled by the Lab.",
       "evidence": [
         {
           "page": "Ham Bat",
@@ -1915,7 +2360,7 @@
       "itemId": 5117,
       "name": "Pew-matic Horn",
       "decision": "limitation",
-      "reason": "It converts bullets into random items whose damage varies — not modeled.",
+      "reason": "It converts bullets into random items whose damage varies \u2014 not modeled.",
       "evidence": [
         {
           "page": "Pew-matic Horn",
@@ -1928,7 +2373,7 @@
       "itemId": 5118,
       "name": "Weather Pain",
       "decision": "limitation",
-      "reason": "Its Hurtnado homes in and hovers to deal continuous damage — not modeled.",
+      "reason": "Its Hurtnado homes in and hovers to deal continuous damage \u2014 not modeled.",
       "evidence": [
         {
           "page": "Weather Pain",
@@ -1958,7 +2403,7 @@
       "itemId": 5147,
       "name": "Wand of Frosting",
       "decision": "limitation",
-      "reason": "Its spark curves, pierces once and can inflict Frostburn — not modeled.",
+      "reason": "Its spark curves, pierces once and can inflict Frostburn \u2014 not modeled.",
       "evidence": [
         {
           "page": "Wand of Frosting",
@@ -2005,7 +2450,7 @@
       "itemId": 5382,
       "name": "Waffle's Iron",
       "decision": "limitation",
-      "reason": "Swings fire a gravity-affected waffle, and hits can inflict Hellfire (damage over time) — not modeled.",
+      "reason": "Swings fire a gravity-affected waffle, and hits can inflict Hellfire (damage over time) \u2014 not modeled.",
       "evidence": [
         {
           "page": "Waffle's Iron",
@@ -2015,10 +2460,27 @@
       "why": "projectile + DoT"
     },
     {
+      "itemId": 5687,
+      "name": "Slime Spear",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Slime Spear",
+          "quote": "The Slime Spear is a pre-Hardmode spear that inflicts the Slime debuff for 3 seconds on hit."
+        },
+        {
+          "page": "Slime (debuff)",
+          "quote": "It doubles the damage over time inflicted by the following flame debuffs"
+        }
+      ],
+      "why": "Slime deals no damage over time (buff registry: no DoT); it only doubles flame debuffs, which the Lab never applies (base weapon, no accessories). 'fire' matched 'fire-based debuffs' (accessory advice); 'increase the average damage' is modifier advice. Its article states no range, so the B46 reach convention applies."
+    },
+    {
       "itemId": 6152,
       "name": "Daybloom Staff",
       "decision": "limitation",
-      "reason": "It fires a short-ranged burst of slowing pellets with slight inaccuracy — not modeled.",
+      "reason": "It fires a short-ranged burst of slowing pellets with slight inaccuracy \u2014 not modeled.",
       "evidence": [
         {
           "page": "Daybloom Staff",
@@ -2031,7 +2493,7 @@
       "itemId": 6153,
       "name": "Glacier Fang",
       "decision": "limitation",
-      "reason": "Its icicles are charged by holding the attack and fall with gravity — not modeled.",
+      "reason": "Its icicles are charged by holding the attack and fall with gravity \u2014 not modeled.",
       "evidence": [
         {
           "page": "Glacier Fang",
@@ -2044,7 +2506,7 @@
       "itemId": 6155,
       "name": "Lightning Strike",
       "decision": "limitation",
-      "reason": "Its spark calls down a lightning bolt from the sky — not modeled.",
+      "reason": "Its spark calls down a lightning bolt from the sky \u2014 not modeled.",
       "evidence": [
         {
           "page": "Lightning Strike",

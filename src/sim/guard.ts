@@ -8,8 +8,8 @@
  * Also mirrors the pipeline's downgrade rule: any `labBehavior.*` path or any
  * `simRequiredWeaponFields(archetype)` path listed as unverified blocks simulation.
  */
-import { getField, isCoveredBy, simRequiredWeaponFields, type Archetype, type DamageClass, type Weapon } from '../schemas'
-import { APPROXIMATIONS, COMMON_APPROXIMATIONS, type Approximation, type ApproximationId } from './approximations'
+import { getField, isCoveredBy, modelingConventionFor, simRequiredWeaponFields, type Archetype, type DamageClass, type Weapon } from '../schemas'
+import { APPROXIMATIONS, COMMON_APPROXIMATIONS, CONVENTION_APPROXIMATIONS, type Approximation, type ApproximationId } from './approximations'
 import { TICKS_PER_SECOND } from './constants'
 import type { Behavior, ModifierRuntime } from './contracts'
 import { critChancePct } from './damage'
@@ -19,8 +19,8 @@ import type { NotSimulable, SimRefusal, SimulabilityInput, WeaponSummary } from 
 
 /** Present (verified/editorial) for every archetype. useAnimationTicks = cadence (AMENDMENTS-004 B14). */
 export const COMMON_REQUIRED_FIELDS = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks'] as const
-/** Absent ⇒ documented default (autoReuse false, no mana cost); listed unverified ⇒ refuse. */
-export const OPTIONAL_SIM_FIELDS = ['autoReuse', 'manaCost'] as const
+/** Absent ⇒ documented default (autoReuse false, no mana cost, no reuse delay); listed unverified ⇒ refuse. */
+export const OPTIONAL_SIM_FIELDS = ['autoReuse', 'manaCost', 'reuseDelayTicks'] as const
 
 export type WeaponAssessment =
   | { simulable: true; archetype: Archetype; requiresAmmoClass: string | null; requiresBuffIds: string[] }
@@ -30,7 +30,12 @@ export interface SimPlan {
   weapon: Weapon
   behavior: Behavior
   modifiers: ModifierRuntime[]
+  /** Ticks per attack: useTicks + reuseDelayTicks. */
   cadenceTicks: number
+  /** Ticks one use (the attack animation) lasts; activations happen inside it. */
+  useTicks: number
+  /** Cooldown after each use before the next may start (0 = none). */
+  reuseDelayTicks: number
   activationTicks: number
   critChancePct: number
   manaCost: number
@@ -49,12 +54,22 @@ const refuse = (weapon: Weapon, reason: NotSimulable['reason'], message: string,
 const isInt = (v: unknown, min: number, max = Infinity): boolean => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max
 
 /**
- * Effective ticks per attack. B14: the wiki's "use time" is Iteminfo useAnimation and is the attack
+ * Ticks one use lasts. B14: the wiki's "use time" is Iteminfo useAnimation and is the attack
  * cadence. VERIFIED refinement (https://terraria.wiki.gg/wiki/Use_time): "the actual use time
  * (useAnimation) of autoswing melee weapons is one tick lower than the useAnimation stated".
  */
-export function cadenceTicksFor(weapon: Pick<Weapon, 'damageClass' | 'autoReuse'>, useAnimationTicks: number): number {
+export function animationTicksFor(weapon: Pick<Weapon, 'damageClass' | 'autoReuse'>, useAnimationTicks: number): number {
   return weapon.damageClass === 'melee' && weapon.autoReuse === true ? Math.max(1, useAnimationTicks - 1) : useAnimationTicks
+}
+
+/**
+ * Effective ticks per attack = the use (above) + the weapon's reuse delay. VERIFIED
+ * (https://terraria.wiki.gg/wiki/Use_time): "reuseDelay is applied after the itemAnimation counter
+ * turns to zero" — e.g. the Clockwork Assault Rifle's reuseDelay 14 adds a 14-tick interval between its
+ * 12-tick three-round bursts (AMENDMENTS-010 B48(a)).
+ */
+export function cadenceTicksFor(weapon: Pick<Weapon, 'damageClass' | 'autoReuse' | 'reuseDelayTicks'>, useAnimationTicks: number): number {
+  return animationTicksFor(weapon, useAnimationTicks) + (weapon.reuseDelayTicks ?? 0)
 }
 
 /** Weapon-only verdict (no ammo/buffs needed) — for the Lab browser and coverage report. */
@@ -114,11 +129,21 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
   if (!isInt(weapon.critPct, 0, 100)) invalid.push('critPct')
   if (!isInt(weapon.useTimeTicks, 1)) invalid.push('useTimeTicks')
   if (!isInt(weapon.useAnimationTicks, 1)) invalid.push('useAnimationTicks')
+  if (weapon.reuseDelayTicks !== undefined && !isInt(weapon.reuseDelayTicks, 1)) invalid.push('reuseDelayTicks')
   if (weapon.manaCost !== undefined && !isInt(weapon.manaCost, 1)) invalid.push('manaCost')
   if (invalid.length > 0) {
     return {
       simulable: false,
       refusal: refuse(weapon, 'invalid-data', `Malformed simulation data: ${invalid.join(', ')}.`, { fields: invalid, archetype }),
+    }
+  }
+
+  // B49: a modeled value must resolve to a ratified convention (whose label the Lab shows) — never silent.
+  const unlabeled = (weapon._prov.modeledFields ?? []).filter((path) => !modelingConventionFor(archetype, path))
+  if (unlabeled.length > 0) {
+    return {
+      simulable: false,
+      refusal: refuse(weapon, 'invalid-data', `Modeled values without a ratified modeling convention: ${unlabeled.join(', ')}.`, { fields: unlabeled, archetype }),
     }
   }
 
@@ -139,6 +164,8 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
 }
 
 const MANA_APPROXIMATIONS: readonly ApproximationId[] = ['mana-cost', 'mana-regen', 'insufficient-mana']
+/** AMENDMENTS-012 B57(e): Lab choices the wiki does not document, for a weapon with both a mana cost and a reuse delay. */
+const COOLDOWN_MANA_APPROXIMATIONS: readonly ApproximationId[] = ['slow-cast-cooldown', 'cooldown-mana-regen']
 
 /** Full preparation: weapon verdict + modifiers (buffs) + interpreter (ammo) → a runnable plan. */
 export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: SimPlan } | { ok: false; refusal: SimRefusal } {
@@ -161,15 +188,26 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
   const damageClass = weapon.damageClass as DamageClass
   const useAnimationTicks = weapon.useAnimationTicks as number
   const activationTicks = weapon.useTimeTicks as number
+  const useTicks = animationTicksFor(weapon, useAnimationTicks)
+  const reuseDelayTicks = weapon.reuseDelayTicks ?? 0
   const cadenceTicks = cadenceTicksFor(weapon, useAnimationTicks)
   const crit = critChancePct(damageClass, weapon.critPct as number)
   const manaCost = weapon.manaCost ?? 0
+  // B49: every modeled param the weapon lists → its convention's engine label (assessWeapon checked they resolve).
+  const conventions = (weapon._prov.modeledFields ?? []).flatMap((path) => {
+    const convention = modelingConventionFor(lab.params.archetype, path)
+    const id = convention ? CONVENTION_APPROXIMATIONS[convention.id] : undefined
+    return id ? [id] : []
+  })
 
   const ids: ApproximationId[] = [
     ...COMMON_APPROXIMATIONS,
+    ...(reuseDelayTicks > 0 ? (['reuse-delay'] as const) : []),
     ...behavior.approximations,
+    ...conventions,
     ...modifiers.runtimes.flatMap((m) => m.approximations),
     ...(manaCost > 0 ? MANA_APPROXIMATIONS : []),
+    ...(manaCost > 0 && reuseDelayTicks > 0 ? COOLDOWN_MANA_APPROXIMATIONS : []),
   ]
   const approximations = [...new Set(ids)].map((id) => APPROXIMATIONS[id])
 
@@ -179,8 +217,9 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
     archetype: lab.params.archetype,
     damage: weapon.damage as number,
     cadenceTicks,
+    reuseDelayTicks,
     activationTicks,
-    activationsPerUse: Math.ceil(cadenceTicks / activationTicks),
+    activationsPerUse: Math.ceil(useTicks / activationTicks),
     nominalAttacksPerSec: TICKS_PER_SECOND / cadenceTicks,
     critChancePct: crit,
     manaCostPerUse: manaCost,
@@ -190,6 +229,6 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
 
   return {
     ok: true,
-    plan: { weapon, behavior, modifiers: modifiers.runtimes, cadenceTicks, activationTicks, critChancePct: crit, manaCost, summary, approximations },
+    plan: { weapon, behavior, modifiers: modifiers.runtimes, cadenceTicks, useTicks, reuseDelayTicks, activationTicks, critChancePct: crit, manaCost, summary, approximations },
   }
 }

@@ -17,6 +17,17 @@ export function shapeFromSpec(spec: ProjectileSpec | undefined): ProjectileShape
 
 export const tilesPerTick = (tps: number): number => tps / TICKS_PER_SECOND
 
+/**
+ * Base damage of a projectile shaped by `spec`: `damage` × `damageMultiplierPct` %, rounded DOWN
+ * (AMENDMENTS-010 B48(b)). Rounding down matches the wiki's own figures, e.g. Sapphire Staff "60% of
+ * the weapon's damage (10 base damage)" for 18 damage (10.8), Amber Staff "80% … (16 base damage)"
+ * for 21 (16.8). Integer math, so no float drift: ⌊damage × pct / 100⌋.
+ */
+export function projectileDamage(damage: number, spec: ProjectileSpec | undefined): number {
+  const pct = spec?.damageMultiplierPct
+  return pct === undefined ? damage : Math.floor((damage * pct) / 100)
+}
+
 export interface Volley {
   count: number
   spreadDegrees: number
