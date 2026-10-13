@@ -15,13 +15,14 @@ import { SiteHeader } from './SiteHeader'
 export default function AppShell() {
   const { pathname } = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  const isFirstRender = useRef(true)
+  // Path focus was last settled for. Comparing paths (instead of a "first run"
+  // flag) keeps the initial load unfocused even when StrictMode re-runs the
+  // effect on mount, and focuses exactly once per real navigation.
+  const settledPath = useRef(pathname)
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
+    if (settledPath.current === pathname) return
+    settledPath.current = pathname
     mainRef.current?.focus({ preventScroll: true })
   }, [pathname])
 

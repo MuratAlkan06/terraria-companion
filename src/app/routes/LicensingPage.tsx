@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { NoBreak, NoBreakTerms } from '../../components/NoBreak'
 import { PixelPanel } from '../../components/PixelPanel'
 import { meta } from '../../data/meta'
 import { SITE } from '../site'
@@ -26,7 +27,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
   return (
     <PixelPanel as="section" aria-labelledby={id} className="space-y-3">
       <h2 id={id} className="font-display text-base leading-relaxed text-accent text-shadow-pixel">
-        {title}
+        <NoBreakTerms text={title} />
       </h2>
       {children}
     </PixelPanel>
@@ -49,16 +50,22 @@ export default function LicensingPage() {
       </header>
 
       <Section id="lic-data" title="Game data">
-        <p className="border-l-4 border-gold-500 bg-night-900 px-4 py-3 font-semibold text-fg">{SITE.attribution}</p>
+        <p className="border-l-4 border-gold-500 bg-night-900 px-4 py-3 font-semibold text-fg">
+          <NoBreakTerms text={SITE.attribution} />
+        </p>
         <p>
           Item, weapon, boss and recipe data is derived from the{' '}
           <ExternalLink href={SITE.wikiUrl}>Official Terraria Wiki</ExternalLink> (terraria.wiki.gg), whose text is
-          licensed under <ExternalLink href={SITE.licenseUrl}>{SITE.licenseName}</ExternalLink> (see the wiki&rsquo;s{' '}
+          licensed under{' '}
+          <ExternalLink href={SITE.licenseUrl}>
+            <NoBreak>{SITE.licenseName}</NoBreak>
+          </ExternalLink>{' '}
+          (see the wiki&rsquo;s{' '}
           <ExternalLink href={SITE.wikiCopyrightsUrl}>copyright policy</ExternalLink>).
         </p>
         <p>
           Under the same share-alike terms, the datasets this site derives from the wiki are published under{' '}
-          {SITE.licenseName}. The application&rsquo;s source code is licensed separately from the data.
+          <NoBreak>{SITE.licenseName}</NoBreak>. The application&rsquo;s source code is licensed separately from the data.
         </p>
         <p>
           All data is pinned to Terraria <strong className="text-fg tabular-nums">{meta.gameVersion}</strong> (
@@ -69,21 +76,24 @@ export default function LicensingPage() {
 
       <Section id="lic-relogic" title="Re-Logic notice">
         <p>
-          Terraria and all related names, artwork, sprites and audio are &copy; Re-Logic. Item and character sprites
-          are Re-Logic&rsquo;s property and are <strong className="text-fg">not</strong> covered by the wiki&rsquo;s
-          Creative Commons license; where shown, they are used for non-commercial, informational purposes with
-          attribution to Re-Logic and the wiki file they came from.
+          Terraria and all related names, artwork, sprites and audio are &copy; <NoBreak>Re-Logic</NoBreak>. Item and
+          character sprites are <NoBreak>Re-Logic&rsquo;s</NoBreak> property and are{' '}
+          <strong className="text-fg">not</strong> covered by the wiki&rsquo;s Creative Commons license; where shown,
+          they are used for non-commercial, informational purposes with attribution to <NoBreak>Re-Logic</NoBreak> and
+          the wiki file they came from.
         </p>
         <p>
-          {SITE.name} is an unofficial fan project. It is not affiliated with, endorsed by or sponsored by Re-Logic or
-          the Terraria Wiki. Site decoration — backgrounds, logo and interface art — is original pixel art.
+          {SITE.name} is an unofficial fan project. It is not affiliated with, endorsed by or sponsored by{' '}
+          <NoBreak>Re-Logic</NoBreak> or the Terraria Wiki. Site decoration — backgrounds, logo and interface art — is
+          original pixel art.
         </p>
       </Section>
 
       <Section id="lic-noncommercial" title="Non-commercial">
         <p>
           {SITE.name} is free and non-commercial, permanently: no ads, no paid features, no affiliate links and no
-          monetization of any kind. This is a condition of the {SITE.licenseName} license the data is used under.
+          monetization of any kind. This is a condition of the <NoBreak>{SITE.licenseName}</NoBreak> license the data is
+          used under.
         </p>
       </Section>
 

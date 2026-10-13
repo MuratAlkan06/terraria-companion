@@ -13,7 +13,8 @@ export default function NotFoundPage() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:py-10">
       <PixelPanel as="section" aria-labelledby="nf-title" className="space-y-5">
-        <div className="border-2 border-night-950 bg-surface-sunken">
+        {/* Capped at 576px (~12px per art pixel) so the 48x24 scene stays crisp on desktop (design review M3). */}
+        <div className="mx-auto max-w-xl border-2 border-night-950 bg-surface-sunken">
           <CaveVignette className="block h-auto w-full" />
         </div>
         <div className="space-y-3">

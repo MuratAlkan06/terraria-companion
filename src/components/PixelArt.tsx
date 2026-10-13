@@ -17,15 +17,20 @@ export interface PixelArtProps {
   className?: string
   /** Extra SVG nodes drawn beneath the pixels (e.g. a glow gradient), in grid units. */
   underlay?: ReactNode
+  /** Extra SVG nodes drawn over the pixels (e.g. light falling on opaque scenery), in grid units. */
+  overlay?: ReactNode
+  /** SVG preserveAspectRatio; e.g. "xMidYMax slice" to cover a box like background art. */
+  preserveAspectRatio?: string
 }
 
-export function PixelArt({ rows, palette, title, className, underlay }: PixelArtProps) {
+export function PixelArt({ rows, palette, title, className, underlay, overlay, preserveAspectRatio }: PixelArtProps) {
   const layers = useMemo(() => pixelLayers(rows, palette), [rows, palette])
   const width = rows[0]?.length ?? 0
   const height = rows.length
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio={preserveAspectRatio}
       className={cx('pixelated', className)}
       role={title ? 'img' : undefined}
       aria-hidden={title ? undefined : true}
@@ -36,6 +41,7 @@ export function PixelArt({ rows, palette, title, className, underlay }: PixelArt
       {layers.map((layer) => (
         <path key={layer.key} d={layer.d} className={layer.className} style={{ fill: layer.fill }} />
       ))}
+      {overlay}
     </svg>
   )
 }

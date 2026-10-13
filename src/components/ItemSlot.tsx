@@ -47,7 +47,7 @@ export function ItemSlot({ item, tooltip, selected = false, onSelect, className 
       {hasStack ? (
         <span
           aria-hidden="true"
-          className="absolute bottom-0 left-1 text-xs font-bold text-fg tabular-nums text-shadow-pixel"
+          className="absolute bottom-0 left-1 text-xs font-bold text-fg tabular-nums text-shadow-pixel-outline"
         >
           {item.stack}
         </span>

@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router'
+import { NoBreak, NoBreakTerms } from '../../components/NoBreak'
 import { formatGeneratedDate, meta } from '../../data/meta'
 import { navItemsFor } from '../nav'
 import { pathFor } from '../routes'
@@ -39,13 +40,15 @@ export function SiteFooter() {
             to={pathFor('licensing')}
             className="inline-flex min-h-tap items-center text-link underline decoration-1 underline-offset-4 hover:text-accent-strong"
           >
-            {SITE.attribution}
+            {/* One inline run inside the flex link so protected terms wrap as text, not as flex items. */}
+            <span>
+              <NoBreakTerms text={SITE.attribution} />
+            </span>
           </Link>
         </p>
         <p>
           Free, non-commercial fan project — no ads, no monetization. Not affiliated with or endorsed by{' '}
-          <span className="whitespace-nowrap">Re-Logic</span> or the Terraria Wiki. Rights holders: takedown contact on
-          the Licensing page.
+          <NoBreak>Re-Logic</NoBreak> or the Terraria Wiki. Rights holders: takedown contact on the Licensing page.
         </p>
         {links.length > 0 ? (
           <nav aria-label="Footer">
