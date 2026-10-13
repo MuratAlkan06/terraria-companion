@@ -1,0 +1,61 @@
+/**
+ * Provenance envelope `_prov`, uniform on every emitted record (DATA_SCHEMA_SPEC §2.1).
+ *
+ * Global nullability policy (binding): emitted JSON never uses `null` for unknown.
+ * - present                          → value (verified, or editorial if listed in editorialFields)
+ * - absent + listed in unverifiedFields → unknown; UI renders "Unknown"
+ * - absent + not listed              → not applicable; UI omits the row
+ * - present + listed                 → FORBIDDEN at emit (pipeline E_UNVERIFIED_VALUE_EMITTED)
+ * Read fields through `getField` (./getField.ts), never directly.
+ */
+import * as z from 'zod'
+import { GAME_VERSION, IsoDate, Slug, WikiUrl } from './common'
+
+export const SourceKind = z.enum([
+  'iteminfo',
+  'cargo:Items',
+  'cargo:Recipes',
+  'cargo:Drops',
+  'cargo:NPCs',
+  'cargo:Equipinfo',
+  'cargo:Weapon_source',
+  'cargo:Exclusive',
+  'cargo:Imageinfo',
+  'cargo:Modifiers',
+  'curated',
+])
+export type SourceKind = z.infer<typeof SourceKind>
+
+export const ProvSource = z
+  .strictObject({
+    kind: SourceKind,
+    url: WikiUrl,
+    rev: z.int().positive().optional(), // REQUIRED for kind "iteminfo" (ADR D1 caveat)
+    fetchedAt: IsoDate,
+    overlay: Slug.optional(), // REQUIRED for kind "curated"
+  })
+  .refine((s) => s.kind !== 'iteminfo' || s.rev !== undefined, {
+    message: 'rev is required for kind "iteminfo" (ADR D1)',
+    path: ['rev'],
+  })
+  .refine((s) => s.kind !== 'curated' || s.overlay !== undefined, {
+    message: 'overlay is required for kind "curated"',
+    path: ['overlay'],
+  })
+export type ProvSource = z.infer<typeof ProvSource>
+
+export const Prov = z
+  .strictObject({
+    gameVersion: z.literal(GAME_VERSION),
+    sources: z.array(ProvSource).min(1),
+    verified: z.boolean(),
+    unverifiedFields: z.array(z.string()), // dot-paths, e.g. "rates.expert"
+    editorialFields: z.array(z.string()), // dot-paths sourced ONLY from curated overlays
+  })
+  // §2.1 rule 1: verified ⇒ no unverified fields (verified:false may also come from a
+  // failed cross-check or an unconfirmed 1.4.5.7→1.4.5.8 patch-diff field).
+  .refine((p) => !p.verified || p.unverifiedFields.length === 0, {
+    message: 'verified:true requires an empty unverifiedFields list (§2.1 rule 1)',
+    path: ['verified'],
+  })
+export type Prov = z.infer<typeof Prov>

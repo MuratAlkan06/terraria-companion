@@ -1,0 +1,106 @@
+[
+  {
+    "id": "eater-of-worlds",
+    "name": "Eater of Worlds",
+    "nodeId": "eater-of-worlds",
+    "npcIds": [13, 14, 15],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Eater_of_Worlds",
+    "stage": "early-prehm",
+    "worldEvil": "corruption",
+    "summon": {
+      "items": [70],
+      "conditions": ["corruption"],
+      "text": "It can be summoned manually by using a Worm Food in The Corruption or Underground Corruption, at any time. The Eater of Worlds spawns upon destroying every third Shadow Orb in a Corruption world.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Eater_of_Worlds"
+    },
+    "location": { "biomes": ["The Corruption", "Underground Corruption"], "time": "any" },
+    "statsByDifficulty": {},
+    "dropIds": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:NPCs", "url": "https://terraria.wiki.gg/wiki/Eater_of_Worlds", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Eater_of_Worlds", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": [
+        "statsByDifficulty.classic",
+        "statsByDifficulty.expert",
+        "statsByDifficulty.master",
+        "attackPatternTags",
+        "suggestedEquipment",
+        "prepChecklist",
+        "strategies"
+      ],
+      "editorialFields": ["stage"]
+    }
+  },
+  {
+    "id": "brain-of-cthulhu",
+    "name": "Brain of Cthulhu",
+    "nodeId": "brain-of-cthulhu",
+    "npcIds": [266],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu",
+    "stage": "early-prehm",
+    "worldEvil": "crimson",
+    "summon": {
+      "items": [1331],
+      "conditions": ["crimson"],
+      "text": "It can be summoned manually by using a Bloody Spine in The Crimson or Underground Crimson, at any time. The Brain of Cthulhu spawns upon destroying every third Crimson Heart in a Crimson world.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu"
+    },
+    "location": { "biomes": ["The Crimson", "Underground Crimson"], "time": "any" },
+    "statsByDifficulty": {},
+    "dropIds": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:NPCs", "url": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": [
+        "statsByDifficulty.classic",
+        "statsByDifficulty.expert",
+        "statsByDifficulty.master",
+        "attackPatternTags",
+        "suggestedEquipment",
+        "prepChecklist",
+        "strategies"
+      ],
+      "editorialFields": ["stage"]
+    }
+  },
+  {
+    "id": "wall-of-flesh",
+    "name": "Wall of Flesh",
+    "nodeId": "wall-of-flesh",
+    "npcIds": [113, 114],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wall_of_Flesh",
+    "stage": "late-prehm",
+    "summon": {
+      "items": [267],
+      "conditions": ["underworld"],
+      "text": "The Wall of Flesh can be summoned by dropping a Guide Voodoo Doll into lava in The Underworld while the Guide is alive, which destroys the Guide Voodoo Doll and kills the Guide in the process.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Wall_of_Flesh"
+    },
+    "location": { "biomes": ["The Underworld"], "time": "any" },
+    "statsByDifficulty": {
+      "classic": { "hp": 8000, "defense": 12, "contactDamage": 50 },
+      "expert": { "hp": 11200, "defense": 18, "contactDamage": 150 },
+      "master": { "hp": 14280, "defense": 18, "contactDamage": 225 }
+    },
+    "dropIds": ["434-wall-of-flesh-741638a5", "434-treasure-bag-wall-of-flesh-741638a5"],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:NPCs", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["attackPatternTags", "suggestedEquipment", "prepChecklist", "strategies"],
+      "editorialFields": ["stage"]
+    }
+  }
+]

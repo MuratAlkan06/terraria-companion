@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ironskin",
+    "gameBuffId": 5,
+    "name": "Ironskin",
+    "isDebuff": false,
+    "effects": [{ "kind": "stat", "stat": "defense-flat", "value": 8 }],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Ironskin_Potion",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Ironskin_Potion", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]

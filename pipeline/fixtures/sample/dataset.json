@@ -1,0 +1,16 @@
+{
+  "name": "sample",
+  "description": "P2-S1 hand-built validation sample. Every value is real terraria.wiki.gg data for Terraria 1.4.5.8, checked on 2026-10-12 against the Cargo tables (Items, Recipes, Drops, NPCs) and the cited article pages; anything not verifiable is absent and listed in _prov.unverifiedFields.",
+  "iteminfo": { "rev": 1023241, "syncedTo": "1.4.5.7" },
+  "notes": [
+    "iteminfo.rev is the Module:Iteminfo/data revision current on 2026-10-12 (edited 2026-08-22); the module states it is synced to 1.4.5.7 (ADR-001 D1 caveat).",
+    "Subset dataset: acquisition lists only routes whose referenced records are in the sample, and derived lists (dropIds, combinedFrom, upgradesTo, isStation) are derived over the sample only.",
+    "critPct is the weapon's bonus: wiki crit chance minus the 4% default (the wiki shows totals, e.g. Wand of Sparking 14%; Critical_hit page).",
+    "Velocities: wiki Velocity is pixels per tick; tiles/second = Velocity x 3.75 (Velocity page). Ammo velocity is added to the weapon's, hence ammoStats.velocityBonusTps (the additive base value). Some projectiles also have a velocity multiplier (Musket Ball page: 2x) that the schema cannot express yet (TO-VERIFY-IN-P2 #11).",
+    "Weapon Lab archetype parameters that the wiki does not state are listed as unverified (labBehavior.params.*); validate downgrades those weapons to limitations, so no parameter is invented.",
+    "Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs, i: sorted 'ref*amount'})). Drop ids: itemId-npcNameSlug-fnv1a32hex(JSON.stringify(sortedConditions)).",
+    "The wiki's 'Iron Anvil' station means Iron Anvil or Lead Anvil; the sample models it as item 35 only.",
+    "maxStack is omitted on weapons/armor/accessories: Cargo 'stack' reports 9999 for them (suspected template default); to be resolved in P2-S2.",
+    "Boss stats: Eater of Worlds is multi-segment (per-segment stats only) and the Brain of Cthulhu life value carries the wiki's 'outdated source code' flag, so both are Unknown."
+  ]
+}

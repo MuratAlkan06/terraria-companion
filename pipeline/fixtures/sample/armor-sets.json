@@ -1,0 +1,45 @@
+[
+  {
+    "id": "cobalt",
+    "name": "Cobalt armor",
+    "pieces": { "helmets": [371, 372, 373], "chest": 374, "legs": 375 },
+    "variants": [
+      {
+        "helmetId": 371,
+        "class": "magic",
+        "setBonus": [{ "kind": "stat", "stat": "mana-cost-pct", "value": -14 }],
+        "setBonusText": "14% reduced mana costs"
+      },
+      {
+        "helmetId": 372,
+        "class": "melee",
+        "setBonus": [{ "kind": "stat", "stat": "melee-speed-pct", "value": 15 }],
+        "setBonusText": "15% increased melee speed"
+      },
+      {
+        "helmetId": 373,
+        "class": "ranged",
+        "setBonus": [
+          {
+            "kind": "special",
+            "text": "20% chance to save ammo",
+            "simulated": false,
+            "sourceUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor"
+          }
+        ],
+        "setBonusText": "20% chance to save ammo"
+      }
+    ],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "set-bonuses", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["stage"],
+      "editorialFields": []
+    }
+  }
+]

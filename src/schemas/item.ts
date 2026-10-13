@@ -1,0 +1,178 @@
+/**
+ * Shared item core, acquisition, gating, stat effects, and the encyclopedia `Item`
+ * (DATA_SCHEMA_SPEC §2.2, §2.3, §2.6).
+ *
+ * One shared game-item-ID space: an ID appears in exactly one of Weapon / ArmorPiece /
+ * Accessory / Item (validated by the pipeline, §3).
+ */
+import * as z from 'zod'
+import {
+  AmmoClass,
+  ConditionSlug,
+  DamageClass,
+  ItemId,
+  PlainText1,
+  Rarity,
+  Slug,
+  Stage,
+  WikiUrl,
+} from './common'
+import { Prov } from './prov'
+
+export const GatedBy = z.strictObject({
+  bosses: z.array(Slug), // node slugs that MUST be defeated first
+  conditions: z.array(ConditionSlug), // world conditions not implied by bosses
+  stage: Stage, // display tag = max(stage of gates); bosses[] authoritative
+})
+export type GatedBy = z.infer<typeof GatedBy>
+// Derived by pipeline (§7b). If underivable: absent + "gatedBy" in unverifiedFields
+// ⇒ consumers treat gating as UNKNOWN and NEVER "obtainable now" (Feature A/B rule).
+
+export const Acquisition = z.discriminatedUnion('method', [
+  z.strictObject({ method: z.literal('craft'), recipeIds: z.array(z.string()).min(1) }),
+  z.strictObject({ method: z.literal('drop'), dropIds: z.array(z.string()).min(1) }),
+  z.strictObject({
+    method: z.literal('purchase'),
+    npcName: PlainText1,
+    priceCopper: z.int().positive().optional(),
+    conditions: z.array(ConditionSlug),
+  }),
+  z.strictObject({
+    method: z.literal('loot'),
+    containers: z.array(PlainText1).min(1),
+    locations: z.array(PlainText1),
+  }),
+  z.strictObject({
+    method: z.literal('fishing'),
+    biomes: z.array(PlainText1).min(1),
+    conditions: z.array(ConditionSlug),
+  }),
+  z.strictObject({ method: z.literal('other'), description: PlainText1, sourceUrl: WikiUrl }),
+])
+export type Acquisition = z.infer<typeof Acquisition>
+
+/** Fields shared by Weapon, ArmorPiece, Accessory, Item (spread into each strictObject). */
+export const itemCommon = {
+  id: ItemId,
+  name: PlainText1,
+  slug: Slug, // unique across the whole item ID space
+  rarity: Rarity.optional(),
+  stage: Stage.optional(), // DERIVED from gatedBy else curated (risk A3)
+  tags: z.array(Slug),
+  wikiUrl: WikiUrl,
+  sprite: z.string().optional(), // path under /sprites/…; absent ⇒ placeholder (D3)
+  valueCopper: z.int().nonnegative().optional(),
+  maxStack: z.int().positive().optional(),
+  gatedBy: GatedBy.optional(),
+  acquisition: z.array(Acquisition), // empty ⇒ "acquisition" ∈ unverifiedFields
+  _prov: Prov,
+}
+
+// §2.3 StatEffect (armor/sets/accessories/buffs — powers P3-S14 + loadout math)
+export const StatKind = z.enum([
+  'damage-pct',
+  'damage-flat',
+  'crit-pct',
+  'melee-speed-pct',
+  'attack-speed-pct',
+  'defense-flat',
+  'damage-reduction-pct',
+  'move-speed-pct',
+  'jump-boost',
+  'flight-time-ticks',
+  'max-mana-flat',
+  'mana-cost-pct',
+  'mana-regen',
+  'minion-slots',
+  'sentry-slots',
+  'whip-range-pct',
+  'life-regen',
+  'max-life-flat',
+  'mining-speed-pct',
+  'aggro-flat',
+]) // CLOSED enum: pipeline FAILS on unclassifiable effect → explicit extension, never silent text
+export type StatKind = z.infer<typeof StatKind>
+
+export const StatEffect = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('stat'),
+    stat: StatKind,
+    value: z.number(), // signed: reductions are negative (e.g. mana-cost-pct -14)
+    scope: DamageClass.optional(), // absent = all classes
+  }),
+  z.strictObject({
+    kind: z.literal('special'), // real but unmodeled — Lab lists "not simulated"
+    text: PlainText1,
+    simulated: z.literal(false),
+    sourceUrl: WikiUrl,
+  }),
+])
+export type StatEffect = z.infer<typeof StatEffect>
+
+/** Projectile shape shared by Lab archetypes and ammo (§2.4). Velocities in tiles/second. */
+export const ProjectileSpec = z.strictObject({
+  velocityTps: z.number().positive(),
+  gravity: z.boolean().optional(), // simplified: arcing vs straight (v1 fidelity)
+  lifetimeTicks: z.int().positive().optional(),
+  pierce: z.union([z.int().nonnegative(), z.literal('infinite')]).optional(),
+  spriteKey: z.string().optional(),
+})
+export type ProjectileSpec = z.infer<typeof ProjectileSpec>
+
+// §2.6 Item (encyclopedia superset)
+export const ItemCategory = z.enum([
+  'material',
+  'potion',
+  'food',
+  'ammo',
+  'tool',
+  'hook',
+  'mount',
+  'station',
+  'summoning',
+  'exploration-utility',
+  'other',
+])
+export type ItemCategory = z.infer<typeof ItemCategory>
+
+export const Item = z.strictObject({
+  ...itemCommon,
+  type: z.literal('item'),
+  category: ItemCategory,
+  consumable: z.boolean().optional(),
+  isStation: z.boolean(), // DERIVED: referenced as station by ≥1 recipe
+  ammoStats: z
+    .strictObject({
+      ammoClass: AmmoClass,
+      damage: z.int().nonnegative(),
+      velocityBonusTps: z.number().optional(),
+      knockback: z.number().nonnegative().optional(),
+      projectile: ProjectileSpec.optional(),
+    })
+    .optional(),
+  toolStats: z
+    .strictObject({
+      pickaxePowerPct: z.int().positive().optional(),
+      axePowerPct: z.int().positive().optional(),
+      hammerPowerPct: z.int().positive().optional(),
+    })
+    .optional(),
+  hookStats: z
+    .strictObject({
+      reachTiles: z.number().positive().optional(),
+      hookCount: z.int().positive().optional(),
+      simultaneousLatches: z.int().positive().optional(),
+    })
+    .optional(),
+  mountStats: z.strictObject({ description: PlainText1, sourceUrl: WikiUrl }).optional(),
+  buffGrants: z
+    .array(
+      z.strictObject({
+        buffId: Slug,
+        durationTicks: z.int().positive().optional(),
+      }),
+    )
+    .optional(),
+  summonsBossNode: Slug.optional(),
+})
+export type Item = z.infer<typeof Item>

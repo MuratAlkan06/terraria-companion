@@ -1,0 +1,77 @@
+[
+  {
+    "id": "434-wall-of-flesh-741638a5",
+    "itemId": 434,
+    "source": { "npcName": "Wall of Flesh", "npcIds": [113, 114], "bossId": "wall-of-flesh" },
+    "quantity": { "min": 1, "max": 1 },
+    "rates": { "classic": 0.25 },
+    "conditions": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "434-treasure-bag-wall-of-flesh-741638a5",
+    "itemId": 434,
+    "source": { "npcName": "Treasure Bag (Wall of Flesh)", "bossId": "wall-of-flesh", "treasureBag": true },
+    "quantity": { "min": 1, "max": 1 },
+    "rates": { "expert": 0.25, "master": 0.25 },
+    "conditions": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "267-voodoo-demon-741638a5",
+    "itemId": 267,
+    "source": { "npcName": "Voodoo Demon", "npcIds": [66] },
+    "quantity": { "min": 1, "max": 1 },
+    "rates": { "classic": 1, "expert": 1, "master": 1 },
+    "conditions": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Voodoo_Demon", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "216-zombie-741638a5",
+    "itemId": 216,
+    "source": { "npcName": "Zombie", "npcIds": [3] },
+    "quantity": { "min": 1, "max": 1 },
+    "rates": { "classic": 0.02, "expert": 0.02, "master": 0.02 },
+    "conditions": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Zombie", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "97-shadow-orb-741638a5",
+    "itemId": 97,
+    "source": { "npcName": "Shadow Orb" },
+    "quantity": { "min": 100, "max": 100 },
+    "rates": {},
+    "conditions": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Shadow_Orb", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["rates.classic", "rates.expert", "rates.master"],
+      "editorialFields": []
+    }
+  }
+]

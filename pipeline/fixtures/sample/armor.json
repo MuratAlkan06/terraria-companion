@@ -1,0 +1,135 @@
+[
+  {
+    "id": 371,
+    "name": "Cobalt Hat",
+    "slug": "cobalt-hat",
+    "type": "armor",
+    "slot": "head",
+    "setId": "cobalt",
+    "rarity": 4,
+    "defense": 3,
+    "effects": [
+      { "kind": "stat", "stat": "max-mana-flat", "value": 40 },
+      { "kind": "stat", "stat": "damage-pct", "value": 10, "scope": "magic" },
+      { "kind": "stat", "stat": "crit-pct", "value": 9, "scope": "magic" }
+    ],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "acquisition": [{ "method": "craft", "recipeIds": ["371-2620fd38"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 372,
+    "name": "Cobalt Helmet",
+    "slug": "cobalt-helmet",
+    "type": "armor",
+    "slot": "head",
+    "setId": "cobalt",
+    "rarity": 4,
+    "defense": 14,
+    "effects": [
+      { "kind": "stat", "stat": "move-speed-pct", "value": 10 },
+      { "kind": "stat", "stat": "damage-pct", "value": 15, "scope": "melee" }
+    ],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "acquisition": [{ "method": "craft", "recipeIds": ["372-2620fd38"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 373,
+    "name": "Cobalt Mask",
+    "slug": "cobalt-mask",
+    "type": "armor",
+    "slot": "head",
+    "setId": "cobalt",
+    "rarity": 4,
+    "defense": 5,
+    "effects": [
+      { "kind": "stat", "stat": "damage-pct", "value": 10, "scope": "ranged" },
+      { "kind": "stat", "stat": "crit-pct", "value": 10, "scope": "ranged" }
+    ],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "acquisition": [{ "method": "craft", "recipeIds": ["373-2620fd38"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 374,
+    "name": "Cobalt Breastplate",
+    "slug": "cobalt-breastplate",
+    "type": "armor",
+    "slot": "chest",
+    "setId": "cobalt",
+    "rarity": 4,
+    "defense": 10,
+    "effects": [{ "kind": "stat", "stat": "crit-pct", "value": 5 }],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "acquisition": [{ "method": "craft", "recipeIds": ["374-efeed241"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 375,
+    "name": "Cobalt Leggings",
+    "slug": "cobalt-leggings",
+    "type": "armor",
+    "slot": "legs",
+    "setId": "cobalt",
+    "rarity": 4,
+    "defense": 8,
+    "effects": [
+      { "kind": "stat", "stat": "move-speed-pct", "value": 10 },
+      { "kind": "stat", "stat": "damage-pct", "value": 3 }
+    ],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_armor",
+    "acquisition": [{ "method": "craft", "recipeIds": ["375-48241b25"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  }
+]

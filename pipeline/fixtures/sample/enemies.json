@@ -1,0 +1,20 @@
+[
+  {
+    "id": "voodoo-demon",
+    "npcIds": [66],
+    "name": "Voodoo Demon",
+    "biomes": ["The Underworld"],
+    "dropIds": ["267-voodoo-demon-741638a5"],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Voodoo_Demon",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:NPCs", "url": "https://terraria.wiki.gg/wiki/Voodoo_Demon", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Voodoo_Demon", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["stage"],
+      "editorialFields": []
+    }
+  }
+]

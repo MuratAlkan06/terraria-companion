@@ -1,0 +1,73 @@
+[
+  {
+    "id": "hardmode",
+    "name": "Hardmode",
+    "kind": "world-state",
+    "satisfiedByNode": "wall-of-flesh",
+    "description": "A world permanently changes into Hardmode after the Wall of Flesh is defeated for the first time.",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Hardmode",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "curated", "overlay": "conditions", "url": "https://terraria.wiki.gg/wiki/Hardmode", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "underworld",
+    "name": "The Underworld",
+    "kind": "biome",
+    "description": "The biome where the Wall of Flesh is summoned by dropping a Guide Voodoo Doll into lava.",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/The_Underworld",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "curated", "overlay": "conditions", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "corruption",
+    "name": "The Corruption",
+    "kind": "biome",
+    "description": "The biome (or Underground Corruption) where a Worm Food must be used to summon the Eater of Worlds.",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/The_Corruption",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "curated", "overlay": "conditions", "url": "https://terraria.wiki.gg/wiki/Eater_of_Worlds", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "crimson",
+    "name": "The Crimson",
+    "kind": "biome",
+    "description": "The biome (or Underground Crimson) where a Bloody Spine must be used to summon the Brain of Cthulhu.",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/The_Crimson",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "curated", "overlay": "conditions", "url": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "goblin-army-defeated",
+    "name": "Goblin Army defeated",
+    "kind": "world-state",
+    "description": "The Goblin Tinkerer can be rescued as the Bound Goblin in the Cavern layer only after a Goblin Army has been defeated.",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Goblin_Army",
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "curated", "overlay": "conditions", "url": "https://terraria.wiki.gg/wiki/Goblin_Tinkerer", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]
