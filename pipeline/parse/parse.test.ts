@@ -1,9 +1,12 @@
-/* Parse stage: Lua modules, Iteminfo, recipe modules, Cargo Drops cell grammar, text helpers.
+/* Parse stage: Lua modules, Iteminfo, recipe modules, Cargo Drops cell grammar, text helpers, P2-S7 article
+ * infoboxes / Buff IDs table / Module:Projectileinfo/data.
  * Fixtures mirror the real shapes verified against terraria.wiki.gg on 2026-10-13. */
 import { describe, expect, it } from 'vitest'
 import { customNotesOf, desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf, plainTextOf } from './dropCells'
+import { infoboxForItem, parseBuffIdTable, parseBuffInfoboxes, parseIdList, parseItemInfoboxes } from './infobox'
 import { parseIteminfo, resolveItemName } from './iteminfo'
 import { parseNpcStat } from './npcStats'
+import { extraUpdates, parseProjectileinfo } from './projectileinfo'
 import { findCalls, parseLua, returnedValue } from './lua'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from './recipeModules'
 import { fnv1a32hex, slugify, stripMarkup } from './text'
@@ -188,5 +191,54 @@ describe('npcStats (Cargo NPCs life/defense/damage, P2-S6)', () => {
     expect(parseNpcStat('<span class="npcstat"><span class="m-all">42</span></span>&#32;/ 27 <span class="note-text small">(≤50% health)</span>', 'defense')).toMatchObject({ ok: false, reason: expect.stringContaining('text next to the value') })
     expect(parseNpcStat(`${modeContent('8000', '13600', '20400')} <span class="note-text small">(4 cannons)</span>`, 'life')).toEqual({ ok: false, reason: 'value noted "4 cannons"' })
     expect(parseNpcStat('', 'damage')).toEqual({ ok: false, reason: 'empty cell' })
+  })
+})
+
+// ---- P2-S7: rendered-article infoboxes (markup shapes as served by terraria.wiki.gg on 2026-10-13) ----
+const itemBox = (title: string, rows: [string, string][], ids: string) =>
+  `<div class="infobox item" style=";"><div class="title"><div class="collapsible-toggle-wrapper"><small><div class="mw-collapsible-toggle-placeholder"></div></small></div>${title}</div><div class="mw-collapsible-content"><div class="section statistics"><div class="title">Statistics</div><table class="stat"><tbody>${rows.map(([th, td]) => `<tr><th>${th}</th><td>${td}</td></tr>`).join('')}</tbody></table></div><div class="section ids"><ul>${ids}</ul></div></div></div>`
+const idLi = (kind: string, value: string) => `<li>Internal <a href="/wiki/${kind}_IDs" title="${kind} IDs">${kind} ID</a>:&#32;<b>${value}</b></li>`
+const buffBox = (title: string, effects: string, id: string) =>
+  `<aside class="portable-infobox pi-type-buff"><h2 class="pi-item pi-title" data-source="name">${title}</h2><section class="pi-item pi-group"><div class="pi-item pi-data" data-source="effects"><h3 class="pi-data-label pi-secondary-font">Effects</h3><div class="pi-data-value pi-font">${effects}</div></div></section><section class="pi-item pi-group"><div class="pi-item pi-data"><h3 class="pi-data-label pi-secondary-font"><a href="/wiki/Buff_IDs" title="Buff IDs">Buff ID</a></h3><div class="pi-data-value pi-font">${id}</div></div></section></aside>`
+
+describe('article infoboxes (P2-S7)', () => {
+  it('item infobox: title, stat rows (plain text), id lists incl. en-dash ranges', () => {
+    const html = `<p>lead</p>${itemBox('Musket Ball', [['Damage', '7&#32;<span class="small-bold">(Ranged)</span>'], ['Base <a href="/wiki/Velocity">Velocity</a>', '4'], ['<a href="/wiki/Velocity#extraUpdates">Velocity Multiplier</a>', '2×']], idLi('Item', '97') + idLi('Projectile', '14'))}${itemBox('Liquid rockets', [], idLi('Item', '4459, 4447–4449'))}<div class="drop infobox"><table><tr><th>x</th><td>y</td></tr></table></div>`
+    const boxes = parseItemInfoboxes(html)
+    expect(boxes.map((b) => [b.title, b.itemIds, b.projectileIds])).toEqual([['Musket Ball', [97], [14]], ['Liquid rockets', [4459, 4447, 4448, 4449], []]])
+    expect(boxes[0].rows).toEqual([{ label: 'Damage', value: '7 (Ranged)' }, { label: 'Base Velocity', value: '4' }, { label: 'Velocity Multiplier', value: '2×' }])
+    expect(infoboxForItem(boxes, 4448)?.title).toBe('Liquid rockets')
+    expect(infoboxForItem(boxes, 771)).toBeUndefined()
+    expect([parseIdList('89, 90'), parseIdList('7–5'), parseIdList('12 (old)')]).toEqual([[89, 90], undefined, undefined])
+  })
+
+  it('buff infobox: Effects lines split on <br>, Buff ID; one infobox per variant (Zapped)', () => {
+    const html = buffBox('Acid Venom', '−30 health <small>per second</small> <span class="note-text small">(on enemies)</span><br />No health regeneration', '70') + buffBox('Zapped', 'Entity is engulfed', '400')
+    const boxes = parseBuffInfoboxes(html)
+    expect(boxes.map((b) => [b.title, b.buffId, b.data.get('Effects')])).toEqual([
+      ['Acid Venom', 70, ['−30 health per second (on enemies)', 'No health regeneration']],
+      ['Zapped', 400, ['Entity is engulfed']],
+    ])
+  })
+
+  it('Buff IDs table: id, name, internal name, Buff/Debuff, linked article (unnamed legacy rows skipped)', () => {
+    const row = (id: number, cell: string, internal: string, type: string) => `<tr><td>${id}\n</td><td class="il1c"></td><td class="il2c">${cell}\n</td><td><code>${internal}</code>\n</td><td>${type}\n</td></tr>`
+    const html = `<table class="terraria sortable"><tbody><tr><th>ID</th><th>Image</th><th>Name</th><th>Internal name</th><th>Type</th></tr>${row(5, '<span class="i"><a href="/wiki/Ironskin_Potion" title="Ironskin Potion">Ironskin</a></span>', 'Ironskin', 'Buff')}${row(69, '<a href="/wiki/Ichor_(debuff)" title="Ichor (debuff)">Ichor</a>', 'Ichor', 'Debuff')}${row(397, 'Spored', 'ChlorophyteSpore', 'Debuff')}${row(138, '', 'MinecartLegacyUnused', 'Buff')}</tbody></table>`
+    expect(parseBuffIdTable(html)).toEqual([
+      { id: 5, name: 'Ironskin', internalName: 'Ironskin', isDebuff: false, article: 'Ironskin Potion' },
+      { id: 69, name: 'Ichor', internalName: 'Ichor', isDebuff: true, article: 'Ichor (debuff)' },
+      { id: 397, name: 'Spored', internalName: 'ChlorophyteSpore', isDebuff: true },
+    ])
+  })
+})
+
+describe('Module:Projectileinfo/data (P2-S7)', () => {
+  it('merges sparse projectile overrides over the [0] defaults; string keys are not projectile IDs', () => {
+    const content = '-- generated at: 2026-09-13 15:45 (+00:00)\n-- from Module:Projectileinfo/datagen\nreturn {\n[0] = { ["extraUpdates"] = 0, ["name"] = "", ["penetrate"] = 1, },\n[14] = { ["extraUpdates"] = 1, ["internalName"] = "Bullet", ["name"] = "Bullet", },\n[242] = { ["extraUpdates"] = 7, ["name"] = "High Velocity Bullet", },\n[\'m1016\'] = { ["name"] = "Egg", },\n}'
+    const info = parseProjectileinfo({ title: 'Module:Projectileinfo/data', rev: 1030091, revTimestamp: '2026-09-18T03:30:43Z', content, fetchedAt: '2026-10-13T08:38:00.000Z' })
+    expect(info.generated).toBe('2026-09-13 15:45 (+00:00)')
+    expect([...info.projectiles.keys()]).toEqual([14, 242])
+    expect(info.projectiles.get(242)?.stats).toEqual({ extraUpdates: 7, name: 'High Velocity Bullet', penetrate: 1 })
+    expect([extraUpdates(info, 14), extraUpdates(info, 242), extraUpdates(info, 1)]).toEqual([1, 7, undefined])
   })
 })

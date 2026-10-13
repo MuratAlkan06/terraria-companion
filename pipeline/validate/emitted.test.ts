@@ -5,7 +5,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SpriteManifest, STAGE_ORDER, type Boss, type DropSource, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { getField, SpriteManifest, STAGE_ORDER, type Boss, type Buff, type DropSource, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
 import { loadDatasetDir } from './dataset'
 import { formatError } from './errors'
@@ -36,13 +37,77 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     }
   })
 
-  it('public/sprites/manifest.json lists exactly the weapon + boss sprite paths, with wiki provenance (D3/A10)', () => {
+  it('public/sprites/manifest.json lists exactly the weapon + boss + ammo item sprite paths, with wiki provenance (D3/A10)', () => {
     const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(REPO, 'public/sprites/manifest.json'), 'utf8')))
     const weapons = JSON.parse(readFileSync(join(DATA_DIR, 'weapons.detail.json'), 'utf8')) as Weapon[]
     const bosses = JSON.parse(readFileSync(join(DATA_DIR, 'bosses.json'), 'utf8')) as Boss[]
-    expect([...weapons, ...bosses].flatMap((r) => (r.sprite ? [r.sprite] : [])).sort()).toEqual(manifest.files.map((f) => f.path).sort())
+    const items = JSON.parse(readFileSync(join(DATA_DIR, 'items.detail.json'), 'utf8')) as Item[]
+    expect([...weapons, ...bosses, ...items].flatMap((r) => (r.sprite ? [r.sprite] : [])).sort()).toEqual(manifest.files.map((f) => f.path).sort())
     for (const b of bosses) if (b.sprite) expect(manifest.files.find((f) => f.path === b.sprite)?.ref).toBe(`boss:${b.id}`)
+    for (const i of items) if (i.sprite) expect(manifest.files.find((f) => f.path === i.sprite)?.ref).toBe(`i:${i.id}`)
     expect(manifest.fallbackMode).toBe(false)
+  })
+
+  it('B30: every sprite file over 100 KB lists a ≤ 128 px whole-number-downscaled PNG thumbnail (the 3 heavy boss GIFs)', () => {
+    const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(REPO, 'public/sprites/manifest.json'), 'utf8')))
+    const heavy = manifest.files.filter((f) => f.bytes > THUMBNAIL_MIN_BYTES)
+    expect(heavy.map((f) => f.ref).sort()).toEqual(['boss:empress-of-light', 'boss:moon-lord', 'boss:wall-of-flesh'])
+    for (const f of manifest.files) {
+      if (f.bytes <= THUMBNAIL_MIN_BYTES) {
+        expect(f.thumbnail, f.path).toBeUndefined()
+        continue
+      }
+      const t = f.thumbnail!
+      expect(t.path).toBe(f.path.replace('/sprites/', '/sprites/thumbs/').replace(/\.gif$/, '.png'))
+      expect(Math.max(t.width, t.height)).toBeLessThanOrEqual(128)
+      const n = Math.ceil(f.width / t.width)
+      expect([t.width, t.height]).toEqual([Math.ceil(f.width / n), Math.ceil(f.height / n)])
+    }
+  })
+
+  describe('P2-S7 ammo + buffs + pipeline debts (B22, B31)', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const weapons = read<Weapon[]>('weapons.detail.json')
+    const items = read<Item[]>('items.detail.json')
+    const buffs = read<Buff[]>('buffs.json')
+
+    it('§7a-10: every weapon ammo class is matched by ≥1 ammo record; Snowball is a weapon carrying ammoStats', () => {
+      const classes = new Set([...items, ...weapons].flatMap((r) => (r.ammoStats ? [r.ammoStats.ammoClass] : [])))
+      for (const w of weapons) if (w.ammoClass) expect(classes.has(w.ammoClass), `${w.name} ${w.ammoClass}`).toBe(true)
+      expect(weapons.find((w) => w.id === 949)?.ammoStats).toMatchObject({ ammoClass: 'snowball', damage: 8 })
+      expect(items.every((i) => i.category === 'ammo' && i.ammoStats)).toBe(true)
+    })
+
+    it('B2 spot checks: Musket Ball 2×, High Velocity Bullet 8×; a rocket and a dart carry no multiplier of their own', () => {
+      const byId = (id: number) => items.find((i) => i.id === id)!
+      expect(byId(97).ammoStats).toEqual({ ammoClass: 'musket-ball', damage: 7, velocityBonusTps: 15, velocityMultiplier: 2, knockback: 2 })
+      expect(byId(1302).ammoStats?.velocityMultiplier).toBe(8)
+      expect(byId(771).ammoStats).toEqual({ ammoClass: 'rocket-i', damage: 40, velocityBonusTps: 0, knockback: 4 })
+      expect(getField(byId(1310), 'ammoStats.velocityMultiplier')).toEqual({ status: 'not-applicable' })
+      expect(getField(byId(23), 'ammoStats.damage')).toEqual({ status: 'unverified' }) // Gel: no damage of its own
+    })
+
+    it('buffs: potion stat effects and enemy DoT are structured; Ironskin +8 defense, On Fire! 4 HP/s', () => {
+      const buff = (id: string) => buffs.find((b) => b.id === id)!
+      expect(buff('ironskin')).toMatchObject({ gameBuffId: 5, isDebuff: false, effects: [{ kind: 'stat', stat: 'defense-flat', value: 8 }] })
+      expect(buff('on-fire')).toMatchObject({ gameBuffId: 24, isDebuff: true, dot: { dps: 4 } })
+      expect(items.find((i) => i.id === 353)?.buffGrants).toEqual([{ buffId: 'tipsy', durationTicks: 7200 }]) // Ale
+    })
+
+    it('B22: Wall of Flesh unlocks Early Hardmode — Breaker Blade and every WoF-gated record are early-hm or later', () => {
+      const { nodes } = read<{ nodes: ProgressionNode[] }>('progression.json')
+      expect(nodes.find((n) => n.id === 'wall-of-flesh')).toMatchObject({ stage: 'late-prehm', unlocksStage: 'early-hm' })
+      expect(weapons.find((w) => w.id === 426)).toMatchObject({ name: 'Breaker Blade', stage: 'early-hm' })
+      const wofGated = [...weapons, ...items].filter((r) => r.gatedBy?.bosses.includes('wall-of-flesh'))
+      expect(wofGated.length).toBeGreaterThan(0)
+      for (const r of wofGated) expect(STAGE_ORDER[r.stage!] >= STAGE_ORDER['early-hm'], r.name).toBe(true)
+    })
+
+    it('B31: list records and search docs carry their record\'s own wikiUrl', () => {
+      const detail = new Map([...weapons, ...items].map((r) => [r.id, r.wikiUrl]))
+      for (const file of ['weapons.list.json', 'items.list.json']) for (const r of read<{ id: number; wikiUrl: string }[]>(file)) expect(r.wikiUrl, `${file} i:${r.id}`).toBe(detail.get(r.id))
+      expect(read<SearchDoc[]>('search-docs.json').every((d) => d.wikiUrl?.startsWith('https://terraria.wiki.gg/wiki/'))).toBe(true)
+    })
   })
 
   it('sprite binaries are gitignored; only the manifest is tracked (A10)', () => {

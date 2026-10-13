@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import bosses from '../data/bosses.json'
 import conditions from '../data/conditions.json'
 import drops from '../data/drops.json'
+import enemies from '../data/enemies.json'
 import itemUniverse from '../data/item-universe.json'
 import meta from '../data/meta.json'
 import progression from '../data/progression.json'
@@ -182,6 +183,24 @@ describe('data access: loadBosses (P2-S6 boss records)', () => {
     const failing = access({ bosses: async () => Promise.reject(new Error('offline')) })
     await expect(failing.loadBosses()).rejects.toBeInstanceOf(ChunkLoadError)
     expect(failing.peekBosses()).toBeUndefined()
+  })
+})
+
+describe('data access: loadEnemies (A5 enemy records)', () => {
+  it('loads the enemy array once (lazy singleton); a failed chunk is a ChunkLoadError and is retried', async () => {
+    const importer = vi.fn(async () => enemies)
+    const da = access({ enemies: importer })
+    const loaded = await da.loadEnemies()
+    await da.loadEnemies()
+    expect(importer).toHaveBeenCalledTimes(1)
+    expect(loaded.map((e) => e.id)).toContain('blue-slime')
+    const failing = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(enemies)
+    const retry = access({ enemies: failing })
+    const error = await retry.loadEnemies().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ChunkLoadError)
+    expect(error).toMatchObject({ file: 'enemies', moduleImport: true })
+    await expect(retry.loadEnemies()).resolves.toBe(enemies)
+    expect(failing).toHaveBeenCalledTimes(2)
   })
 })
 

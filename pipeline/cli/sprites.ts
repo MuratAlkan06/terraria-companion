@@ -1,9 +1,12 @@
 /**
  * `npm run pipeline:sprites` — LOCAL ONLY, never in CI (AMENDMENTS-001 A10). Downloads the
  * weapon sprites (the wiki's infobox image of every emitted weapon) into the gitignored
- * public/sprites/weapons/<itemId>.<ext>, and the boss sprites (P2-S6: the registry boss's Cargo
- * NPCs infobox image) into public/sprites/bosses/<npcId>.<ext>, through the ADR-001 D2 etiquette client (serial,
- * >= 1.1 s apart, backoff, audited in pipeline/raw/requests.log.jsonl).
+ * public/sprites/weapons/<itemId>.<ext>, the boss sprites (P2-S6: the registry boss's Cargo
+ * NPCs infobox image) into public/sprites/bosses/<npcId>.<ext> and the ammo item sprites (P2-S7)
+ * into public/sprites/items/<itemId>.<ext>, through the ADR-001 D2 etiquette client (serial,
+ * >= 1.1 s apart, backoff, audited in pipeline/raw/requests.log.jsonl). Then writes the B30
+ * thumbnails (public/sprites/thumbs/…, first frame of every sprite over 100 KB, emit/thumbnail.ts)
+ * from the verified binaries — no network.
  *
  *   tsx pipeline/cli/sprites.ts [--refresh]
  *
@@ -16,11 +19,13 @@
  * The file list comes from the same cached sync plan as the build (Cargo Items + Iteminfo +
  * imageinfo), so it always matches the manifest. Writes pipeline/raw/sprites-record.json.
  */
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { FetchError, RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { sha1Hex } from '../fetch/client'
+import { gifThumbnail, thumbnailFor } from '../emit/thumbnail'
+import { identifyAmmo } from '../merge/ammo'
 import { bossSprite } from '../merge/bosses'
 import { loadBossesOverlay } from '../merge/overlays'
 import { identifyWeapons } from '../merge/weapons'
@@ -36,8 +41,9 @@ async function main(): Promise<number> {
   const sync = await runSyncPlan(client)
   const info = parseIteminfo(sync.iteminfo)
   const planRequests = client.stats.networkRequests
-  const weaponTargets = identifyWeapons(sync.tables.Items.rows, info)
-    .included.flatMap(({ row, item }) => {
+  const weapons = identifyWeapons(sync.tables.Items.rows, info).included
+  const weaponTargets = weapons
+    .flatMap(({ row, item }) => {
       const image = sync.weaponImages.found.get(String(row.imagefile ?? '').trim())
       return image ? [{ id: item.id, label: `weapons/${item.id}`, name: item.name ?? item.internalName, image, dest: join(SPRITES_DIR, 'weapons', `${item.id}.${/\.gif$/i.test(image.file) ? 'gif' : 'png'}`) }] : []
     })
@@ -48,7 +54,16 @@ async function main(): Promise<number> {
       return sp.image ? [{ id: sp.npcId, label: `bosses/${sp.npcId}`, name: e.name, image: sp.image, dest: join(SPRITES_DIR, sp.path.replace(/^\/sprites\//, '')) }] : []
     })
     .sort((a, b) => a.id - b.id)
-  const targets = [...weaponTargets, ...bossTargets]
+  // P2-S7 ammo items (a weapon that is also ammo keeps its weapon sprite)
+  const weaponIds = new Set(weapons.map((w) => w.item.id))
+  const itemTargets = identifyAmmo(sync.tables.Items.rows, info)
+    .included.filter(({ item }) => !weaponIds.has(item.id))
+    .flatMap(({ row, item, name }) => {
+      const image = sync.ammoImages.found.get(String(row.imagefile ?? '').trim())
+      return image ? [{ id: item.id, label: `items/${item.id}`, name, image, dest: join(SPRITES_DIR, 'items', `${item.id}.${/\.gif$/i.test(image.file) ? 'gif' : 'png'}`) }] : []
+    })
+    .sort((a, b) => a.id - b.id)
+  const targets = [...weaponTargets, ...bossTargets, ...itemTargets]
 
   const downloader = new WikiClient({ cacheDir: RAW_DIR, refresh: values.refresh, log: (l) => console.log(l) })
   const indexPath = join(RAW_DIR, 'sprites-index.json')
@@ -101,6 +116,27 @@ async function main(): Promise<number> {
   const present = targets.filter(isPresent).length
   const presentByVerification = { exact: 0, 'cdn-optimized': 0 }
   for (const t of targets.filter(isPresent)) presentByVerification[index[relative(SPRITES_DIR, t.dest)]?.verification ?? 'exact'] += 1
+
+  // AMENDMENTS-007 B30: static first-frame thumbnails of heavy sprites, from the verified binaries only
+  const thumbnails: { path: string; source: string; bytes: number; width: number; height: number }[] = []
+  for (const t of targets) {
+    const path = `/sprites/${relative(SPRITES_DIR, t.dest)}`
+    const expected = thumbnailFor({ path, bytes: t.image.bytes, width: t.image.width, height: t.image.height })
+    if (!expected) continue
+    if (!isPresent(t)) {
+      failures.push({ id: t.id, name: t.name, reason: `thumbnail ${expected.path}: source sprite not present / not verified` })
+      continue
+    }
+    const thumb = gifThumbnail(readFileSync(t.dest))
+    if (thumb.width !== expected.width || thumb.height !== expected.height) {
+      failures.push({ id: t.id, name: t.name, reason: `thumbnail ${expected.path}: decoded ${thumb.width}×${thumb.height}, manifest expects ${expected.width}×${expected.height}` })
+      continue
+    }
+    const out = join(SPRITES_DIR, expected.path.replace(/^\/sprites\//, ''))
+    mkdirSync(dirname(out), { recursive: true })
+    writeFileSync(out, thumb.png)
+    thumbnails.push({ path: expected.path, source: path, bytes: thumb.png.length, width: thumb.width, height: thumb.height })
+  }
   const durationMs = Date.now() - started
   const s = downloader.stats
   const record = {
@@ -113,13 +149,15 @@ async function main(): Promise<number> {
     downloadedThisRun: downloaded,
     alreadyCached: cached,
     copiedDuplicates: copied,
+    thumbnails,
     failures,
     stoppedEarly: stoppedEarly ?? null,
     requests: { syncPlan: planRequests, downloads: s.networkRequests, attempts: s.attempts, retries: s.retries, networkMs: s.networkMs, firstRequestAt: s.firstRequestAt ?? null, lastRequestAt: s.lastRequestAt ?? null },
   }
   writeFileSync(join(RAW_DIR, 'sprites-record.json'), `${JSON.stringify(record, null, 2)}\n`)
-  console.log('\nsprites summary (weapons + bosses)')
-  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
+  console.log('\nsprites summary (weapons + bosses + ammo items)')
+  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
+  for (const t of thumbnails) console.log(`  thumbnail ${t.path} ${t.width}×${t.height} ${t.bytes} B (from ${t.source})`)
   console.log(`  this run: ${downloaded} downloaded, ${cached} already cached, ${copied} copied (identical file), ${failures.length} failed`)
   console.log(`  requests: ${planRequests} sync-plan + ${s.networkRequests} downloads (${s.attempts} attempts, ${s.retries} retries); ${(durationMs / 1000).toFixed(1)}s wall`)
   for (const f of failures) console.log(`  FAILED ${f.id} ${f.name}: ${f.reason}`)

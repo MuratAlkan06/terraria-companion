@@ -7,7 +7,7 @@
  */
 import * as z from 'zod'
 import { AmmoClass, DamageClass, ItemId, PlainText, PlainText1, Slug, WikiUrl } from './common'
-import { DurationTicks, itemCommon, ProjectileSpec } from './item'
+import { AmmoStats, DurationTicks, itemCommon, ProjectileSpec } from './item'
 import { Prov } from './prov'
 
 // Cross-cutting modifiers (bounce, chain, DoT/debuff, multi-hit, homing per P3-S8)
@@ -139,6 +139,9 @@ export const Weapon = z.strictObject({
   manaCost: z.int().positive().optional(),
   ammoClass: AmmoClass.optional(),
   shootSpeedTps: z.number().positive().optional(),
+  // P2-S7: a weapon that is also ammo (Snowball → Snowball Cannon) carries its ammo stats here; one
+  // game item ID lives in exactly one collection (§3), so it cannot also be an Item record.
+  ammoStats: AmmoStats.optional(),
   behaviorText: PlainText.optional(),
   labBehavior: LabBehavior, // MANDATORY — zero unhandled weapons (P3-S13)
 })

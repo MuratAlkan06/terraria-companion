@@ -46,6 +46,14 @@ async function main(): Promise<number> {
       weaponImages: { resolved: result.weaponImages.found.size, missing: result.weaponImages.missing, fetchedAt: result.weaponImages.fetchedAt },
       articles: Object.fromEntries([...result.articles].map(([title, a]) => [title, { resolvedTitle: a.resolvedTitle, revid: a.revid, fetchedAt: a.fetchedAt }])),
       bossImages: { resolved: result.bossImages.found.size, missing: result.bossImages.missing, fetchedAt: result.bossImages.fetchedAt },
+      projectileinfo: { title: result.projectileinfo.title, rev: result.projectileinfo.rev, revTimestamp: result.projectileinfo.revTimestamp, bytes: result.projectileinfo.content.length, fetchedAt: result.projectileinfo.fetchedAt },
+      ammoCategories: {
+        roots: result.ammoCategories.roots,
+        categories: Object.fromEntries([...result.ammoCategories.categories].map(([t, c]) => [t, { pages: c.pages.length, subcats: c.subcats }])),
+        distinctPages: result.ammoCategories.pages.length,
+        fetchedAt: result.ammoCategories.fetchedAt,
+      },
+      ammoImages: { resolved: result.ammoImages.found.size, missing: result.ammoImages.missing, fetchedAt: result.ammoImages.fetchedAt },
     }
     writeFileSync(join(RAW_DIR, 'fetch-record.json'), `${JSON.stringify(record, null, 2)}\n`)
     console.log('\nfetch summary')
@@ -59,8 +67,11 @@ async function main(): Promise<number> {
     const wc = result.weaponCategories
     console.log(`  weapon category tree: ${wc.categories.size} categories, ${wc.pages.length} distinct article pages`)
     console.log(`  weapon images (imageinfo): ${result.weaponImages.found.size} resolved, ${result.weaponImages.missing.length} missing${result.weaponImages.missing.length ? ` (${result.weaponImages.missing.join(', ')})` : ''}`)
-    console.log(`  overlay evidence articles: ${result.articles.size} (rendered text + revision id)`)
+    console.log(`  articles (overlay evidence, ammunition rows, Buff IDs, buffs): ${result.articles.size} (rendered text + revision id)`)
     console.log(`  boss images (imageinfo): ${result.bossImages.found.size} resolved, ${result.bossImages.missing.length} missing${result.bossImages.missing.length ? ` (${result.bossImages.missing.join(', ')})` : ''}`)
+    console.log(`  ${result.projectileinfo.title} rev ${result.projectileinfo.rev} (${result.projectileinfo.revTimestamp})`)
+    console.log(`  ammunition category tree: ${result.ammoCategories.categories.size} categories, ${result.ammoCategories.pages.length} distinct article pages`)
+    console.log(`  ammunition images (imageinfo): ${result.ammoImages.found.size} resolved, ${result.ammoImages.missing.length} missing${result.ammoImages.missing.length ? ` (${result.ammoImages.missing.join(', ')})` : ''}`)
     const s = client.stats
     console.log(`  this run: ${s.networkRequests} network requests (${s.attempts} attempts, ${s.retries} retries), ${s.cacheHits} cache hits, ${(durationMs / 1000).toFixed(1)}s wall`)
     console.log(`  cumulative network attempts logged in pipeline/raw/requests.log.jsonl: ${cumulative}`)

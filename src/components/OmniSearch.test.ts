@@ -145,7 +145,7 @@ describe('OmniSearch shell markup (AC4; APG combobox)', () => {
     expect(input).toContain('aria-autocomplete="list"')
     expect(input).toContain('aria-keyshortcuts="/"')
     expect(input).toContain('aria-label="Search"')
-    expect(input).toContain('placeholder="Search weapons, bosses, enemies…"')
+    expect(input).toContain('placeholder="Search weapons, bosses, items…"')
     expect(input).not.toContain('aria-activedescendant')
     const controls = /aria-controls="([^"]+)"/.exec(input)?.[1]
     expect(tagWithId(html, controls!)).toMatch(/role="listbox"[^>]*hidden=""|hidden=""[^>]*role="listbox"/)
@@ -173,7 +173,7 @@ describe('HeroSearch markup (UX_SPEC §3.2, AMENDMENTS-007 B28)', () => {
     const trigger = /<button[^>]*aria-haspopup="dialog"[^>]*>/.exec(html)?.[0] ?? ''
     expect(trigger).toMatch(/\bh-14\b/)
     expect(trigger).toMatch(/\blg:hidden\b/)
-    expect(html).toContain('Search weapons, bosses, enemies…</span></button>')
+    expect(html).toContain('Search weapons, bosses, items…</span></button>')
   })
 
   it('leaves the "/" shortcut to the header instance', () => {

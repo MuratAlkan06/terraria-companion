@@ -38,5 +38,13 @@
   { "kind": "boss", "page": "Queen Slime", "boss": "queen-slime", "item": "Blade Staff", "why": "P2-S6: Hardmode boss, Hallow summon condition, stats" },
   { "kind": "boss", "page": "Plantera", "boss": "plantera", "item": "Temple Key", "why": "P2-S6: no summon item, bare-integer defense, contact damage Unknown (outdated-source flag)" },
   { "kind": "boss", "page": "Wall of Flesh", "boss": "wall-of-flesh", "item": "Breaker Blade", "why": "P2-S6: required gate to Hardmode; multi-part stats Unknown (mouth vs eye defense)" },
-  { "kind": "boss", "page": "Golem", "boss": "golem", "item": "Stynger", "why": "P2-S6: multi-part boss → stats Unknown; summon item + post-Plantera condition" }
+  { "kind": "boss", "page": "Golem", "boss": "golem", "item": "Stynger", "why": "P2-S6: multi-part boss → stats Unknown; summon item + post-Plantera condition" },
+  { "kind": "ammo", "page": "Musket Ball", "item": "Musket Ball", "why": "P2-S7 / B2: velocity multiplier 2× from the own infobox, cross-checked with Projectileinfo extraUpdates 1" },
+  { "kind": "ammo", "page": "High Velocity Bullet", "item": "High Velocity Bullet", "why": "P2-S7: highest multiplier (8×), crafted bullet" },
+  { "kind": "ammo", "page": "Rockets", "item": "Rocket III", "why": "P2-S7: a rocket on a list article — no own infobox, so the multiplier is Unknown; damage from the Rockets table" },
+  { "kind": "ammo", "page": "Crystal Dart", "item": "Crystal Dart", "why": "P2-S7: a dart (Seed ammo class) with a 2× multiplier" },
+  { "kind": "ammo", "page": "Gel", "item": "Gel", "why": "P2-S7: ammo with no damage of its own → damage / knockback / velocity bonus Unknown" },
+  { "kind": "buff", "page": "Ironskin Potion", "buff": "ironskin", "why": "P2-S7: loadout potion — stat effect from the buff tooltip, game ID from the Buff IDs table + Internal Buff ID" },
+  { "kind": "buff", "page": "Acid Venom", "buff": "acid-venom", "why": "P2-S7: Lab DoT — enemy 30 HP/s vs player 15 HP/s in the Effects row" },
+  { "kind": "buff", "page": "Tipsy", "buff": "tipsy", "why": "P2-S7: debuff with player-side stat effects (Ale / Ale Tosser), quoted from the effect list" }
 ]

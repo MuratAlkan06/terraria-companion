@@ -1,6 +1,6 @@
 {
   "name": "wiki-sync",
-  "description": "Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory/item detail records, buffs and Lab scenarios are produced by later slices (partial.pending).",
+  "description": "Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory records, the rest of the item corpus (P6-S0) and Lab scenarios are produced by later slices (partial.pending).",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -20,16 +20,18 @@
     "Progression (P2-S6): boss nodes 1:1 with bosses + milestone/event markers (A3) from pipeline/overlays/progression.json; every edge is typed, its note is a verbatim quote of its sourceUrl article (checked at build). Edges model one world; the hardmode condition is satisfied by the Hardmode milestone (required-gated by the Wall of Flesh).",
     "Enemies: Cargo NPCs rows with an enemy type and no boss/critter/town/projectile type, merged by name; biomes = NPCs `environment` alternatives verbatim (\"/\" = or, \"+\" = and); stage absent + listed; dropIds derived (deriveEnemyDropIds).",
     "Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.",
-    "Collections are emitted as JSON arrays (one record per line), incl. weapons.detail.json (AMENDMENTS-003 B11 supersedes the map shapes in DATA_SCHEMA_SPEC §3/§5)."
+    "Collections are emitted as JSON arrays (one record per line), incl. weapons.detail.json (AMENDMENTS-003 B11 supersedes the map shapes in DATA_SCHEMA_SPEC §3/§5).",
+    "Ammo (P2-S7): Cargo Items rows typed \"ammunition\" that are the same desktop item in Module:Iteminfo/data with a non-zero `ammo` (AmmoID), emitted to items.detail.json / items.list.json (§5 list/detail split; category \"ammo\"). ammoStats.ammoClass = slug of the AmmoID item (the weapon rule). damage / knockback / velocityBonusTps (shootSpeed × 3.75 tiles/s, added to the weapon's) from Iteminfo for items with damage > 0, cross-checked against Cargo; items with no damage of their own (Gel, sand, solutions…) list all three as Unknown. velocityMultiplier (AMENDMENTS-002 B2) = the item's own infobox \"Velocity Multiplier\" row, cross-checked with 1 + extraUpdates (Module:Projectileinfo/data); not applicable when the own infobox shows none and Projectileinfo agrees, or the item fires no projectile of its own (Iteminfo shoot 0); Unknown for items sharing a list article without an own infobox. Snowball is a weapon AND ammo: its ammoStats are on the weapon record (one ID, one collection). See pipeline/merge/ammo.ts.",
+    "Buffs (P2-S7, A4 bound): every debuff an emitted weapon or ammo item inflicts (Cargo `debuffs`) or grants (Iteminfo buffType), plus the curated combat buff potions in pipeline/overlays/buffs.json. gameBuffId / isDebuff / article from the wiki's \"Buff IDs\" table (TO-VERIFY #12), cross-checked with the article's own Buff ID; dot.dps = enemy health loss per second from the buff infobox \"Effects\" row; effects only from the overlay (verbatim, number-checked quotes), else Unknown. Search docs include buffs because §7a-11 requires every emitted entity to be searchable. See pipeline/merge/buffs.ts.",
+    "Stage (AMENDMENTS-005 B22): §7b item stage = max over gates of (node.unlocksStage ?? node.stage); wall-of-flesh carries unlocksStage early-hm (its drops are Early Hardmode content), validated against its required-gate edge into the hardmode milestone.",
+    "Lists and search docs carry each record's own wikiUrl (AMENDMENTS-007 B31). Sprite files over 100 KB get a static first-frame PNG thumbnail (whole-number downscale to ≤ 128 px; AMENDMENTS-007 B30) listed in the sprite manifest and generated locally by npm run pipeline:sprites."
   ],
   "partial": {
     "itemUniverse": "item-universe.json",
     "pending": [
       "armor",
       "accessories",
-      "items",
       "armorSets",
-      "buffs",
       "scenarios"
     ]
   }

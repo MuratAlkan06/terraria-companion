@@ -22,7 +22,7 @@ import { Prov } from './prov'
 export const GatedBy = z.strictObject({
   bosses: z.array(Slug), // node slugs that MUST be defeated first
   conditions: z.array(ConditionSlug), // world conditions not implied by bosses
-  stage: Stage, // display tag = max(stage of gates); bosses[] authoritative
+  stage: Stage, // display tag = max over gates of (node.unlocksStage ?? node.stage) (B22); bosses[] authoritative
 })
 export type GatedBy = z.infer<typeof GatedBy>
 // Derived by pipeline (§7b). If underivable: absent + "gatedBy" in unverifiedFields
@@ -156,22 +156,29 @@ export const ItemCategory = z.enum([
 ])
 export type ItemCategory = z.infer<typeof ItemCategory>
 
+/**
+ * What an ammo item contributes when fired (§2.6 + AMENDMENTS-002 B2). P2-S7 (A1 principle,
+ * AMENDMENTS-001 A2 "verified damage or Unknown"): `damage` is optional — absent + listed
+ * `ammoStats.damage` = Unknown (e.g. Gel, whose game data carries no damage of its own).
+ * Shared by Item and by dual-role Weapons (Snowball is both a thrown weapon and Snowball Cannon ammo).
+ */
+export const AmmoStats = z.strictObject({
+  ammoClass: AmmoClass,
+  damage: z.int().nonnegative().optional(),
+  velocityBonusTps: z.number().optional(), // added to the firing weapon's shoot speed (tiles/s)
+  velocityMultiplier: z.number().positive().optional(), // AMENDMENTS-002 B2 (Musket Ball: 2x)
+  knockback: z.number().nonnegative().optional(),
+  projectile: ProjectileSpec.optional(),
+})
+export type AmmoStats = z.infer<typeof AmmoStats>
+
 export const Item = z.strictObject({
   ...itemCommon,
   type: z.literal('item'),
   category: ItemCategory,
   consumable: z.boolean().optional(),
   isStation: z.boolean(), // DERIVED: referenced as station by ≥1 recipe
-  ammoStats: z
-    .strictObject({
-      ammoClass: AmmoClass,
-      damage: z.int().nonnegative(),
-      velocityBonusTps: z.number().optional(),
-      velocityMultiplier: z.number().positive().optional(), // AMENDMENTS-002 B2 (Musket Ball: 2x)
-      knockback: z.number().nonnegative().optional(),
-      projectile: ProjectileSpec.optional(),
-    })
-    .optional(),
+  ammoStats: AmmoStats.optional(),
   toolStats: z
     .strictObject({
       pickaxePowerPct: z.int().positive().optional(),

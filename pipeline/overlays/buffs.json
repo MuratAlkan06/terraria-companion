@@ -1,0 +1,39 @@
+{
+  "overlay": "buffs",
+  "authoredAt": "2026-10-13",
+  "notes": [
+    "Buff registry scope (P2-S7, DATA_SCHEMA_SPEC §9 risk A4 bound: only what the Weapon Lab and the Loadout Builder need now). The emitted buffs are (a) every debuff an emitted weapon or ammo item inflicts or grants (Cargo Items `debuffs` column; Lab DoT modifiers reference these) and (b) the entries below: the combat buff potions whose buff changes the player's offense, defense, life/mana regeneration, movement speed or ammo use (Loadout Builder 'buffs' slot candidates). Utility potions (lighting, detection, building, fishing, liquids, luck, spawn rate), food buffs (Well Fed tiers) and flasks are out of the A4 bound until a feature needs them.",
+    "Each entry names the buff exactly as the wiki's 'Buff IDs' table does; its article (the table's link, e.g. Ironskin → Ironskin Potion), game buff ID and Buff/Debuff type come from that table, cross-checked against the article infobox's 'Internal Buff ID'.",
+    "effects: a stat effect is {stat, value, scope?, quote} with a StatKind from the closed enum (src/schemas/item.ts); the build checks that `quote` occurs verbatim in the cited article revision, that it contains the number |value| (and a minus/'reduc' word when value < 0) and the scope word when scoped. Anything the closed StatKind enum cannot express is an explicit {special} whose text is itself the verbatim quote (Lab lists it as 'not simulated'). Nothing is inferred from a quote beyond its number.",
+    "life-regen / mana-regen: the spec defines no unit for these StatKinds (game lifeRegen units vs HP/s), so Regeneration and Mana Regeneration are specials until SCORING_SPEC fixes the unit. Percent max life (Lifeforce), knockback (Titan), arrow-only bonuses (Archery) and ammo saving have no StatKind either.",
+    "Tipsy is a debuff (Buff IDs table) inflicted by Ale / the Ale Tosser and granted by drinking Ale; its player-side effects come from the Tipsy article's effect list."
+  ],
+  "entries": [
+    { "name": "Ammo Reservation", "effects": [{ "special": "20% chance to save ammo" }] },
+    { "name": "Archery", "effects": [{ "special": "10% increased bow damage and 20% increased arrow speed" }] },
+    { "name": "Endurance", "effects": [{ "stat": "damage-reduction-pct", "value": 10, "quote": "10% reduced damage" }] },
+    { "name": "Inferno", "effects": [{ "special": "Nearby enemies are ignited" }] },
+    { "name": "Ironskin", "effects": [{ "stat": "defense-flat", "value": 8, "quote": "Increase defense by 8" }] },
+    { "name": "Lifeforce", "effects": [{ "special": "20% increased max life" }] },
+    { "name": "Magic Power", "effects": [{ "stat": "damage-pct", "value": 20, "scope": "magic", "quote": "20% increased magic damage" }] },
+    { "name": "Mana Regeneration", "effects": [{ "special": "Increased mana regeneration" }] },
+    { "name": "Rage", "effects": [{ "stat": "crit-pct", "value": 10, "quote": "10% increased critical chance" }] },
+    { "name": "Regeneration", "effects": [{ "special": "The buff provides health regeneration by restoring an additional 2 health per second" }] },
+    { "name": "Summoning", "effects": [{ "stat": "minion-slots", "value": 1, "quote": "Increased your max number of minions by 1" }] },
+    { "name": "Swiftness", "effects": [{ "stat": "move-speed-pct", "value": 25, "quote": "25% increased movement speed" }] },
+    { "name": "Thorns", "effects": [{ "special": "Attackers also take damage" }] },
+    { "name": "Titan", "effects": [{ "special": "Increased knockback" }] },
+    { "name": "Wrath", "effects": [{ "stat": "damage-pct", "value": 10, "quote": "10% increased damage" }] },
+    {
+      "name": "Tipsy",
+      "effects": [
+        { "stat": "defense-flat", "value": -4, "quote": "-4 defense" },
+        { "stat": "damage-pct", "value": 10, "scope": "melee", "quote": "+10% melee damage" },
+        { "stat": "crit-pct", "value": 2, "scope": "melee", "quote": "+2% melee critical strike chance" },
+        { "stat": "melee-speed-pct", "value": 10, "quote": "+10% melee speed" },
+        { "special": "+5 Fishing Power" },
+        { "special": "Reduces the time to produce Poo by 75%" }
+      ]
+    }
+  ]
+}

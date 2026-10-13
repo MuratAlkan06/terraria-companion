@@ -15,7 +15,7 @@ import {
   type WeaponFilters,
 } from './weaponFilters'
 
-const base = { slug: 'x', type: 'weapon' as const, tags: [], useTimeTicks: 20, useAnimationTicks: 20, labKind: 'limitation' as const }
+const base = { slug: 'x', type: 'weapon' as const, tags: [], wikiUrl: 'https://terraria.wiki.gg/wiki/X', useTimeTicks: 20, useAnimationTicks: 20, labKind: 'limitation' as const }
 const LIST: WeaponListRecord[] = [
   { ...base, id: 1, name: 'Copper Sword', damageClass: 'melee', rarity: 0, stage: 'early-prehm' },
   { ...base, id: 2, name: 'Bow', damageClass: 'ranged', rarity: 0 },

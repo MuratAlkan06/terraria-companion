@@ -7,7 +7,7 @@
  *  1. manifest (+ partial-dataset inputs: item universe, pending collections, stage gaps)
  *  2. §2.1-3 Lab downgrade on raw weapons (pre-parse; unverified sim inputs → limitation)
  *  3. strict schema parse of every record (E_SCHEMA) — stops here on failure
- *  4. A1 rule 10 ammo downgrade (warning)
+ *  4. §7a-10 ammo classes: E_DANGLING_REF once items are produced; A1 warning + downgrade while pending
  *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, list⊂detail, search docs
  *  6. gaps + meta
  */
@@ -30,7 +30,7 @@ import type { PipelineError, PipelineWarning } from './errors'
 import { checkFixtures } from './fixtures'
 import { checkGraph } from './graph'
 import { checkIntegrity, type RefScope } from './integrity'
-import { downgradeUnmatchedAmmo, downgradeUnverifiedArchetype } from './labDowngrade'
+import { checkAmmoClasses, downgradeUnverifiedArchetype } from './labDowngrade'
 import { checkListDetail } from './listDetail'
 import { buildGaps, buildMeta } from './report'
 import { checkSearchDocs } from './searchDocs'
@@ -109,8 +109,9 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
   errors.push(...parsed.errors)
   if (errors.length > 0 || !manifest.success) return { ok: false, errors, warnings }
 
-  const ammo = downgradeUnmatchedAmmo(parsed.dataset.weapons, parsed.dataset.items, scope.pending.has('items'))
+  const ammo = checkAmmoClasses(parsed.dataset.weapons, parsed.dataset.items, scope.pending.has('items'))
   warnings.push(...ammo.warnings)
+  errors.push(...ammo.errors)
   const dataset: Dataset = { ...parsed.dataset, weapons: ammo.weapons }
 
   const integrity = checkIntegrity(dataset, scope)

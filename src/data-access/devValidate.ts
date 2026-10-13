@@ -34,6 +34,7 @@ export const WeaponListRecordSchema = Weapon.pick({
   rarity: true,
   sprite: true,
   tags: true,
+  wikiUrl: true, // AMENDMENTS-007 B31 (P2-S7): rows/cards link the weapon's own wiki page
   damageClass: true,
   damage: true,
   useTimeTicks: true,

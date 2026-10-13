@@ -6,7 +6,8 @@
     "page = the wiki article = the Cargo NPCs/Drops `_page` of the boss rows. npcIds, environment (location.biomes), stats and the sprite file come from Cargo NPCs; this overlay only selects the representative row (`primary`, `sprite`), with `variant` = the row's name note.",
     "statsUnknown: boss-level stats are not one NPC row (multi-part bosses whose parts have their own health or defense) → statsByDifficulty Unknown, reason in the gap report. Other rows go through pipeline/parse/npcStats.ts, which withholds every cell that is not a single integer per difficulty (incl. cells the wiki flags as based on outdated source code).",
     "Every `quote` must occur verbatim on its article (`page` of the entry, or the tag's own `page`); the build checks it against the cached revision. summon.quote is emitted as Boss.summon.text; time is only set when a quote states it (else location.time Unknown).",
-    "stage is the editorial five-stage tag (REQUIREMENTS §1); attackPatternTags are editorial (A1 staging: only tags a behavior quote supports; prep/suggested equipment/strategies are P5 overlays)."
+    "stage is the editorial five-stage tag (REQUIREMENTS §1); attackPatternTags are editorial (A1 staging: only tags a behavior quote supports; prep/suggested equipment/strategies are P5 overlays).",
+    "unlocksStage (AMENDMENTS-005 B22): the stage whose content defeating this boss makes obtainable, set on stage-transition gates only (wall-of-flesh → early-hm: defeating it converts the world to Hardmode). Editorial like stage; validate requires a required-gate edge from the boss to a milestone of exactly that stage (wall-of-flesh → hardmode). Mechanical bosses do not set it: one mech boss does not open mid-hm — the all-mechanical-bosses milestone (mid-hm) does."
   ],
   "entries": [
     {
@@ -94,7 +95,7 @@
       ]
     },
     {
-      "id": "wall-of-flesh", "name": "Wall of Flesh", "page": "Wall of Flesh", "stage": "late-prehm",
+      "id": "wall-of-flesh", "name": "Wall of Flesh", "page": "Wall of Flesh", "stage": "late-prehm", "unlocksStage": "early-hm",
       "primary": { "npcId": 113 },
       "statsUnknown": "The mouth and both eyes share one health pool but have different defense (separate Mouth and Eye rows); the wiki states no single boss-level defense.",
       "summon": { "items": ["Guide Voodoo Doll"], "conditions": ["underworld"], "quote": "The Wall of Flesh can be summoned by dropping a Guide Voodoo Doll into lava in The Underworld while the Guide is alive, which destroys the Guide Voodoo Doll and kills the Guide in the process." },

@@ -484,18 +484,49 @@ describe('A1 downgrades (never build-fatal)', () => {
     expect(getField(weapon, 'damage')).toEqual({ status: 'unverified' })
   })
 
-  it('rule 10: ammoClass with no matching ammo item is a warning + downgrade, not an error', () => {
+})
+
+describe('§7a-10 ammo classes (hard check once ammo items are produced, P2-S7)', () => {
+  it('an ammoClass that matches no ammo record is E_DANGLING_REF (never a silent downgrade)', () => {
     const raw = sample()
-    const minishark = find(raw, 'weapons', 98)
-    // Synthetic fully-specified params (test-only) so the weapon would otherwise stay simulated.
-    minishark.labBehavior = { kind: 'archetype', params: { archetype: 'bow-gun', ammoClass: 'bullet', projectilesPerUse: 1, spreadDegrees: 0, inheritsAmmoProjectile: true } }
-    minishark._prov.unverifiedFields = []
-    minishark._prov.verified = true
-    delete find(raw, 'items', 97).ammoStats
+    delete find(raw, 'items', 97).ammoStats // the only "bullet" ammo
+    expect(expectOnly(run(raw), 'E_DANGLING_REF').map((e) => (e.code === 'E_DANGLING_REF' ? [e.fromRef, e.field, e.toRef] : []))).toEqual([
+      ['i:98', 'ammoClass', 'ammoClass:bullet'],
+      ['i:434', 'ammoClass', 'ammoClass:bullet'],
+    ])
+  })
+
+  it('bow-gun params.ammoClass is checked too, and a weapon that is also ammo (Snowball) counts as an ammo record', () => {
+    const raw = sample()
+    const bow = find(raw, 'weapons', 39)
+    // Synthetic fully-specified params (test-only) so the §2.1-3 pre-parse downgrade keeps the archetype.
+    bow.labBehavior = { kind: 'archetype', params: { archetype: 'bow-gun', ammoClass: 'snowball', projectilesPerUse: 1, spreadDegrees: 0, inheritsAmmoProjectile: true } }
+    bow._prov.unverifiedFields = []
+    bow._prov.verified = true
+    expect(errorsOf(run(raw))).toContainEqual(expect.objectContaining({ code: 'E_DANGLING_REF', fromRef: 'i:39', field: 'labBehavior.params.ammoClass', toRef: 'ammoClass:snowball' }))
+    find(raw, 'weapons', 3278).ammoStats = { ammoClass: 'snowball', damage: 8 } // test-only: any weapon record carrying ammoStats
+    expect(errorsOf(run(raw)).filter((e) => e.code === 'E_DANGLING_REF')).toEqual([])
+  })
+})
+
+describe('AMENDMENTS-005 B22 unlocksStage (stage-transition gates)', () => {
+  it('wall-of-flesh → early-hm is backed by its required-gate edge into the early-hm Hardmode milestone', () => {
+    const raw = sample()
+    find(raw, 'nodes', 'wall-of-flesh').unlocksStage = 'early-hm'
     const result = run(raw)
     if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
-    expect(result.dataset.weapons.find((w) => w.id === 98)!.labBehavior).toMatchObject({ kind: 'limitation', reason: 'compatible ammo data unverified' })
-    expect(result.warnings.filter((w) => w.code === 'W_AMMO_CLASS_UNMATCHED').map((w) => w.ref).sort()).toEqual(['i:434', 'i:98'])
+    expect(getField(result.dataset.nodes.find((n) => n.id === 'wall-of-flesh'), 'unlocksStage')).toEqual({ status: 'verified', value: 'early-hm' })
+  })
+
+  it('an unlocksStage with no matching milestone edge, or not later than the node\'s own stage, is E_DERIVED_MISMATCH', () => {
+    const raw = sample()
+    find(raw, 'nodes', 'wall-of-flesh').unlocksStage = 'mid-hm'
+    find(raw, 'nodes', 'eater-of-worlds').unlocksStage = 'early-prehm'
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH').map((e) => (e.code === 'E_DERIVED_MISMATCH' ? `${e.ref} ${e.field}: ${e.message.split(': ').slice(1).join(': ')}` : ''))).toEqual([
+      'node:eater-of-worlds unlocksStage: unlocksStage "early-prehm" is not later than the node\'s own stage "early-prehm"',
+      'node:eater-of-worlds unlocksStage: no required-gate edge from node:eater-of-worlds to a "early-prehm" milestone',
+      'node:wall-of-flesh unlocksStage: no required-gate edge from node:wall-of-flesh to a "mid-hm" milestone',
+    ])
   })
 })
 
@@ -505,14 +536,14 @@ describe('§7a-11 search docs (when provided)', () => {
     if (!result.ok) throw new Error('sample should pass')
     const d = result.dataset
     return [
-      ...d.weapons.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'weapon' as const, tags: r.tags })),
-      ...d.armor.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'armor' as const, tags: r.tags })),
-      ...d.accessories.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'accessory' as const, tags: r.tags })),
-      ...d.items.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'item' as const, tags: r.tags })),
-      ...d.armorSets.map((r) => ({ id: `set:${r.id}`, name: r.name, type: 'set' as const, tags: [] })),
-      ...d.bosses.map((r) => ({ id: `boss:${r.id}`, name: r.name, type: 'boss' as const, tags: [] })),
-      ...d.buffs.map((r) => ({ id: `buff:${r.id}`, name: r.name, type: 'buff' as const, tags: [] })),
-      ...d.enemies.map((r) => ({ id: `enemy:${r.id}`, name: r.name, type: 'enemy' as const, tags: [] })),
+      ...d.weapons.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'weapon' as const, tags: r.tags, wikiUrl: r.wikiUrl })),
+      ...d.armor.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'armor' as const, tags: r.tags, wikiUrl: r.wikiUrl })),
+      ...d.accessories.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'accessory' as const, tags: r.tags, wikiUrl: r.wikiUrl })),
+      ...d.items.map((r) => ({ id: `i:${r.id}`, name: r.name, type: 'item' as const, tags: r.tags, wikiUrl: r.wikiUrl })),
+      ...d.armorSets.map((r) => ({ id: `set:${r.id}`, name: r.name, type: 'set' as const, tags: [], wikiUrl: r.wikiUrl })),
+      ...d.bosses.map((r) => ({ id: `boss:${r.id}`, name: r.name, type: 'boss' as const, tags: [], wikiUrl: r.wikiUrl })),
+      ...d.buffs.map((r) => ({ id: `buff:${r.id}`, name: r.name, type: 'buff' as const, tags: [], wikiUrl: r.wikiUrl })),
+      ...d.enemies.map((r) => ({ id: `enemy:${r.id}`, name: r.name, type: 'enemy' as const, tags: [], wikiUrl: r.wikiUrl })),
     ]
   }
 
@@ -529,6 +560,18 @@ describe('§7a-11 search docs (when provided)', () => {
     raw.searchDocs = docs
     expect(codesOf(run(raw)).sort()).toEqual(['E_DANGLING_REF', 'E_DUPLICATE_ID'])
   })
+
+  it('B31: every doc carries its entity\'s own wikiUrl (absent or different is E_DERIVED_MISMATCH)', () => {
+    const raw = sample()
+    const docs = docsFor(raw)
+    delete docs[0].wikiUrl
+    docs[1] = { ...docs[1], wikiUrl: 'https://terraria.wiki.gg/wiki/Somewhere_else' }
+    raw.searchDocs = docs
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH').map((e) => (e.code === 'E_DERIVED_MISMATCH' ? [e.ref, e.field] : []))).toEqual([
+      [docs[0].id, 'wikiUrl'],
+      [docs[1].id, 'wikiUrl'],
+    ])
+  })
 })
 
 describe('list projection + loader', () => {
@@ -536,6 +579,8 @@ describe('list projection + loader', () => {
     const projected = projectList('weapons', { id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, knockback: 1, useTimeTicks: 10, useAnimationTicks: 30, labBehavior: { kind: 'limitation' } })
     // useAnimationTicks is a list field since P2-S2 (TO-VERIFY #10: the wiki's "Use time")
     expect(projected).toEqual({ id: 1, name: 'X', slug: 'x', type: 'weapon', tags: [], damage: 3, useTimeTicks: 10, useAnimationTicks: 30, labKind: 'limitation' })
+    // B31: wikiUrl is a list field (rows link the record's own page)
+    expect(projectList('items', { id: 2, name: 'Y', slug: 'y', type: 'item', tags: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Y', category: 'ammo', isStation: false })).toEqual({ id: 2, name: 'Y', slug: 'y', type: 'item', tags: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Y', category: 'ammo' })
   })
 
   it('reports unknown files, invalid JSON and a missing manifest as E_SCHEMA', () => {
@@ -543,11 +588,11 @@ describe('list projection + loader', () => {
     try {
       mkdirSync(join(dir, 'nested'))
       writeFileSync(join(dir, 'weapon.json'), '[]')
-      writeFileSync(join(dir, 'items.json'), '{ not json')
+      writeFileSync(join(dir, 'items.detail.json'), '{ not json')
       const { errors, raw } = loadDatasetDir(dir)
       expect(errors.map((e) => e.message)).toEqual([
         'file:weapon.json: unknown dataset file',
-        expect.stringContaining('file:items.json: invalid JSON'),
+        expect.stringContaining('file:items.detail.json: invalid JSON'),
       ])
       expect(codesOf(validateDataset(raw))).toEqual(['E_SCHEMA'])
     } finally {

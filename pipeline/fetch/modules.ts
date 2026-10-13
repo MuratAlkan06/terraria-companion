@@ -34,6 +34,14 @@ export async function fetchRecipeModules(client: WikiClient): Promise<Record<(ty
   return out
 }
 
+/** One Lua module's current revision (P2-S7: Module:Projectileinfo/data), one request, cached. */
+export async function fetchModuleRevision(client: WikiClient, title: string, cacheName: string): Promise<ModuleFetch> {
+  const { response, fetchedAt } = await client.get({ action: 'query', prop: 'revisions', titles: title, rvprop: 'ids|timestamp|content', rvslots: 'main' }, cacheName)
+  const rev = (response as RevisionsResponse).query?.pages?.find((p) => p.title === title)?.revisions?.[0]
+  if (!rev) throw new FetchError(`${title}: no revision content in response`)
+  return { title, rev: rev.revid, revTimestamp: rev.timestamp, content: rev.slots.main.content, fetchedAt }
+}
+
 /**
  * Existence check for curated overlay source URLs (every overlay entry must cite a real wiki
  * page). Titles are batched 50 per request (API limit for anonymous clients).

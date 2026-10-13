@@ -286,6 +286,40 @@ describe('progression + reports', () => {
   })
 })
 
+describe('P2-S7 schema deltas (ammo, buffs provenance, B22, B30, B31)', () => {
+  const ammoItem = { id: 23, name: 'Gel', slug: 'gel', type: 'item', tags: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Gel', acquisition: [], category: 'ammo', isStation: false, ammoStats: { ammoClass: 'gel' }, _prov: { ...prov, verified: false, unverifiedFields: ['acquisition', 'ammoStats.damage'] } }
+
+  it('A2: ammoStats.damage is optional (Gel: Unknown); a dual-role weapon carries ammoStats (Snowball)', () => {
+    expect(Item.safeParse(ammoItem).success).toBe(true)
+    expect(Item.safeParse({ ...ammoItem, ammoStats: { ammoClass: 'gel', damage: -1 } }).success).toBe(false)
+    expect(Weapon.safeParse({ ...weapon, ammoStats: { ammoClass: 'snowball', damage: 8, velocityBonusTps: 26.25, knockback: 5.75 } }).success).toBe(true)
+    expect(Weapon.safeParse({ ...weapon, ammoStats: { ammoClass: 'snowball', speed: 7 } }).success).toBe(false)
+  })
+
+  it('wiki-article provenance requires the article revision (like iteminfo / wiki-module)', () => {
+    const source = { kind: 'wiki-article', url: 'https://terraria.wiki.gg/wiki/Buff_IDs', fetchedAt: '2026-10-13' }
+    expect(Prov.safeParse({ ...prov, sources: [{ ...source, rev: 1029302 }] }).success).toBe(true)
+    expect(Prov.safeParse({ ...prov, sources: [source] }).success).toBe(false)
+  })
+
+  it('B22: ProgressionNode.unlocksStage is an optional Stage', () => {
+    const node = { id: 'wall-of-flesh', kind: 'boss', bossId: 'wall-of-flesh', name: 'Wall of Flesh', stage: 'late-prehm', wikiUrl: 'https://terraria.wiki.gg/wiki/Wall_of_Flesh', _prov: prov }
+    expect(ProgressionNode.safeParse({ ...node, unlocksStage: 'early-hm' }).success).toBe(true)
+    expect(ProgressionNode.safeParse({ ...node, unlocksStage: 'hardmode' }).success).toBe(false)
+  })
+
+  it('B30: a manifest file may list a /sprites/thumbs/<type>/<id>.png thumbnail; B31: a search doc may carry a wiki URL', () => {
+    const file = { path: '/sprites/bosses/113.gif', ref: 'boss:wall-of-flesh', wikiFileUrl: 'https://terraria.wiki.gg/wiki/File:Wall_of_Flesh.gif', sha1: 'b'.repeat(40), bytes: 668777, width: 210, height: 420, rights: 're-logic' }
+    const manifest = (thumbnail: unknown) => SpriteManifest.safeParse({ fallbackMode: false, rightsNote: 'x', files: [{ ...file, thumbnail }] }).success
+    expect(manifest({ path: '/sprites/thumbs/bosses/113.png', width: 53, height: 105 })).toBe(true)
+    expect(manifest({ path: '/sprites/bosses/113.png', width: 53, height: 105 })).toBe(false)
+    expect(manifest({ path: '/sprites/thumbs/bosses/113.gif', width: 53, height: 105 })).toBe(false)
+    const doc = { id: 'i:97', name: 'Musket Ball', type: 'item', tags: ['bullets'] }
+    expect(SearchDoc.safeParse({ ...doc, wikiUrl: 'https://terraria.wiki.gg/wiki/Musket_Ball' }).success).toBe(true)
+    expect(SearchDoc.safeParse({ ...doc, wikiUrl: 'https://example.com/Musket_Ball' }).success).toBe(false)
+  })
+})
+
 describe('persistence schemas (§8a + A4/A6/A7)', () => {
   const env = (data: unknown) => ({ v: 1, savedAt: '2026-10-12T12:00:00.000Z', gameVersion: '1.4.5.8', data })
   const slots = (accessories: number) => ({

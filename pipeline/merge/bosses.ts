@@ -229,8 +229,8 @@ export function buildProgression(input: { overlay: ProgressionOverlay; bosses: B
   for (const b of input.bosses.entries) {
     const p = evidence.page(b.page, `overlay bosses/${b.id} node`)
     const prov = makeProv([Evidence.source('bosses', p)])
-    prov.editorialFields = ['stage']
-    nodes.push({ id: b.id, kind: 'boss', bossId: b.id, name: b.name, stage: b.stage, ...(b.worldEvil ? { worldEvil: b.worldEvil } : {}), wikiUrl: p.url, _prov: prov })
+    prov.editorialFields = b.unlocksStage ? ['stage', 'unlocksStage'] : ['stage']
+    nodes.push({ id: b.id, kind: 'boss', bossId: b.id, name: b.name, stage: b.stage, ...(b.unlocksStage ? { unlocksStage: b.unlocksStage } : {}), ...(b.worldEvil ? { worldEvil: b.worldEvil } : {}), wikiUrl: p.url, _prov: prov })
   }
   for (const n of overlay.nodes) {
     const p = evidence.page(n.page, `overlay progression/nodes/${n.id}`)

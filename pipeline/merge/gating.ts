@@ -23,7 +23,8 @@
  *   Unknown, containers carry no gating data) ⇒ the route is not derivable.
  * Conditions with `satisfiedByNode` become node gates (hardmode ⇐ the Hardmode milestone); the rest
  * stay conditions. Boss gates are transitively reduced against the required-gate DAG and
- * `stage` = max stage of the gating nodes (early-prehm when there are none).
+ * `stage` = max over the gating nodes of (unlocksStage ?? stage) (AMENDMENTS-005 B22; early-prehm
+ * when there are none).
  *
  * Anything unverified anywhere ⇒ NOT derivable: the caller omits gatedBy/stage and lists them in
  * _prov.unverifiedFields, so consumers treat gating as Unknown and never "obtainable now". The
@@ -112,7 +113,10 @@ export function createGatingDeriver(ctx: GatingContext): (itemId: number) => Gat
     const reduced = [...nodes].filter((n) => !implied.has(n)).sort()
     let stage: Stage = 'early-prehm'
     for (const n of reduced) {
-      const s = ctx.graph?.nodes.get(n)?.stage as Stage
+      // B22: a stage-transition gate contributes the stage it opens (defeating the Wall of Flesh
+      // makes its drops Early Hardmode content), every other gate its own stage
+      const node = ctx.graph?.nodes.get(n)
+      const s = (node?.unlocksStage ?? node?.stage) as Stage
       if (STAGE_ORDER[s] > STAGE_ORDER[stage]) stage = s
     }
     return { ok: true, gates: { bosses: reduced, conditions: [...conds].sort() }, stage }

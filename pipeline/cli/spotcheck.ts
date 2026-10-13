@@ -11,10 +11,11 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { Boss, Condition, DropSource, Recipe, RecipeGroup, Weapon } from '../../src/schemas'
+import type { Boss, Buff, Condition, DropSource, Item, Recipe, RecipeGroup, Weapon } from '../../src/schemas'
 import { RAW_DIR, WikiClient } from '../fetch'
 import { fetchArticles } from '../fetch/articles'
 import { findAll, hasClass, parseHtml, type HNode } from '../parse/html'
+import { infoboxForItem, parseBuffInfoboxes, parseItemInfoboxes } from '../parse/infobox'
 import { stripMarkup } from '../parse/text'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..')
@@ -24,6 +25,9 @@ type Case =
   | { kind: 'drop'; page: string; item: string; source?: string; why: string }
   | { kind: 'weapon'; page: string; item: string; why: string }
   | { kind: 'boss'; page: string; boss: string; item: string; why: string }
+  // P2-S7: read the article revision the build parsed (cached by the sync plan) — zero requests
+  | { kind: 'ammo'; page: string; item: string; why: string }
+  | { kind: 'buff'; page: string; buff: string; why: string }
 
 const PLATFORM_NOTE = /\((?:Desktop, Console(?:, Old-gen console)? and Mobile versions|Desktop version, Console version, and Mobile version)\)/g
 const MODE_LABEL: Record<string, string> = { 'm-normal': 'classic', 'm-expert-master': 'expert+master', 'm-expert': 'expert', 'm-master': 'master' }
@@ -66,6 +70,8 @@ async function main(): Promise<number> {
   const drops = load<DropSource[]>('drops.json')
   const weapons = load<Weapon[]>('weapons.detail.json')
   const bosses = load<Boss[]>('bosses.json')
+  const items = load<Item[]>('items.detail.json')
+  const buffs = load<Buff[]>('buffs.json')
   const cases = JSON.parse(readFileSync(join(repoRoot, 'pipeline/spotcheck/cases.json'), 'utf8')) as Case[]
   const idByName = new Map(universe.items.flatMap((i) => (i.name ? [[i.name, i.id] as const] : [])))
   const client = new WikiClient({ cacheDir: RAW_DIR })
@@ -82,14 +88,54 @@ async function main(): Promise<number> {
     'min' in q ? `${q.min}${q.max !== q.min ? `–${q.max}` : ''}` : Object.entries(q).map(([d, v]) => `${d} ${v.min}${v.max !== v.min ? `–${v.max}` : ''}`).join(', ') || '—'
 
   for (const c of cases) {
-    // boss cases read the article the build already verified its quotes against (cached by the sync plan)
+    // boss / ammo / buff cases read the article the build already parsed (cached by the sync plan)
     const html =
-      c.kind === 'boss'
+      c.kind === 'boss' || c.kind === 'ammo' || c.kind === 'buff'
         ? ((await fetchArticles(client, [c.page], 'articles')).get(c.page)?.html ?? '')
         : ((await client.get({ action: 'parse', page: c.page, prop: 'text' }, `spotcheck/${c.page.replace(/[^A-Za-z0-9._-]/g, '_')}`)).response as { parse: { text: string } }).parse.text
     const nodes = parseHtml(html)
-    console.log(`\n=== ${c.kind.toUpperCase()} · ${c.kind === 'recipe' ? c.result : c.kind === 'weapon' ? c.item : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : `${c.source ?? c.page} → ${c.item}`} · ${c.why}`)
+    const title = c.kind === 'recipe' ? c.result : c.kind === 'weapon' || c.kind === 'ammo' ? c.item : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : c.kind === 'buff' ? c.buff : `${c.source ?? c.page} → ${c.item}`
+    console.log(`\n=== ${c.kind.toUpperCase()} · ${title} · ${c.why}`)
     console.log(`    wiki: https://terraria.wiki.gg/wiki/${encodeURIComponent(c.page.replaceAll(' ', '_'))}`)
+    if (c.kind === 'ammo') {
+      const rec = [...items, ...weapons].find((x) => x.name === c.item)
+      if (!rec?.ammoStats) {
+        console.log('  DATA  (no ammo record with this name)')
+        continue
+      }
+      const s = rec.ammoStats
+      const shown = (v: unknown, field: string) => (v !== undefined ? String(v) : rec._prov.unverifiedFields.includes(field) ? 'Unknown' : 'n/a')
+      console.log(`  DATA  ${rec.type} i:${rec.id} · class ${s.ammoClass} · damage ${shown(s.damage, 'ammoStats.damage')} · knockback ${shown(s.knockback, 'ammoStats.knockback')} · velocity bonus ${shown(s.velocityBonusTps, 'ammoStats.velocityBonusTps')} tiles/s (= wiki velocity ${s.velocityBonusTps !== undefined ? s.velocityBonusTps / 3.75 : '—'}) · velocity multiplier ${shown(s.velocityMultiplier, 'ammoStats.velocityMultiplier')} · rarity ${shown(rec.rarity, 'rarity')} · stage ${shown(rec.stage, 'stage')}`)
+      const box = infoboxForItem(parseItemInfoboxes(html), rec.id)
+      if (box) for (const r of box.rows) if (['Damage', 'Knockback', 'Velocity', 'Base Velocity', 'Velocity Multiplier'].includes(r.label)) console.log(`  WIKI  ${r.label}: ${r.value}`)
+      if (box) console.log(`  WIKI  ids: item ${box.itemIds.join(', ')}${box.projectileIds.length ? ` · projectile ${box.projectileIds.join(', ')}` : ''}`)
+      else {
+        // list articles (Rockets, Coins…) state per-item stats in table rows
+        const seen = new Set<string>()
+        for (const row of findAll(nodes, (x) => x.type === 'el' && x.tag === 'tr')) {
+          const text = clean(cellText(row.type === 'el' ? row.children : []))
+          if (text.startsWith(c.item) && text.length < 300 && !seen.has(text)) {
+            seen.add(text)
+            console.log(`  WIKI  row: ${text}`)
+          }
+        }
+      }
+      continue
+    }
+    if (c.kind === 'buff') {
+      const b = buffs.find((x) => x.id === c.buff)
+      if (!b) {
+        console.log('  DATA  (no buff record with this id)')
+        continue
+      }
+      const effect = (e: Buff['effects'][number]) => (e.kind === 'stat' ? `${e.stat} ${e.value}${e.scope ? ` (${e.scope})` : ''}` : `special "${e.text}"`)
+      console.log(`  DATA  ${b.name} · gameBuffId ${b.gameBuffId ?? (b._prov.unverifiedFields.includes('gameBuffId') ? 'Unknown' : 'n/a')} · ${b.isDebuff ? 'debuff' : 'buff'} · enemy DoT ${b.dot ? `${b.dot.dps} HP/s` : b._prov.unverifiedFields.includes('dot') ? 'Unknown' : 'n/a'} · effects ${b._prov.unverifiedFields.includes('effects') ? 'Unknown' : b.effects.map(effect).join('; ') || 'none'}`)
+      for (const box of parseBuffInfoboxes(html)) console.log(`  WIKI  buff infobox "${box.title}": Buff ID ${box.buffId ?? '—'} · Effects: ${(box.data.get('Effects') ?? []).join(' | ') || '—'}`)
+      for (const box of parseItemInfoboxes(html).filter((x) => x.buffIds.length > 0)) console.log(`  WIKI  item infobox "${box.title}": Internal Buff ID ${box.buffIds.join(', ')} · Buff tooltip: ${box.rows.find((r) => r.label === 'Buff tooltip')?.value ?? '—'} · Duration: ${box.rows.find((r) => r.label === 'Duration')?.value ?? '—'}`)
+      const lead = findAll(nodes, (x) => x.type === 'el' && x.tag === 'p').map((p) => clean(cellText(p.type === 'el' ? p.children : []))).find((t) => t.length > 40)
+      if (lead) console.log(`  WIKI  lead: ${lead.slice(0, 400)}`)
+      continue
+    }
     if (c.kind === 'recipe') {
       const id = idByName.get(c.result)
       for (const r of recipes.filter((x) => x.resultItemId === id)) console.log(`  DATA  ${recipeLine(r)}`)

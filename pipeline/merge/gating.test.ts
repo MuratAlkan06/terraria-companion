@@ -129,6 +129,17 @@ describe('createGatingDeriver', () => {
     expect(derive(24)).toEqual({ ok: false, blockers: ['alternative-route-unverified'] })
   })
 
+  it('AMENDMENTS-005 B22: a stage-transition gate contributes its unlocksStage (WoF drops are early-hm), other gates their own stage', () => {
+    const WOF = { npcName: 'Wall of Flesh', bossId: 'wall-of-flesh' }
+    const graph = { ...GRAPH, nodes: new Map([...GRAPH.nodes].map(([id, n]) => [id, id === 'wall-of-flesh' ? { ...n, unlocksStage: 'early-hm' as const } : n])), bossNode: new Map([...GRAPH.bossNode, ['wall-of-flesh', 'wall-of-flesh']]) }
+    const derive = createGatingDeriver(ctx([recipe('5-a', 5, [4, 6])], [drop('4-wof', 4, WOF), drop('6-eoc', 6, { npcName: 'Eye of Cthulhu', bossId: 'eye-of-cthulhu' })], graph))
+    expect(derive(4)).toEqual({ ok: true, gatedBy: { bosses: ['wall-of-flesh'], conditions: [], stage: 'early-hm' } }) // Breaker Blade's case
+    expect(derive(5)).toEqual({ ok: true, gatedBy: { bosses: ['eye-of-cthulhu', 'wall-of-flesh'], conditions: [], stage: 'early-hm' } })
+    expect(derive(6)).toEqual({ ok: true, gatedBy: { bosses: ['eye-of-cthulhu'], conditions: [], stage: 'early-prehm' } })
+    // without the field the gate's own stage applies (the P2-S6 behavior B22 fixes)
+    expect(createGatingDeriver(ctx([], [drop('4-wof', 4, WOF)], { ...GRAPH, bossNode: graph.bossNode }))(4)).toMatchObject({ gatedBy: { stage: 'late-prehm' } })
+  })
+
   it('without the progression graph (P2-S6 pending) any boss gate is underivable; gate-free routes still derive', () => {
     const derive = createGatingDeriver(ctx([recipe('3-a', 3, [1], { conditions: ['hardmode'] }), recipe('4-a', 4, [1], { conditions: ['full-moon'] })], [drop('1-x', 1, ML)], null))
     expect(derive(3)).toEqual({ ok: false, blockers: ['progression-graph-pending'] })

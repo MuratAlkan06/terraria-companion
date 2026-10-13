@@ -8,7 +8,8 @@ import { isDeepStrictEqual } from 'node:util'
 import { LIST_FILES, type Dataset, type ItemCollectionKey } from './dataset'
 import type { PipelineError } from './errors'
 
-const BASE_FIELDS = ['id', 'name', 'slug', 'type', 'stage', 'rarity', 'sprite', 'tags'] as const
+// wikiUrl added in P2-S7 (AMENDMENTS-007 B31): rows and cards link the record's exact wiki page
+const BASE_FIELDS = ['id', 'name', 'slug', 'type', 'stage', 'rarity', 'sprite', 'tags', 'wikiUrl'] as const
 
 export const LIST_FIELDS: Record<ItemCollectionKey, readonly string[]> = {
   // useAnimationTicks added in P2-S2: TO-VERIFY #10 showed the wiki's "Use time" is the game's

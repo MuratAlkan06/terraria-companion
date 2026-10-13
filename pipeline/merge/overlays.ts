@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as z from 'zod'
-import { AttackPatternTag, Boss, Condition, EdgeType, IsoDate, ItemId, NpcId, PlainText, PlainText1, Slug, Stage, WorldEvil } from '../../src/schemas'
+import { AttackPatternTag, Boss, Condition, DamageClass, EdgeType, IsoDate, ItemId, NpcId, PlainText, PlainText1, Slug, Stage, StatKind, WorldEvil } from '../../src/schemas'
 
 export const OVERLAY_DIR = resolve(import.meta.dirname, '..', 'overlays')
 
@@ -77,6 +77,8 @@ const BossOverlayEntry = z.strictObject({
   page: Page,
   /** Editorial stage tag (REQUIREMENTS §1 five-stage taxonomy) — emitted in editorialFields. */
   stage: Stage,
+  /** AMENDMENTS-005 B22: stage-transition gates only (wall-of-flesh → early-hm); editorial, emitted on the boss node. */
+  unlocksStage: Stage.optional(),
   worldEvil: WorldEvil.optional(),
   /** Representative NPC row: location environment, sprite and (unless statsUnknown) stats. */
   primary: NpcRowRef,
@@ -158,6 +160,36 @@ export const WithheldOverlay = z.strictObject({
   ),
 })
 export type WithheldOverlay = z.infer<typeof WithheldOverlay>
+
+/**
+ * P2-S7 buffs overlay (overlays/buffs.json): the curated loadout-potion members of the buff registry
+ * plus explicit effect classifications. Every effect is a verbatim quote of the buff's article; a stat
+ * effect's quote must contain its number (and scope word) — checked by merge/buffs.ts.
+ */
+const EffectQuote = PlainText.min(8)
+const BuffEffectEntry = z.union([
+  z.strictObject({ stat: StatKind, value: z.number(), scope: DamageClass.optional(), quote: EffectQuote }),
+  z.strictObject({ special: EffectQuote }),
+])
+export type BuffEffectEntry = z.infer<typeof BuffEffectEntry>
+
+export const BuffsOverlay = z
+  .strictObject({
+    overlay: z.literal('buffs'),
+    authoredAt: IsoDate,
+    notes: z.array(z.string()),
+    entries: z.array(z.strictObject({ name: PlainText1, effects: z.array(BuffEffectEntry).min(1) })).min(1),
+  })
+  .superRefine((o, ctx) => {
+    const seen = new Set<string>()
+    for (const e of o.entries) {
+      if (seen.has(e.name)) ctx.addIssue({ code: 'custom', message: `duplicate buff "${e.name}"` })
+      seen.add(e.name)
+    }
+  })
+export type BuffsOverlay = z.infer<typeof BuffsOverlay>
+
+export const loadBuffsOverlay = (dir = OVERLAY_DIR): BuffsOverlay => BuffsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'buffs.json'), 'utf8')))
 
 export const loadBossesOverlay = (dir = OVERLAY_DIR): BossesOverlay => BossesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'bosses.json'), 'utf8')))
 export const loadProgressionOverlay = (dir = OVERLAY_DIR): ProgressionOverlay => ProgressionOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'progression.json'), 'utf8')))

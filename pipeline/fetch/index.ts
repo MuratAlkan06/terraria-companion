@@ -13,16 +13,24 @@
  * Plan (P2-S6): + every article the bosses / progression / withheld overlays cite (rendered text +
  * revision id: the build checks each curated quote against it) · imageinfo for the infobox images
  * of the registry bosses' Cargo NPCs rows.
+ * Plan (P2-S7): + Module:Projectileinfo/data (velocity-multiplier cross-check) · the Category:Ammunition
+ * items tree and its pages' existence (count reconciliation) · imageinfo for the ammunition rows'
+ * infobox images · the article of every ammunition row (`_page`: per-item infobox, Velocity
+ * Multiplier) · the "Buff IDs" article (game buff ID table) and the article of every buff the
+ * registry may contain (debuffs inflicted by weapon/ammo rows, ammo-granted buffs, overlays/buffs.json).
  */
+import { buffArticleTitles, BUFF_IDS_PAGE, cargoBuffNames } from '../merge/buffs'
 import { bossImageFiles } from '../merge/bosses'
-import { evidencePages, loadBossesOverlay, loadConditionsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { evidencePages, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { parseBuffIdTable } from '../parse/infobox'
 import { type Article, fetchArticles } from './articles'
 import { cargoFields, cargoQueryAll, itemTypeIncludes, type CargoTableFetch } from './cargo'
 import { type CategoryTree, fetchCategoryTree } from './categories'
 import type { WikiClient } from './client'
+import { FetchError } from './client'
 import { fetchImageInfo, type ImageInfoFetch } from './images'
 import { fetchIteminfo, type IteminfoFetch } from './iteminfo'
-import { checkPagesExist, fetchRecipeModules, type ModuleFetch, RECIPE_MODULE_TITLES } from './modules'
+import { checkPagesExist, fetchModuleRevision, fetchRecipeModules, type ModuleFetch, RECIPE_MODULE_TITLES } from './modules'
 
 /** Cargo tables consumed by the pipeline. All columns are fetched (raw cache = full fidelity). */
 export const SYNC_TABLES = ['Recipes', 'Drops', 'NPCs', 'Items', 'Weapon_source'] as const
@@ -34,19 +42,35 @@ export type SyncTable = (typeof SYNC_TABLES)[number]
  */
 export const WEAPON_CATEGORY_ROOTS = ['Category:Weapon items', 'Category:Weapon types'] as const
 
+/** Root of the wiki's ammunition category tree (verified 2026-10-13: 77 pages + 7 family subcats). */
+export const AMMO_CATEGORY_ROOTS = ['Category:Ammunition items'] as const
+
+export const PROJECTILEINFO_TITLE = 'Module:Projectileinfo/data'
+
+type PageStatus = Map<string, { exists: boolean; resolvedTitle: string }>
+
 export interface SyncResult {
   iteminfo: IteminfoFetch
   modules: Record<(typeof RECIPE_MODULE_TITLES)[number], ModuleFetch>
   overlayPages: Map<string, { exists: boolean; resolvedTitle: string }>
   tables: Record<SyncTable, CargoTableFetch>
   /** Weapon category tree + each member page's existence / redirect target (reconciliation). */
-  weaponCategories: CategoryTree & { pageStatus: Map<string, { exists: boolean; resolvedTitle: string }> }
+  weaponCategories: CategoryTree & { pageStatus: PageStatus }
   /** Image metadata for the infobox image (`imagefile`) of every Cargo Items row typed "weapon". */
   weaponImages: ImageInfoFetch
-  /** Articles cited by the curated overlays (requested title → rendered article). */
+  /**
+   * Rendered articles (requested title → article): the pages the curated overlays cite, the
+   * ammunition rows' articles, "Buff IDs" and the buff articles (P2-S7).
+   */
   articles: Map<string, Article>
   /** Image metadata for the infobox image of every boss-typed Cargo NPCs row of the registry. */
   bossImages: ImageInfoFetch
+  /** P2-S7: Module:Projectileinfo/data (projectile extraUpdates). */
+  projectileinfo: ModuleFetch
+  /** P2-S7: Category:Ammunition items tree + each member page's existence / redirect target. */
+  ammoCategories: CategoryTree & { pageStatus: PageStatus }
+  /** P2-S7: image metadata for the infobox image of every Cargo Items row typed "ammunition". */
+  ammoImages: ImageInfoFetch
 }
 
 export async function runSyncPlan(client: WikiClient, log?: (line: string) => void): Promise<SyncResult> {
@@ -70,11 +94,42 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   const weaponImageFiles = tables.Items.rows.filter((r) => itemTypeIncludes(r, 'weapon')).map((r) => String(r.imagefile ?? ''))
   const weaponImages = await fetchImageInfo(client, weaponImageFiles, 'images/weapons')
   const bosses = loadBossesOverlay()
-  log?.('articles cited by the bosses / progression / withheld overlays')
-  const articles = await fetchArticles(client, evidencePages(bosses, loadProgressionOverlay(), loadWithheldOverlay()), 'articles')
+  const ammoRows = tables.Items.rows.filter((r) => itemTypeIncludes(r, 'ammunition'))
+  log?.('articles: overlay evidence, ammunition rows, Buff IDs')
+  const articles = await fetchArticles(client, [...evidencePages(bosses, loadProgressionOverlay(), loadWithheldOverlay()), ...ammoRows.map((r) => String(r._page ?? '')).filter(Boolean), BUFF_IDS_PAGE], 'articles')
   log?.('boss image metadata (imageinfo)')
   const bossImages = await fetchImageInfo(client, bossImageFiles(bosses, tables.NPCs.rows), 'images/bosses')
-  return { iteminfo, modules, overlayPages, tables, weaponCategories: { ...weaponCategories, pageStatus: weaponCategoryPages }, weaponImages, articles, bossImages }
+
+  // P2-S7
+  log?.(PROJECTILEINFO_TITLE)
+  const projectileinfo = await fetchModuleRevision(client, PROJECTILEINFO_TITLE, 'modules/projectileinfo-data')
+  log?.(`category tree ${AMMO_CATEGORY_ROOTS.join(', ')}`)
+  const ammoCategories = await fetchCategoryTree(client, AMMO_CATEGORY_ROOTS)
+  log?.('ammunition category pages (existence / redirects)')
+  const ammoCategoryPages = await checkPagesExist(client, ammoCategories.pages, 'pages/ammo-categories')
+  log?.('ammunition image metadata (imageinfo)')
+  const ammoImages = await fetchImageInfo(client, ammoRows.map((r) => String(r.imagefile ?? '')), 'images/ammo')
+  log?.('buff articles (Buff IDs links of the registry candidates)')
+  const buffIds = articles.get(BUFF_IDS_PAGE)
+  if (!buffIds) throw new FetchError(`${BUFF_IDS_PAGE}: article missing from the sync`)
+  // a superset of the build's registry: every weapon/ammo row (incl. rows the build later excludes)
+  const weaponOrAmmo = tables.Items.rows.filter((r) => itemTypeIncludes(r, 'weapon') || itemTypeIncludes(r, 'ammunition'))
+  const candidates = [...cargoBuffNames(weaponOrAmmo, 'debuffs').keys(), ...cargoBuffNames(ammoRows, 'buffs').keys(), ...loadBuffsOverlay().entries.map((e) => e.name)]
+  for (const [title, article] of await fetchArticles(client, buffArticleTitles(parseBuffIdTable(buffIds.html), candidates), 'articles')) articles.set(title, article)
+
+  return {
+    iteminfo,
+    modules,
+    overlayPages,
+    tables,
+    weaponCategories: { ...weaponCategories, pageStatus: weaponCategoryPages },
+    weaponImages,
+    articles,
+    bossImages,
+    projectileinfo,
+    ammoCategories: { ...ammoCategories, pageStatus: ammoCategoryPages },
+    ammoImages,
+  }
 }
 
 export { WikiClient, FetchError } from './client'

@@ -41,7 +41,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
   it('the shipped search-docs.json and enemies.json pass their dev schemas', () => {
     expect(() => validateDataFile('search-docs', searchDocsJson)).not.toThrow()
     expect(() => validateDataFile('enemies', enemiesJson)).not.toThrow()
-    expect(docs).toHaveLength(840)
+    expect(docs).toHaveLength(959)
   })
 
   it('loadSearchDocs is a lazy singleton; a failed chunk is a ChunkLoadError and is retried', async () => {
@@ -51,7 +51,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
     const failure = await da.loadSearchDocs().catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ChunkLoadError)
     expect((failure as ChunkLoadError).file).toBe('search-docs')
-    await expect(da.loadSearchDocs()).resolves.toHaveLength(840)
+    await expect(da.loadSearchDocs()).resolves.toHaveLength(959)
     await da.loadSearchDocs()
     expect(importer).toHaveBeenCalledTimes(2)
   })
@@ -61,7 +61,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
   const engine = createSearchEngine(docs)
 
   it('indexes every doc and finds "zenith" as the top hit (AC1)', () => {
-    expect(engine.size).toBe(840)
+    expect(engine.size).toBe(959)
     const [top] = engine.search('zenith')
     expect(top.doc).toMatchObject({ id: 'i:4956', name: 'Zenith', type: 'weapon' })
   })
@@ -88,7 +88,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
 
   it('filters by entity type (facet filter over the stored type)', () => {
     const slimes = engine.search('slime')
-    expect(new Set(slimes.map((h) => h.doc.type))).toEqual(new Set(['weapon', 'boss', 'enemy']))
+    expect(new Set(slimes.map((h) => h.doc.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'buff']))
     const onlyBosses = engine.search('slime', { types: new Set(['boss']) })
     expect(onlyBosses.length).toBeGreaterThan(0)
     expect(onlyBosses.every((h) => h.doc.type === 'boss')).toBe(true)
@@ -152,7 +152,7 @@ describe('result targets (internal vs interim external)', () => {
 describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('builds from the shipped data: "zenith" → Zenith first, internal, with its sprite', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
-    expect(index.docCount).toBe(840)
+    expect(index.docCount).toBe(959)
     const { groups, options } = index.suggest('zenith')
     expect(groups[0].label).toBe('Weapons')
     expect(options[0]).toMatchObject({
@@ -169,13 +169,15 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('every boss and enemy row opens its own record’s wiki page (never a guessed URL)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
-    expect(all).toHaveLength(840)
+    expect(all).toHaveLength(959)
     const byRef = new Map<string, string>([
       ...bosses.map((b) => [`boss:${b.id}`, b.wikiUrl] as const),
       ...enemies.map((e) => [`enemy:${e.id}`, e.wikiUrl] as const),
     ])
     for (const option of all) {
       if (option.type === 'weapon') expect(option.target).toEqual({ kind: 'internal', to: `/weapons/${option.ref.slice(2)}` })
+      // P2-S7 ammo items + buffs: no local page and no interim URL source yet → the wiki search for the exact name
+      else if (option.type === 'item' || option.type === 'buff') expect(option.target).toEqual({ kind: 'external', href: wikiSearchUrl(option.name) })
       else expect(option.target).toEqual({ kind: 'external', href: byRef.get(option.ref) })
     }
     // e.g. the Enchanted Sword ENEMY must not link to the item article of the same name.
@@ -186,7 +188,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('groups mixed results by type with labels, bosses carry sprites, enemies fall back to placeholder art', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const { groups } = index.suggest('slime')
-    expect(groups.map((g) => g.label).sort()).toEqual(['Bosses', 'Enemies', 'Weapons'])
+    expect(groups.map((g) => g.label).sort()).toEqual(['Bosses', 'Buffs', 'Enemies', 'Weapons'])
     const king = groups.find((g) => g.type === 'boss')!.items.find((i) => i.name === 'King Slime')!
     expect(king.sprite).toBe('/sprites/bosses/50.gif')
     expect(king.detail).toBe('Early Pre-Hardmode')
@@ -236,7 +238,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     expect(performance.getEntriesByName('tc:search-index').length).toBeGreaterThan(0)
   })
 
-  it('builds the real 840-doc index well inside the 500 ms budget on this machine', async () => {
+  it('builds the real 959-doc index well inside the 500 ms budget on this machine', async () => {
     const start = performance.now()
     createSearchEngine(docs)
     expect(performance.now() - start).toBeLessThan(500)
@@ -255,10 +257,12 @@ describe('detail line + placeholder copy', () => {
     expect(shipped).toEqual([
       { type: 'weapon', count: 488 },
       { type: 'boss', count: 18 },
+      { type: 'item', count: 79 },
       { type: 'enemy', count: 334 },
+      { type: 'buff', count: 40 },
     ])
-    expect(searchPlaceholder(shipped)).toBe('Search weapons, bosses, enemies…')
-    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses and 334 enemies')
+    expect(searchPlaceholder(shipped)).toBe('Search weapons, bosses, items…')
+    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 79 items, 334 enemies and 40 buffs')
     expect(searchPlaceholder([])).toBe('Search…')
     const later = searchableCounts({ ...meta.counts, items: 5000, armor: 300 })
     expect(searchPlaceholder(later)).toBe('Search weapons, bosses, items…')

@@ -36,6 +36,7 @@ export type WeaponListRecord = Pick<
   | 'rarity'
   | 'sprite'
   | 'tags'
+  | 'wikiUrl'
   | 'damageClass'
   | 'damage'
   | 'useTimeTicks'

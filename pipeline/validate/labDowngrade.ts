@@ -6,12 +6,13 @@
  *    in `_prov.unverifiedFields` is downgraded to a limitation BEFORE strict parsing. This is
  *    what lets the merge stage hand over archetype candidates whose params could not be
  *    verified (absent + listed) without ever emitting an invented value.
- * 2. AMENDMENTS-001 A1 (demoted rule 10, post-parse): a weapon whose ammoClass matches no
- *    `Item.ammoStats.ammoClass` is a WARNING and its labBehavior is downgraded with reason
- *    "compatible ammo data unverified" — never build-fatal.
+ * 2. §7a-10 (post-parse, `checkAmmoClasses`): a weapon whose ammoClass matches no ammo record is
+ *    build-failing once the ammo items are produced (P2-S7). While they are pending (partial
+ *    datasets) the AMENDMENTS-001 A1 demotion applies: a WARNING and the labBehavior is downgraded
+ *    with reason "compatible ammo data unverified".
  */
 import { isCoveredBy, simRequiredWeaponFields, type Archetype, type Item, type LabBehavior, type Weapon } from '../../src/schemas'
-import type { PipelineWarning } from './errors'
+import { danglingRef, type PipelineError, type PipelineWarning } from './errors'
 
 const ARCHETYPES: readonly string[] = [
   'swing-melee',
@@ -67,40 +68,46 @@ export function downgradeUnverifiedArchetype(raw: unknown): { record: unknown; w
 }
 
 /**
- * Post-parse A1 rule-10 check. Returns the (possibly downgraded) weapons and warnings.
- * `itemsPending` (partial dataset, ammo items not produced yet): archetype weapons are still
- * downgraded (the sim never consumes unverified ammo data), but weapons that already are
- * limitations get no per-weapon warning — their ammo classes are returned as `deferred` refs.
+ * Post-parse §7a-10 ammo-class check. The ammo records are the Items with `ammoStats` plus the
+ * dual-role Weapons carrying `ammoStats` (Snowball).
+ * - Items PRODUCED (P2-S7 on): a weapon ammoClass (or bow-gun params.ammoClass) that matches no ammo
+ *   record is build-failing E_DANGLING_REF — the Lab ammo picker is non-empty by construction.
+ * - Items PENDING (partial dataset, AMENDMENTS-001 A1 demotion): WARNING + downgrade of an archetype
+ *   weapon to a limitation (the sim never consumes unverified ammo data); weapons that already are
+ *   limitations get no per-weapon warning — their ammo classes are returned as `deferred` refs.
  */
-export function downgradeUnmatchedAmmo(
+export function checkAmmoClasses(
   weapons: readonly Weapon[],
   items: readonly Item[],
   itemsPending = false,
-): { weapons: Weapon[]; warnings: PipelineWarning[]; deferred: Set<string> } {
-  const ammoClasses = new Set(items.flatMap((i) => (i.ammoStats ? [i.ammoStats.ammoClass] : [])))
+): { weapons: Weapon[]; warnings: PipelineWarning[]; deferred: Set<string>; errors: PipelineError[] } {
+  const ammoClasses = new Set([...items, ...weapons].flatMap((i) => (i.ammoStats ? [i.ammoStats.ammoClass] : [])))
   const warnings: PipelineWarning[] = []
+  const errors: PipelineError[] = []
   const deferred = new Set<string>()
   const out = weapons.map((weapon) => {
     const lab = weapon.labBehavior
-    const declared = new Set<string>()
-    if (weapon.ammoClass !== undefined) declared.add(weapon.ammoClass)
-    if (lab.kind === 'archetype' && lab.params.archetype === 'bow-gun') declared.add(lab.params.ammoClass)
-    const unmatched = [...declared].filter((c) => !ammoClasses.has(c))
+    const declared = new Map<string, string>()
+    if (weapon.ammoClass !== undefined) declared.set(weapon.ammoClass, 'ammoClass')
+    if (lab.kind === 'archetype' && lab.params.archetype === 'bow-gun' && !declared.has(lab.params.ammoClass)) declared.set(lab.params.ammoClass, 'labBehavior.params.ammoClass')
+    const unmatched = [...declared.keys()].filter((c) => !ammoClasses.has(c))
     if (unmatched.length === 0) return weapon
     const ref = `i:${weapon.id}`
+    if (!itemsPending) {
+      for (const c of unmatched) errors.push(danglingRef(ref, declared.get(c) as string, `ammoClass:${c}`, 'no ammo record (Item or Weapon ammoStats) has this ammo class (§7a-10)'))
+      return weapon
+    }
     const downgrade = lab.kind !== 'limitation'
-    if (itemsPending && !downgrade) {
+    if (!downgrade) {
       for (const c of unmatched) deferred.add(c)
       return weapon
     }
     warnings.push({
       code: 'W_AMMO_CLASS_UNMATCHED',
       ref,
-      message: `ammoClass ${unmatched.map((c) => `"${c}"`).join(', ')} matches no Item.ammoStats.ammoClass${
-        downgrade ? ` — labBehavior "${lab.kind}" -> limitation (${AMMO_UNVERIFIED_REASON})` : ''
-      } (A1 rule 10)`,
+      message: `ammoClass ${unmatched.map((c) => `"${c}"`).join(', ')} matches no ammoStats.ammoClass while ammo items are pending — labBehavior "${lab.kind}" -> limitation (${AMMO_UNVERIFIED_REASON}) (A1 rule 10)`,
     })
-    return downgrade ? { ...weapon, labBehavior: limitation(weapon, AMMO_UNVERIFIED_REASON) } : weapon
+    return { ...weapon, labBehavior: limitation(weapon, AMMO_UNVERIFIED_REASON) }
   })
-  return { weapons: out, warnings, deferred }
+  return { weapons: out, warnings, deferred, errors }
 }

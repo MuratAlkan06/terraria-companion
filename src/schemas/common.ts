@@ -41,7 +41,11 @@ export const WorldEvil = z.enum(['corruption', 'crimson'])
 export type WorldEvil = z.infer<typeof WorldEvil>
 /** Validated against the conditions.json registry (pipeline validate, §7a-9). */
 export const ConditionSlug = Slug
-/** Validated against the set of `Item.ammoStats.ammoClass` values (§7a-10, demoted by A1). */
+/**
+ * Validated against the set of `ammoStats.ammoClass` values of the ammo records (§7a-10). A1 demoted
+ * the rule to a warning while ammo items were pending; P2-S7 produces them, so an unmatched class is
+ * build-failing again (E_DANGLING_REF).
+ */
 export const AmmoClass = Slug
 
 /** Rarity tiers -1..11 plus special tiers (§2.2; tokens per A17). */

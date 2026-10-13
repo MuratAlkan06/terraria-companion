@@ -54,7 +54,7 @@ export const COLLECTIONS = {
   weapons: { file: 'weapons.detail.json', schema: Weapon }, // §5 list/detail split (detail = array, B11)
   armor: { file: 'armor.json', schema: ArmorPiece },
   accessories: { file: 'accessories.json', schema: Accessory },
-  items: { file: 'items.json', schema: Item },
+  items: { file: 'items.detail.json', schema: Item }, // §5 list/detail split (P2-S7: ammo items; P6-S0 shards it)
   armorSets: { file: 'armor-sets.json', schema: ArmorSet },
   enemies: { file: 'enemies.json', schema: Enemy },
   recipes: { file: 'recipes.json', schema: Recipe },

@@ -117,6 +117,9 @@ export const ProgressionNode = z
     bossId: Slug.optional(), // REQUIRED iff kind==="boss" (§7a-4)
     name: PlainText1,
     stage: Stage,
+    // AMENDMENTS-005 B22: set on stage-transition gates — the stage whose content defeating this node
+    // makes obtainable (wall-of-flesh → early-hm). §7b item stage = max over gates of (unlocksStage ?? stage).
+    unlocksStage: Stage.optional(),
     worldEvil: WorldEvil.optional(),
     wikiUrl: WikiUrl,
     _prov: Prov,

@@ -36,11 +36,16 @@ export interface CategoryReconciliation {
   nonWeaponTypes: Map<string, number>
 }
 
+/**
+ * Classifies every article of a category tree against the emitted records hosted on it. Used for the
+ * weapon tree (P2-S2) and the ammunition tree (P2-S7): `weapons` = the emitted records, `identification`
+ * = the builder's excluded rows ("weapon" in the bucket names is historical).
+ */
 export function reconcileCategories(
   tree: CategoryTree & { pageStatus: ReadonlyMap<string, { exists: boolean; resolvedTitle: string }> },
   itemRows: readonly CargoRow[],
-  weapons: readonly Weapon[],
-  identification: WeaponIdentification,
+  weapons: readonly Pick<Weapon, 'id' | 'name'>[],
+  identification: Pick<WeaponIdentification, 'excluded'>,
   pageOf: ReadonlyMap<number, string>,
 ): CategoryReconciliation {
   const weaponPages = new Map<string, number>()

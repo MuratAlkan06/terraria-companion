@@ -1,9 +1,10 @@
 /**
  * Progression graph integrity (DATA_SCHEMA_SPEC §7a-8): edges resolve, no self-loops, unique
- * (from,to,type) triples, the required-gate subgraph is a DAG, and world-evil nodes
- * (EoW/BoC) carry worldEvil and are joined by an alternative-route edge.
+ * (from,to,type) triples, the required-gate subgraph is a DAG, world-evil nodes
+ * (EoW/BoC) carry worldEvil and are joined by an alternative-route edge, and a node's B22
+ * `unlocksStage` is backed by a required-gate edge into a milestone of that stage.
  */
-import type { ProgressionEdge, ProgressionNode } from '../../src/schemas'
+import { STAGE_ORDER, type ProgressionEdge, type ProgressionNode } from '../../src/schemas'
 import type { Dataset } from './dataset'
 import { danglingRef, derivedMismatch, duplicateId, type PipelineError } from './errors'
 
@@ -87,6 +88,18 @@ export function checkGraph(ds: Pick<Dataset, 'nodes' | 'edges'>): PipelineError[
       path: cycle,
       message: `required-gate subgraph has a cycle: ${cycle.join(' -> ')}`,
     })
+  }
+
+  // AMENDMENTS-005 B22: unlocksStage marks a stage-transition gate. It must open a LATER stage than
+  // the node's own, and the node must required-gate a milestone of exactly that stage (wall-of-flesh
+  // → hardmode/early-hm) — the field restates the graph, it cannot invent a transition.
+  for (const node of ds.nodes) {
+    if (node.unlocksStage === undefined) continue
+    if (STAGE_ORDER[node.unlocksStage] <= STAGE_ORDER[node.stage]) {
+      errors.push(derivedMismatch(`node:${node.id}`, 'unlocksStage', `unlocksStage "${node.unlocksStage}" is not later than the node's own stage "${node.stage}"`))
+    }
+    const opens = ds.edges.some((e) => e.type === 'required-gate' && e.from === node.id && nodeById.get(e.to)?.kind === 'milestone' && nodeById.get(e.to)?.stage === node.unlocksStage)
+    if (!opens) errors.push(derivedMismatch(`node:${node.id}`, 'unlocksStage', `no required-gate edge from node:${node.id} to a "${node.unlocksStage}" milestone`))
   }
 
   // EoW/BoC rule: every world-evil node is joined to an opposite-evil node by an alternative-route edge.
