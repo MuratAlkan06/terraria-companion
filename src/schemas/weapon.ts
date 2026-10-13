@@ -162,11 +162,16 @@ export type CustomScenario = z.infer<typeof CustomScenario>
  * Weapon fields the Lab sim reads for an archetype (§2.1 rule 3; spec note "the sim reads
  * both" core numbers and params). If any of these — or any `labBehavior.*` path — is listed
  * in `_prov.unverifiedFields`, the pipeline downgrades `labBehavior` to a limitation so the
- * sim never consumes an unknown. `useAnimationTicks` is excluded until TO-VERIFY-IN-P2 #10
- * settles which of useTime/useAnimation drives the attack rate.
+ * sim never consumes an unknown.
+ * AMENDMENTS-008 B36: `useAnimationTicks` is the attack cadence (AMENDMENTS-004 B14), and
+ * `autoReuse` changes the cadence of melee-class weapons (autoswing melee attacks one tick
+ * sooner — src/sim/README.md "Cadence"), so it is required for the melee archetypes.
  */
-const SIM_FIELDS_ALL_ARCHETYPES = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'knockback', 'manaCost'] as const
+const SIM_FIELDS_ALL_ARCHETYPES = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks', 'knockback', 'manaCost'] as const
 const SIM_FIELDS_BY_ARCHETYPE: Partial<Record<Archetype, readonly string[]>> = {
+  'swing-melee': ['autoReuse'],
+  thrust: ['autoReuse'],
+  returning: ['autoReuse'],
   'bow-gun': ['ammoClass', 'shootSpeedTps'],
 }
 export function simRequiredWeaponFields(archetype: Archetype): readonly string[] {

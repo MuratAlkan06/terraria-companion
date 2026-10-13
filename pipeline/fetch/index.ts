@@ -18,10 +18,23 @@
  * infobox images · the article of every ammunition row (`_page`: per-item infobox, Velocity
  * Multiplier) · the "Buff IDs" article (game buff ID table) and the article of every buff the
  * registry may contain (debuffs inflicted by weapon/ammo rows, ammo-granted buffs, overlays/buffs.json).
+ * Plan (P3-S0): + the article of every weapon row in the Weapon Lab family categories (merge/labParams.ts
+ * FAMILY_CATEGORIES: the article screen + overlay evidence), the mechanics articles its rules quote
+ * (Use Style IDs, Broadswords, Velocity) and every page the lab-params overlay cites.
  */
 import { buffArticleTitles, BUFF_IDS_PAGE, cargoBuffNames } from '../merge/buffs'
 import { bossImageFiles } from '../merge/bosses'
-import { evidencePages, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { LAB_RULE_PAGES, labFamilyPages } from '../merge/labParams'
+import {
+  evidencePages,
+  labEvidencePages,
+  loadBossesOverlay,
+  loadBuffsOverlay,
+  loadConditionsOverlay,
+  loadLabParamsOverlay,
+  loadProgressionOverlay,
+  loadWithheldOverlay,
+} from '../merge/overlays'
 import { parseBuffIdTable } from '../parse/infobox'
 import { type Article, fetchArticles } from './articles'
 import { cargoFields, cargoQueryAll, itemTypeIncludes, type CargoTableFetch } from './cargo'
@@ -116,6 +129,11 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   const weaponOrAmmo = tables.Items.rows.filter((r) => itemTypeIncludes(r, 'weapon') || itemTypeIncludes(r, 'ammunition'))
   const candidates = [...cargoBuffNames(weaponOrAmmo, 'debuffs').keys(), ...cargoBuffNames(ammoRows, 'buffs').keys(), ...loadBuffsOverlay().entries.map((e) => e.name)]
   for (const [title, article] of await fetchArticles(client, buffArticleTitles(parseBuffIdTable(buffIds.html), candidates), 'articles')) articles.set(title, article)
+
+  // P3-S0
+  log?.('articles: Weapon Lab family weapons, mechanics rule pages, lab-params overlay evidence')
+  const labTitles = [...labFamilyPages(weaponCategories, tables.Items.rows), ...LAB_RULE_PAGES, ...labEvidencePages(loadLabParamsOverlay())]
+  for (const [title, article] of await fetchArticles(client, labTitles, 'articles')) articles.set(title, article)
 
   return {
     iteminfo,

@@ -1,7 +1,7 @@
 {
   "gameVersion": "1.4.5.8",
   "dataSchemaVersion": 1,
-  "generatedAt": "2026-10-13T09:05:27.707Z",
+  "generatedAt": "2026-10-13T13:16:33.539Z",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -25,14 +25,14 @@
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 3160,
+    "total": 3089,
     "byKind": {
       "source-mismatch": 28,
       "count-reconciliation": 53,
       "missing-field": 1681,
       "gating-underived": 518,
       "unverified-drop-rate": 392,
-      "lab-limitation-default": 488
+      "lab-limitation-default": 417
     }
   }
 }

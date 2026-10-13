@@ -191,6 +191,59 @@ export type BuffsOverlay = z.infer<typeof BuffsOverlay>
 
 export const loadBuffsOverlay = (dir = OVERLAY_DIR): BuffsOverlay => BuffsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'buffs.json'), 'utf8')))
 
+/**
+ * P3-S0 Weapon Lab params overlay (overlays/lab-params.json): the RESIDUAL decisions for weapons whose
+ * archetype params the derivation (merge/labParams.ts) cannot settle from the data modules + article
+ * screen alone. Param semantics are binding as documented in src/sim/README.md (AMENDMENTS-008 B37).
+ * - `archetype`: the screen flagged the weapon, a reviewer read its article and confirms it fits the
+ *   archetype; supplies the per-weapon params no data module carries (bow-gun: projectilesPerUse,
+ *   spreadDegrees, inheritsAmmoProjectile; magic-bolt: projectilesPerUse, spreadDegrees, pierce,
+ *   lifetimeTicks). Every residual value must be stated by one of the entry's quotes (checked).
+ * - `limitation`: the article documents behavior the archetype params cannot express; `reason` is the
+ *   emitted (user-facing) limitation reason, backed by the quotes.
+ * Every quote is checked verbatim against the cached article revision (merge/evidence.ts).
+ */
+const LabQuote = z.strictObject({ page: Page, quote: Quote })
+const LabEntryBase = {
+  itemId: ItemId,
+  /** Must equal the weapon's name (guards against item-ID typos). */
+  name: PlainText1,
+  evidence: z.array(LabQuote).min(1),
+  /** Pipeline-only reviewer rationale (not emitted). */
+  why: z.string().min(1),
+}
+const LabArchetypeEntry = z.strictObject({
+  ...LabEntryBase,
+  decision: z.literal('archetype'),
+  archetype: z.enum(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt']),
+  projectilesPerUse: z.int().positive().optional(),
+  spreadDegrees: z.number().min(0).optional(),
+  inheritsAmmoProjectile: z.boolean().optional(),
+  /** magic-bolt only: overrides the Projectileinfo-derived pierce (B37: extra targets after the first). */
+  pierce: z.union([z.int().nonnegative(), z.literal('infinite')]).optional(),
+  /** magic-bolt only: the projectile lifetime the article states. */
+  lifetimeTicks: z.int().positive().optional(),
+})
+const LabLimitationEntry = z.strictObject({ ...LabEntryBase, decision: z.literal('limitation'), reason: PlainText1 })
+export const LabParamsEntry = z.discriminatedUnion('decision', [LabArchetypeEntry, LabLimitationEntry])
+export type LabParamsEntry = z.infer<typeof LabParamsEntry>
+
+export const LabParamsOverlay = z
+  .strictObject({ overlay: z.literal('lab-params'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(LabParamsEntry) })
+  .superRefine((o, ctx) => {
+    const seen = new Set<number>()
+    for (const e of o.entries) {
+      if (seen.has(e.itemId)) ctx.addIssue({ code: 'custom', message: `duplicate lab-params entry for item ${e.itemId}` })
+      seen.add(e.itemId)
+    }
+  })
+export type LabParamsOverlay = z.infer<typeof LabParamsOverlay>
+
+export const loadLabParamsOverlay = (dir = OVERLAY_DIR): LabParamsOverlay => LabParamsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'lab-params.json'), 'utf8')))
+
+/** Every article the lab-params overlay cites (fetched by the sync plan, quote-checked by the build). */
+export const labEvidencePages = (o: LabParamsOverlay): string[] => o.entries.flatMap((e) => e.evidence.map((x) => x.page))
+
 export const loadBossesOverlay = (dir = OVERLAY_DIR): BossesOverlay => BossesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'bosses.json'), 'utf8')))
 export const loadProgressionOverlay = (dir = OVERLAY_DIR): ProgressionOverlay => ProgressionOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'progression.json'), 'utf8')))
 export const loadWithheldOverlay = (dir = OVERLAY_DIR): WithheldOverlay => WithheldOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'withheld.json'), 'utf8')))
