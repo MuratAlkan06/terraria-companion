@@ -1,5 +1,5 @@
 # Task Contract — Terraria Companion Website
-Status: v1 (2026-10-12) — ACTIVE. Owner: Lead Orchestrator. Requirements: docs/REQUIREMENTS.md (source of truth).
+Status: v1.1 (2026-10-12) — ACTIVE. P0 FROZEN per docs/AMENDMENTS-001.md (risk critique applied). Owner: Lead Orchestrator. Requirements: docs/REQUIREMENTS.md (source of truth).
 
 ## Objective
 Build a real, working, data-driven Terraria companion website (vanilla, latest stable version — verify user-stated 1.4.5.8 against terraria.wiki.gg) with: homepage, complete weapon/armor/accessory/item databases, interactive canvas Weapon Lab, Loadout Builder + comparison, interactive boss progression map with persisted tracking, item encyclopedia + crafting trees, beginner guides, Boss Readiness Checker, and Item Acquisition Planner.
