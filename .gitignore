@@ -9,6 +9,8 @@ dist-ssr/
 .DS_Store
 coverage/
 pipeline/out/
+# Wiki fetch cache (ADR-001 D2: raw cache gitignored; resumable, never committed)
+pipeline/raw/
 *.log
 npm-debug.log*
 .vscode/*
