@@ -7,6 +7,8 @@
 import * as z from 'zod'
 
 export const ItemId = z.int().positive()
+/** AMENDMENTS-003 B10: Terraria NPC netID — nonzero; negative ids are enemy variants (Green Slime -3). */
+export const NpcId = z.int().refine((n) => n !== 0, { message: 'B10: NPC id must be nonzero' })
 export const Slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 export const IsoDateTime = z.iso.datetime()

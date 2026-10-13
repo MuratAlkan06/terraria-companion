@@ -20,8 +20,12 @@ function gapRef(key: CollectionKey, record: Record<string, unknown>): { ref: str
   return { ref: recordRef(key, record), fieldPrefix: '' }
 }
 
-export function buildGaps(ds: Dataset, now: Date): Gaps {
-  const entries: GapEntry[] = []
+/**
+ * gaps.json = stage gap entries (parse/merge/cross-check findings no record carries, e.g.
+ * excluded Cargo rows — stage-gaps.json) + one entry per listed unverified field + Lab defaults.
+ */
+export function buildGaps(ds: Dataset, now: Date, stageEntries: readonly GapEntry[] = []): Gaps {
+  const entries: GapEntry[] = [...stageEntries]
   const perEntity: Gaps['summary']['perEntity'] = {}
   for (const key of COLLECTION_KEYS) {
     const records = ds[key] as unknown as readonly (Record<string, unknown> & { _prov: Prov })[]

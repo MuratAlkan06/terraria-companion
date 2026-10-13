@@ -1,0 +1,23 @@
+[
+  { "kind": "recipe", "page": "Zenith", "result": "Zenith", "why": "multi-ingredient endgame recipe, B3 Mythril/Orichalcum Anvil station group" },
+  { "kind": "recipe", "page": "Chests", "result": "Chest", "why": "group ingredient (Any Iron Bar)" },
+  { "kind": "recipe", "page": "Terra Blade", "result": "Terra Blade", "why": "hardmode weapon chain" },
+  { "kind": "recipe", "page": "Night's Edge", "result": "Night's Edge", "why": "world-evil alternative recipes, B3 Demon/Crimson Altar station group" },
+  { "kind": "recipe", "page": "Furnace", "result": "Furnace", "why": "two group ingredients (Any Stone Block, Any Wood); version-tagged row" },
+  { "kind": "recipe", "page": "Ankh Shield", "result": "Ankh Shield", "why": "Tinkerer's Workshop accessory combination" },
+  { "kind": "recipe", "page": "Megashark", "result": "Megashark", "why": "multi-ingredient hardmode recipe" },
+  { "kind": "recipe", "page": "Terraformer", "result": "Terraformer", "why": "result note #note_post_moon_lord → condition station" },
+  { "kind": "recipe", "page": "Snow Cloud", "result": "Snow Cloud", "why": "compound station 'Sky Mill and Snow Biome'" },
+  { "kind": "recipe", "page": "Tin Ore", "result": "Tin Ore", "why": "Shimmer transmutation + Chlorophyte Extractinator conversion" },
+
+  { "kind": "drop", "page": "Eater of Worlds", "item": "Shadow Scale", "source": "Eater of Worlds", "why": "boss drop with per-difficulty rates; multi-part boss (segments)" },
+  { "kind": "drop", "page": "Creeper", "item": "Tissue Sample", "why": "AMENDMENTS-002 B1 per-difficulty quantity" },
+  { "kind": "drop", "page": "Queen Bee", "item": "Bee Gun", "source": "Queen Bee", "why": "boss drop, classic-only (Expert+ via treasure bag)" },
+  { "kind": "drop", "page": "Mothron", "item": "Broken Hero Sword", "why": "event drop (Solar Eclipse) with per-difficulty rates" },
+  { "kind": "drop", "page": "Goblin Sorcerer", "item": "Harpoon", "why": "event drop (Goblin Army)" },
+  { "kind": "drop", "page": "Armored Skeleton", "item": "Armor Polish", "why": "per-difficulty rate (expert boost)" },
+  { "kind": "drop", "page": "Zombie", "item": "Shackle", "source": "Zombie", "why": "common enemy drop" },
+  { "kind": "drop", "page": "Present", "item": "Red Ryder", "why": "rate split pre-Hardmode / Hardmode" },
+  { "kind": "drop", "page": "Gold Chest", "item": "Magic Mirror", "why": "chest loot with layer notes incl. unregistered 'lava layer' → Unknown" },
+  { "kind": "drop", "page": "Pumpking", "item": "The Horseman's Blade", "why": "event boss drop with a rate range → Unknown (honesty)" }
+]

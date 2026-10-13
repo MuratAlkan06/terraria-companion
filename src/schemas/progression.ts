@@ -12,6 +12,7 @@ import {
   DamageClass,
   Difficulty,
   ItemId,
+  NpcId,
   PlainText,
   PlainText1,
   Slug,
@@ -60,7 +61,7 @@ export const Boss = z.strictObject({
   id: Slug,
   name: PlainText1,
   nodeId: Slug, // 1:1 with node (validated symmetric, §7a-4)
-  npcIds: z.array(z.int().positive()).optional(), // multi-part bosses — TO-VERIFY-IN-P2
+  npcIds: z.array(NpcId).optional(), // multi-part bosses
   wikiUrl: WikiUrl,
   sprite: z.string().optional(),
   stage: Stage,

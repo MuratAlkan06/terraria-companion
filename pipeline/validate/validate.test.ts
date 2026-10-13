@@ -161,19 +161,19 @@ describe('corrupted records fail with named errors', () => {
     expect(expectOnly(run(raw), 'E_DANGLING_REF')[0].message).toContain('recipe produces i:36')
   })
 
-  it('E_DANGLING_REF: Boss.dropIds disagrees with DropSource.source.bossId (§7a-3)', () => {
+  it('E_DERIVED_MISMATCH (B6): Boss.dropIds disagrees with DropSource.source.bossId (§7a-3)', () => {
     const raw = sample()
     find(raw, 'bosses', 'wall-of-flesh').dropIds = ['434-wall-of-flesh-741638a5']
-    expect(expectOnly(run(raw), 'E_DANGLING_REF')).toEqual([
-      expect.objectContaining({ fromRef: 'boss:wall-of-flesh', field: 'dropIds', toRef: 'drop:434-treasure-bag-wall-of-flesh-741638a5' }),
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH')).toEqual([
+      expect.objectContaining({ ref: 'boss:wall-of-flesh', field: 'dropIds', message: expect.stringContaining('drop:434-treasure-bag-wall-of-flesh-741638a5 derived from') }),
     ])
   })
 
-  it('E_DANGLING_REF: Boss↔Node asymmetry (§7a-4)', () => {
+  it('E_DERIVED_MISMATCH (B6): Boss↔Node asymmetry (§7a-4)', () => {
     const raw = sample()
     const nodes = (raw.collections.nodes as Rec[])
     nodes.find((n) => n.id === 'brain-of-cthulhu')!.bossId = 'eater-of-worlds'
-    const errors = expectOnly(run(raw), 'E_DANGLING_REF')
+    const errors = expectOnly(run(raw), 'E_DERIVED_MISMATCH')
     expect(errors.map((e) => e.message).join('\n')).toContain('asymmetric')
   })
 
@@ -186,38 +186,40 @@ describe('corrupted records fail with named errors', () => {
     ])
   })
 
-  it('E_DANGLING_REF: armor piece in the wrong slot / missing back-ref (§7a-6)', () => {
+  it('armor piece in the wrong slot is E_DANGLING_REF; the broken back-ref is E_DERIVED_MISMATCH (§7a-6, B6)', () => {
     const raw = sample()
     find(raw, 'armorSets', 'cobalt').pieces.legs = 374
-    const messages = expectOnly(run(raw), 'E_DANGLING_REF').map((e) => e.message).join('\n')
-    expect(messages).toContain('expected a legs piece, found chest')
-    expect(messages).toContain('set does not list this piece under pieces.legs')
+    const result = run(raw)
+    expect(codesOf(result).sort()).toEqual(['E_DANGLING_REF', 'E_DERIVED_MISMATCH'])
+    const errors = errorsOf(result)
+    expect(errors.filter((e) => e.code === 'E_DANGLING_REF').map((e) => e.message).join('\n')).toContain('expected a legs piece, found chest')
+    expect(errors.filter((e) => e.code === 'E_DERIVED_MISMATCH').map((e) => e.message).join('\n')).toContain('does not list this piece under pieces.legs')
   })
 
-  it('E_DANGLING_REF: tinkering combinedFrom/upgradesTo asymmetric (§7a-7)', () => {
+  it('E_DERIVED_MISMATCH (B6): tinkering combinedFrom/upgradesTo asymmetric (§7a-7)', () => {
     const raw = sample()
     find(raw, 'accessories', 54).upgradesTo = []
-    expect(expectOnly(run(raw), 'E_DANGLING_REF')).toEqual([
-      expect.objectContaining({ fromRef: 'i:54', field: 'upgradesTo', toRef: 'i:405' }),
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH')).toEqual([
+      expect.objectContaining({ ref: 'i:54', field: 'upgradesTo', message: expect.stringContaining('i:405 derived from') }),
     ])
   })
 
-  it('E_DANGLING_REF: derived Item.isStation disagrees with recipes', () => {
+  it('E_DERIVED_MISMATCH (B6): derived Item.isStation disagrees with recipes', () => {
     const raw = sample()
     find(raw, 'items', 36).isStation = false
-    expect(expectOnly(run(raw), 'E_DANGLING_REF')[0]).toMatchObject({ fromRef: 'i:36', field: 'isStation' })
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH')[0]).toMatchObject({ ref: 'i:36', field: 'isStation' })
   })
 
-  it('E_DANGLING_REF: A5 Enemy.dropIds disagrees with drop sources', () => {
+  it('E_DERIVED_MISMATCH (B6): A5 Enemy.dropIds disagrees with drop sources', () => {
     const raw = sample()
     find(raw, 'enemies', 'voodoo-demon').dropIds = []
-    expect(expectOnly(run(raw), 'E_DANGLING_REF')[0]).toMatchObject({ fromRef: 'enemy:voodoo-demon', field: 'dropIds' })
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH')[0]).toMatchObject({ ref: 'enemy:voodoo-demon', field: 'dropIds' })
   })
 
-  it('E_DANGLING_REF: EoW/BoC not joined by an alternative-route edge (§7a-8)', () => {
+  it('E_DERIVED_MISMATCH (B6): EoW/BoC not joined by an alternative-route edge (§7a-8)', () => {
     const raw = sample()
     raw.collections.edges = (raw.collections.edges as Rec[]).filter((e) => e.type !== 'alternative-route')
-    const refs = expectOnly(run(raw), 'E_DANGLING_REF').map((e) => (e.code === 'E_DANGLING_REF' ? e.fromRef : ''))
+    const refs = expectOnly(run(raw), 'E_DERIVED_MISMATCH').map((e) => (e.code === 'E_DERIVED_MISMATCH' ? e.ref : ''))
     expect(refs.sort()).toEqual(['node:brain-of-cthulhu', 'node:eater-of-worlds'])
   })
 
@@ -319,6 +321,100 @@ describe('corrupted records fail with named errors', () => {
     expect(expectOnly(run(raw), 'E_UNVERIFIED_VALUE_EMITTED')).toEqual([
       expect.objectContaining({ ref: 'drop:97-shadow-orb-741638a5', field: 'rates.classic' }),
     ])
+  })
+})
+
+describe('AMENDMENTS-002 B3/B4 in validate', () => {
+  const addGroup = (raw: RawDataset, id: string, memberItemIds: number[]) =>
+    records(raw, 'recipeGroups').push({ ...structuredClone(find(raw, 'recipeGroups', 'any-iron-bar')), id, name: 'Test Stations', memberItemIds })
+
+  it('B3: a station group resolves like an ingredient group', () => {
+    const raw = sample()
+    addGroup(raw, 'test-anvils', [35, 36])
+    find(raw, 'recipes', '371-2620fd38').stations = [{ kind: 'group', groupId: 'test-anvils' }]
+    expect(run(raw).ok).toBe(true)
+    find(raw, 'recipes', '371-2620fd38').stations = [{ kind: 'group', groupId: 'missing-anvils' }]
+    expect(expectOnly(run(raw), 'E_DANGLING_REF')).toEqual([expect.objectContaining({ field: 'stations.0.groupId', toRef: 'grp:missing-anvils' })])
+  })
+
+  it('B3: members of a station group are stations (derived Item.isStation)', () => {
+    const raw = sample()
+    addGroup(raw, 'test-stations', [36, 9])
+    find(raw, 'recipes', '371-2620fd38').stations = [{ kind: 'group', groupId: 'test-stations' }]
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH')).toEqual([expect.objectContaining({ ref: 'i:9', field: 'isStation' })])
+  })
+
+  it('B4: loot/other acquisition conditions resolve against the registry', () => {
+    const raw = sample()
+    find(raw, 'items', 9).acquisition[0].conditions = ['hardmode']
+    expect(run(raw).ok).toBe(true)
+    find(raw, 'items', 9).acquisition[0].conditions = ['blood-moon']
+    expect(expectOnly(run(raw), 'E_DANGLING_REF')).toEqual([expect.objectContaining({ fromRef: 'i:9', field: 'acquisition.0.conditions.0', toRef: 'cond:blood-moon' })])
+  })
+})
+
+describe('partial datasets (manifest.partial: item universe + pending collections)', () => {
+  const PENDING: CollectionKey[] = ['weapons', 'armor', 'accessories', 'items', 'armorSets', 'bosses', 'nodes', 'edges', 'buffs', 'scenarios']
+  /** The sample reduced to recipes/groups/drops/enemies/conditions, as P2-S2a emits them. */
+  const partialSample = (universeIds?: number[]): RawDataset => {
+    const raw = sample()
+    const referenced = new Set<number>()
+    for (const r of records(raw, 'recipes')) {
+      referenced.add(r.resultItemId)
+      for (const i of r.ingredients) if (i.ref.kind === 'item') referenced.add(i.ref.itemId)
+      for (const s of r.stations) if (s.kind === 'item') referenced.add(s.itemId)
+    }
+    for (const g of records(raw, 'recipeGroups')) for (const id of g.memberItemIds) referenced.add(id)
+    for (const d of records(raw, 'drops')) referenced.add(d.itemId)
+    for (const key of PENDING) delete raw.collections[key]
+    raw.lists = {}
+    ;(raw.manifest as Rec).partial = { itemUniverse: 'item-universe.json', pending: PENDING }
+    raw.itemUniverse = {
+      source: { kind: 'iteminfo', url: 'https://terraria.wiki.gg/wiki/Module:Iteminfo/data', rev: 1023241, syncedTo: '1.4.5.7', fetchedAt: '2026-10-12' },
+      items: (universeIds ?? [...referenced]).map((id) => ({ id, internalName: `Item${id}` })),
+    }
+    return raw
+  }
+
+  it('passes: item refs resolve against the universe; refs into pending collections are deferred warnings', () => {
+    const result = run(partialSample())
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    const deferred = result.warnings.filter((w) => w.code === 'W_DEFERRED_REF')
+    expect(deferred.map((w) => w.ref).sort()).toEqual(['collection:bosses', 'collection:nodes'])
+    expect(deferred.find((w) => w.ref === 'collection:bosses')?.message).toContain('boss:wall-of-flesh')
+  })
+
+  it('an item outside the Iteminfo universe is still E_DANGLING_REF', () => {
+    const raw = partialSample()
+    const universe = raw.itemUniverse as Rec
+    universe.items = universe.items.filter((i: Rec) => i.id !== 381)
+    expect(expectOnly(run(raw), 'E_DANGLING_REF')[0].message).toContain('Module:Iteminfo item universe')
+  })
+
+  it('a pending collection with records, an undeclared universe, or a rev mismatch is E_SCHEMA', () => {
+    const withRecords = partialSample()
+    withRecords.collections.buffs = [{}]
+    expect(expectOnly(run(withRecords), 'E_SCHEMA')[0].message).toContain('declared pending')
+
+    const undeclared = partialSample()
+    delete (undeclared.manifest as Rec).partial.itemUniverse
+    expect(expectOnly(run(undeclared), 'E_SCHEMA')[0].message).toContain('not declared')
+
+    const revMismatch = partialSample()
+    ;(revMismatch.itemUniverse as Rec).source.rev = 1
+    expect(expectOnly(run(revMismatch), 'E_SCHEMA')[0].message).toContain('!= manifest iteminfo.rev')
+  })
+
+  it('stage gap entries are merged into gaps.json (and must be valid GapEntry records)', () => {
+    const raw = partialSample()
+    const entry = { ref: 'rcp:cargo-row-1', kind: 'count-reconciliation', detail: 'Cargo Recipes row 1 not emitted: test.', sources: ['https://terraria.wiki.gg/wiki/Wood'] }
+    raw.stageGaps = [entry]
+    const result = run(raw)
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    expect(result.gaps.entries[0]).toEqual(entry)
+    expect(result.meta.gapSummary.byKind['count-reconciliation']).toBe(1)
+    raw.stageGaps = [{ ...entry, kind: 'not-a-kind' }]
+    expect(expectOnly(run(raw), 'E_SCHEMA')[0].message).toContain('stage-gaps.json')
   })
 })
 

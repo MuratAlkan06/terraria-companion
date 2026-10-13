@@ -41,15 +41,33 @@ export const Acquisition = z.discriminatedUnion('method', [
     method: z.literal('loot'),
     containers: z.array(PlainText1).min(1),
     locations: z.array(PlainText1),
+    conditions: z.array(ConditionSlug).default([]), // AMENDMENTS-002 B4: chest/ore gating derivable by §7b
   }),
   z.strictObject({
     method: z.literal('fishing'),
     biomes: z.array(PlainText1).min(1),
     conditions: z.array(ConditionSlug),
   }),
-  z.strictObject({ method: z.literal('other'), description: PlainText1, sourceUrl: WikiUrl }),
+  z.strictObject({
+    method: z.literal('other'),
+    description: PlainText1,
+    sourceUrl: WikiUrl,
+    conditions: z.array(ConditionSlug).default([]), // AMENDMENTS-002 B4
+  }),
 ])
 export type Acquisition = z.infer<typeof Acquisition>
+
+/**
+ * AMENDMENTS-002 B5: a buff/debuff duration is a fixed tick count or an inclusive tick range
+ * (Wand of Sparking: On Fire! for 1–4 s = 60–240 ticks).
+ */
+export const DurationTicks = z.union([
+  z.int().positive(),
+  z
+    .strictObject({ minTicks: z.int().positive(), maxTicks: z.int().positive() })
+    .refine((d) => d.minTicks <= d.maxTicks, { message: 'minTicks must be <= maxTicks', path: ['maxTicks'] }),
+])
+export type DurationTicks = z.infer<typeof DurationTicks>
 
 /** Fields shared by Weapon, ArmorPiece, Accessory, Item (spread into each strictObject). */
 export const itemCommon = {
@@ -62,6 +80,9 @@ export const itemCommon = {
   wikiUrl: WikiUrl,
   sprite: z.string().optional(), // path under /sprites/…; absent ⇒ placeholder (D3)
   valueCopper: z.int().nonnegative().optional(),
+  // AMENDMENTS-002 B7: Cargo `stack` reports 9999 for equipment; never emit it for non-stackable
+  // equipment. ArmorPiece/Accessory drop this key entirely (equipment.ts); Weapon keeps it only
+  // for genuinely stackable (consumable/thrown) weapons, sourced from Iteminfo maxStack.
   maxStack: z.int().positive().optional(),
   gatedBy: GatedBy.optional(),
   acquisition: z.array(Acquisition), // empty ⇒ "acquisition" ∈ unverifiedFields
@@ -146,6 +167,7 @@ export const Item = z.strictObject({
       ammoClass: AmmoClass,
       damage: z.int().nonnegative(),
       velocityBonusTps: z.number().optional(),
+      velocityMultiplier: z.number().positive().optional(), // AMENDMENTS-002 B2 (Musket Ball: 2x)
       knockback: z.number().nonnegative().optional(),
       projectile: ProjectileSpec.optional(),
     })
@@ -169,7 +191,7 @@ export const Item = z.strictObject({
     .array(
       z.strictObject({
         buffId: Slug,
-        durationTicks: z.int().positive().optional(),
+        durationTicks: DurationTicks.optional(), // B5: fixed or range
       }),
     )
     .optional(),

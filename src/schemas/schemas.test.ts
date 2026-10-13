@@ -1,15 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../storage/settings'
 import {
+  Accessory,
+  Acquisition,
   ArchetypeParams,
   ArmorPiece,
   Boss,
   ChecklistsV1,
   DomainKey,
+  DropSource,
+  DurationTicks,
   Enemy,
   Gaps,
+  Item,
   LabBehavior,
+  LabModifiers,
   LoadoutSlots,
+  NpcId,
+  RecipeStation,
   PlainText,
   Prov,
   ProgressionNode,
@@ -92,6 +100,65 @@ describe('entity schemas (AC1)', () => {
   })
 })
 
+describe('AMENDMENTS-002 schema deltas', () => {
+  const dropProv = { ...prov, sources: [{ kind: 'cargo:Drops', url: 'https://terraria.wiki.gg/wiki/Creeper', fetchedAt: '2026-10-12' }] }
+  const drop = { id: '1329-creeper-741638a5', itemId: 1329, source: { npcName: 'Creeper', npcIds: [267] }, quantity: { min: 2, max: 5 }, rates: { classic: 1 }, conditions: [], _prov: dropProv }
+
+  it('B1: drop quantity is uniform {min,max} or per-difficulty', () => {
+    expect(DropSource.safeParse(drop).success).toBe(true)
+    const perDifficulty = { classic: { min: 2, max: 5 }, expert: { min: 1, max: 3 }, master: { min: 1, max: 2 } }
+    expect(DropSource.safeParse({ ...drop, quantity: perDifficulty }).success).toBe(true)
+    expect(DropSource.safeParse({ ...drop, quantity: { expert: { min: 1, max: 3 } } }).success).toBe(true)
+    expect(DropSource.safeParse({ ...drop, quantity: { min: 5, max: 2 } }).success).toBe(false)
+    expect(DropSource.safeParse({ ...drop, quantity: { classic: { min: 1, max: 1 }, normal: { min: 1, max: 1 } } }).success).toBe(false)
+  })
+
+  it('B2: ammoStats accepts a positive velocityMultiplier', () => {
+    const item = {
+      ...weapon,
+      id: 97,
+      name: 'Musket Ball',
+      slug: 'musket-ball',
+      type: 'item',
+      category: 'ammo',
+      isStation: false,
+      ammoStats: { ammoClass: 'bullet', damage: 7, velocityBonusTps: 15, velocityMultiplier: 2 },
+    }
+    const { labBehavior: _l, damage: _d, critPct: _c, useTimeTicks: _u, knockback: _k, damageClass: _dc, ...musketBall } = item
+    expect(Item.safeParse(musketBall).success).toBe(true)
+    expect(Item.safeParse({ ...musketBall, ammoStats: { ...musketBall.ammoStats, velocityMultiplier: 0 } }).success).toBe(false)
+  })
+
+  it('B3: a recipe station may be a group of interchangeable station items', () => {
+    expect(RecipeStation.safeParse({ kind: 'group', groupId: 'iron-or-lead-anvil' }).success).toBe(true)
+    expect(RecipeStation.safeParse({ kind: 'group', groupId: 'Iron or Lead Anvil' }).success).toBe(false)
+  })
+
+  it('B4: loot and other acquisition routes carry conditions (default empty)', () => {
+    const loot = Acquisition.parse({ method: 'loot', containers: ['Gold Chest'], locations: ['Cavern'] })
+    expect(loot).toEqual({ method: 'loot', containers: ['Gold Chest'], locations: ['Cavern'], conditions: [] })
+    expect(Acquisition.safeParse({ method: 'other', description: 'Mined from ore.', sourceUrl: 'https://terraria.wiki.gg/wiki/Cobalt_Ore', conditions: ['hardmode'] }).success).toBe(true)
+  })
+
+  it('B5: durations are fixed ticks or an inclusive {minTicks,maxTicks} range', () => {
+    expect(DurationTicks.safeParse(240).success).toBe(true)
+    expect(DurationTicks.safeParse({ minTicks: 60, maxTicks: 240 }).success).toBe(true)
+    expect(DurationTicks.safeParse({ minTicks: 240, maxTicks: 60 }).success).toBe(false)
+    expect(LabModifiers.safeParse({ dot: { buffId: 'on-fire', durationTicks: { minTicks: 60, maxTicks: 240 } } }).success).toBe(true)
+  })
+
+  it('B7: armor pieces and accessories never carry maxStack; weapons may (thrown/consumable)', () => {
+    const { labBehavior: _l, damage: _d, critPct: _c, useTimeTicks: _u, knockback: _k, damageClass: _dc, ...base } = weapon
+    const armor = { ...base, type: 'armor', slot: 'head', effects: [] }
+    expect(ArmorPiece.safeParse(armor).success).toBe(true)
+    expect(ArmorPiece.safeParse({ ...armor, maxStack: 9999 }).success).toBe(false)
+    const accessory = { ...base, type: 'accessory', categories: ['mobility'], effects: [{ kind: 'stat', stat: 'move-speed-pct', value: 8 }], combinedFrom: [], upgradesTo: [] }
+    expect(Accessory.safeParse(accessory).success).toBe(true)
+    expect(Accessory.safeParse({ ...accessory, maxStack: 1 }).success).toBe(false)
+    expect(Weapon.safeParse({ ...weapon, maxStack: 9999 }).success).toBe(true)
+  })
+})
+
 describe('A5 enemy entity', () => {
   it('parses Enemy and accepts enemy TypedRefs and SearchDoc type "enemy"', () => {
     const enemy = { id: 'voodoo-demon', npcIds: [66], name: 'Voodoo Demon', dropIds: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Voodoo_Demon', _prov: prov }
@@ -99,6 +166,25 @@ describe('A5 enemy entity', () => {
     expect(TypedRef.safeParse('enemy:voodoo-demon').success).toBe(true)
     expect(TypedRef.safeParse('enemy:Voodoo').success).toBe(false)
     expect(SearchDoc.safeParse({ id: 'enemy:voodoo-demon', name: 'Voodoo Demon', type: 'enemy', tags: [] }).success).toBe(true)
+  })
+})
+
+describe('AMENDMENTS-003 schema deltas', () => {
+  it('B10: npcIds accept negative variant netIDs and reject zero (DropSource, Enemy, Boss)', () => {
+    const drop = { id: '23-green-slime-741638a5', itemId: 23, source: { npcName: 'Green Slime' }, quantity: { min: 1, max: 2 }, rates: { classic: 1 }, conditions: [], _prov: prov }
+    const enemy = { id: 'green-slime', name: 'Green Slime', dropIds: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Green_Slime', _prov: prov }
+    const boss = { id: 'wall-of-flesh', name: 'Wall of Flesh', nodeId: 'wall-of-flesh', wikiUrl: 'https://terraria.wiki.gg/wiki/Wall_of_Flesh', stage: 'late-prehm', summon: { items: [], conditions: [] }, location: { biomes: [], time: 'any' }, statsByDifficulty: {}, dropIds: [], _prov: prov }
+    const accepts = (npcIds: number[]) => [
+      DropSource.safeParse({ ...drop, source: { ...drop.source, npcIds } }).success,
+      Enemy.safeParse({ ...enemy, npcIds }).success,
+      Boss.safeParse({ ...boss, npcIds }).success,
+    ]
+    expect(accepts([-3])).toEqual([true, true, true])
+    expect(accepts([-26, 3])).toEqual([true, true, true])
+    expect(accepts([0])).toEqual([false, false, false])
+    expect(accepts([-3, 0])).toEqual([false, false, false])
+    expect(accepts([1.5])).toEqual([false, false, false])
+    expect(NpcId.safeParse(0).error?.issues[0].message).toBe('B10: NPC id must be nonzero')
   })
 })
 

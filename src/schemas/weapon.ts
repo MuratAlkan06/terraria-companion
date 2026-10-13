@@ -7,7 +7,7 @@
  */
 import * as z from 'zod'
 import { AmmoClass, DamageClass, ItemId, PlainText, PlainText1, Slug, WikiUrl } from './common'
-import { itemCommon, ProjectileSpec } from './item'
+import { DurationTicks, itemCommon, ProjectileSpec } from './item'
 import { Prov } from './prov'
 
 // Cross-cutting modifiers (bounce, chain, DoT/debuff, multi-hit, homing per P3-S8)
@@ -20,7 +20,7 @@ export const LabModifiers = z.strictObject({
     .strictObject({
       buffId: Slug,
       chancePct: z.int().min(1).max(100).optional(),
-      durationTicks: z.int().positive(),
+      durationTicks: DurationTicks, // AMENDMENTS-002 B5: fixed or {minTicks, maxTicks}
     })
     .optional(), // dps lives on the Buff
   multiHit: z.strictObject({ localImmunityTicks: z.int().positive() }).optional(),

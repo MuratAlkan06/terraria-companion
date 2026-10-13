@@ -13,6 +13,9 @@ import { GAME_VERSION, IsoDate, Slug, WikiUrl } from './common'
 
 export const SourceKind = z.enum([
   'iteminfo',
+  // P2-S2a: data extracted from another wiki Lua module (Module:Recipes, Module:RecipeGroups,
+  // Module:Recipes/l10n) — machine-extracted like iteminfo, NOT curated; rev required.
+  'wiki-module',
   'cargo:Items',
   'cargo:Recipes',
   'cargo:Drops',
@@ -30,12 +33,12 @@ export const ProvSource = z
   .strictObject({
     kind: SourceKind,
     url: WikiUrl,
-    rev: z.int().positive().optional(), // REQUIRED for kind "iteminfo" (ADR D1 caveat)
+    rev: z.int().positive().optional(), // REQUIRED for kinds "iteminfo" / "wiki-module" (ADR D1 caveat)
     fetchedAt: IsoDate,
     overlay: Slug.optional(), // REQUIRED for kind "curated"
   })
-  .refine((s) => s.kind !== 'iteminfo' || s.rev !== undefined, {
-    message: 'rev is required for kind "iteminfo" (ADR D1)',
+  .refine((s) => (s.kind !== 'iteminfo' && s.kind !== 'wiki-module') || s.rev !== undefined, {
+    message: 'rev is required for kinds "iteminfo" and "wiki-module" (ADR D1)',
     path: ['rev'],
   })
   .refine((s) => s.kind !== 'curated' || s.overlay !== undefined, {

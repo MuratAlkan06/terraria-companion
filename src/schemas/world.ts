@@ -2,7 +2,7 @@
  * Buff, Condition registry (DATA_SCHEMA_SPEC §2.9) and Enemy (AMENDMENTS-001 A5).
  */
 import * as z from 'zod'
-import { PlainText1, Slug, Stage, WikiUrl } from './common'
+import { NpcId, PlainText1, Slug, Stage, WikiUrl } from './common'
 import { StatEffect } from './item'
 import { Prov } from './prov'
 
@@ -34,7 +34,7 @@ export type Condition = z.infer<typeof Condition>
 /** A5: minimal Enemy entity — route `/enemies/:id`, SearchDoc type "enemy", TypedRef `enemy:<slug>`. */
 export const Enemy = z.strictObject({
   id: Slug,
-  npcIds: z.array(z.int().positive()).optional(),
+  npcIds: z.array(NpcId).optional(),
   name: PlainText1,
   sprite: z.string().optional(),
   biomes: z.array(PlainText1).optional(), // unverified if unstructured on wiki

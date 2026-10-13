@@ -1,12 +1,15 @@
 /**
  * Referential integrity + derived-field consistency (DATA_SCHEMA_SPEC §7a, §1 denormalization
- * rule, AMENDMENTS-001 A5). Pure functions over a strictly-parsed Dataset.
+ * rule, AMENDMENTS-001 A5, AMENDMENTS-002 B3/B4/B6). Pure functions over a strictly-parsed Dataset.
  *
- * Rules: 1 recipes · 2 drops · 3 Boss.dropIds (and A5 Enemy.dropIds) · 4 Boss↔Node ·
- * 5 boss summon/prep/suggestion refs (gating in suggestions.ts) · 6 armor sets ·
- * 7 tinkering symmetry · 9 slug registries · Item.isStation consistency ·
- * present+listed values (E_UNVERIFIED_VALUE_EMITTED). Rule 8 lives in graph.ts,
+ * Rules: 1 recipes (incl. B3 station groups) · 2 drops · 3 Boss.dropIds (and A5 Enemy.dropIds)
+ * · 4 Boss↔Node · 5 boss summon/prep/suggestion refs (gating in suggestions.ts) · 6 armor sets
+ * · 7 tinkering symmetry · 9 slug registries (incl. B4 loot/other conditions) · Item.isStation
+ * consistency · present+listed values (E_UNVERIFIED_VALUE_EMITTED). Rule 8 lives in graph.ts,
  * rule 10 (A1-demoted) in labDowngrade.ts, rule 12 in the schemas.
+ *
+ * Partial datasets (dataset.ts header): references are resolved through a `RefScope` that knows
+ * the Iteminfo item universe and the collections still `pending`.
  */
 import {
   isCoveredBy,
@@ -26,8 +29,8 @@ import {
   type RecipeGroup,
   type Weapon,
 } from '../../src/schemas'
-import { COLLECTION_KEYS, ITEM_COLLECTIONS, recordRef, type Dataset, type ItemCollectionKey } from './dataset'
-import { danglingRef, duplicateId, type PipelineError } from './errors'
+import { COLLECTION_KEYS, ITEM_COLLECTIONS, recordRef, type CollectionKey, type Dataset, type ItemCollectionKey } from './dataset'
+import { danglingRef, derivedMismatch, duplicateId, type PipelineError } from './errors'
 
 /** Tinkerer's Workshop game item ID (terraria.wiki.gg Cargo Items: itemid 398). */
 export const TINKERERS_WORKSHOP_ITEM_ID = 398
@@ -51,6 +54,17 @@ export interface DatasetIndex {
   scenarios: Map<string, CustomScenario>
 }
 
+/** Partial-dataset reference scope. Default (full dataset): no universe, nothing pending. */
+export interface RefScope {
+  /** Canonical item IDs (Module:Iteminfo/data). */
+  universe?: ReadonlySet<number>
+  /** Collections not produced yet; refs into them are deferred (W_DEFERRED_REF). */
+  pending: ReadonlySet<CollectionKey>
+}
+
+/** Deferred refs grouped by the pending collection they point into. */
+export type DeferredRefs = Map<CollectionKey, Set<string>>
+
 const byId = <T extends { id: string | number }>(records: readonly T[]) =>
   new Map(records.map((r) => [r.id, r] as [T['id'], T]))
 
@@ -73,6 +87,34 @@ export function buildIndex(ds: Dataset): DatasetIndex {
     conditions: byId(ds.conditions),
     scenarios: byId(ds.scenarios),
   }
+}
+
+/**
+ * A5 Enemy.dropIds derivation — the single definition shared by the build stage and validate.
+ * A drop belongs to an enemy when its source name equals the enemy name or its NPC ids
+ * intersect the enemy's, and it is NOT a boss drop (bossId set, or boss attribution pending:
+ * `source.bossId` listed in _prov.unverifiedFields).
+ */
+export function deriveEnemyDropIds(enemy: Pick<Enemy, 'name' | 'npcIds'>, drops: readonly DropSource[]): string[] {
+  const ids = new Set(enemy.npcIds ?? [])
+  const out: string[] = []
+  for (const d of drops) {
+    if (d.source.bossId !== undefined || isCoveredBy(d._prov.unverifiedFields, 'source.bossId')) continue
+    if (d.source.npcName === enemy.name || (d.source.npcIds ?? []).some((id) => ids.has(id))) out.push(d.id)
+  }
+  return out
+}
+
+/** B3: item IDs usable as a recipe's station (direct item stations + members of station groups). */
+export function stationItemUses(recipes: readonly Recipe[], groups: ReadonlyMap<string, RecipeGroup>): Map<number, string> {
+  const uses = new Map<number, string>()
+  for (const r of recipes) {
+    for (const s of r.stations) {
+      const ids = s.kind === 'item' ? [s.itemId] : s.kind === 'group' ? (groups.get(s.groupId)?.memberItemIds ?? []) : []
+      for (const id of ids) if (!uses.has(id)) uses.set(id, `rcp:${r.id}`)
+    }
+  }
+  return uses
 }
 
 /** E_DUPLICATE_ID: item IDs + slugs unique across the four item collections; ids unique per collection. */
@@ -103,34 +145,62 @@ export function checkDuplicates(ds: Dataset): PipelineError[] {
 
 class Checker {
   readonly errors: PipelineError[] = []
+  readonly deferred: DeferredRefs = new Map()
   readonly ix: DatasetIndex
-  constructor(ix: DatasetIndex) {
+  readonly scope: RefScope
+  private readonly itemsPending: boolean
+  constructor(ix: DatasetIndex, scope: RefScope) {
     this.ix = ix
+    this.scope = scope
+    this.itemsPending = ITEM_COLLECTIONS.some((k) => scope.pending.has(k))
   }
 
   dangling(fromRef: string, field: string, toRef: string, detail: string) {
     this.errors.push(danglingRef(fromRef, field, toRef, detail))
   }
+  derived(ref: string, field: string, detail: string) {
+    this.errors.push(derivedMismatch(ref, field, detail))
+  }
+  /** Resolve a ref into `key`: present → ok; pending → deferred; otherwise E_DANGLING_REF. */
+  private resolve(key: CollectionKey, found: boolean, fromRef: string, field: string, toRef: string, detail: string) {
+    if (found) return
+    if (this.scope.pending.has(key)) {
+      const set = this.deferred.get(key) ?? new Set<string>()
+      set.add(toRef)
+      this.deferred.set(key, set)
+      return
+    }
+    this.dangling(fromRef, field, toRef, detail)
+  }
   item(fromRef: string, field: string, id: number) {
-    if (!this.ix.itemById.has(id)) this.dangling(fromRef, field, `i:${id}`, 'item not found')
+    if (this.ix.itemById.has(id)) return
+    if (this.itemsPending && this.scope.universe?.has(id)) return
+    const detail = this.scope.universe && !this.scope.universe.has(id) ? 'item not in the Module:Iteminfo item universe' : 'item not found'
+    this.dangling(fromRef, field, `i:${id}`, detail)
   }
   condition(fromRef: string, field: string, slug: string) {
-    if (!this.ix.conditions.has(slug)) this.dangling(fromRef, field, `cond:${slug}`, 'condition not in conditions registry')
+    this.resolve('conditions', this.ix.conditions.has(slug), fromRef, field, `cond:${slug}`, 'condition not in conditions registry')
   }
   node(fromRef: string, field: string, slug: string) {
-    if (!this.ix.nodes.has(slug)) this.dangling(fromRef, field, `node:${slug}`, 'progression node not found')
+    this.resolve('nodes', this.ix.nodes.has(slug), fromRef, field, `node:${slug}`, 'progression node not found')
   }
   buff(fromRef: string, field: string, slug: string) {
-    if (!this.ix.buffs.has(slug)) this.dangling(fromRef, field, `buff:${slug}`, 'buff not found')
+    this.resolve('buffs', this.ix.buffs.has(slug), fromRef, field, `buff:${slug}`, 'buff not found')
   }
-  /** Declared derived set must equal the set derived from the source of truth. */
+  boss(fromRef: string, field: string, slug: string) {
+    this.resolve('bosses', this.ix.bosses.has(slug), fromRef, field, `boss:${slug}`, 'boss not found')
+  }
+  group(fromRef: string, field: string, slug: string) {
+    this.resolve('recipeGroups', this.ix.recipeGroups.has(slug), fromRef, field, `grp:${slug}`, 'recipe group not found')
+  }
+  /** Declared derived set must equal the set derived from the source of truth (B6: E_DERIVED_MISMATCH). */
   sameSet(fromRef: string, field: string, declared: readonly (string | number)[], derived: Map<string | number, string>, toRef: (v: string | number) => string) {
     const declaredSet = new Set(declared)
     for (const v of declaredSet) {
-      if (!derived.has(v)) this.dangling(fromRef, field, toRef(v), 'declared but not derivable from its source of truth')
+      if (!derived.has(v)) this.derived(fromRef, field, `${toRef(v)} declared but not derivable from its source of truth`)
     }
     for (const [v, why] of derived) {
-      if (!declaredSet.has(v)) this.dangling(fromRef, field, toRef(v), `derived from ${why} but not declared`)
+      if (!declaredSet.has(v)) this.derived(fromRef, field, `${toRef(v)} derived from ${why} but not declared`)
     }
   }
 }
@@ -141,10 +211,11 @@ function checkRecipes(c: Checker, ds: Dataset) {
     c.item(ref, 'resultItemId', r.resultItemId)
     r.ingredients.forEach((ing, i) => {
       if (ing.ref.kind === 'item') c.item(ref, `ingredients.${i}.ref.itemId`, ing.ref.itemId)
-      else if (!c.ix.recipeGroups.has(ing.ref.groupId)) c.dangling(ref, `ingredients.${i}.ref.groupId`, `grp:${ing.ref.groupId}`, 'recipe group not found')
+      else c.group(ref, `ingredients.${i}.ref.groupId`, ing.ref.groupId)
     })
     r.stations.forEach((s, i) => {
       if (s.kind === 'item') c.item(ref, `stations.${i}.itemId`, s.itemId)
+      else if (s.kind === 'group') c.group(ref, `stations.${i}.groupId`, s.groupId) // B3
       else c.condition(ref, `stations.${i}.condition`, s.condition)
     })
   }
@@ -155,7 +226,7 @@ function checkDrops(c: Checker, ds: Dataset) {
   for (const d of ds.drops) {
     const ref = `drop:${d.id}`
     c.item(ref, 'itemId', d.itemId)
-    if (d.source.bossId !== undefined && !c.ix.bosses.has(d.source.bossId)) c.dangling(ref, 'source.bossId', `boss:${d.source.bossId}`, 'boss not found')
+    if (d.source.bossId !== undefined) c.boss(ref, 'source.bossId', d.source.bossId)
     d.conditions.forEach((s, i) => c.condition(ref, `conditions.${i}`, s))
   }
 }
@@ -164,6 +235,7 @@ function checkItemCommon(c: Checker, ds: Dataset) {
   for (const key of ITEM_COLLECTIONS) {
     for (const r of ds[key]) {
       const ref = `i:${r.id}`
+      if (c.scope.universe && !c.scope.universe.has(r.id)) c.dangling(ref, 'id', ref, 'item not in the Module:Iteminfo item universe')
       r.acquisition.forEach((a, i) => {
         const at = `acquisition.${i}`
         if (a.method === 'craft') {
@@ -178,8 +250,8 @@ function checkItemCommon(c: Checker, ds: Dataset) {
             if (!drop) c.dangling(ref, `${at}.dropIds.${j}`, `drop:${did}`, 'drop source not found')
             else if (drop.itemId !== r.id) c.dangling(ref, `${at}.dropIds.${j}`, `drop:${did}`, `drop yields i:${drop.itemId}, not ${ref}`)
           })
-        } else if (a.method === 'purchase' || a.method === 'fishing') {
-          a.conditions.forEach((s, j) => c.condition(ref, `${at}.conditions.${j}`, s))
+        } else if (a.method === 'purchase' || a.method === 'fishing' || a.method === 'loot' || a.method === 'other') {
+          a.conditions.forEach((s, j) => c.condition(ref, `${at}.conditions.${j}`, s)) // B4: loot/other too
         }
       })
       if (r.gatedBy) {
@@ -191,15 +263,14 @@ function checkItemCommon(c: Checker, ds: Dataset) {
 }
 
 function checkItems(c: Checker, ds: Dataset) {
-  const stationUse = new Map<number, string>()
-  for (const r of ds.recipes) for (const s of r.stations) if (s.kind === 'item' && !stationUse.has(s.itemId)) stationUse.set(s.itemId, `rcp:${r.id}`)
+  const stationUse = stationItemUses(ds.recipes, c.ix.recipeGroups)
   for (const item of ds.items) {
     const ref = `i:${item.id}`
     item.buffGrants?.forEach((g, i) => c.buff(ref, `buffGrants.${i}.buffId`, g.buffId))
     if (item.summonsBossNode !== undefined) c.node(ref, 'summonsBossNode', item.summonsBossNode)
     const usedBy = stationUse.get(item.id)
-    if (item.isStation && usedBy === undefined) c.dangling(ref, 'isStation', ref, 'declared true but no recipe uses it as a station')
-    if (!item.isStation && usedBy !== undefined) c.dangling(ref, 'isStation', usedBy, 'declared false but this recipe uses it as a station')
+    if (item.isStation && usedBy === undefined) c.derived(ref, 'isStation', 'declared true but no recipe uses it as a station')
+    if (!item.isStation && usedBy !== undefined) c.derived(ref, 'isStation', `declared false but ${usedBy} uses it as a station`)
   }
 }
 
@@ -230,7 +301,7 @@ function checkArmor(c: Checker, ds: Dataset) {
       const piece = c.ix.armor.get(id)
       if (!piece) return c.dangling(ref, field, `i:${id}`, 'armor piece not found')
       if (piece.slot !== slot) c.dangling(ref, field, `i:${id}`, `expected a ${slot} piece, found ${piece.slot}`)
-      if (piece.setId !== set.id) c.dangling(ref, field, `i:${id}`, `piece back-ref setId is ${piece.setId === undefined ? 'absent' : `"${piece.setId}"`}`)
+      if (piece.setId !== set.id) c.derived(ref, field, `piece i:${id} back-ref setId is ${piece.setId === undefined ? 'absent' : `"${piece.setId}"`}`)
     }
     const helmets = new Set<number>()
     set.pieces.helmets.forEach((id, i) => {
@@ -259,7 +330,7 @@ function checkArmor(c: Checker, ds: Dataset) {
     }
     const field = SLOT_FIELD[piece.slot]
     const listed = field === 'helmets' ? set.pieces.helmets.includes(piece.id) : set.pieces[field] === piece.id
-    if (!listed) c.dangling(ref, 'setId', `set:${set.id}`, `set does not list this piece under pieces.${field}`)
+    if (!listed) c.derived(ref, 'setId', `set:${set.id} does not list this piece under pieces.${field}`)
   }
 }
 
@@ -297,10 +368,10 @@ function checkBossesAndNodes(c: Checker, ds: Dataset) {
   for (const b of ds.bosses) {
     const ref = `boss:${b.id}`
     const node = c.ix.nodes.get(b.nodeId)
-    if (!node) c.dangling(ref, 'nodeId', `node:${b.nodeId}`, 'progression node not found')
+    if (!node) c.node(ref, 'nodeId', b.nodeId)
     else {
-      if (node.kind !== 'boss' || node.bossId !== b.id) c.dangling(ref, 'nodeId', `node:${b.nodeId}`, `asymmetric: node kind "${node.kind}", bossId ${node.bossId === undefined ? 'absent' : `"${node.bossId}"`}`)
-      if (node.worldEvil !== b.worldEvil) c.dangling(ref, 'worldEvil', `node:${b.nodeId}`, `boss worldEvil "${b.worldEvil ?? 'absent'}" differs from node "${node.worldEvil ?? 'absent'}"`)
+      if (node.kind !== 'boss' || node.bossId !== b.id) c.derived(ref, 'nodeId', `node:${b.nodeId} is asymmetric: node kind "${node.kind}", bossId ${node.bossId === undefined ? 'absent' : `"${node.bossId}"`}`)
+      if (node.worldEvil !== b.worldEvil) c.derived(ref, 'worldEvil', `boss worldEvil "${b.worldEvil ?? 'absent'}" differs from node:${b.nodeId} "${node.worldEvil ?? 'absent'}"`)
     }
     b.summon.items.forEach((id, i) => c.item(ref, `summon.items.${i}`, id))
     b.summon.conditions.forEach((s, i) => c.condition(ref, `summon.conditions.${i}`, s))
@@ -326,24 +397,19 @@ function checkBossesAndNodes(c: Checker, ds: Dataset) {
   for (const n of ds.nodes) {
     if (n.bossId === undefined) continue
     const boss = c.ix.bosses.get(n.bossId)
-    if (!boss) c.dangling(`node:${n.id}`, 'bossId', `boss:${n.bossId}`, 'boss not found')
-    else if (boss.nodeId !== n.id) c.dangling(`node:${n.id}`, 'bossId', `boss:${n.bossId}`, `asymmetric: boss nodeId is "${boss.nodeId}"`)
+    if (!boss) c.boss(`node:${n.id}`, 'bossId', n.bossId)
+    else if (boss.nodeId !== n.id) c.derived(`node:${n.id}`, 'bossId', `boss:${n.bossId} is asymmetric: boss nodeId is "${boss.nodeId}"`)
   }
   for (const cond of ds.conditions) {
     if (cond.satisfiedByNode !== undefined) c.node(`cond:${cond.id}`, 'satisfiedByNode', cond.satisfiedByNode)
   }
 }
 
-/** A5: Enemy.dropIds is derived from non-boss DropSources whose source names or ids match the enemy. */
+/** A5: Enemy.dropIds must equal deriveEnemyDropIds over the dataset's drops. */
 function checkEnemies(c: Checker, ds: Dataset) {
   for (const e of ds.enemies) {
     const ref = `enemy:${e.id}`
-    const derived = new Map<string, string>()
-    for (const d of ds.drops) {
-      if (d.source.bossId !== undefined) continue
-      const idMatch = e.npcIds !== undefined && d.source.npcIds?.some((id) => e.npcIds?.includes(id))
-      if (d.source.npcName === e.name || idMatch) derived.set(d.id, `drop:${d.id}.source`)
-    }
+    const derived = new Map<string, string>(deriveEnemyDropIds(e, ds.drops).map((id) => [id, `drop:${id}.source`]))
     for (const id of e.dropIds) {
       if (!c.ix.drops.has(id)) c.dangling(ref, 'dropIds', `drop:${id}`, 'drop source not found')
     }
@@ -391,8 +457,8 @@ export function checkUnverifiedValues(ds: Dataset): PipelineError[] {
   return errors
 }
 
-export function checkIntegrity(ds: Dataset): PipelineError[] {
-  const c = new Checker(buildIndex(ds))
+export function checkIntegrity(ds: Dataset, scope: RefScope = { pending: new Set() }): { errors: PipelineError[]; deferred: DeferredRefs } {
+  const c = new Checker(buildIndex(ds), scope)
   checkRecipes(c, ds)
   checkDrops(c, ds)
   checkItemCommon(c, ds)
@@ -402,5 +468,5 @@ export function checkIntegrity(ds: Dataset): PipelineError[] {
   checkAccessories(c, ds)
   checkBossesAndNodes(c, ds)
   checkEnemies(c, ds)
-  return [...checkDuplicates(ds), ...c.errors, ...checkUnverifiedValues(ds)]
+  return { errors: [...checkDuplicates(ds), ...c.errors, ...checkUnverifiedValues(ds)], deferred: c.deferred }
 }

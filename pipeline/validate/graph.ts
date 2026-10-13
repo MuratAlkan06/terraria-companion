@@ -5,7 +5,7 @@
  */
 import type { ProgressionEdge, ProgressionNode } from '../../src/schemas'
 import type { Dataset } from './dataset'
-import { danglingRef, duplicateId, type PipelineError } from './errors'
+import { danglingRef, derivedMismatch, duplicateId, type PipelineError } from './errors'
 
 const edgeRef = (e: ProgressionEdge) => `edge:${e.from}->${e.to}(${e.type})`
 
@@ -99,9 +99,8 @@ export function checkGraph(ds: Pick<Dataset, 'nodes' | 'edges'>): PipelineError[
       return other !== undefined && nodeById.get(other)?.worldEvil === opposite
     })
     if (!joined) {
-      errors.push(
-        danglingRef(`node:${node.id}`, 'alternative-route', `node:<${opposite} counterpart>`, `world-evil node has no alternative-route edge to a ${opposite} node`),
-      )
+      // B6: the EoW/BoC pairing is a derived consistency rule, not an unresolved reference.
+      errors.push(derivedMismatch(`node:${node.id}`, 'alternative-route', `world-evil node has no alternative-route edge to a ${opposite} node`))
     }
   }
   return errors

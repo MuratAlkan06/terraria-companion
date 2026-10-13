@@ -6,8 +6,15 @@ import { DamageClass, ItemId, PlainText1, Slug, Stage, WikiUrl } from './common'
 import { itemCommon, StatEffect } from './item'
 import { Prov } from './prov'
 
+/**
+ * AMENDMENTS-002 B7 (binding): armor pieces and accessories never stack, and Cargo `stack`
+ * reports a bogus 9999 for them — so `maxStack` is not a key of these entities at all
+ * (strictObject rejects it; the merge stage must omit it).
+ */
+const { maxStack: _nonStackable, ...equipmentCommon } = itemCommon
+
 export const ArmorPiece = z.strictObject({
-  ...itemCommon,
+  ...equipmentCommon,
   type: z.literal('armor'),
   slot: z.enum(['head', 'chest', 'legs']),
   defense: z.int().nonnegative().optional(), // A1: optional — absent + listed = Unknown
@@ -38,7 +45,7 @@ export const ArmorSet = z.strictObject({
 export type ArmorSet = z.infer<typeof ArmorSet>
 
 export const Accessory = z.strictObject({
-  ...itemCommon,
+  ...equipmentCommon,
   type: z.literal('accessory'),
   categories: z.array(z.enum(['mobility', 'defense', 'offense', 'utility'])).min(1),
   effects: z.array(StatEffect).min(1),

@@ -4,18 +4,31 @@
  * dataset's gaps.json and meta.json (§7d). Fetch/parse/merge/emit are separate stages.
  *
  * Order:
- *  1. manifest
+ *  1. manifest (+ partial-dataset inputs: item universe, pending collections, stage gaps)
  *  2. §2.1-3 Lab downgrade on raw weapons (pre-parse; unverified sim inputs → limitation)
  *  3. strict schema parse of every record (E_SCHEMA) — stops here on failure
  *  4. A1 rule 10 ammo downgrade (warning)
  *  5. integrity, graph, suggestion gating, list⊂detail, search docs
  *  6. gaps + meta
  */
-import type { Gaps, Meta } from '../../src/schemas'
-import { DatasetManifest, MANIFEST_FILE, parseCollections, type Dataset, type RawDataset } from './dataset'
+import type * as z from 'zod'
+import type { GapEntry, Gaps, Meta } from '../../src/schemas'
+import {
+  COLLECTIONS,
+  DatasetManifest,
+  ITEM_UNIVERSE_FILE,
+  ItemUniverse,
+  MANIFEST_FILE,
+  parseCollections,
+  STAGE_GAPS_FILE,
+  StageGaps,
+  type CollectionKey,
+  type Dataset,
+  type RawDataset,
+} from './dataset'
 import type { PipelineError, PipelineWarning } from './errors'
 import { checkGraph } from './graph'
-import { checkIntegrity } from './integrity'
+import { checkIntegrity, type RefScope } from './integrity'
 import { downgradeUnmatchedAmmo, downgradeUnverifiedArchetype } from './labDowngrade'
 import { checkListDetail } from './listDetail'
 import { buildGaps, buildMeta } from './report'
@@ -31,6 +44,45 @@ export interface ValidateOptions {
   now?: Date
 }
 
+const schemaError = (file: string, message: string, zodIssues: readonly z.core.$ZodIssue[] = []): PipelineError => ({
+  code: 'E_SCHEMA',
+  ref: `file:${file}`,
+  zodIssues,
+  message: `file:${file}: ${message}`,
+})
+
+/** Builds the partial-dataset reference scope from the manifest (dataset.ts header). */
+function partialScope(raw: RawDataset, manifest: DatasetManifest, errors: PipelineError[]): RefScope {
+  const pending = new Set<CollectionKey>(manifest.partial?.pending ?? [])
+  for (const key of pending) {
+    const value = raw.collections[key]
+    if (Array.isArray(value) ? value.length > 0 : value !== undefined) {
+      errors.push(schemaError(COLLECTIONS[key].file, `collection "${key}" is declared pending in ${MANIFEST_FILE} but has records`))
+    }
+  }
+  if (manifest.partial?.itemUniverse === undefined) {
+    if (raw.itemUniverse !== undefined) errors.push(schemaError(ITEM_UNIVERSE_FILE, `present but not declared in ${MANIFEST_FILE} partial.itemUniverse`))
+    return { pending }
+  }
+  const universe = ItemUniverse.safeParse(raw.itemUniverse)
+  if (!universe.success) {
+    errors.push(schemaError(ITEM_UNIVERSE_FILE, 'missing or invalid item universe', universe.error.issues))
+    return { pending }
+  }
+  if (universe.data.source.rev !== manifest.iteminfo.rev) {
+    errors.push(schemaError(ITEM_UNIVERSE_FILE, `universe rev ${universe.data.source.rev} != manifest iteminfo.rev ${manifest.iteminfo.rev}`))
+  }
+  return { pending, universe: new Set(universe.data.items.map((i) => i.id)) }
+}
+
+function stageGapEntries(raw: RawDataset, errors: PipelineError[]): GapEntry[] {
+  if (raw.stageGaps === undefined) return []
+  const parsed = StageGaps.safeParse(raw.stageGaps)
+  if (parsed.success) return parsed.data
+  errors.push(schemaError(STAGE_GAPS_FILE, 'invalid stage gap entries', parsed.error.issues))
+  return []
+}
+
 export function validateDataset(raw: RawDataset, options: ValidateOptions = {}): ValidationResult {
   const now = options.now ?? new Date()
   const errors: PipelineError[] = []
@@ -38,13 +90,10 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
 
   const manifest = DatasetManifest.safeParse(raw.manifest)
   if (!manifest.success) {
-    errors.push({
-      code: 'E_SCHEMA',
-      ref: `file:${MANIFEST_FILE}`,
-      zodIssues: manifest.error.issues,
-      message: `file:${MANIFEST_FILE}: missing or invalid dataset manifest`,
-    })
+    errors.push(schemaError(MANIFEST_FILE, 'missing or invalid dataset manifest', manifest.error.issues))
   }
+  const scope: RefScope = manifest.success ? partialScope(raw, manifest.data, errors) : { pending: new Set() }
+  const stageGaps = stageGapEntries(raw, errors)
 
   const collections = { ...raw.collections }
   if (Array.isArray(collections.weapons)) {
@@ -63,8 +112,17 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
   warnings.push(...ammo.warnings)
   const dataset: Dataset = { ...parsed.dataset, weapons: ammo.weapons }
 
+  const integrity = checkIntegrity(dataset, scope)
+  for (const [key, refs] of integrity.deferred) {
+    const sample = [...refs].slice(0, 5).join(', ')
+    warnings.push({
+      code: 'W_DEFERRED_REF',
+      ref: `collection:${key}`,
+      message: `${refs.size} distinct reference(s) into pending collection "${key}" deferred until it is produced (${sample}${refs.size > 5 ? ', …' : ''})`,
+    })
+  }
   errors.push(
-    ...checkIntegrity(dataset),
+    ...integrity.errors,
     ...checkGraph(dataset),
     ...checkSuggestionGating(dataset),
     ...checkListDetail(raw.lists, dataset),
@@ -72,7 +130,7 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
   )
   if (errors.length > 0) return { ok: false, errors, warnings }
 
-  const gaps = buildGaps(dataset, now)
+  const gaps = buildGaps(dataset, now, stageGaps)
   const meta = buildMeta(dataset, manifest.data, gaps, now)
   return { ok: true, dataset, manifest: manifest.data, gaps, meta, warnings, errors: [] }
 }

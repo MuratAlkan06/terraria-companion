@@ -5,6 +5,20 @@
  * On disk a dataset is a directory of JSON arrays (progression.json is `{ nodes, edges }`)
  * and a `dataset.json` manifest. Missing collection files are empty collections, so a
  * dataset may be a subset (e.g. the P2-S1 sample).
+ *
+ * PARTIAL DATASETS (P2-S2a+): datasets are produced slice by slice (recipes/drops before the
+ * weapon/armor/item detail collections and before bosses/progression). The manifest's
+ * `partial` block makes this explicit instead of weakening the checks:
+ * - `itemUniverse`: a pipeline-only file (item-universe.json) holding the canonical game item
+ *   ID universe parsed from Module:Iteminfo/data. While ANY item collection is pending, item
+ *   references resolve against detail collections ∪ universe; an ID outside the universe is
+ *   still E_DANGLING_REF. Every emitted detail item must also exist in the universe.
+ * - `pending`: collections not produced yet. They must be absent/empty; references INTO them
+ *   (bossId, satisfiedByNode, buff ids, …) are reported as W_DEFERRED_REF warnings and become
+ *   hard checks automatically once the collection is produced and removed from `pending`.
+ * - stage-gaps.json: gap entries produced by parse/merge/cross-check that no emitted record
+ *   carries (excluded Cargo rows, source mismatches, count reconciliation). Validate merges
+ *   them into gaps.json so re-validating a committed dataset reproduces the same report.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,13 +33,17 @@ import {
   CustomScenario,
   DropSource,
   Enemy,
+  GapEntry,
+  IsoDate,
   Item,
+  ItemId,
   ProgressionEdge,
   ProgressionNode,
   Recipe,
   RecipeGroup,
   Slug,
   Weapon,
+  WikiUrl,
 } from '../../src/schemas'
 import type { PipelineError } from './errors'
 
@@ -65,6 +83,10 @@ export const LIST_FILES = {
 
 export const SEARCH_DOCS_FILE = 'search-docs.json'
 export const MANIFEST_FILE = 'dataset.json'
+export const ITEM_UNIVERSE_FILE = 'item-universe.json'
+export const STAGE_GAPS_FILE = 'stage-gaps.json'
+/** Validate OUTPUTS that may sit next to the inputs (emitted datasets in src/data). Not inputs. */
+export const OUTPUT_FILES = ['meta.json', 'gaps.json'] as const
 
 /** Pipeline-only manifest describing a dataset directory. */
 export const DatasetManifest = z.strictObject({
@@ -72,15 +94,45 @@ export const DatasetManifest = z.strictObject({
   description: z.string().min(1),
   iteminfo: z.strictObject({ rev: z.int().positive(), syncedTo: z.string().min(1) }),
   notes: z.array(z.string()),
+  partial: z
+    .strictObject({
+      itemUniverse: z.literal(ITEM_UNIVERSE_FILE).optional(),
+      pending: z.array(z.enum(Object.keys(COLLECTIONS) as [CollectionKey, ...CollectionKey[]])),
+    })
+    .optional(),
 })
 export type DatasetManifest = z.infer<typeof DatasetManifest>
+
+/** Canonical item-ID universe from Module:Iteminfo/data (pipeline-only, see header). */
+export const ItemUniverse = z.strictObject({
+  source: z.strictObject({
+    kind: z.literal('iteminfo'),
+    url: WikiUrl,
+    rev: z.int().positive(),
+    syncedTo: z.string().min(1),
+    fetchedAt: IsoDate,
+  }),
+  items: z.array(
+    z.strictObject({
+      id: ItemId,
+      internalName: z.string().min(1),
+      name: z.string().min(1).optional(), // absent for the few unnamed (unused) IDs
+    }),
+  ),
+})
+export type ItemUniverse = z.infer<typeof ItemUniverse>
 
 export interface RawDataset {
   manifest: unknown
   collections: Partial<Record<CollectionKey, unknown>>
   lists: Partial<Record<ItemCollectionKey, unknown>>
   searchDocs?: unknown
+  itemUniverse?: unknown
+  stageGaps?: unknown
 }
+
+/** Strict-parses stage-gaps.json (an array of GapEntry). */
+export const StageGaps = z.array(GapEntry)
 
 /** Stable display ref for a record (TypedRef where one exists). */
 export function recordRef(key: CollectionKey, record: unknown): string {
@@ -140,7 +192,15 @@ export function loadDatasetDir(dir: string): { raw: RawDataset; errors: Pipeline
   if (!existsSync(dir)) {
     return { raw: { manifest: undefined, collections: {}, lists: {} }, errors: [fileError(dir, 'dataset directory not found')] }
   }
-  const known = new Set<string>([MANIFEST_FILE, SEARCH_DOCS_FILE, 'progression.json', ...Object.values(LIST_FILES)])
+  const known = new Set<string>([
+    MANIFEST_FILE,
+    SEARCH_DOCS_FILE,
+    ITEM_UNIVERSE_FILE,
+    STAGE_GAPS_FILE,
+    'progression.json',
+    ...OUTPUT_FILES,
+    ...Object.values(LIST_FILES),
+  ])
   for (const { file } of Object.values(COLLECTIONS)) known.add(file)
   for (const file of readdirSync(dir)) {
     if (file.endsWith('.json') && !known.has(file)) errors.push(fileError(file, 'unknown dataset file'))
@@ -171,10 +231,12 @@ export function loadDatasetDir(dir: string): { raw: RawDataset; errors: Pipeline
     if (value !== undefined) lists[key] = value
   }
 
-  return {
-    raw: { manifest: readJson(dir, MANIFEST_FILE, errors), collections, lists, searchDocs: readJson(dir, SEARCH_DOCS_FILE, errors) },
-    errors,
-  }
+  const raw: RawDataset = { manifest: readJson(dir, MANIFEST_FILE, errors), collections, lists, searchDocs: readJson(dir, SEARCH_DOCS_FILE, errors) }
+  const itemUniverse = readJson(dir, ITEM_UNIVERSE_FILE, errors)
+  if (itemUniverse !== undefined) raw.itemUniverse = itemUniverse
+  const stageGaps = readJson(dir, STAGE_GAPS_FILE, errors)
+  if (stageGaps !== undefined) raw.stageGaps = stageGaps
+  return { raw, errors }
 }
 
 /** Strict-parses every record of every collection. Records that fail are omitted from the result. */

@@ -1,0 +1,61 @@
+/**
+ * `npm run pipeline:fetch` — fetch stage. Pulls Module:Iteminfo/data and the Cargo tables in
+ * SYNC_TABLES into the gitignored raw cache (pipeline/raw/) under the ADR-001 D2 etiquette
+ * (serial, <=1 req/s, maxlag=5, descriptive UA, backoff, stop on persistent errors).
+ *
+ *   tsx pipeline/cli/fetch.ts [--refresh]
+ *
+ * Resumable: anything already cached (same request params) is not refetched, so an
+ * interrupted run continues where it stopped. --refresh refetches everything.
+ * Writes pipeline/raw/fetch-record.json (counts, page sizes, request totals, duration).
+ */
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { parseArgs } from 'node:util'
+import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
+
+async function main(): Promise<number> {
+  const { values } = parseArgs({ options: { refresh: { type: 'boolean', default: false } }, strict: true })
+  const client = new WikiClient({ cacheDir: RAW_DIR, refresh: values.refresh, log: (l) => console.log(l) })
+  const started = Date.now()
+  try {
+    const result = await runSyncPlan(client, (l) => console.log(l))
+    const durationMs = Date.now() - started
+    const logPath = join(RAW_DIR, 'requests.log.jsonl')
+    const cumulative = existsSync(logPath) ? readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean).length : 0
+    const record = {
+      finishedAt: new Date().toISOString(),
+      durationMs,
+      thisRun: client.stats,
+      cumulativeNetworkAttempts: cumulative,
+      iteminfo: { title: result.iteminfo.title, rev: result.iteminfo.rev, revTimestamp: result.iteminfo.revTimestamp, bytes: result.iteminfo.content.length, fetchedAt: result.iteminfo.fetchedAt },
+      modules: Object.values(result.modules).map((m) => ({ title: m.title, rev: m.rev, revTimestamp: m.revTimestamp, fetchedAt: m.fetchedAt })),
+      overlayPages: Object.fromEntries([...result.overlayPages].map(([title, p]) => [title, p.exists ? p.resolvedTitle : 'MISSING'])),
+      tables: Object.fromEntries(
+        Object.values(result.tables).map((t) => [
+          t.table,
+          { cargoCount: t.cargoCount, rowsFetched: t.rows.length, requestedLimit: t.requestedLimit, rowsPerPage: t.rowsPerPage, fetchedAt: t.fetchedAt, fields: t.selected },
+        ]),
+      ),
+    }
+    writeFileSync(join(RAW_DIR, 'fetch-record.json'), `${JSON.stringify(record, null, 2)}\n`)
+    console.log('\nfetch summary')
+    console.log(`  Module:Iteminfo/data rev ${result.iteminfo.rev} (${result.iteminfo.revTimestamp})`)
+    for (const m of Object.values(result.modules)) console.log(`  ${m.title} rev ${m.rev} (${m.revTimestamp})`)
+    const missing = [...result.overlayPages].filter(([, p]) => !p.exists).map(([t]) => t)
+    console.log(`  overlay source pages: ${result.overlayPages.size} checked, ${missing.length} missing${missing.length ? ` (${missing.join(', ')})` : ''}`)
+    for (const t of Object.values(result.tables)) {
+      console.log(`  ${t.table}: ${t.rows.length}/${t.cargoCount} rows; requested limit ${t.requestedLimit}; rows per page [${t.rowsPerPage.join(', ')}]`)
+    }
+    const s = client.stats
+    console.log(`  this run: ${s.networkRequests} network requests (${s.attempts} attempts, ${s.retries} retries), ${s.cacheHits} cache hits, ${(durationMs / 1000).toFixed(1)}s wall`)
+    console.log(`  cumulative network attempts logged in pipeline/raw/requests.log.jsonl: ${cumulative}`)
+    return 0
+  } catch (error) {
+    console.error(String((error as Error).message))
+    console.error(`stopped after ${client.stats.attempts} network attempts; cached progress is kept — rerun to resume.`)
+    return 1
+  }
+}
+
+process.exitCode = await main()
