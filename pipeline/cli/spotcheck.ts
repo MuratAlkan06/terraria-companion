@@ -11,10 +11,12 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { Boss, Buff, Condition, DropSource, Item, Recipe, RecipeGroup, Weapon } from '../../src/schemas'
+import type { Accessory, ArmorPiece, ArmorSet, Boss, Buff, Condition, DropSource, GapEntry, Item, Recipe, RecipeGroup, StatEffect, Weapon } from '../../src/schemas'
 import { RAW_DIR, WikiClient } from '../fetch'
 import { fetchArticles } from '../fetch/articles'
+import { wikiPageUrl } from '../fetch/config'
 import { findAll, hasClass, parseHtml, type HNode } from '../parse/html'
+import { parseSetInfoboxes, parseWingTable } from '../parse/equipment'
 import { infoboxForItem, parseBuffInfoboxes, parseItemInfoboxes } from '../parse/infobox'
 import { stripMarkup } from '../parse/text'
 
@@ -28,6 +30,11 @@ type Case =
   // P2-S7: read the article revision the build parsed (cached by the sync plan) — zero requests
   | { kind: 'ammo'; page: string; item: string; why: string }
   | { kind: 'buff'; page: string; buff: string; why: string }
+  // P2-S8: set articles and the Wings article are cached by the sync plan (zero requests); accessory
+  // articles are read like recipe / weapon cases (raw/spotcheck cache, D2 client)
+  | { kind: 'armor-set'; page: string; set: string; why: string }
+  | { kind: 'accessory'; page: string; item: string; why: string }
+  | { kind: 'wing'; page: string; item: string; why: string }
 
 const PLATFORM_NOTE = /\((?:Desktop, Console(?:, Old-gen console)? and Mobile versions|Desktop version, Console version, and Mobile version)\)/g
 const MODE_LABEL: Record<string, string> = { 'm-normal': 'classic', 'm-expert-master': 'expert+master', 'm-expert': 'expert', 'm-master': 'master' }
@@ -72,6 +79,12 @@ async function main(): Promise<number> {
   const bosses = load<Boss[]>('bosses.json')
   const items = load<Item[]>('items.detail.json')
   const buffs = load<Buff[]>('buffs.json')
+  const armor = load<ArmorPiece[]>('armor.detail.json')
+  const armorSets = load<ArmorSet[]>('armor-sets.json')
+  const accessories = load<Accessory[]>('accessories.detail.json')
+  const gaps = load<{ entries: GapEntry[] }>('gaps.json').entries
+  const effect = (e: StatEffect) => (e.kind === 'stat' ? `${e.stat} ${e.value}${e.scope ? ` (${e.scope})` : ''}` : `special "${e.text}"`)
+  const unknownOr = (r: { _prov: { unverifiedFields: string[] } }, v: unknown, field: string) => (v !== undefined ? String(v) : r._prov.unverifiedFields.includes(field) ? 'Unknown' : 'n/a')
   const cases = JSON.parse(readFileSync(join(repoRoot, 'pipeline/spotcheck/cases.json'), 'utf8')) as Case[]
   const idByName = new Map(universe.items.flatMap((i) => (i.name ? [[i.name, i.id] as const] : [])))
   const client = new WikiClient({ cacheDir: RAW_DIR })
@@ -90,11 +103,11 @@ async function main(): Promise<number> {
   for (const c of cases) {
     // boss / ammo / buff cases read the article the build already parsed (cached by the sync plan)
     const html =
-      c.kind === 'boss' || c.kind === 'ammo' || c.kind === 'buff'
+      c.kind === 'boss' || c.kind === 'ammo' || c.kind === 'buff' || c.kind === 'armor-set' || c.kind === 'wing'
         ? ((await fetchArticles(client, [c.page], 'articles')).get(c.page)?.html ?? '')
         : ((await client.get({ action: 'parse', page: c.page, prop: 'text' }, `spotcheck/${c.page.replace(/[^A-Za-z0-9._-]/g, '_')}`)).response as { parse: { text: string } }).parse.text
     const nodes = parseHtml(html)
-    const title = c.kind === 'recipe' ? c.result : c.kind === 'weapon' || c.kind === 'ammo' ? c.item : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : c.kind === 'buff' ? c.buff : `${c.source ?? c.page} → ${c.item}`
+    const title = c.kind === 'recipe' ? c.result : c.kind === 'weapon' || c.kind === 'ammo' || c.kind === 'accessory' || c.kind === 'wing' ? c.item : c.kind === 'armor-set' ? c.set : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : c.kind === 'buff' ? c.buff : `${c.source ?? c.page} → ${c.item}`
     console.log(`\n=== ${c.kind.toUpperCase()} · ${title} · ${c.why}`)
     console.log(`    wiki: https://terraria.wiki.gg/wiki/${encodeURIComponent(c.page.replaceAll(' ', '_'))}`)
     if (c.kind === 'ammo') {
@@ -117,6 +130,53 @@ async function main(): Promise<number> {
           if (text.startsWith(c.item) && text.length < 300 && !seen.has(text)) {
             seen.add(text)
             console.log(`  WIKI  row: ${text}`)
+          }
+        }
+      }
+      continue
+    }
+    if (c.kind === 'armor-set') {
+      const set = armorSets.find((x) => x.id === c.set)
+      const pieceName = (id: number) => armor.find((p) => p.id === id)?.name ?? `#${id}`
+      if (!set) {
+        const gap = gaps.find((g) => g.ref === `set:${c.set}`)
+        console.log(`  DATA  no ArmorSet record${gap ? ` — gap (${gap.kind}): ${gap.detail}` : ''}`)
+      } else {
+        console.log(`  DATA  pieces: helmets ${set.pieces.helmets.map(pieceName).join(', ')} · chest ${pieceName(set.pieces.chest)} · legs ${pieceName(set.pieces.legs)} · stage ${unknownOr(set, set.stage, 'stage')}`)
+        for (const v of set.variants) console.log(`  DATA  variant ${pieceName(v.helmetId)} → class ${v.class} · setBonus ${v.setBonus.map(effect).join('; ')} · text "${v.setBonusText.replaceAll('\n', ' / ')}"`)
+      }
+      for (const p of armor.filter((x) => x.wikiUrl === wikiPageUrl(c.page))) {
+        console.log(`  DATA  piece ${p.name} (i:${p.id}, ${p.slot}) · defense ${unknownOr(p, p.defense, 'defense')} · effects ${p._prov.unverifiedFields.includes('effects') ? 'Unknown' : p.effects.map(effect).join('; ') || 'none'} · setId ${p.setId ?? '—'}`)
+      }
+      for (const box of parseSetInfoboxes(html)) console.log(`  WIKI  set infobox "${box.title}": Defense ${box.defenseText ?? '—'} · Set Bonus ${box.bonus ? box.bonus.map((b) => `${b.pieces.length ? `[${b.pieces.join(', ')}] ` : ''}${b.lines.join(' / ')}`).join(' ‖ ') : '—'}`)
+      for (const box of parseItemInfoboxes(html).filter((b) => b.itemIds.length > 0)) {
+        const row = (l: string) => box.rows.find((r) => r.label === l)?.value
+        console.log(`  WIKI  item infobox "${box.title}" (ids ${box.itemIds.join(', ')}): Defense ${row('Defense') ?? '—'} · Tooltip ${row('Tooltip') ?? '—'}`)
+      }
+      continue
+    }
+    if (c.kind === 'accessory' || c.kind === 'wing') {
+      const a = accessories.find((x) => x.name === c.item)
+      if (!a) {
+        console.log('  DATA  (no accessory record with this name)')
+        continue
+      }
+      console.log(`  DATA  i:${a.id} · categories ${a._prov.unverifiedFields.includes('categories') ? 'Unknown' : a.categories.join(', ')} · effects ${a._prov.unverifiedFields.includes('effects') ? 'Unknown' : a.effects.map(effect).join('; ')}`)
+      console.log(`  DATA  combinedFrom ${a.combinedFrom.map(n).join(', ') || 'none'} · upgradesTo ${a.upgradesTo.map(n).join(', ') || 'none'}${a.wingStats || a._prov.unverifiedFields.some((f) => f.startsWith('wingStats')) ? ` · wingStats flightTimeTicks ${unknownOr(a, a.wingStats?.flightTimeTicks, 'wingStats.flightTimeTicks')}, hover ${unknownOr(a, a.wingStats?.hover, 'wingStats.hover')}, verticalSpeedTps ${unknownOr(a, a.wingStats?.verticalSpeedTps, 'wingStats.verticalSpeedTps')}` : ''} · rarity ${unknownOr(a, a.rarity, 'rarity')} · stage ${unknownOr(a, a.stage, 'stage')}`)
+      console.log(`  DATA  Unknown fields: ${a._prov.unverifiedFields.join(', ') || 'none'}`)
+      if (c.kind === 'wing') {
+        for (const w of parseWingTable(html).filter((x) => x.itemIds.includes(a.id))) console.log(`  WIKI  Wings table row "${w.name}" (ids ${w.itemIds.join(', ')}): flight time ${w.flightTime} · horizontal speed ${w.horizontalSpeed.join(' / ')} · notes ${w.notes || '—'}`)
+        continue
+      }
+      const box = infoboxForItem(parseItemInfoboxes(html), a.id)
+      if (box) for (const r of box.rows) if (['Type', 'Defense', 'Tooltip'].includes(r.label)) console.log(`  WIKI  ${r.label}: ${r.value}`)
+      const seen = new Set<string>()
+      for (const t of findAll(nodes, (x) => hasClass(x, 'recipes'))) {
+        for (const r of tableRows(t)) {
+          const text = r.text.replace(/^.*?only:\s*/, '').replace(/\s*Internal Item ID: \d+/g, '')
+          if (text.includes(c.item) && !seen.has(text)) {
+            seen.add(text)
+            console.log(`  WIKI  recipe row: ${text}`)
           }
         }
       }

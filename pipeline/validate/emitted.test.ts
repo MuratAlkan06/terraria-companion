@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getField, SpriteManifest, STAGE_ORDER, type Boss, type Buff, type DropSource, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { getField, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
 import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
 import { loadDatasetDir } from './dataset'
@@ -37,14 +37,15 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     }
   })
 
-  it('public/sprites/manifest.json lists exactly the weapon + boss + ammo item sprite paths, with wiki provenance (D3/A10)', () => {
+  it('public/sprites/manifest.json lists exactly the weapon + boss + ammo item + armor + accessory sprite paths, with wiki provenance (D3/A10)', () => {
     const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(REPO, 'public/sprites/manifest.json'), 'utf8')))
     const weapons = JSON.parse(readFileSync(join(DATA_DIR, 'weapons.detail.json'), 'utf8')) as Weapon[]
     const bosses = JSON.parse(readFileSync(join(DATA_DIR, 'bosses.json'), 'utf8')) as Boss[]
     const items = JSON.parse(readFileSync(join(DATA_DIR, 'items.detail.json'), 'utf8')) as Item[]
-    expect([...weapons, ...bosses, ...items].flatMap((r) => (r.sprite ? [r.sprite] : [])).sort()).toEqual(manifest.files.map((f) => f.path).sort())
+    const equipment = [...(JSON.parse(readFileSync(join(DATA_DIR, 'armor.detail.json'), 'utf8')) as ArmorPiece[]), ...(JSON.parse(readFileSync(join(DATA_DIR, 'accessories.detail.json'), 'utf8')) as Accessory[])]
+    expect([...weapons, ...bosses, ...items, ...equipment].flatMap((r) => (r.sprite ? [r.sprite] : [])).sort()).toEqual(manifest.files.map((f) => f.path).sort())
     for (const b of bosses) if (b.sprite) expect(manifest.files.find((f) => f.path === b.sprite)?.ref).toBe(`boss:${b.id}`)
-    for (const i of items) if (i.sprite) expect(manifest.files.find((f) => f.path === i.sprite)?.ref).toBe(`i:${i.id}`)
+    for (const i of [...items, ...equipment]) if (i.sprite) expect(manifest.files.find((f) => f.path === i.sprite)?.ref).toBe(`i:${i.id}`)
     expect(manifest.fallbackMode).toBe(false)
   })
 
@@ -107,6 +108,100 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const detail = new Map([...weapons, ...items].map((r) => [r.id, r.wikiUrl]))
       for (const file of ['weapons.list.json', 'items.list.json']) for (const r of read<{ id: number; wikiUrl: string }[]>(file)) expect(r.wikiUrl, `${file} i:${r.id}`).toBe(detail.get(r.id))
       expect(read<SearchDoc[]>('search-docs.json').every((d) => d.wikiUrl?.startsWith('https://terraria.wiki.gg/wiki/'))).toBe(true)
+    })
+  })
+
+  describe('P2-S8 armor + armor sets + accessories (AMENDMENTS-001 A2: set bijection, tinkering symmetry, spot-checks)', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const armor = read<ArmorPiece[]>('armor.detail.json')
+    const sets = read<ArmorSet[]>('armor-sets.json')
+    const accessories = read<Accessory[]>('accessories.detail.json')
+    const piece = new Map(armor.map((p) => [p.id, p]))
+    const acc = (id: number) => accessories.find((a) => a.id === id)!
+    const set = (id: string) => sets.find((x) => x.id === id)!
+
+    it('§7a-6: every set is 1..N helmets + one chest + one legs with matching slots and back-refs; variants ⇄ helmets bijective', () => {
+      expect(sets.length).toBeGreaterThan(0)
+      for (const s of sets) {
+        expect(s.variants.map((v) => v.helmetId).sort(), s.id).toEqual([...s.pieces.helmets].sort())
+        expect(new Set(s.pieces.helmets).size, s.id).toBe(s.pieces.helmets.length)
+        for (const id of s.pieces.helmets) expect(piece.get(id), `${s.id} i:${id}`).toMatchObject({ slot: 'head', setId: s.id })
+        expect(piece.get(s.pieces.chest), s.id).toMatchObject({ slot: 'chest', setId: s.id })
+        expect(piece.get(s.pieces.legs), s.id).toMatchObject({ slot: 'legs', setId: s.id })
+      }
+      for (const p of armor.filter((x) => x.setId)) {
+        const s = set(p.setId!)
+        expect([...s.pieces.helmets, s.pieces.chest, s.pieces.legs], p.name).toContain(p.id)
+      }
+    })
+
+    it('§7a-7: combinedFrom and upgradesTo are exact inverses over the emitted accessories', () => {
+      const forward = accessories.flatMap((a) => a.combinedFrom.map((f) => `${f}>${a.id}`)).sort()
+      const backward = accessories.flatMap((a) => a.upgradesTo.map((t) => `${a.id}>${t}`)).sort()
+      expect(forward.length).toBeGreaterThan(0)
+      expect(forward).toEqual(backward)
+    })
+
+    it('B7: no equipment record carries maxStack; B31: list records carry their record\'s own wikiUrl', () => {
+      for (const r of [...armor, ...accessories]) expect(r, r.name).not.toHaveProperty('maxStack')
+      const detail = new Map([...armor, ...accessories].map((r) => [r.id, r.wikiUrl]))
+      for (const file of ['armor.list.json', 'accessories.list.json']) for (const r of read<{ id: number; wikiUrl: string }[]>(file)) expect(r.wikiUrl, `${file} i:${r.id}`).toBe(detail.get(r.id))
+    })
+
+    // Spot-checks: every value below was compared side by side with the rendered wiki article by
+    // `npm run pipeline:spotcheck` (pipeline/spotcheck/cases.json, P2-S8 cases) on 2026-10-13.
+    it('spot-check Hallowed armor: four class-variant helmets; the Hood segment adds +2 minions; Defense totals 31 / 35 / 50 / 27', () => {
+      const h = set('hallowed-armor')
+      expect(h.pieces).toEqual({ helmets: [553, 558, 559, 4873], chest: 551, legs: 552 })
+      expect(h.variants.map((v) => [v.helmetId, v.class])).toEqual([[553, 'ranged'], [558, 'magic'], [559, 'melee'], [4873, 'summon']])
+      expect(h.variants.find((v) => v.helmetId === 4873)?.setBonus).toEqual([expect.objectContaining({ kind: 'special', text: 'Become immune after striking an enemy' }), { kind: 'stat', stat: 'minion-slots', value: 2 }])
+      const total = (helmet: number) => [helmet, h.pieces.chest, h.pieces.legs].reduce((n, id) => n + (piece.get(id)?.defense ?? NaN), 0)
+      expect([558, 553, 559, 4873].map(total)).toEqual([31, 35, 50, 27])
+      expect(h._prov.editorialFields).toEqual(['variants.0.class', 'variants.1.class', 'variants.2.class', 'variants.3.class'])
+    })
+
+    it('spot-check mixed bonuses: Chlorophyte Mask = leaf crystal special + 5% damage reduction; Spectre Hood = −40% magic damage + its quoted remainder', () => {
+      expect(set('chlorophyte-armor').variants.find((v) => v.helmetId === 1001)?.setBonus).toEqual([
+        { kind: 'special', text: 'Summons a powerful leaf crystal to shoot at nearby enemies', simulated: false, sourceUrl: 'https://terraria.wiki.gg/wiki/Chlorophyte_armor' },
+        { kind: 'stat', stat: 'damage-reduction-pct', value: 5 },
+      ])
+      const hood = set('spectre-armor').variants.find((v) => v.helmetId === 1503)!
+      expect(hood.setBonus[0]).toEqual({ kind: 'stat', stat: 'damage-pct', value: -40, scope: 'magic' })
+      expect(hood.setBonusText).toBe('Reduces Magic damage by 40% and converts it to healing force\nMagic damage done to enemies heals the player with lowest health')
+    })
+
+    it('spot-check hybrid / withheld sets: Frost armor is class "other" by quoted ruling; Beetle armor is withheld with a gap, its pieces setless', () => {
+      expect(set('frost-armor').variants).toEqual([expect.objectContaining({ helmetId: 684, class: 'other' })])
+      expect(sets.find((s) => s.id === 'beetle-armor')).toBeUndefined()
+      for (const id of [2199, 2200, 2201, 2202]) expect(piece.get(id)?.setId, `i:${id}`).toBeUndefined()
+      const gaps = read<{ entries: { ref: string; kind: string }[] }>('gaps.json').entries
+      expect(gaps).toContainEqual(expect.objectContaining({ ref: 'set:beetle-armor', kind: 'count-reconciliation' }))
+    })
+
+    it('spot-check Ankh Shield chain both directions (Tinkerer\'s Workshop recipes)', () => {
+      expect(acc(1613)).toMatchObject({ name: 'Ankh Shield', combinedFrom: [397, 1612], upgradesTo: [] })
+      expect(acc(1613).effects[0]).toEqual({ kind: 'stat', stat: 'defense-flat', value: 5 })
+      expect(acc(1612)).toMatchObject({ name: 'Ankh Charm', combinedFrom: [901, 902, 903, 904, 5354], upgradesTo: [1613] })
+      expect(acc(397).upgradesTo).toContain(1613)
+      for (const id of [901, 902, 903, 904, 5354]) expect(acc(id).upgradesTo, `i:${id}`).toContain(1612)
+    })
+
+    it('spot-check wings: Celestial Starboard 180 ticks + hover, Fledgling Wings 25 ticks without hover; vertical speed Unknown', () => {
+      expect(acc(4954).wingStats).toEqual({ flightTimeTicks: 180, hover: true })
+      expect(acc(4978).wingStats).toEqual({ flightTimeTicks: 25, hover: false })
+      expect(getField(acc(4954), 'wingStats.verticalSpeedTps')).toEqual({ status: 'unverified' })
+    })
+
+    it('spot-check honest Unknown: Razortip has no transcribed game text → effects / categories Unknown, never invented', () => {
+      const razortip = acc(6160)
+      expect(razortip.effects).toEqual([])
+      expect(getField(razortip, 'effects').status).toBe('unverified')
+      expect(getField(razortip, 'categories').status).toBe('unverified')
+    })
+
+    it('spot-check structured accessory stat: Worm Scarf reduces damage taken by 17% (agrees with Equipinfo endurance)', () => {
+      expect(acc(3224)).toMatchObject({ name: 'Worm Scarf', categories: ['defense'], effects: [{ kind: 'stat', stat: 'damage-reduction-pct', value: 17 }] })
+      expect(acc(3224)._prov.sources).toContainEqual(expect.objectContaining({ kind: 'cargo:Equipinfo' }))
     })
   })
 

@@ -53,9 +53,15 @@ export async function cargoCount(client: WikiClient, table: string): Promise<{ c
   return { count, fetchedAt }
 }
 
-/** Cargo returns `_pageName`-style fields only when aliased; alias every field to its own name. */
-function fieldList(table: string, fields: readonly string[]): string {
-  return [`${table}._ID=_rowid`, `${table}._pageName=_page`, ...fields.map((f) => `${table}.${f}=${f}`)].join(',')
+/**
+ * Cargo returns `_pageName`-style fields only when aliased; alias every field to its own name.
+ * `compact` (P2-S8, wide tables such as Equipinfo's 184 columns): plain field names are returned
+ * under their own name already, so only `_ID` / `_pageName` are aliased — the fully aliased list
+ * would push the GET URL past ~8 KB. (Existing tables keep the aliased form: their cached request
+ * params must stay byte-identical.)
+ */
+function fieldList(table: string, fields: readonly string[], compact = false): string {
+  return [`${table}._ID=_rowid`, `${table}._pageName=_page`, ...fields.map((f) => (compact ? f : `${table}.${f}=${f}`))].join(',')
 }
 
 export async function cargoQueryAll(
@@ -64,6 +70,7 @@ export async function cargoQueryAll(
   selected: readonly string[],
   fields: Record<string, CargoFieldInfo>,
   log?: (line: string) => void,
+  options: { compact?: boolean } = {},
 ): Promise<CargoTableFetch> {
   const { count, fetchedAt: countAt } = await cargoCount(client, table)
   const rows: CargoRow[] = []
@@ -75,7 +82,7 @@ export async function cargoQueryAll(
     const params = {
       action: 'cargoquery',
       tables: table,
-      fields: fieldList(table, selected),
+      fields: fieldList(table, selected, options.compact),
       order_by: `${table}._ID`,
       limit: String(CARGO_REQUESTED_LIMIT),
       offset: String(offset),

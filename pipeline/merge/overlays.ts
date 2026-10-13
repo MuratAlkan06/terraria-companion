@@ -244,6 +244,43 @@ export const loadLabParamsOverlay = (dir = OVERLAY_DIR): LabParamsOverlay => Lab
 /** Every article the lab-params overlay cites (fetched by the sync plan, quote-checked by the build). */
 export const labEvidencePages = (o: LabParamsOverlay): string[] => o.entries.flatMap((e) => e.evidence.map((x) => x.page))
 
+/**
+ * P2-S8 armor-sets overlay (overlays/armor-sets.json): the RESIDUAL decisions the set derivation
+ * (merge/armor.ts) cannot settle from Cargo Items + the set article's infobox alone. Every entry is
+ * keyed by the set article (Cargo `_page` of the set row) and backed by verbatim quotes of that
+ * article (checked against the cached revision, merge/evidence.ts):
+ * - `classes`: the damage class of a helmet variant whose pieces / set bonus name several classes
+ *   (hybrid sets) — the reviewer's ruling, quoted; emitted as an editorial field.
+ * - `withhold`: the set cannot be expressed by the ArmorSet schema (e.g. two alternative chest pieces
+ *   with different bonuses); its pieces are emitted without setId and a gap records why.
+ */
+const ArmorSetEntry = z.strictObject({
+  page: Page,
+  classes: z.array(z.strictObject({ helmet: PlainText1, class: DamageClass, quote: Quote })).optional(),
+  withhold: z.strictObject({ reason: PlainText1, quote: Quote }).optional(),
+  /** Pipeline-only reviewer rationale (not emitted). */
+  why: z.string().min(1),
+})
+export type ArmorSetEntry = z.infer<typeof ArmorSetEntry>
+
+export const ArmorSetsOverlay = z
+  .strictObject({ overlay: z.literal('armor-sets'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(ArmorSetEntry) })
+  .superRefine((o, ctx) => {
+    const seen = new Set<string>()
+    for (const e of o.entries) {
+      if (seen.has(e.page)) ctx.addIssue({ code: 'custom', message: `duplicate armor-sets entry for "${e.page}"` })
+      seen.add(e.page)
+      if (!e.classes && !e.withhold) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}" decides nothing (classes or withhold)` })
+      if (e.classes && e.withhold) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}": a withheld set takes no class rulings` })
+    }
+  })
+export type ArmorSetsOverlay = z.infer<typeof ArmorSetsOverlay>
+
+export const loadArmorSetsOverlay = (dir = OVERLAY_DIR): ArmorSetsOverlay => ArmorSetsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'armor-sets.json'), 'utf8')))
+
+/** Every article the armor-sets overlay cites (its set pages — already fetched as set articles). */
+export const armorSetEvidencePages = (o: ArmorSetsOverlay): string[] => o.entries.map((e) => e.page)
+
 export const loadBossesOverlay = (dir = OVERLAY_DIR): BossesOverlay => BossesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'bosses.json'), 'utf8')))
 export const loadProgressionOverlay = (dir = OVERLAY_DIR): ProgressionOverlay => ProgressionOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'progression.json'), 'utf8')))
 export const loadWithheldOverlay = (dir = OVERLAY_DIR): WithheldOverlay => WithheldOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'withheld.json'), 'utf8')))

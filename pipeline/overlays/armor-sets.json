@@ -1,0 +1,90 @@
+{
+  "overlay": "armor-sets",
+  "authoredAt": "2026-10-13",
+  "notes": [
+    "Residual decisions for the armor-set derivation (pipeline/merge/armor.ts, P2-S8). Everything else — set membership (the pieces a set article hosts), per-helmet set bonus game text, set-bonus effects, defense totals, stage and every single-class variant — is derived from Cargo Items, Module:Iteminfo/data, Cargo Equipinfo and the set article's infobox. Every quote is checked verbatim against the cached article revision.",
+    "withhold: the ArmorSet schema needs ≥1 helmet, exactly one chest and one legs piece hosted by the set article, and a set bonus per helmet. Sets that cannot be expressed are not emitted; their pieces carry no setId and a gap entry records why (amendment candidates in the P2-S8 report).",
+    "classes: ArmorSet.variants[].class is a single DamageClass. Where the variant's stats name several classes, the set article's own description decides: the wiki calls these sets hybrids ('melee/ranged', 'mage/summoner', …) or describes no class at all, so the ruling is 'other' = no single class — the safe direction for class-filtered recommendations (they are under-, never wrongly recommended). The schema cannot express a hybrid class (amendment candidate: a class list per variant)."
+  ],
+  "entries": [
+    {
+      "page": "Beetle armor",
+      "withhold": {
+        "reason": "two alternative chest pieces with different set bonuses (the bonus depends on the chest, not the helmet) — the schema keys variants by helmet and allows one chest",
+        "quote": "as well as two different chestpieces: the Beetle Scale Mail and Beetle Shell, providing offensive and defensive bonuses respectively"
+      },
+      "why": "Set Bonus segments are keyed by Beetle Scale Mail / Beetle Shell; both chests share the Beetle Helmet and Beetle Leggings."
+    },
+    {
+      "page": "Rain armor",
+      "withhold": {
+        "reason": "two pieces only (no legs piece) and no set bonus — an ArmorSet needs a legs piece and a set bonus per helmet",
+        "quote": "Rain armor is the only functional armor set which does not provide a set bonus."
+      },
+      "why": "The set infobox has no Set Bonus row; the article hosts the Rain Hat and Rain Coat only."
+    },
+    {
+      "page": "Wizard set",
+      "withhold": {
+        "reason": "a combination set (one of two hats with one of eight robes, any legs) whose pieces live on their own articles — not one chest and one legs piece",
+        "quote": "Any leg-slot equipment can be worn without affecting the set bonus."
+      },
+      "why": "The article hosts eight Cargo set rows (Mystic/Amethyst/…/Diamond Wizard set) and no armor piece rows."
+    },
+    {
+      "page": "Frost armor",
+      "classes": [{ "helmet": "Frost Helmet", "class": "other", "quote": "Frost armor is a Hardmode melee/ranged armor set" }],
+      "why": "Pieces and set bonus are melee + ranged (\"Increases melee and ranged damage by 10%\")."
+    },
+    {
+      "page": "Forbidden armor",
+      "classes": [{ "helmet": "Forbidden Mask", "class": "other", "quote": "Forbidden armor is a Hardmode mage/summoner armor set" }],
+      "why": "Magic + summon stats on the pieces."
+    },
+    {
+      "page": "Crystal Assassin armor",
+      "classes": [{ "helmet": "Crystal Assassin Hood", "class": "other", "quote": "Crystal Assassin armor is a Hardmode armor set consisting of the Crystal Assassin Hood" }],
+      "why": "Class-less damage / crit bonuses plus mana cost (magic signal) and melee speed (melee signal); the article names no class."
+    },
+    {
+      "page": "Squire armor",
+      "classes": [{ "helmet": "Squire's Great Helm", "class": "other", "quote": "Squire armor is a Hardmode melee/summoner armor set" }],
+      "why": "Melee + summon (sentry) stats."
+    },
+    {
+      "page": "Monk armor",
+      "classes": [{ "helmet": "Monk's Bushy Brow Bald Cap", "class": "other", "quote": "Monk armor is a Hardmode melee/summoner armor set" }],
+      "why": "Melee + summon (sentry) stats."
+    },
+    {
+      "page": "Huntress armor",
+      "classes": [{ "helmet": "Huntress's Wig", "class": "other", "quote": "Huntress armor is a Hardmode ranged/summoner armor set" }],
+      "why": "Ranged + summon (sentry) stats."
+    },
+    {
+      "page": "Apprentice armor",
+      "classes": [{ "helmet": "Apprentice's Hat", "class": "other", "quote": "Apprentice armor is a Hardmode mage/summoner armor set" }],
+      "why": "Magic + summon (sentry) stats."
+    },
+    {
+      "page": "Valhalla Knight armor",
+      "classes": [{ "helmet": "Valhalla Knight's Helm", "class": "other", "quote": "post-Golem melee/summoner armor set consisting of the Valhalla Knight's Helm" }],
+      "why": "Melee + summon (sentry) stats."
+    },
+    {
+      "page": "Shinobi Infiltrator armor",
+      "classes": [{ "helmet": "Shinobi Infiltrator's Helmet", "class": "other", "quote": "post-Golem melee/summoner armor set consisting of the Shinobi Infiltrator's Helmet" }],
+      "why": "Melee + summon (sentry) stats."
+    },
+    {
+      "page": "Red Riding armor",
+      "classes": [{ "helmet": "Red Riding Hood", "class": "other", "quote": "post-Golem ranged/summoner armor set consisting of the Red Riding Hood" }],
+      "why": "Ranged + summon (sentry) stats."
+    },
+    {
+      "page": "Dark Artist armor",
+      "classes": [{ "helmet": "Dark Artist's Hat", "class": "other", "quote": "post-Golem mage/summoner armor set consisting of the Dark Artist's Hat" }],
+      "why": "Magic + summon (sentry) stats."
+    }
+  ]
+}

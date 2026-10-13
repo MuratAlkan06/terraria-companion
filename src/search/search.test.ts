@@ -37,7 +37,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
   it('the shipped search-docs.json and enemies.json pass their dev schemas', () => {
     expect(() => validateDataFile('search-docs', searchDocsJson)).not.toThrow()
     expect(() => validateDataFile('enemies', enemiesJson)).not.toThrow()
-    expect(docs).toHaveLength(959)
+    expect(docs).toHaveLength(1634)
   })
 
   it('loadSearchDocs is a lazy singleton; a failed chunk is a ChunkLoadError and is retried', async () => {
@@ -47,7 +47,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
     const failure = await da.loadSearchDocs().catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ChunkLoadError)
     expect((failure as ChunkLoadError).file).toBe('search-docs')
-    await expect(da.loadSearchDocs()).resolves.toHaveLength(959)
+    await expect(da.loadSearchDocs()).resolves.toHaveLength(1634)
     await da.loadSearchDocs()
     expect(importer).toHaveBeenCalledTimes(2)
   })
@@ -57,7 +57,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
   const engine = createSearchEngine(docs)
 
   it('indexes every doc and finds "zenith" as the top hit (AC1)', () => {
-    expect(engine.size).toBe(959)
+    expect(engine.size).toBe(1634)
     const [top] = engine.search('zenith')
     expect(top.doc).toMatchObject({ id: 'i:4956', name: 'Zenith', type: 'weapon' })
   })
@@ -84,7 +84,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
 
   it('filters by entity type (facet filter over the stored type)', () => {
     const slimes = engine.search('slime')
-    expect(new Set(slimes.map((h) => h.doc.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'buff']))
+    expect(new Set(slimes.map((h) => h.doc.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'buff', 'accessory'])) // P2-S8: fuzzy 'Lime String' / 'Lime Golf Ball'
     const onlyBosses = engine.search('slime', { types: new Set(['boss']) })
     expect(onlyBosses.length).toBeGreaterThan(0)
     expect(onlyBosses.every((h) => h.doc.type === 'boss')).toBe(true)
@@ -152,7 +152,7 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
 describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('builds from the shipped data: "zenith" → Zenith first, internal, with its sprite', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
-    expect(index.docCount).toBe(959)
+    expect(index.docCount).toBe(1634)
     const { groups, options } = index.suggest('zenith')
     expect(groups[0].label).toBe('Weapons')
     expect(options[0]).toMatchObject({
@@ -169,7 +169,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('every non-weapon row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
-    expect(all).toHaveLength(959)
+    expect(all).toHaveLength(1634)
     const docById = new Map(docs.map((d) => [d.id, d]))
     for (const option of all) {
       if (option.type === 'weapon') {
@@ -181,8 +181,8 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
       expect(wikiUrl, option.ref).not.toContain('Special:Search')
       expect(option.target, option.ref).toEqual({ kind: 'external', href: wikiUrl })
     }
-    // P2-S7 ammo items and buffs are covered too (they used to open the wiki search page).
-    expect(new Set(all.map((o) => o.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'item', 'buff']))
+    // P2-S7 ammo items and buffs are covered too (they used to open the wiki search page); P2-S8 armor, accessories, sets.
+    expect(new Set(all.map((o) => o.type))).toEqual(new Set(['weapon', 'boss', 'enemy', 'item', 'buff', 'armor', 'accessory', 'set']))
     // e.g. the Enchanted Sword ENEMY must not link to the item article of the same name.
     const enchanted = index.suggest('enchanted sword').options.find((o) => o.type === 'enemy')
     expect(enchanted?.target).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Enchanted_Sword_(NPC)' })
@@ -213,7 +213,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('groups mixed results by type with labels, bosses carry sprites, enemies fall back to placeholder art', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const { groups } = index.suggest('slime')
-    expect(groups.map((g) => g.label).sort()).toEqual(['Bosses', 'Buffs', 'Enemies', 'Weapons'])
+    expect(groups.map((g) => g.label).sort()).toEqual(['Accessories', 'Bosses', 'Buffs', 'Enemies', 'Weapons'])
     const king = groups.find((g) => g.type === 'boss')!.items.find((i) => i.name === 'King Slime')!
     expect(king.sprite).toBe('/sprites/bosses/50.gif')
     expect(king.detail).toBe('Early Pre-Hardmode')
@@ -225,14 +225,15 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('AC5: a dataset type the UI has never seen is indexed, grouped and labelled with no code change', async () => {
     const extra: SearchDoc[] = [
       { id: 'i:29', name: 'Life Crystal', type: 'item', rarity: 2, tags: ['consumables'] },
-      { id: 'set:molten-armor', name: 'Molten armor', type: 'set', stage: 'late-prehm', tags: [] },
+      // P2-S8 ships armor sets; Wizard set is a real set article the dataset withholds, so it is not a shipped doc
+      { id: 'set:wizard-set', name: 'Wizard set', type: 'set', tags: [] },
     ]
     // Neither extra doc carries a wikiUrl: the row falls back to the wiki search (never a dead link).
     const index = await buildSearchIndex(performance.now(), deps({ loadDocs: async () => [...docs, ...extra] }))
     const crystal = index.suggest('life crystal')
     expect(crystal.groups[0]).toMatchObject({ type: 'item', label: ENTITY_TYPES.item.plural })
     expect(crystal.options[0].target).toEqual({ kind: 'external', href: wikiSearchUrl('Life Crystal') })
-    expect(index.suggest('molten armor').groups.map((g) => g.label)).toContain('Armor sets')
+    expect(index.suggest('wizard set').groups.map((g) => g.label)).toContain('Armor sets')
   })
 
   it('facet filter by entity type and the per-group cap are honoured', async () => {
@@ -264,7 +265,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     expect(performance.getEntriesByName('tc:search-index').length).toBeGreaterThan(0)
   })
 
-  it('builds the real 959-doc index well inside the 500 ms budget on this machine', async () => {
+  it('builds the real 1634-doc index well inside the 500 ms budget on this machine', async () => {
     const start = performance.now()
     createSearchEngine(docs)
     expect(performance.now() - start).toBeLessThan(500)
@@ -284,11 +285,14 @@ describe('detail line + placeholder copy', () => {
       { type: 'weapon', count: 488 },
       { type: 'boss', count: 18 },
       { type: 'item', count: 79 },
+      { type: 'armor', count: 256 },
+      { type: 'accessory', count: 352 },
+      { type: 'set', count: 67 },
       { type: 'enemy', count: 334 },
       { type: 'buff', count: 40 },
     ])
     expect(searchPlaceholder(shipped)).toBe('Search weapons, bosses, items…')
-    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 79 items, 334 enemies and 40 buffs')
+    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 79 items, 256 armor, 352 accessories, 67 armor sets, 334 enemies and 40 buffs')
     expect(searchPlaceholder([])).toBe('Search…')
     const later = searchableCounts({ ...meta.counts, items: 5000, armor: 300 })
     expect(searchPlaceholder(later)).toBe('Search weapons, bosses, items…')

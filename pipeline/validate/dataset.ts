@@ -52,8 +52,8 @@ import { FIXTURE_NAMES } from './fixtures'
 
 export const COLLECTIONS = {
   weapons: { file: 'weapons.detail.json', schema: Weapon }, // §5 list/detail split (detail = array, B11)
-  armor: { file: 'armor.json', schema: ArmorPiece },
-  accessories: { file: 'accessories.json', schema: Accessory },
+  armor: { file: 'armor.detail.json', schema: ArmorPiece }, // §5 list/detail split (P2-S8)
+  accessories: { file: 'accessories.detail.json', schema: Accessory }, // §5 list/detail split (P2-S8)
   items: { file: 'items.detail.json', schema: Item }, // §5 list/detail split (P2-S7: ammo items; P6-S0 shards it)
   armorSets: { file: 'armor-sets.json', schema: ArmorSet },
   enemies: { file: 'enemies.json', schema: Enemy },

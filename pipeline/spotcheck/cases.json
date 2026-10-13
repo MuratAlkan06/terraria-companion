@@ -46,5 +46,16 @@
   { "kind": "ammo", "page": "Gel", "item": "Gel", "why": "P2-S7: ammo with no damage of its own → damage / knockback / velocity bonus Unknown" },
   { "kind": "buff", "page": "Ironskin Potion", "buff": "ironskin", "why": "P2-S7: loadout potion — stat effect from the buff tooltip, game ID from the Buff IDs table + Internal Buff ID" },
   { "kind": "buff", "page": "Acid Venom", "buff": "acid-venom", "why": "P2-S7: Lab DoT — enemy 30 HP/s vs player 15 HP/s in the Effects row" },
-  { "kind": "buff", "page": "Tipsy", "buff": "tipsy", "why": "P2-S7: debuff with player-side stat effects (Ale / Ale Tosser), quoted from the effect list" }
+  { "kind": "buff", "page": "Tipsy", "buff": "tipsy", "why": "P2-S7: debuff with player-side stat effects (Ale / Ale Tosser), quoted from the effect list" },
+  { "kind": "armor-set", "page": "Hallowed armor", "set": "hallowed-armor", "why": "P2-S8: four class-variant helmets; the Hallowed Hood segment adds +2 minions; per-helmet Defense totals" },
+  { "kind": "armor-set", "page": "Chlorophyte armor", "set": "chlorophyte-armor", "why": "P2-S8: mixed set bonus — a special (leaf crystal) plus helmet-specific stats (Mask 5% damage reduction, Visor +2 minions)" },
+  { "kind": "armor-set", "page": "Spectre armor", "set": "spectre-armor", "why": "P2-S8: two helmets with different bonuses; a stated reduction (negative damage-pct) plus its unmodeled remainder" },
+  { "kind": "armor-set", "page": "Frost armor", "set": "frost-armor", "why": "P2-S8: hybrid melee/ranged set — class 'other' by a quoted overlay ruling" },
+  { "kind": "armor-set", "page": "Beetle armor", "set": "beetle-armor", "why": "P2-S8: two alternative chests with different bonuses — withheld (schema cannot express it), pieces without setId + gap" },
+  { "kind": "accessory", "page": "Ankh Shield", "item": "Ankh Shield", "why": "P2-S8: tinkering chain downward — combinedFrom Obsidian Shield + Ankh Charm; defense from Iteminfo" },
+  { "kind": "accessory", "page": "Ankh Charm", "item": "Ankh Charm", "why": "P2-S8: tinkering chain both directions — combinedFrom the five immunity pairs, upgradesTo Ankh Shield" },
+  { "kind": "wing", "page": "Wings", "item": "Celestial Starboard", "why": "P2-S8: wingStats — 3 s flight (180 ticks) and hover from the Wings list table" },
+  { "kind": "wing", "page": "Wings", "item": "Fledgling Wings", "why": "P2-S8: shortest flight time (0.42 s → 25 ticks within the table's precision), no hover" },
+  { "kind": "accessory", "page": "Razortip", "item": "Razortip", "why": "P2-S8: honest Unknown effects — the wiki transcribes no game text for this 1.4.5 accessory" },
+  { "kind": "accessory", "page": "Worm Scarf", "item": "Worm Scarf", "why": "P2-S8: structured stat effect (damage-reduction-pct 17) cross-checked with Equipinfo endurance" }
 ]

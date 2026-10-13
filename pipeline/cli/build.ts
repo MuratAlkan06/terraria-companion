@@ -14,15 +14,20 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { isCoveredBy, SpriteManifest, STAGE_ORDER, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
+import { isCoveredBy, SpriteManifest, STAGE_ORDER, StatKind, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
+import { itemTypeIncludes } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import { renderGapReport } from '../emit/gapReport'
 import { THUMBNAIL_MIN_BYTES, thumbnailFor } from '../emit/thumbnail'
 import { checkBudgets, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
 import { writeFiles } from '../emit/write'
+import { buildAccessories } from '../merge/accessories'
 import { buildAmmo, identifyAmmo } from '../merge/ammo'
+import { buildArmor } from '../merge/armor'
+import { EFFECT_CATEGORIES, EFFECT_RULES, tooltipEffectLines } from '../merge/effects'
+import { armorSetRows, iteminfoArmorSlot } from '../merge/equipment'
 import { bossAttribution, buildBosses, buildProgression } from '../merge/bosses'
 import { BUFF_IDS_PAGE, buildBuffs, cargoBuffNames } from '../merge/buffs'
 import { buildDrops, indexNpcs } from '../merge/drops'
@@ -30,7 +35,7 @@ import { buildEnemies } from '../merge/enemies'
 import { Evidence } from '../merge/evidence'
 import { createGatingDeriver, GATING_BLOCKERS, type GatingBlocker } from '../merge/gating'
 import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } from '../merge/labParams'
-import { conditionMatchers, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
 import { makeProv } from '../merge/prov'
 import { buildRecipes } from '../merge/recipes'
 import { PAGE_BUCKET_LABEL, reconcileCategories, reconcileWeaponLists, type PageBucket } from '../merge/reconcile'
@@ -42,7 +47,7 @@ import { parseIteminfo } from '../parse/iteminfo'
 import { parseProjectileinfo } from '../parse/projectileinfo'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from '../parse/recipeModules'
 import { formatError, formatWarning, validateDataset } from '../validate'
-import { stationItemUses } from '../validate/integrity'
+import { stationItemUses, TINKERERS_WORKSHOP_ITEM_ID } from '../validate/integrity'
 import {
   COLLECTION_KEYS,
   COLLECTIONS,
@@ -63,7 +68,9 @@ const repoRoot = resolve(import.meta.dirname, '..', '..')
 
 // P2-S6: bosses / nodes / edges are produced — references into them are hard checks now (B12).
 // P2-S7: items (ammo) and buffs are produced — §7a-10 ammo classes and buff refs are hard checks.
-const PENDING: CollectionKey[] = ['armor', 'accessories', 'armorSets', 'scenarios']
+// P2-S8: armor, accessories and armor sets are produced — §7a-6 set bijection / back-refs and §7a-7
+// tinkering symmetry are hard checks. The item CORPUS stays partial (item-universe.json) until P6-S0.
+const PENDING: CollectionKey[] = ['scenarios']
 
 const SPRITE_RIGHTS_NOTE =
   'Item sprites are Terraria content © Re-Logic, downloaded from terraria.wiki.gg (each file links its wiki file page). They are not covered by the wiki text license (CC BY-NC-SA 4.0), are never committed to the repository (AMENDMENTS-001 A10) and are replaced by original placeholder art when fallbackMode is true (ADR-001 D3).'
@@ -256,7 +263,24 @@ async function main(): Promise<number> {
     sprites: new Map(weapons.sprites.map((f) => [Number(f.ref.slice(2)), f])),
     overlay: labOverlay,
   })
-  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...buffs.gaps]
+  // P2-S8 armor pieces + armor sets, accessories (merge/armor.ts, merge/accessories.ts, merge/effects.ts)
+  const itemSlugs = new Set([...weapons.weapons.map((w) => w.slug), ...ammo.items.map((i) => i.slug)])
+  const armorSetsOverlay = loadArmorSetsOverlay()
+  const equipmentInput = {
+    itemRows: sync.tables.Items.rows,
+    itemsFetchedAt: sync.tables.Items.fetchedAt,
+    iteminfo,
+    equipinfo: sync.equipinfo,
+    articles: sync.articles,
+    images: sync.equipmentImages,
+    recipes: recipes.recipes,
+    drops: drops.drops,
+    gating: derive,
+    withheld,
+  }
+  const armor = buildArmor({ ...equipmentInput, evidence, overlay: armorSetsOverlay, usedSlugs: itemSlugs })
+  const accessories = buildAccessories({ ...equipmentInput, usedSlugs: new Set([...itemSlugs, ...armor.pieces.map((p) => p.slug)]) })
+  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps]
 
   const generatedAt = [
     sync.iteminfo.fetchedAt,
@@ -269,6 +293,10 @@ async function main(): Promise<number> {
     sync.projectileinfo.fetchedAt,
     sync.ammoCategories.fetchedAt,
     sync.ammoImages.fetchedAt,
+    sync.equipinfo.fetchedAt,
+    sync.armorCategories.fetchedAt,
+    sync.accessoryCategories.fetchedAt,
+    sync.equipmentImages.fetchedAt,
   ]
     .sort()
     .at(-1) as string
@@ -276,7 +304,7 @@ async function main(): Promise<number> {
   const manifest: DatasetManifest = {
     name: 'wiki-sync',
     description:
-      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe; armor/accessory records, the rest of the item corpus (P6-S0) and Lab scenarios are produced by later slices (partial.pending).',
+      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), armor pieces, armor sets and accessories (P2-S8), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe: the rest of the item corpus is produced by P6-S0 (partial.itemUniverse) and Lab scenarios by a later slice (partial.pending).',
     iteminfo: { rev: iteminfo.rev, syncedTo: iteminfo.terrariaVersion },
     notes: [
       `Sources: Module:Iteminfo/data rev ${iteminfo.rev} (generated ${iteminfo.generated}, game ${iteminfo.terrariaVersion}); ${Object.values(mods).map((m) => `${m.title} rev ${m.rev}`).join('; ')}; Cargo tables fetched ${Object.values(sync.tables).map((t) => `${t.table} ${t.fetchedAt}`).join(', ')}; weapon category tree ${sync.weaponCategories.fetchedAt}; imageinfo ${sync.weaponImages.fetchedAt}.`,
@@ -298,6 +326,10 @@ async function main(): Promise<number> {
       'Buffs (P2-S7, A4 bound): every debuff an emitted weapon or ammo item inflicts (Cargo `debuffs`) or grants (Iteminfo buffType), plus the curated combat buff potions in pipeline/overlays/buffs.json. gameBuffId / isDebuff / article from the wiki\'s "Buff IDs" table (TO-VERIFY #12), cross-checked with the article\'s own Buff ID; dot.dps = enemy health loss per second from the buff infobox "Effects" row; effects only from the overlay (verbatim, number-checked quotes), else Unknown. Search docs include buffs because §7a-11 requires every emitted entity to be searchable. See pipeline/merge/buffs.ts.',
       'Stage (AMENDMENTS-005 B22): §7b item stage = max over gates of (node.unlocksStage ?? node.stage); wall-of-flesh carries unlocksStage early-hm (its drops are Early Hardmode content), validated against its required-gate edge into the hardmode milestone.',
       'Lists and search docs carry each record\'s own wikiUrl (AMENDMENTS-007 B31). Sprite files over 100 KB get a static first-frame PNG thumbnail (whole-number downscale to ≤ 128 px; AMENDMENTS-007 B30) listed in the sprite manifest and generated locally by npm run pipeline:sprites.',
+      'Armor (P2-S8, pipeline/merge/armor.ts): Cargo Items rows typed "armor" (the set row of a set article, typed "armor" + "set", is the set infobox, not an item) that are the same desktop item in Module:Iteminfo/data with exactly one head/body/leg slot agreeing with the Cargo body slot. defense = Iteminfo defense cross-checked with the infobox; effects = the per-piece game-text tooltip lines classified by pipeline/merge/effects.ts and cross-checked with Cargo Equipinfo (the wiki\'s UpdateEquip transcription). No maxStack (AMENDMENTS-002 B7).',
+      'Armor sets (P2-S8): one per set article; pieces = the armor pieces hosted by the article (≥1 helmet, exactly one chest and legs piece); per-helmet set bonus = the set infobox "Set Bonus" game text (a helmet-specific segment replaces the default for that helmet), classified like tooltips; setBonusText = those lines verbatim. Sets the schema cannot express (two alternative chests, no legs, pieces on other pages, no set bonus) are withheld by a reviewed pipeline/overlays/armor-sets.json entry (quote-checked) with a gap. Variant class (editorial) = the damage-class signals of the variant\'s stats (one → that class, none → other, several → a quoted overlay ruling). Set stage = earliest stage a complete set can be assembled (min over helmets of max piece stage), Unknown unless every piece\'s stage is derived.',
+      'Accessories (P2-S8, pipeline/merge/accessories.ts): Cargo Items rows typed "accessory" and not "vanity" that are the same desktop item in Module:Iteminfo/data (accessory true, vanity false); vanity accessories (cosmetic, incl. music boxes) are reconciled but left to the item corpus (P6-S0). effects = Iteminfo defense (defense-flat) + classified game-text lines (Equipinfo cross-check; a disagreement withholds them, an Equipinfo-only stat is a gap, never filled in); Unknown (empty + listed, A1) when the wiki transcribes no game text. categories (editorial) = union of the classified effects\' categories. combinedFrom / upgradesTo derived from Tinkerer\'s Workshop recipes (§7a-7). wingStats from the "Wings" article list table: flightTimeTicks = round(seconds × 60) (exact at the table\'s 2-decimal precision), hover = a hovering speed is listed; verticalSpeedTps Unknown (the table states a multiplier).',
+      'Effect lines (P2-S8, pipeline/merge/effects.ts): every game-text line must match exactly one explicit rule — a stat rule onto the CLOSED StatKind enum (the line must state every emitted number), a special (verbatim text, simulated false; rules that would need a new StatKind name it as an amendment candidate), or flavor text; an unclassifiable line fails the build.',
     ],
     partial: { itemUniverse: ITEM_UNIVERSE_FILE, pending: PENDING },
   }
@@ -315,6 +347,9 @@ async function main(): Promise<number> {
     bosses: bosses.bosses,
     nodes: progression.nodes,
     edges: progression.edges,
+    armor: armor.pieces,
+    armorSets: armor.sets,
+    accessories: accessories.accessories,
   }
   const first = validateDataset({ manifest, collections, lists: {}, itemUniverse: universe, stageGaps }, { now: new Date(generatedAt) })
   if (!first.ok) {
@@ -327,10 +362,15 @@ async function main(): Promise<number> {
   const weaponList = weaponDetails.map((w) => projectList('weapons', w as unknown as Record<string, unknown>))
   const itemDetails = first.dataset.items
   const itemList = itemDetails.map((i) => projectList('items', i as unknown as Record<string, unknown>))
-  const searchDocs = buildSearchDocs({ weapons: weaponDetails, enemies: enemies.enemies, bosses: first.dataset.bosses, items: itemDetails, buffs: first.dataset.buffs })
+  const armorDetails = first.dataset.armor
+  const armorList = armorDetails.map((a) => projectList('armor', a as unknown as Record<string, unknown>))
+  const accessoryDetails = first.dataset.accessories
+  const accessoryList = accessoryDetails.map((a) => projectList('accessories', a as unknown as Record<string, unknown>))
+  const setDetails = first.dataset.armorSets
+  const searchDocs = buildSearchDocs({ weapons: weaponDetails, enemies: enemies.enemies, bosses: first.dataset.bosses, items: itemDetails, buffs: first.dataset.buffs, armor: armorDetails, accessories: accessoryDetails, armorSets: setDetails })
 
   // validate pass 2 over exactly what is emitted (details + lists + search docs)
-  const raw: RawDataset = { manifest, collections: { ...collections, weapons: weaponDetails }, lists: { weapons: weaponList, items: itemList }, searchDocs, itemUniverse: universe, stageGaps }
+  const raw: RawDataset = { manifest, collections: { ...collections, weapons: weaponDetails }, lists: { weapons: weaponList, items: itemList, armor: armorList, accessories: accessoryList }, searchDocs, itemUniverse: universe, stageGaps }
   const result = validateDataset(raw, { now: new Date(generatedAt) })
   for (const w of result.warnings) console.log(`  ${formatWarning(w)}`)
   if (!result.ok) {
@@ -351,7 +391,7 @@ async function main(): Promise<number> {
   }
 
   // sprite manifest (public/, committed; binaries are local-only). B30: files over 100 KB list a thumbnail.
-  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites].map((f) => {
+  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites, ...armor.sprites, ...accessories.sprites].map((f) => {
     const thumbnail = thumbnailFor(f)
     return thumbnail ? { ...f, thumbnail } : f
   })
@@ -359,7 +399,7 @@ async function main(): Promise<number> {
   const heavyWithoutThumbnail = spriteManifest.files.filter((f) => f.bytes > THUMBNAIL_MIN_BYTES && !f.thumbnail)
   for (const f of heavyWithoutThumbnail) console.log(`  [W_THUMBNAIL] ${f.path}: ${f.bytes} B but the thumbnail generator decodes GIF only — no thumbnail listed`)
   const spritePaths = new Set(spriteManifest.files.map((f) => f.path))
-  const usedSprites = [...weaponDetails, ...first.dataset.bosses, ...itemDetails].flatMap((r) => (r.sprite ? [r.sprite] : []))
+  const usedSprites = [...weaponDetails, ...first.dataset.bosses, ...itemDetails, ...armorDetails, ...accessoryDetails].flatMap((r) => (r.sprite ? [r.sprite] : []))
   const unlisted = usedSprites.filter((p) => !spritePaths.has(p))
   if (unlisted.length > 0 || spritePaths.size !== spriteManifest.files.length || usedSprites.length !== spritePaths.size) {
     console.error(`FAIL — sprite manifest: ${unlisted.length} sprite path(s) missing from the manifest, or duplicate / unused paths`)
@@ -376,6 +416,11 @@ async function main(): Promise<number> {
     [collectionFile('items'), serializeRecords(itemDetails)],
     [LIST_FILES.items, serializeRecords(itemList)],
     [collectionFile('buffs'), serializeRecords(first.dataset.buffs)],
+    [collectionFile('armor'), serializeRecords(armorDetails)],
+    [LIST_FILES.armor, serializeRecords(armorList)],
+    [collectionFile('accessories'), serializeRecords(accessoryDetails)],
+    [LIST_FILES.accessories, serializeRecords(accessoryList)],
+    [collectionFile('armorSets'), serializeRecords(setDetails)],
     [SEARCH_DOCS_FILE, serializeRecords(searchDocs)],
     [collectionFile('recipes'), serializeRecords(recipes.recipes)],
     [collectionFile('recipeGroups'), serializeRecords(recipes.groups)],
@@ -484,6 +529,83 @@ async function main(): Promise<number> {
   }
   const stageCounts = (stage: (r: (typeof derivedRecords)[number]) => string) => (Object.keys(STAGE_ORDER) as (keyof typeof STAGE_ORDER)[]).map((st) => `${st} ${weaponDetails.filter((w) => w.gatedBy && stage(w) === st).length}`).join(', ')
 
+  // ---- P2-S8 report inputs ----
+  const esc = (t: string) => t.replaceAll('|', '\\|').replaceAll('\n', ' / ')
+  const itemRowsAll = sync.tables.Items.rows
+  const typedArmorRows = itemRowsAll.filter((r) => itemTypeIncludes(r, 'armor')).length
+  const iiStats = (i: { stats: Readonly<Record<string, unknown>> }) => i.stats as Record<string, unknown>
+  const iteminfoArmor = [...iteminfo.items.values()].filter((i) => iteminfoArmorSlot(i) && iiStats(i).vanity !== true)
+  const iteminfoAccessories = [...iteminfo.items.values()].filter((i) => iiStats(i).accessory === true)
+  const iteminfoFunctionalAcc = iteminfoAccessories.filter((i) => iiStats(i).vanity !== true)
+  const emittedEquipIds = new Set([...armorDetails, ...accessoryDetails].map((r) => r.id))
+  const iteminfoEquipOnly = [...iteminfoArmor, ...iteminfoFunctionalAcc].filter((i) => !emittedEquipIds.has(i.id))
+  const armorCat = reconcileCategories(sync.armorCategories, itemRowsAll, armorDetails, armor.identification, armor.pageOf)
+  const accCat = reconcileCategories(sync.accessoryCategories, itemRowsAll, accessoryDetails, accessories.identification, accessories.pageOf, accessories.vanityRows)
+  const bucketTable = (c: typeof armorCat, noun: string): [string, number][] => (Object.keys(PAGE_BUCKET_LABEL) as PageBucket[]).map((k) => [`− ${PAGE_BUCKET_LABEL[k].replaceAll('weapon', noun)}`, c.buckets[k].length])
+  const armorBuckets = bucketTable(armorCat, 'armor')
+  const accBuckets = bucketTable(accCat, 'accessory')
+  const setCategoryPages = new Set([...sync.armorCategories.categories].filter(([t]) => t.startsWith('Category:Armor sets')).flatMap(([, c]) => c.pages))
+  const setReportPages = new Set(armor.setReport.map((r) => r.page))
+  const setPagesOutsideCategory = [...setReportPages].filter((p) => !setCategoryPages.has(p)).sort()
+  const categorySetPagesWithoutRow = [...setCategoryPages].filter((p) => !setReportPages.has(p)).sort()
+  const slotCount = (slot: string) => armorDetails.filter((p) => p.slot === slot).length
+  const tinkererRecipes = recipes.recipes.filter((r) => r.stations.some((s) => s.kind === 'item' && s.itemId === TINKERERS_WORKSHOP_ITEM_ID))
+  const accessoryIdSet = new Set(accessoryDetails.map((a) => a.id))
+  const tinkererToAccessory = tinkererRecipes.filter((r) => accessoryIdSet.has(r.resultItemId))
+  const tinkeringLinks = accessoryDetails.reduce((n, a) => n + a.combinedFrom.length, 0)
+  const ruleUsage = (id: string) => [armor.ruleCounts.get(id)?.count ?? 0, accessories.ruleCounts.get(id)?.count ?? 0] as const
+  const ruleExample = (id: string) => armor.ruleCounts.get(id)?.example ?? accessories.ruleCounts.get(id)?.example
+  const proposals = new Map<string, { rules: string[]; lines: number; examples: string[] }>()
+  for (const r of EFFECT_RULES) {
+    const proposed = r.kind === 'special' ? r.proposed : r.kind === 'stat' ? r.remainder?.proposed : undefined
+    if (!proposed) continue
+    const [a, b] = ruleUsage(r.id)
+    const p = proposals.get(proposed) ?? { rules: [], lines: 0, examples: [] }
+    p.rules.push(r.id)
+    p.lines += a + b
+    const ex = ruleExample(r.id)
+    if (ex) p.examples.push(`${ex.name}: "${ex.line}" (${ex.url})`)
+    proposals.set(proposed, p)
+  }
+  const equipOutcomes = (m: ReadonlyMap<number, { outcome: string }>) => {
+    const out = new Map<string, number>()
+    for (const v of m.values()) out.set(v.outcome, (out.get(v.outcome) ?? 0) + 1)
+    return ['agree', 'partial', 'disagree', 'no-equipinfo-row'].map((k) => `${k} ${out.get(k) ?? 0}`).join(', ')
+  }
+  const nameOfEquip = new Map([...armorDetails, ...accessoryDetails].map((r) => [r.id, r.name]))
+  const partialLines = [...armor.equip, ...accessories.equip]
+    .filter(([, x]) => x.outcome === 'partial')
+    .map(([id, x]) => `${nameOfEquip.get(id)} (${id}): ${[...(x.textOnly.length ? [`game text only: ${x.textOnly.join(', ')}`] : []), ...(x.equipinfoOnly.length ? [`Equipinfo only: ${x.equipinfoOnly.join(', ')}`] : [])].join('; ')}`)
+  const wingSlotOf = (id: number): unknown => (iteminfo.items.get(id)?.stats as Record<string, unknown> | undefined)?.wingSlot
+  const wingRecords = accessoryDetails.filter((a) => {
+    const slot = wingSlotOf(a.id)
+    return typeof slot === 'number' && slot > 0
+  })
+  const unknownEffectAccessories = accessoryDetails.filter((a) => a._prov.unverifiedFields.includes('effects'))
+  const pieceById = new Map(armorDetails.map((p) => [p.id, p]))
+  const effectText = (e: { kind: string; stat?: string; value?: number; scope?: string; text?: string }) => (e.kind === 'stat' ? `${e.stat} ${e.value}${e.scope ? ` (${e.scope})` : ''}` : `special "${e.text}"`)
+  const byKind = (idn: { excluded: readonly { kind: string }[] }) => {
+    const m = new Map<string, number>()
+    for (const e of idn.excluded) m.set(e.kind, (m.get(e.kind) ?? 0) + 1)
+    return [...m].sort()
+  }
+  const iteminfoArmorOnly = iteminfoEquipOnly.filter((i) => iteminfoArmor.includes(i))
+  const iteminfoAccOnly = iteminfoEquipOnly.filter((i) => iteminfoFunctionalAcc.includes(i))
+  const iiName = (i: { id: number; name?: string; internalName: string }) => `${i.name ?? i.internalName} (${i.id})`
+  const accRowById = new Map(accessories.identification.included.map((c) => [c.item.id, c.row]))
+  const setlessPieces = armorDetails.filter((p) => !p.setId)
+  const withheldSetPages = new Set(armor.setReport.filter((r) => r.outcome === 'withheld').map((r) => r.page))
+  const cycles = accessoryDetails.flatMap((a) => a.combinedFrom.filter((b) => b > a.id && accessoryDetails.find((x) => x.id === b)?.combinedFrom.includes(a.id)).map((b) => `${a.name} ↔ ${nameOfEquip.get(b)}`))
+  const groupOnlyTinkerer = tinkererToAccessory.filter((r) => r.ingredients.some((i) => i.ref.kind === 'group'))
+  const armorXc = (field: string) => armor.crossCheck.get(field) ?? { agree: 0, mismatch: 0, noWikiValue: 0 }
+  const accXc = (field: string) => accessories.crossCheck.get(field) ?? { agree: 0, mismatch: 0, noWikiValue: 0 }
+  const setRowsByPage = new Map<string, number>()
+  for (const r of armorSetRows(itemRowsAll)) setRowsByPage.set(String(r._page ?? ''), (setRowsByPage.get(String(r._page ?? '')) ?? 0) + 1)
+  const multiRowSetPages = [...setRowsByPage].filter(([, n]) => n > 1).sort()
+  const statKinds = new Set<string>(StatKind.options)
+  const reconciles = (a: number, b: number) => (a === b ? '(reconciles)' : '(DOES NOT RECONCILE)')
+  const ruleEmits = (r: (typeof EFFECT_RULES)[number]) => (r.kind === 'flavor' ? 'nothing (flavor / explanation)' : r.kind === 'special' ? `special${r.proposed ? ` — would be a stat under "${r.proposed}"` : ''}` : `stat${r.remainder ? ` + special (remainder${r.remainder.proposed ? `; "${r.remainder.proposed}"` : ''})` : ''}`)
+
   const resolutions = [
     {
       id: '#4 NPCs table per-difficulty hp/defense',
@@ -516,6 +638,10 @@ async function main(): Promise<number> {
     {
       id: 'critPct for summon weapons',
       text: `The wiki's Critical hit page (rev 1032172) states summon damage cannot normally deal critical hits, and the infobox shows no crit for all ${summonCrit.agree} summon weapons; critPct is therefore not applicable (absent, not listed). Classless weapons show no crit either but no rule is documented → Unknown.`,
+    },
+    {
+      id: '#5 Equipinfo columns (defense, tooltip, wing flight time) (RESOLVED, P2-S8)',
+      text: `Cargo Equipinfo (${Object.keys(sync.equipinfo.fields).length} columns, ${sync.equipinfo.rows.length} rows on Template:GetEquipInfo/db) is the wiki's transcription of the game's UpdateEquip effect code per item: class damage as fractions (meleeDamage "+0.1"), crit / mana / minion slots as integers, moveSpeed, endurance, pickSpeed, whipRangeMultiplier, flags (noKnockback, fireWalk, buffImmune lists, accRunSpeed …). It has NO defense, tooltip or wing flight-time column: defense comes from Module:Iteminfo/data \`defense\` (cross-checked with the Cargo Items infobox: armor ${armorXc('defense').agree} agree / ${armorXc('defense').mismatch} mismatch; accessories ${accXc('defense').agree} / ${accXc('defense').mismatch}), the tooltip from Cargo Items \`tooltip\` (game text), and flight time from the "Wings" article list table (Iteminfo \`wingSlot\` only names the wing). ${accessories.unattributedEquipinfoRows} Equipinfo rows carry no item ID (effect code shared by several items). Equipinfo is therefore the cross-check of the tooltip-derived stats, not their source.`,
     },
     ...STATIC_RESOLUTIONS,
   ]
@@ -711,9 +837,167 @@ async function main(): Promise<number> {
       ],
     },
     {
+      title: 'Armor — identification and count reconciliation (P2-S8)',
+      lines: [
+        '| Step | Count |',
+        '|---|---:|',
+        `| Cargo Items rows whose infobox type contains "armor" | ${typedArmorRows} |`,
+        `| − set rows (type "armor" + "set" = the set infobox of a set article, not an item; ${armor.setPages} set articles) | ${armor.setRows} |`,
+        `| = armor piece rows | ${armor.identification.typedRows} |`,
+        ...byKind(armor.identification).map(([k, n]) => `| − excluded (${k}; one gap entry each) | ${n} |`),
+        `| **= armor pieces emitted** | **${armorDetails.length}** ${reconciles(armor.identification.typedRows - armor.identification.excluded.length, armorDetails.length)} |`,
+        `|   head / chest / legs | ${slotCount('head')} / ${slotCount('chest')} / ${slotCount('legs')} |`,
+        `|   pieces of an emitted set (setId) / without a set | ${armorDetails.length - setlessPieces.length} / ${setlessPieces.length} |`,
+        `| Module:Iteminfo/data non-vanity items with exactly one head/body/leg slot | ${iteminfoArmor.length} |`,
+        `|   = emitted armor pieces (every emitted piece is one) + Iteminfo-only | ${armorDetails.length} + ${iteminfoArmorOnly.length} ${reconciles(armorDetails.length + iteminfoArmorOnly.length, iteminfoArmor.length)} |`,
+        '',
+        `**Wiki category tree** — ${sync.armorCategories.roots.join(' + ')}: ${armorCat.treeCategories} categories (${[...sync.armorCategories.categories.keys()].map((k) => k.replace('Category:', '')).join(', ')}), ${armorCat.treePages} distinct articles.`,
+        '',
+        '| Category-tree articles | Count |',
+        '|---|---:|',
+        `| articles in the tree | ${armorCat.treePages} |`,
+        ...armorBuckets.map(([k, n]) => `| ${k} | ${n} |`),
+        `| = check: ${sum(armorBuckets.map(([, n]) => n))} classified | ${armorCat.treePages - sum(armorBuckets.map(([, n]) => n)) === 0 ? 'OK' : 'MISMATCH'} |`,
+        `| armor pieces hosted by the ${armorCat.buckets['weapon-article'].length} armor articles | ${armorCat.weaponsOnTreePages} |`,
+        `| + armor pieces whose article is outside the tree | ${armorCat.weaponsOutsideTree.length} |`,
+        `| **= armor pieces emitted** | **${armorCat.weaponsOnTreePages + armorCat.weaponsOutsideTree.length}** ${reconciles(armorCat.weaponsOnTreePages + armorCat.weaponsOutsideTree.length, armorDetails.length)} |`,
+        '',
+        `- Non-armor item articles in the tree, by infobox type: ${[...armorCat.nonWeaponTypes].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join('; ') || 'none'} (${list(armorCat.buckets['non-weapon-item-article'])})`,
+        `- Excluded-row articles: ${list(armorCat.buckets['excluded-weapon-rows'])}`,
+        `- Articles without an item infobox: ${list(armorCat.buckets['no-item-infobox'])}`,
+        `- Redirects: ${list(armorCat.buckets.redirect)}`,
+        `- Missing pages: ${list(armorCat.buckets['missing-page'])}`,
+        `- Armor pieces outside the tree: ${list(armorCat.weaponsOutsideTree)}`,
+        `- Iteminfo armor-slot items (non-vanity) without an armor record — not typed "armor" by the wiki or excluded above (the wiki's item type decides; item corpus P6-S0): ${list(iteminfoArmorOnly.map(iiName))}`,
+        '',
+        '| Cross-check | Agree | Mismatch (value withheld) | No wiki value |',
+        '|---|---:|---:|---:|',
+        ...[...armor.crossCheck].map(([f, c]) => `| ${f} | ${c.agree} | ${c.mismatch} | ${c.noWikiValue} |`),
+      ],
+    },
+    {
+      title: 'Armor sets — set articles, class-variant helmets, set bonuses (P2-S8)',
+      lines: [
+        `${armor.setRows} Cargo set rows on ${armor.setPages} set articles → **${setDetails.length} armor sets emitted** + ${withheldSetPages.size} withheld by a reviewed, quote-checked pipeline/overlays/armor-sets.json entry (${[...withheldSetPages].join(', ')}; one count-reconciliation gap each, their pieces carry no setId) ${reconciles(setDetails.length + withheldSetPages.size, armor.setPages)}. Articles with several set rows: ${list(multiRowSetPages.map(([p, n]) => `${p} ${n}`))}. Validate checks every set as a hard §7a-6 rule: pieces resolve with the matching slot, piece setId back-refs agree (E_DERIVED_MISMATCH), helmets are not repeated and variants ⇄ helmets are bijective (${setDetails.reduce((n, s) => n + s.variants.length, 0)} variants = ${setDetails.reduce((n, s) => n + s.pieces.helmets.length, 0)} helmets).`,
+        '',
+        `Category check: set articles not in a Category:Armor sets* category: ${list(setPagesOutsideCategory)}; Category:Armor sets* articles without a Cargo set row: ${list(categorySetPagesWithoutRow)}.`,
+        '',
+        `Set Defense totals (infobox, per helmet or one total) vs Σ piece defense (each piece Iteminfo, cross-checked): ${armorXc('set Defense total (infobox vs Σ piece defense)').agree} agree, ${armorXc('set Defense total (infobox vs Σ piece defense)').mismatch} mismatch, ${armorXc('set Defense total (infobox vs Σ piece defense)').noWikiValue} without a total. Variant class (editorialFields) = the damage-class signals of helmet + chest + legs + set bonus stats; hybrid sets are ruled "other" by a quoted overlay entry. Set stage = earliest stage a complete set can be assembled, Unknown unless every piece stage is derived (${setDetails.filter((s) => s.stage).length}/${setDetails.length} derived).`,
+        '',
+        '| Set | Stage | Helmet → class | Chest · Legs | Set bonus (structured; specials quoted) |',
+        '|---|---|---|---|---|',
+        ...setDetails.map((s) => {
+          const how = armor.setReport.find((r) => r.id === s.id)?.detail ?? ''
+          const name = (id: number) => pieceById.get(id)?.name ?? `#${id}`
+          const bonuses = s.variants.map((v) => `${s.variants.length > 1 ? `${name(v.helmetId)}: ` : ''}${v.setBonus.map(effectText).join('; ')}`)
+          return `| ${s.name} | ${s.stage ?? 'Unknown'} | ${esc(how)} | ${esc(`${name(s.pieces.chest)} · ${name(s.pieces.legs)}`)} | ${esc(bonuses.join(' ‖ '))} |`
+        }),
+        '',
+        `Armor pieces without a set (${setlessPieces.length}): on withheld set articles — ${list(setlessPieces.filter((p) => withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => p.name))}; on other articles — ${list(setlessPieces.filter((p) => !withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => `${p.name} (${armor.pageOf.get(p.id)})`))}.`,
+      ],
+    },
+    {
+      title: 'Accessories — identification and count reconciliation (P2-S8)',
+      lines: [
+        '| Step | Count |',
+        '|---|---:|',
+        `| Cargo Items rows whose infobox type contains "accessory" | ${accessories.identification.typedRows + accessories.vanityRows.length} |`,
+        `| − vanity accessories (also typed "vanity": cosmetic, incl. music boxes → item corpus P6-S0; no gap) | ${accessories.vanityRows.length} |`,
+        `| = functional accessory rows | ${accessories.identification.typedRows} |`,
+        ...byKind(accessories.identification).map(([k, n]) => `| − excluded (${k}; one gap entry each) | ${n} |`),
+        `| **= accessories emitted** | **${accessoryDetails.length}** ${reconciles(accessories.identification.typedRows - accessories.identification.excluded.length, accessoryDetails.length)} |`,
+        ...EFFECT_CATEGORIES.map((c) => `|   category ${c} (editorial; an accessory can have several) | ${accessoryDetails.filter((a) => a.categories.includes(c)).length} |`),
+        `|   effects Unknown (empty + listed) | ${unknownEffectAccessories.length} |`,
+        `| Module:Iteminfo/data items with \`accessory\` true | ${iteminfoAccessories.length} |`,
+        `|   − \`vanity\` true | ${iteminfoAccessories.length - iteminfoFunctionalAcc.length} |`,
+        `|   = functional = emitted accessories + Iteminfo-only | ${accessoryDetails.length} + ${iteminfoAccOnly.length} ${reconciles(accessoryDetails.length + iteminfoAccOnly.length, iteminfoFunctionalAcc.length)} |`,
+        '',
+        `**Wiki category tree** — ${sync.accessoryCategories.roots.join(' + ')}: ${accCat.treeCategories} categories (${[...sync.accessoryCategories.categories.keys()].map((k) => k.replace('Category:', '')).join(', ')}), ${accCat.treePages} distinct articles.`,
+        '',
+        '| Category-tree articles | Count |',
+        '|---|---:|',
+        `| articles in the tree | ${accCat.treePages} |`,
+        ...accBuckets.map(([k, n]) => `| ${k} | ${n} |`),
+        `| = check: ${sum(accBuckets.map(([, n]) => n))} classified | ${accCat.treePages - sum(accBuckets.map(([, n]) => n)) === 0 ? 'OK' : 'MISMATCH'} |`,
+        `| accessories hosted by the ${accCat.buckets['weapon-article'].length} accessory articles | ${accCat.weaponsOnTreePages} |`,
+        `| + accessories whose article is outside the tree | ${accCat.weaponsOutsideTree.length} |`,
+        `| **= accessories emitted** | **${accCat.weaponsOnTreePages + accCat.weaponsOutsideTree.length}** ${reconciles(accCat.weaponsOnTreePages + accCat.weaponsOutsideTree.length, accessoryDetails.length)} |`,
+        '',
+        `- Non-accessory item articles in the tree, by infobox type: ${[...accCat.nonWeaponTypes].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join('; ') || 'none'} (${list(accCat.buckets['non-weapon-item-article'])})`,
+        `- Vanity-only articles (out of scope): ${list(accCat.buckets['out-of-scope-rows'])}`,
+        `- Excluded-row articles: ${list(accCat.buckets['excluded-weapon-rows'])}`,
+        `- Articles without an item infobox: ${list(accCat.buckets['no-item-infobox'])}`,
+        `- Redirects: ${list(accCat.buckets.redirect)}`,
+        `- Missing pages: ${list(accCat.buckets['missing-page'])}`,
+        `- Accessories outside the tree: ${list(accCat.weaponsOutsideTree)}`,
+        `- Iteminfo functional accessories without an accessory record — not typed "accessory" by the wiki or excluded above: ${list(iteminfoAccOnly.map(iiName))}`,
+        '',
+        '| Cross-check | Agree | Mismatch (value withheld) | No wiki value |',
+        '|---|---:|---:|---:|',
+        ...[...accessories.crossCheck].map(([f, c]) => `| ${f} | ${c.agree} | ${c.mismatch} | ${c.noWikiValue} |`),
+        '',
+        `**Effects Unknown** (A1: empty + listed, never invented): ${list(unknownEffectAccessories.map((a) => `${a.name} (${a.id}; ${tooltipEffectLines(accRowById.get(a.id) ?? {}).lines.length === 0 ? 'no game text transcribed on the wiki' : 'game text is flavor only'})`))}.`,
+      ],
+    },
+    {
+      title: 'Equipment effects — closed StatKind classification and Equipinfo cross-check (P2-S8)',
+      lines: [
+        `Every game-text line (Cargo Items \`tooltip\` for pieces and accessories, the set infobox "Set Bonus" for sets) matches exactly one rule in pipeline/merge/effects.ts — an unmatched or doubly-matched line fails the build (StatKind is closed). A stat rule's numbers must all occur in the line; specials keep the verbatim line (simulated: false, sourceUrl = the record's article). ${EFFECT_RULES.length} rules; lines classified: armor pieces + set bonuses ${sum([...armor.ruleCounts.values()].map((u) => u.count))}, accessories ${sum([...accessories.ruleCounts.values()].map((u) => u.count))}.`,
+        '',
+        '| Rule | Emits | Armor + set lines | Accessory lines | Example (wiki) |',
+        '|---|---|---:|---:|---|',
+        ...EFFECT_RULES.filter((r) => ruleUsage(r.id)[0] + ruleUsage(r.id)[1] > 0).map((r) => {
+          const [a, b] = ruleUsage(r.id)
+          const ex = ruleExample(r.id)
+          return `| ${r.id} | ${esc(ruleEmits(r))} | ${a} | ${b} | ${ex ? esc(`${ex.name}: "${ex.line}"`) : ''} |`
+        }),
+        '',
+        `Unused rules (kept for lines of other rows / platforms): ${EFFECT_RULES.filter((r) => ruleUsage(r.id)[0] + ruleUsage(r.id)[1] === 0).map((r) => r.id).join(', ') || 'none'}.`,
+        '',
+        `**Equipinfo cross-check** (Cargo Equipinfo = the wiki's UpdateEquip transcription, ${sync.equipinfo.rows.length} rows, ${accessories.unattributedEquipinfoRows} without an item ID = shared code): armor pieces — ${equipOutcomes(armor.equip)}; accessories — ${equipOutcomes(accessories.equip)}. "disagree" withholds the record's effects (Unknown + source-mismatch gap); "partial" = a field stated on one side only: game text only (shared code the wiki leaves unattributed) is kept, Equipinfo only (a stat the game text gives no number for) is a gap and never filled in. Set bonuses have no Equipinfo counterpart (UpdateArmorSet is not transcribed).`,
+        '',
+        `Partial rows: ${list(partialLines)}.`,
+      ],
+    },
+    {
+      title: 'StatKind extension candidates (amendment proposals, P2-S8)',
+      lines: [
+        'Effects the closed StatKind enum (DATA_SCHEMA_SPEC §2.3) cannot express are emitted as `special` (simulated: false) — never as an invented stat. These rules name the StatKind extension that would make them structured; each row is wiki evidence (verbatim game text + article) for an amendment.',
+        '',
+        '"Existing kind" = the StatKind is in the enum but the game text states no value / unit / scope for it (a unit definition, a value source or a scope extension is the amendment); "new kind" = no StatKind covers it.',
+        '',
+        '| Proposed StatKind | Today | Lines | Rules | Evidence (first line per rule) |',
+        '|---|---|---:|---|---|',
+        ...[...proposals].sort((a, b) => b[1].lines - a[1].lines || a[0].localeCompare(b[0])).map(([k, p]) => `| ${esc(k)} | ${statKinds.has(k.split(/[\s,]/)[0]) ? 'existing kind' : 'new kind'} | ${p.lines} | ${p.rules.join(', ')} | ${esc(p.examples.join('; ') || '(no line in this sync)')} |`),
+      ],
+    },
+    {
+      title: "Tinkering — combinedFrom / upgradesTo derived from Tinkerer's Workshop recipes (§7a-7, P2-S8)",
+      lines: [
+        `Rule (validate/integrity.ts deriveTinkering, the one definition the build and validate share): a recipe whose station is the Tinkerer's Workshop (item ${TINKERERS_WORKSHOP_ITEM_ID}) and whose result is an emitted accessory links each ITEM ingredient that is itself an emitted accessory; other stations, group ingredients ("Any …") and materials never link. ${tinkererRecipes.length} Tinkerer's Workshop recipes; ${tinkererToAccessory.length} produce an emitted accessory → ${tinkeringLinks} combinedFrom links = ${accessoryDetails.reduce((n, a) => n + a.upgradesTo.length, 0)} upgradesTo links ${reconciles(tinkeringLinks, accessoryDetails.reduce((n, a) => n + a.upgradesTo.length, 0))}; ${accessoryDetails.filter((a) => a.combinedFrom.length > 0).length} accessories have combinedFrom, ${accessoryDetails.filter((a) => a.upgradesTo.length > 0).length} have upgradesTo. Validate re-derives both directions and fails on any difference (E_DERIVED_MISMATCH) — symmetric by construction and by check.`,
+        '',
+        `- Recipes with a group ingredient (the group member is not linked — groups never link): ${list(groupOnlyTinkerer.map((r) => nameOfEquip.get(r.resultItemId) ?? `i:${r.resultItemId}`))}`,
+        `- Two-way links (each is a Tinkerer's Workshop recipe on the wiki; consumers walking the tree must cycle-guard): ${list(cycles)}`,
+      ],
+    },
+    {
+      title: 'Wings — wingStats from the Wings article list table (P2-S8)',
+      lines: [
+        `${wingRecords.length} emitted accessories have an Iteminfo wing slot; the "Wings" article list table has ${accessories.wings.table.length} rows; ${wingRecords.filter((a) => a.wingStats).length} accessories carry wingStats, without a table row: ${list(accessories.wings.withoutRow)}. flightTimeTicks = round(seconds × 60) with |60·s − ticks| ≤ 0.3 (the table's 2-decimal seconds pin the tick count); hover = the horizontal speed cell lists a second "hovering" speed, cross-checked with tooltips ("Press Down to toggle hover") and the notes (${accXc('wingStats.hover (tooltip / table notes say it can hover ⇒ a hovering speed line)').agree} agree, ${accXc('wingStats.hover (tooltip / table notes say it can hover ⇒ a hovering speed line)').mismatch} mismatch); verticalSpeedTps Unknown on every wing (the table states a multiplier, not a speed).`,
+        '',
+        '| Wing | Flight time (wiki table) | flightTimeTicks | Hover |',
+        '|---|---|---:|---|',
+        ...wingRecords.map((a) => {
+          const row = accessories.wings.table.find((w) => w.itemIds.includes(a.id))
+          const shown = (v: unknown, f: string) => (v !== undefined ? String(v) : a._prov.unverifiedFields.includes(f) ? 'Unknown' : 'n/a')
+          return `| ${a.name} (${a.id}) | ${row?.flightTime ?? '—'} | ${shown(a.wingStats?.flightTimeTicks, 'wingStats.flightTimeTicks')} | ${shown(a.wingStats?.hover, 'wingStats.hover')} |`
+        }),
+      ],
+    },
+    {
       title: 'Sprites',
       lines: [
-        `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites, ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites and ${ammo.sprites.length}/${itemDetails.length} ammo item sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
+        `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites, ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites, ${ammo.sprites.length}/${itemDetails.length} ammo item sprites, ${armor.sprites.length}/${armorDetails.length} armor piece sprites and ${accessories.sprites.length}/${accessoryDetails.length} accessory sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons, ${armorDetails.length - armor.sprites.length} armor pieces and ${accessoryDetails.length - accessories.sprites.length} accessories have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
         '',
         `Thumbnails (AMENDMENTS-007 B30): every sprite file over ${THUMBNAIL_MIN_BYTES / 1024} KB gets a static PNG of its first frame, downscaled by a whole number to ≤ 128 px (nearest-neighbour block sampling — pixel art is never resampled fractionally), generated locally by \`npm run pipeline:sprites\`: ${spriteManifest.files.filter((f) => f.thumbnail).map((f) => `${f.path} (${f.ref}, ${f.bytes} B, ${f.width}×${f.height}) → ${f.thumbnail?.path} ${f.thumbnail?.width}×${f.thumbnail?.height}`).join('; ') || 'none'}. Heavy files without a thumbnail (generator decodes GIF only): ${heavyWithoutThumbnail.map((f) => f.path).join(', ') || 'none'}. Rows and cards should use the thumbnail, the full file only on detail / boss pages (UI wiring: next UI slice).`,
       ],
@@ -722,7 +1006,7 @@ async function main(): Promise<number> {
 
   const sizes: EmittedFile[] = [...budget.sizes, { file: relative(repoRoot, spriteManifestPath), bytes: Buffer.byteLength(spriteManifestText), gzBytes: gzSize(spriteManifestText) }]
   const report = renderGapReport({
-    slice: 'P3-S0',
+    slice: 'P2-S8',
     meta: result.meta,
     gaps: result.gaps,
     warnings: result.warnings,
@@ -819,7 +1103,26 @@ async function main(): Promise<number> {
           ['  with structured effects (overlay)', buffs.buffs.filter((b) => b.effects.length > 0).length],
         ],
       },
-      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + ammo items + enemies + bosses + buffs)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
+      {
+        title: 'Armor + armor sets + accessories (P2-S8 summary — details below)',
+        rows: [
+          ['armor pieces (Cargo "armor" piece rows: ' + armor.identification.typedRows + '; excluded: ' + armor.identification.excluded.length + ')', armorDetails.length],
+          ['  head / chest / legs', `${slotCount('head')} / ${slotCount('chest')} / ${slotCount('legs')}`],
+          ['  defense verified / Unknown', `${armorDetails.filter((p) => p.defense !== undefined).length} / ${armorDetails.filter((p) => p._prov.unverifiedFields.includes('defense')).length}`],
+          ['  with ≥1 acquisition route / derived gatedBy', `${armorDetails.filter((p) => p.acquisition.length > 0).length} / ${armorDetails.filter((p) => p.gatedBy).length}`],
+          ['  with a wiki sprite (manifest)', armor.sprites.length],
+          ['armor sets (set articles: ' + armor.setPages + '; withheld: ' + withheldSetPages.size + ')', setDetails.length],
+          ['  helmet variants (sets with several helmets)', `${setDetails.reduce((n, s) => n + s.variants.length, 0)} (${setDetails.filter((s) => s.variants.length > 1).length})`],
+          ['  set-bonus effects: stat / special', `${setDetails.reduce((n, s) => n + s.variants.reduce((m, v) => m + v.setBonus.filter((e) => e.kind === 'stat').length, 0), 0)} / ${setDetails.reduce((n, s) => n + s.variants.reduce((m, v) => m + v.setBonus.filter((e) => e.kind === 'special').length, 0), 0)}`],
+          ['accessories (Cargo functional "accessory" rows: ' + accessories.identification.typedRows + '; excluded: ' + accessories.identification.excluded.length + '; vanity rows not in scope: ' + accessories.vanityRows.length + ')', accessoryDetails.length],
+          ['  effects: stat / special (Unknown records)', `${accessoryDetails.reduce((n, a) => n + a.effects.filter((e) => e.kind === 'stat').length, 0)} / ${accessoryDetails.reduce((n, a) => n + a.effects.filter((e) => e.kind === 'special').length, 0)} (${unknownEffectAccessories.length})`],
+          ['  with combinedFrom / upgradesTo (Tinkerer\'s Workshop)', `${accessoryDetails.filter((a) => a.combinedFrom.length > 0).length} / ${accessoryDetails.filter((a) => a.upgradesTo.length > 0).length}`],
+          ['  wings with wingStats / wing accessories', `${wingRecords.filter((a) => a.wingStats).length} / ${wingRecords.length}`],
+          ['  with ≥1 acquisition route / derived gatedBy', `${accessoryDetails.filter((a) => a.acquisition.length > 0).length} / ${accessoryDetails.filter((a) => a.gatedBy).length}`],
+          ['  with a wiki sprite (manifest)', accessories.sprites.length],
+        ],
+      },
+      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + ammo items + armor + accessories + armor sets + enemies + bosses + buffs)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
     ],
     reasonTallies: [
       { title: 'Why drop fields are Unknown (rows per reason)', tally: drops.reasons },
@@ -827,6 +1130,10 @@ async function main(): Promise<number> {
       { title: 'Why ammo fields are Unknown / routes not modeled (ammo items per reason)', tally: ammo.reasons },
       { title: 'Why ammo gatedBy / stage are Unknown (§7b blockers, ammo items per combination)', tally: ammo.gatingBlockers },
       { title: 'Why buff fields are Unknown (buffs per reason)', tally: buffs.reasons },
+      { title: 'Why armor-piece fields are Unknown / routes not modeled (pieces per reason)', tally: armor.reasons },
+      { title: 'Why armor-piece gatedBy / stage are Unknown (§7b blockers, pieces per combination)', tally: armor.gatingBlockers },
+      { title: 'Why accessory fields are Unknown / routes not modeled (accessories per reason)', tally: accessories.reasons },
+      { title: 'Why accessory gatedBy / stage are Unknown (§7b blockers, accessories per combination)', tally: accessories.gatingBlockers },
     ],
     sections,
     ambiguousNames: new Map([...recipes.ambiguousNames, ...drops.ambiguousNames]),
@@ -845,6 +1152,7 @@ async function main(): Promise<number> {
   console.log(`  drops ${d.emittedRecords} records from ${d.emittedRows}/${d.cargoRows} rows (non-desktop ${d.nonDesktopRows}, excluded ${d.excludedRows}, split rows ${d.splitRows}, id collisions ${d.idCollisions})`)
   console.log(`  enemies ${enemies.ledger.enemies}; conditions ${conditions.length}; search docs ${searchDocs.length}; item universe ${universe.items.length}`)
   console.log(`  bosses ${first.dataset.bosses.length}; nodes ${first.dataset.nodes.length}; edges ${first.dataset.edges.length}; boss drops linked ${d.bossLinkedRecords}, event-boss n/a ${d.eventBossRecords}, mismatch ${d.bossMismatchRecords}; weapons with gatedBy ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length}`)
+  console.log(`  armor pieces ${armorDetails.length} (piece rows ${armor.identification.typedRows}, excluded ${armor.identification.excluded.length}); sets ${setDetails.length}/${armor.setPages} set articles (withheld ${withheldSetPages.size}); accessories ${accessoryDetails.length} (functional rows ${accessories.identification.typedRows}, excluded ${accessories.identification.excluded.length}, vanity ${accessories.vanityRows.length}); tinkering links ${tinkeringLinks}; wings ${wingRecords.filter((a) => a.wingStats).length}/${wingRecords.length}; effects Unknown ${unknownEffectAccessories.length}`)
   console.log(`  ammo records ${ammoRecords.length} (items ${itemDetails.length} + weapons-as-ammo ${dualRole.length}; Cargo ammunition rows ${aIdn.typedRows}, excluded ${aIdn.excluded.length}; Iteminfo ammo ${iteminfoAmmo.length}); buffs ${buffs.buffs.length} (dot ${buffs.buffs.filter((b) => b.dot).length}, structured effects ${buffs.buffs.filter((b) => b.effects.length > 0).length})`)
   console.log(`  B22 stage moves: ${b22Moved.map((x) => `${x.name} ${plainStage(x.gatedBy as { bosses: string[] })}→${x.gatedBy?.stage}`).join(', ') || 'none'}`)
   console.log(`  sprites: manifest ${spriteManifest.files.length} files (${spriteManifest.files.filter((f) => f.thumbnail).length} with a thumbnail); binaries present locally ${spriteBinaries}/${spriteManifest.files.length} (npm run pipeline:sprites)`)

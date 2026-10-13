@@ -152,7 +152,9 @@ class Checker {
   constructor(ix: DatasetIndex, scope: RefScope) {
     this.ix = ix
     this.scope = scope
-    this.itemsPending = ITEM_COLLECTIONS.some((k) => scope.pending.has(k))
+    // P2-S8: armor + accessories are produced, but the item CORPUS stays partial until P6-S0 (materials,
+    // tools, …) — a declared item universe is that declaration, so item refs keep resolving against it.
+    this.itemsPending = ITEM_COLLECTIONS.some((k) => scope.pending.has(k)) || scope.universe !== undefined
   }
 
   dangling(fromRef: string, field: string, toRef: string, detail: string) {
@@ -335,26 +337,49 @@ function checkArmor(c: Checker, ds: Dataset) {
   }
 }
 
-function checkAccessories(c: Checker, ds: Dataset) {
-  const combined = new Map<number, Map<number, string>>()
-  const upgrades = new Map<number, Map<number, string>>()
-  for (const r of ds.recipes) {
+export interface TinkeringDerivation {
+  /** Accessory → accessories it is combined from (→ the recipe that shows it). */
+  combinedFrom: Map<number, Map<number, string>>
+  /** Accessory → accessories it is an ingredient of (inverse). */
+  upgradesTo: Map<number, Map<number, string>>
+}
+
+/**
+ * §7a-7 tinkering derivation — the single definition shared by the build stage and validate: a recipe
+ * whose station is the Tinkerer's Workshop and whose result is an accessory links every ITEM
+ * ingredient that is itself an accessory (combinedFrom) and, inversely, that ingredient to the result
+ * (upgradesTo). Other stations (Shimmer, anvils), group ingredients and non-accessory ingredients
+ * (materials, Soul of Flight…) never link.
+ */
+export function deriveTinkering(recipes: readonly Recipe[], isAccessory: (id: number) => boolean): TinkeringDerivation {
+  const combinedFrom = new Map<number, Map<number, string>>()
+  const upgradesTo = new Map<number, Map<number, string>>()
+  for (const r of recipes) {
     const atTinkerer = r.stations.some((s) => s.kind === 'item' && s.itemId === TINKERERS_WORKSHOP_ITEM_ID)
-    if (!atTinkerer || !c.ix.accessories.has(r.resultItemId)) continue
+    if (!atTinkerer || !isAccessory(r.resultItemId)) continue
     for (const ing of r.ingredients) {
-      if (ing.ref.kind !== 'item' || !c.ix.accessories.has(ing.ref.itemId)) continue
-      const from = combined.get(r.resultItemId) ?? new Map<number, string>()
-      from.set(ing.ref.itemId, `rcp:${r.id}`)
-      combined.set(r.resultItemId, from)
-      const to = upgrades.get(ing.ref.itemId) ?? new Map<number, string>()
-      to.set(r.resultItemId, `rcp:${r.id}`)
-      upgrades.set(ing.ref.itemId, to)
+      if (ing.ref.kind !== 'item' || !isAccessory(ing.ref.itemId) || ing.ref.itemId === r.resultItemId) continue
+      const from = combinedFrom.get(r.resultItemId) ?? new Map<number, string>()
+      if (!from.has(ing.ref.itemId)) from.set(ing.ref.itemId, `rcp:${r.id}`)
+      combinedFrom.set(r.resultItemId, from)
+      const to = upgradesTo.get(ing.ref.itemId) ?? new Map<number, string>()
+      if (!to.has(r.resultItemId)) to.set(r.resultItemId, `rcp:${r.id}`)
+      upgradesTo.set(ing.ref.itemId, to)
     }
   }
+  return { combinedFrom, upgradesTo }
+}
+
+function checkAccessories(c: Checker, ds: Dataset) {
+  const { combinedFrom, upgradesTo } = deriveTinkering(ds.recipes, (id) => c.ix.accessories.has(id))
   for (const a of ds.accessories) {
     const ref = `i:${a.id}`
-    c.sameSet(ref, 'combinedFrom', a.combinedFrom, combined.get(a.id) ?? new Map(), (v) => `i:${v}`)
-    c.sameSet(ref, 'upgradesTo', a.upgradesTo, upgrades.get(a.id) ?? new Map(), (v) => `i:${v}`)
+    for (const [field, list] of [['combinedFrom', a.combinedFrom], ['upgradesTo', a.upgradesTo]] as const) {
+      if (new Set(list).size !== list.length) c.derived(ref, field, 'lists an accessory more than once')
+    }
+    // both directions equal ONE derivation, which is symmetric by construction ⇒ the emitted pair is symmetric
+    c.sameSet(ref, 'combinedFrom', a.combinedFrom, combinedFrom.get(a.id) ?? new Map(), (v) => `i:${v}`)
+    c.sameSet(ref, 'upgradesTo', a.upgradesTo, upgradesTo.get(a.id) ?? new Map(), (v) => `i:${v}`)
   }
 }
 
@@ -435,6 +460,14 @@ export function checkUnverifiedValues(ds: Dataset): PipelineError[] {
           zodIssues: [],
           message: `i:${r.id} acquisition: empty acquisition must be listed in _prov.unverifiedFields (§2.2)`,
         })
+      }
+    }
+  }
+  // P2-S8 (A1 principle applied to Accessory): empty effects / categories are Unknown only when listed
+  for (const a of ds.accessories) {
+    for (const field of ['effects', 'categories'] as const) {
+      if (a[field].length === 0 && !a._prov.unverifiedFields.includes(field)) {
+        errors.push({ code: 'E_SCHEMA', ref: `i:${a.id}`, zodIssues: [], message: `i:${a.id} ${field}: an empty ${field} list must be listed in _prov.unverifiedFields (Unknown, A1)` })
       }
     }
   }

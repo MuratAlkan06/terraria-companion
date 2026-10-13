@@ -202,6 +202,24 @@ describe('corrupted records fail with named errors', () => {
     expect(errors.filter((e) => e.code === 'E_DERIVED_MISMATCH').map((e) => e.message).join('\n')).toContain('does not list this piece under pieces.legs')
   })
 
+  it('E_DUPLICATE_ID: two set-bonus variants for one helmet (§7a-6 bijection, P2-S8)', () => {
+    const raw = sample()
+    const cobalt = find(raw, 'armorSets', 'cobalt')
+    cobalt.variants = [...cobalt.variants, structuredClone(cobalt.variants[0])]
+    expect(expectOnly(run(raw), 'E_DUPLICATE_ID').map((e) => e.message).join('\n')).toContain('more than one variant for helmet')
+  })
+
+  it('P2-S8 (A1): an accessory with empty effects / categories is Unknown only when listed — unlisted empties are E_SCHEMA', () => {
+    const raw = sample()
+    const shackle = find(raw, 'accessories', 216)
+    shackle.effects = []
+    shackle.categories = []
+    expect(expectOnly(run(raw), 'E_SCHEMA').map((e) => e.message)).toEqual([expect.stringContaining('i:216 effects: an empty effects list must be listed'), expect.stringContaining('i:216 categories: an empty categories list must be listed')])
+    shackle._prov.unverifiedFields = ['categories', 'effects']
+    shackle._prov.verified = false
+    expect(codesOf(run(raw))).toEqual([])
+  })
+
   it('E_DERIVED_MISMATCH (B6): tinkering combinedFrom/upgradesTo asymmetric (§7a-7)', () => {
     const raw = sample()
     find(raw, 'accessories', 54).upgradesTo = []

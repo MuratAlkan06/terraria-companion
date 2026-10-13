@@ -21,13 +21,22 @@
  * Plan (P3-S0): + the article of every weapon row in the Weapon Lab family categories (merge/labParams.ts
  * FAMILY_CATEGORIES: the article screen + overlay evidence), the mechanics articles its rules quote
  * (Use Style IDs, Broadswords, Velocity) and every page the lab-params overlay cites.
+ * Plan (P2-S8): + Cargo Equipinfo (the wiki's machine transcription of each equipable item's UpdateEquip
+ * effects — cross-check of tooltip-derived stat effects; 184 columns → compact field list) · the
+ * Category:Armor items and Category:Accessory items trees and their pages' existence (count
+ * reconciliation) · imageinfo for the armor-piece and functional-accessory rows' infobox images · the
+ * article of every armor SET row (`_page`: the set infobox "Set Bonus" row, per-helmet variants) and
+ * the "Wings" article (the wing list table: flight time, hover) · every page the armor-sets overlay cites.
  */
 import { buffArticleTitles, BUFF_IDS_PAGE, cargoBuffNames } from '../merge/buffs'
 import { bossImageFiles } from '../merge/bosses'
+import { accessoryRows, armorPieceRows, armorSetPages, WINGS_PAGE } from '../merge/equipment'
 import { LAB_RULE_PAGES, labFamilyPages } from '../merge/labParams'
 import {
+  armorSetEvidencePages,
   evidencePages,
   labEvidencePages,
+  loadArmorSetsOverlay,
   loadBossesOverlay,
   loadBuffsOverlay,
   loadConditionsOverlay,
@@ -58,6 +67,13 @@ export const WEAPON_CATEGORY_ROOTS = ['Category:Weapon items', 'Category:Weapon 
 /** Root of the wiki's ammunition category tree (verified 2026-10-13: 77 pages + 7 family subcats). */
 export const AMMO_CATEGORY_ROOTS = ['Category:Ammunition items'] as const
 
+/** P2-S8 reconciliation trees (verified 2026-10-13 via prop=categoryinfo: Armor items 97 pages + 1 subcat; Accessory items 520 pages + 1 subcat "Shield items"). */
+export const ARMOR_CATEGORY_ROOTS = ['Category:Armor items'] as const
+export const ACCESSORY_CATEGORY_ROOTS = ['Category:Accessory items'] as const
+
+/** P2-S8: Cargo Equipinfo (UpdateEquip transcription; 184 columns, fetched with the compact field list). */
+export const EQUIPINFO_TABLE = 'Equipinfo'
+
 export const PROJECTILEINFO_TITLE = 'Module:Projectileinfo/data'
 
 type PageStatus = Map<string, { exists: boolean; resolvedTitle: string }>
@@ -84,6 +100,14 @@ export interface SyncResult {
   ammoCategories: CategoryTree & { pageStatus: PageStatus }
   /** P2-S7: image metadata for the infobox image of every Cargo Items row typed "ammunition". */
   ammoImages: ImageInfoFetch
+  /** P2-S8: Cargo Equipinfo (all columns). */
+  equipinfo: CargoTableFetch
+  /** P2-S8: Category:Armor items tree + each member page's existence / redirect target. */
+  armorCategories: CategoryTree & { pageStatus: PageStatus }
+  /** P2-S8: Category:Accessory items tree + each member page's existence / redirect target. */
+  accessoryCategories: CategoryTree & { pageStatus: PageStatus }
+  /** P2-S8: image metadata for the infobox image of every armor-piece and functional-accessory row. */
+  equipmentImages: ImageInfoFetch
 }
 
 export async function runSyncPlan(client: WikiClient, log?: (line: string) => void): Promise<SyncResult> {
@@ -135,6 +159,21 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   const labTitles = [...labFamilyPages(weaponCategories, tables.Items.rows), ...LAB_RULE_PAGES, ...labEvidencePages(loadLabParamsOverlay())]
   for (const [title, article] of await fetchArticles(client, labTitles, 'articles')) articles.set(title, article)
 
+  // P2-S8
+  log?.(`Cargo ${EQUIPINFO_TABLE}`)
+  const equipFields = await cargoFields(client, EQUIPINFO_TABLE)
+  const equipinfo = await cargoQueryAll(client, EQUIPINFO_TABLE, Object.keys(equipFields), equipFields, log, { compact: true })
+  log?.(`category trees ${[...ARMOR_CATEGORY_ROOTS, ...ACCESSORY_CATEGORY_ROOTS].join(', ')}`)
+  const armorCategories = await fetchCategoryTree(client, ARMOR_CATEGORY_ROOTS)
+  const armorCategoryPages = await checkPagesExist(client, armorCategories.pages, 'pages/armor-categories')
+  const accessoryCategories = await fetchCategoryTree(client, ACCESSORY_CATEGORY_ROOTS)
+  const accessoryCategoryPages = await checkPagesExist(client, accessoryCategories.pages, 'pages/accessory-categories')
+  log?.('armor-piece + accessory image metadata (imageinfo)')
+  const equipmentImages = await fetchImageInfo(client, [...armorPieceRows(tables.Items.rows), ...accessoryRows(tables.Items.rows).functional].map((r) => String(r.imagefile ?? '')), 'images/equipment')
+  log?.('articles: armor set pages, Wings, armor-sets overlay evidence')
+  const equipmentTitles = [...armorSetPages(tables.Items.rows), WINGS_PAGE, ...armorSetEvidencePages(loadArmorSetsOverlay())]
+  for (const [title, article] of await fetchArticles(client, equipmentTitles, 'articles')) articles.set(title, article)
+
   return {
     iteminfo,
     modules,
@@ -147,6 +186,10 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
     projectileinfo,
     ammoCategories: { ...ammoCategories, pageStatus: ammoCategoryPages },
     ammoImages,
+    equipinfo,
+    armorCategories: { ...armorCategories, pageStatus: armorCategoryPages },
+    accessoryCategories: { ...accessoryCategories, pageStatus: accessoryCategoryPages },
+    equipmentImages,
   }
 }
 

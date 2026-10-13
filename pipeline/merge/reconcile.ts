@@ -11,12 +11,13 @@ import type { WeaponIdentification } from './weapons'
 
 const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
 
-export type PageBucket = 'weapon-article' | 'redirect' | 'excluded-weapon-rows' | 'non-weapon-item-article' | 'no-item-infobox' | 'missing-page'
+export type PageBucket = 'weapon-article' | 'redirect' | 'excluded-weapon-rows' | 'out-of-scope-rows' | 'non-weapon-item-article' | 'no-item-infobox' | 'missing-page'
 
 export const PAGE_BUCKET_LABEL: Record<PageBucket, string> = {
   'weapon-article': 'articles hosting ≥1 emitted weapon',
   redirect: 'redirects (category kept on a redirect page; the target article is classified on its own)',
   'excluded-weapon-rows': 'articles whose only weapon rows are excluded (no item ID / platform-exclusive)',
+  'out-of-scope-rows': 'articles whose only matching rows are out of scope by rule (P2-S8: vanity accessories → item corpus P6-S0)',
   'non-weapon-item-article': 'item articles whose infobox type is not "weapon" (tools etc.)',
   'no-item-infobox': 'articles without an item infobox (list / overview / mechanic pages)',
   'missing-page': 'member titles that do not resolve to an existing page',
@@ -47,6 +48,8 @@ export function reconcileCategories(
   weapons: readonly Pick<Weapon, 'id' | 'name'>[],
   identification: Pick<WeaponIdentification, 'excluded'>,
   pageOf: ReadonlyMap<number, string>,
+  /** P2-S8: rows of the family deliberately not emitted (vanity accessories) — their own bucket, no gap. */
+  outOfScopeRows: readonly CargoRow[] = [],
 ): CategoryReconciliation {
   const weaponPages = new Map<string, number>()
   for (const w of weapons) {
@@ -54,6 +57,7 @@ export function reconcileCategories(
     weaponPages.set(p, (weaponPages.get(p) ?? 0) + 1)
   }
   const excludedPages = new Set(identification.excluded.map((e) => str(e.row._page)))
+  const outOfScopePages = new Set(outOfScopeRows.map((r) => str(r._page)))
   const rowsByPage = new Map<string, CargoRow[]>()
   for (const r of itemRows) rowsByPage.set(str(r._page), [...(rowsByPage.get(str(r._page)) ?? []), r])
   const buckets = Object.fromEntries((Object.keys(PAGE_BUCKET_LABEL) as PageBucket[]).map((k) => [k, [] as string[]])) as Record<PageBucket, string[]>
@@ -68,6 +72,7 @@ export function reconcileCategories(
     } else if (!status?.exists) buckets['missing-page'].push(page)
     else if (status.resolvedTitle !== page) buckets.redirect.push(`${page} → ${status.resolvedTitle}`)
     else if (excludedPages.has(page)) buckets['excluded-weapon-rows'].push(page)
+    else if (outOfScopePages.has(page)) buckets['out-of-scope-rows'].push(page)
     else if ((rowsByPage.get(page) ?? []).length > 0) {
       buckets['non-weapon-item-article'].push(page)
       const types = [...new Set((rowsByPage.get(page) ?? []).flatMap((r) => str(r.type).split('^').map((t) => t.trim()).filter(Boolean)))].sort()

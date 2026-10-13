@@ -44,11 +44,17 @@ export const ArmorSet = z.strictObject({
 })
 export type ArmorSet = z.infer<typeof ArmorSet>
 
+/**
+ * P2-S8 (A1 principle, AMENDMENTS-001): `categories` / `effects` drop `.min(1)` — an accessory whose
+ * game text states no effect (new 1.4.5 items the wiki has not transcribed yet, e.g. Razortip) is
+ * Unknown, encoded as the empty list + the field in `_prov.unverifiedFields` (the pipeline's validate
+ * stage rejects an empty, unlisted list), never an invented effect.
+ */
 export const Accessory = z.strictObject({
   ...equipmentCommon,
   type: z.literal('accessory'),
-  categories: z.array(z.enum(['mobility', 'defense', 'offense', 'utility'])).min(1),
-  effects: z.array(StatEffect).min(1),
+  categories: z.array(z.enum(['mobility', 'defense', 'offense', 'utility'])),
+  effects: z.array(StatEffect),
   combinedFrom: z.array(ItemId), // DERIVED from Tinkerer's-Workshop recipes
   upgradesTo: z.array(ItemId), // DERIVED inverse
   wingStats: z
