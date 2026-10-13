@@ -18,9 +18,14 @@ export interface BottomSheetProps {
   children: ReactNode
   /** Sticky footer actions. */
   footer?: ReactNode
+  /**
+   * Always the full sheet height (85dvh) instead of fitting the content: the body then has a
+   * definite height, so content can pin a header and scroll a list of its own (the Lab's browser).
+   */
+  fill?: boolean
 }
 
-export function BottomSheet({ open, onOpenChange, trigger, title, description, children, footer }: BottomSheetProps) {
+export function BottomSheet({ open, onOpenChange, trigger, title, description, children, footer, fill = false }: BottomSheetProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
@@ -28,7 +33,8 @@ export function BottomSheet({ open, onOpenChange, trigger, title, description, c
         <Dialog.Overlay className="fixed inset-0 z-(--z-sheet) bg-night-950/75 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <Dialog.Content
           className={cx(
-            'fixed inset-x-0 bottom-0 z-(--z-sheet) flex max-h-[85dvh] flex-col border-t-2 border-panel-border bg-surface text-fg shadow-pixel',
+            'fixed inset-x-0 bottom-0 z-(--z-sheet) flex flex-col border-t-2 border-panel-border bg-surface text-fg shadow-pixel',
+            fill ? 'h-[85dvh]' : 'max-h-[85dvh]',
             'data-[state=closed]:animate-sheet-out data-[state=open]:animate-sheet-in',
           )}
         >
@@ -44,7 +50,7 @@ export function BottomSheet({ open, onOpenChange, trigger, title, description, c
           <Dialog.Description className={description ? 'mx-auto w-full max-w-xl px-4 text-sm text-fg-muted' : 'sr-only'}>
             {description ?? title}
           </Dialog.Description>
-          <div className="mx-auto w-full max-w-xl flex-1 overflow-y-auto overscroll-contain px-4 py-3">{children}</div>
+          <div className="mx-auto min-h-0 w-full max-w-xl flex-1 overflow-y-auto overscroll-contain px-4 py-3">{children}</div>
           {footer ? (
             <div className="border-t-2 border-panel-border bg-surface pb-safe">
               <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-3 px-4 py-3">{footer}</div>

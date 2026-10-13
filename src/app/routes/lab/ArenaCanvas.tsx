@@ -20,29 +20,31 @@ export interface ArenaCanvasProps {
   spriteUrl: string | null
   /** CSS px covered by the HUD along the top edge; the camera frames the scene below it. */
   insetTop?: number
-  /** CSS px covered by the HUD's bottom controls (phone framing keeps the fight above them). */
+  /** CSS px covered by the HUD's bottom controls (the camera places the fight above them). */
   insetBottom?: number
+  /** CSS px kept clear between the player's feet and the bottom controls (the first-use hint). */
+  floorPx?: number
   /** `action` zooms onto the fight (phones); `scene` keeps the whole arena composition. */
   framing?: CameraFraming
 }
 
 const loadArena = () => import('../../../lab/arena')
 
-export function ArenaCanvas({ session, spriteUrl, insetTop = 0, insetBottom = 0, framing = 'scene' }: ArenaCanvasProps) {
+export function ArenaCanvas({ session, spriteUrl, insetTop = 0, insetBottom = 0, floorPx = 0, framing = 'scene' }: ArenaCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const handleRef = useRef<ArenaHandle | null>(null)
   const [status, setStatus] = useState<Status>('loading')
   const [attempt, setAttempt] = useState(0)
   const reducedMotion = useReducedMotion()
   const reducedRef = useRef(reducedMotion)
-  const frameRef = useRef({ insetTop, insetBottom, framing })
+  const frameRef = useRef({ insetTop, insetBottom, floorPx, framing })
   useEffect(() => {
     reducedRef.current = reducedMotion
   }, [reducedMotion])
   useEffect(() => {
-    frameRef.current = { insetTop, insetBottom, framing }
+    frameRef.current = { insetTop, insetBottom, floorPx, framing }
     handleRef.current?.refit()
-  }, [insetTop, insetBottom, framing])
+  }, [insetTop, insetBottom, floorPx, framing])
 
   useEffect(() => {
     const host = hostRef.current
@@ -54,6 +56,7 @@ export function ArenaCanvas({ session, spriteUrl, insetTop = 0, insetBottom = 0,
           reducedMotion: () => reducedRef.current,
           insetTop: () => frameRef.current.insetTop,
           insetBottom: () => frameRef.current.insetBottom,
+          floorPx: () => frameRef.current.floorPx,
           framing: () => frameRef.current.framing,
         }),
       )

@@ -5,11 +5,25 @@
  * H3, M6).
  */
 import { describe, expect, it } from 'vitest'
+import manifest from '../../public/sprites/manifest.json'
 import type { Weapon } from '../data-access/types'
 import weaponsJson from '../data/weapons.detail.json'
-import { ARENA_CORE_X, ARENA_SET_PIECES, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
-import { bladeSpriteTransform, DEG, guideCells, interpolateBlade, spriteTipOffset, swingEndAngle, swingStartAngle, trailSpan } from './blade'
-import { actionBox, DEFAULT_CAMERA, fitCamera, screenToWorld, visibleWorldX, worldToScreen, type CameraFit, type CameraOptions } from './camera'
+import { ARENA_CORE_X, ARENA_LAYOUT, ARENA_SET_PIECES, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
+import {
+  bladeSpriteTransform,
+  DEG,
+  guideCells,
+  interpolateBlade,
+  spriteTipOffset,
+  streakCells,
+  swingEndAngle,
+  swingStartAngle,
+  THRUST_HAND,
+  THRUST_LUNGE,
+  thrustVisual,
+  trailSpan,
+} from './blade'
+import { actionBox, DEFAULT_CAMERA, fitCamera, PLAYER_TOP_Y, screenToWorld, visibleWorldX, worldToScreen, type CameraFit, type CameraOptions } from './camera'
 import {
   FLOAT_GAP_X,
   FLOAT_GAP_Y,
@@ -26,8 +40,17 @@ import {
 import { createLabSession } from './labSession'
 import { labWeapons } from './labWeapons'
 
-const weapons = labWeapons(weaponsJson as Weapon[])
+/** The swing renderer's subjects: every equippable swung weapon (thrusts draw no arc or guide). */
+const weapons = labWeapons(weaponsJson as Weapon[]).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
 const byName = (name: string) => weapons.find((w) => w.name === name)!
+/** Every equippable thrust weapon (spears, shortswords), with its sprite's size from the sprite manifest. */
+const thrusts = labWeapons(weaponsJson as Weapon[])
+  .filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'thrust')
+  .map((weapon) => {
+    const file = manifest.files.find((f) => f.path === weapon.sprite)
+    if (!file?.width || !file.height) throw new Error(`no sprite size for ${weapon.name}`)
+    return { weapon, width: file.width, height: file.height }
+  })
 
 /**
  * Rendered damage-number boxes, as measured in the browser (Press Start 2P BitmapFonts): one glyph
@@ -514,5 +537,241 @@ describe('camera: crisp pixels at every size', () => {
       expect(back.x).toBeCloseTo(x, 9)
       expect(back.y).toBeCloseTo(y, 9)
     }
+  })
+})
+
+describe('thrust sprite at native art scale (design review P3-S2/S3 H1)', () => {
+  /** Every pose one auto-aimed (Space) attack draws over two whole thrusts: each tick at three interpolation alphas. */
+  function thrustPoses(weapon: Weapon) {
+    const created = createLabSession(weapon, { seed: () => 2 })
+    if (!created.ok) throw new Error('refused')
+    const s = created.session
+    s.press('key')
+    const poses: { angle: number; length: number; facing: 1 | -1 }[] = []
+    for (let f = 0; f < 2 * (weapon.useAnimationTicks ?? 30) + 4; f++) {
+      s.frame(1000 / 60)
+      const { blade, facing } = s.sim.renderState()
+      if (blade?.kind !== 'thrust') continue
+      for (const alpha of [0, 0.5, 1]) poses.push({ ...interpolateBlade(blade, alpha), facing })
+    }
+    return { poses, reach: s.reachTiles }
+  }
+  const along = (p: { x: number; y: number }, angle: number) => p.x * Math.cos(angle) + p.y * Math.sin(angle)
+  /** The sprite box's four corners (game px from the player's centre), as the renderer places them. */
+  function corners(v: ReturnType<typeof thrustVisual>, width: number, height: number) {
+    const { rotation, scaleX, scaleY } = v.transform
+    const cos = Math.cos(rotation)
+    const sin = Math.sin(rotation)
+    // Anchor (0, 1): local (0, 0) is the handle; the box spans x ∈ [0, w], y ∈ [−h, 0].
+    return [
+      [0, 0],
+      [width, 0],
+      [0, -height],
+      [width, -height],
+    ].map(([lx, ly]) => ({ x: v.handle.x + lx * scaleX * cos - ly * scaleY * sin, y: v.handle.y + lx * scaleX * sin + ly * scaleY * cos }))
+  }
+
+  it('the fixtures: every equippable thrust weapon, sprites authored in 2×2 texel blocks (one 2-game-px art pixel at 1:1)', () => {
+    expect(thrusts.length).toBeGreaterThanOrEqual(18)
+    expect(thrusts.map((t) => t.weapon.name)).toEqual(expect.arrayContaining(['Adamantite Glaive', 'Spear']))
+    // Native scale is 1 game px per texel, so a sprite's visual pixel (2×2 texels) is GAME_PX_PER_ART_PX —
+    // the size of the player's and the arena's art pixels.
+    expect(GAME_PX_PER_ART_PX).toBe(2)
+    for (const { width, height } of thrusts) expect([width % 2, height % 2]).toEqual([0, 0])
+  })
+
+  it('every pose of every thrust: native scale (1 game px per sprite px), held at the hand, never sliding back behind it', () => {
+    for (const { weapon, width, height } of thrusts) {
+      const { poses, reach } = thrustPoses(weapon)
+      expect(poses.length, weapon.name).toBeGreaterThan(20)
+      const diagonal = Math.hypot(width, height)
+      let maxLunge = 0
+      for (const { angle, length, facing } of poses) {
+        const v = thrustVisual(angle, length, reach, facing, width, height)
+        const hand = along({ x: facing * THRUST_HAND.x, y: THRUST_HAND.y }, angle)
+        // Native art scale, mirrored by facing — whatever the reach (the old sprite was scaled to it).
+        expect(Math.abs(v.transform.scaleX), weapon.name).toBe(1)
+        expect(v.transform.scaleY).toBe(1)
+        expect(Math.sign(v.transform.scaleX)).toBe(facing)
+        // The transform and the position agree: the tip is the sprite's own diagonal along the aim.
+        const tip = spriteTipOffset(v.transform, width, height)
+        expect(v.handle.x + tip.x).toBeCloseTo(v.tip.x, 9)
+        expect(v.handle.y + tip.y).toBeCloseTo(v.tip.y, 9)
+        expect(along(v.tip, angle) - along(v.handle, angle)).toBeCloseTo(diagonal, 9)
+        // No backslide: the handle is at or ahead of the hand (by at most the lunge), and no corner
+        // of the sprite is behind the hand along the aim — nor behind the player's centre at all.
+        const lunge = along(v.handle, angle) - hand
+        expect(lunge, weapon.name).toBeGreaterThanOrEqual(-1e-9)
+        expect(lunge).toBeLessThanOrEqual(THRUST_LUNGE * diagonal + 1e-9)
+        maxLunge = Math.max(maxLunge, lunge)
+        for (const c of corners(v, width, height)) {
+          expect(along(c, angle), weapon.name).toBeGreaterThanOrEqual(hand - 1e-9)
+          expect(c.x * facing, weapon.name).toBeGreaterThanOrEqual(0)
+        }
+        // The weapon never pokes past the modeled reach (unless the sprite itself is longer)…
+        expect(along(v.tip, angle)).toBeLessThanOrEqual(Math.max(reach * GAME_PX_PER_TILE, hand + diagonal) + 1e-9)
+        // …and the streak shows exactly the rest of the engine's extension, along the weapon's axis.
+        const extension = length * GAME_PX_PER_TILE
+        if (v.pierce) {
+          expect(v.pierce.from).toEqual(v.tip)
+          expect(along(v.pierce.to, angle), weapon.name).toBeCloseTo(extension, 9)
+        } else {
+          expect(extension).toBeLessThan(along(v.tip, angle) + 1)
+        }
+      }
+      // Spears lunge with the thrust; a shortsword whose sprite already spans its reach stays put.
+      if (reach * GAME_PX_PER_TILE > diagonal + THRUST_HAND.x + 4) expect(maxLunge, weapon.name).toBeGreaterThan(1)
+    }
+  })
+
+  it('Adamantite Glaive (11.03 tiles) and Spear: the weapon is drawn its own length, the rest of the reach is the streak', () => {
+    for (const [name, spriteTiles] of [
+      ['Adamantite Glaive', 3.89],
+      ['Spear', 3.36],
+    ] as const) {
+      const { weapon, width, height } = thrusts.find((t) => t.weapon.name === name)!
+      const reach = weapon.labBehavior.kind === 'archetype' && weapon.labBehavior.params.archetype === 'thrust' ? weapon.labBehavior.params.reachTiles : 0
+      const full = thrustVisual(0, reach, reach, 1, width, height)
+      expect(Math.hypot(full.tip.x - full.handle.x, full.tip.y - full.handle.y) / GAME_PX_PER_TILE, name).toBeCloseTo(spriteTiles, 2)
+      // Full extension: the hand lunges a quarter of the weapon forward; the streak ends at the reach.
+      expect(full.handle.x).toBeCloseTo(THRUST_HAND.x + THRUST_LUNGE * Math.hypot(width, height), 9)
+      expect(full.pierce!.to.x / GAME_PX_PER_TILE).toBeCloseTo(reach, 9)
+      // At the start of a thrust (extension 0) the weapon sits in the hand, nothing behind the player.
+      const start = thrustVisual(0, 0, reach, 1, width, height)
+      expect(start.handle).toEqual({ x: THRUST_HAND.x, y: THRUST_HAND.y })
+      expect(start.pierce).toBeNull()
+      // The pre-fix renderer scaled the sprite to the whole reach (≈ 2.8× the Glaive's art pixels).
+      if (name === 'Adamantite Glaive') expect(bladeSpriteTransform(0, 1, width, height, reach).scaleX).toBeGreaterThan(2.5)
+    }
+  })
+
+  it('the streak is a run of art-pixel cells from the tip to the extension, no gaps, never the same cell twice in a row', () => {
+    const cell = GAME_PX_PER_ART_PX
+    for (const [from, to] of [
+      [{ x: 70, y: 5 }, { x: 176, y: 5 }],
+      [{ x: -40, y: -30 }, { x: -120, y: -95 }],
+      [{ x: 3, y: 3 }, { x: 3.5, y: 3.2 }],
+    ]) {
+      const cells = streakCells(from, to, cell)
+      expect(cells[0]).toEqual([Math.floor(from.x / cell) * cell, Math.floor(from.y / cell) * cell])
+      expect(cells.at(-1)).toEqual([Math.floor(to.x / cell) * cell, Math.floor(to.y / cell) * cell])
+      for (const [x, y] of cells) expect([x % cell, y % cell].map(Math.abs)).toEqual([0, 0])
+      for (let i = 1; i < cells.length; i++) {
+        const step = Math.max(Math.abs(cells[i][0] - cells[i - 1][0]), Math.abs(cells[i][1] - cells[i - 1][1]))
+        expect(step).toBeGreaterThan(0)
+        expect(step).toBeLessThanOrEqual(cell)
+      }
+    }
+  })
+})
+
+describe('camera: the fight clear of the HUD rows (design review P3-S2/S3)', () => {
+  /**
+   * The Lab's HUD rows as measured in the browser (CSS px): the top row, the bottom controls with
+   * the DPS graph strip (open by default from tablet up; behind the chip on phones), and the
+   * first-use hint's room above them (its height + half the HUD padding).
+   */
+  const layouts = [
+    { name: '1440', w: 864, h: 801, top: 176, bottom: 148, floor: 38, framing: 'scene' },
+    { name: '1024', w: 448, h: 669, top: 148, bottom: 136, floor: 36, framing: 'scene' },
+    { name: '768', w: 768, h: 614, top: 176, bottom: 148, floor: 38, framing: 'scene' },
+    { name: '375 graph open', w: 375, h: 447, top: 144, bottom: 132, floor: 32, framing: 'action' },
+    { name: '375', w: 375, h: 447, top: 144, bottom: 52, floor: 32, framing: 'action' },
+  ] as const
+  const melee = [...weapons, ...thrusts.map((t) => t.weapon)]
+  const fitFor = (l: (typeof layouts)[number], dpr: number, weapon: Weapon, use = { floor: true, reach: true }) => {
+    const created = createLabSession(weapon, { seed: () => 1 })
+    if (!created.ok) throw new Error('refused')
+    const { reachTiles, sim } = created.session
+    return {
+      reach: reachTiles,
+      dummies: sim.renderState().dummies,
+      fit: fitCamera(l.w, l.h, dpr, {
+        insetTop: l.top,
+        insetBottom: l.bottom,
+        floorPx: use.floor ? l.floor : 0,
+        reachTiles: use.reach ? reachTiles : 0,
+        framing: l.framing,
+        action: actionBox(reachTiles, sim.renderState().dummies),
+      }),
+    }
+  }
+
+  it('every sword and spear: the feet clear the bottom row (with the hint’s room), the head and the dummy clear the top row, the zoom unchanged', () => {
+    for (const l of layouts) {
+      for (const dpr of [1, 2]) {
+        for (const weapon of melee) {
+          const { fit, dummies } = fitFor(l, dpr, weapon)
+          const at = `${l.name}@${dpr} ${weapon.name}`
+          const px = 1 / dpr
+          // Placement only: the zoom is what it was without the hint's room and the reach lift;
+          // the scene's zoom doesn't depend on the bottom row at all.
+          expect(fit.tilePx, at).toBe(fitFor(l, dpr, weapon, { floor: false, reach: false }).fit.tilePx)
+          if (l.framing === 'scene') expect(fit.tilePx, at).toBe(fitCamera(l.w, l.h, dpr, { insetTop: l.top }).tilePx)
+          expect(worldToScreen(fit, 0, ARENA_LAYOUT.groundY).y, at).toBeLessThanOrEqual(l.h - l.bottom - l.floor + px)
+          expect(worldToScreen(fit, 0, PLAYER_TOP_Y).y, at).toBeGreaterThanOrEqual(l.top - px)
+          for (const d of dummies) expect(worldToScreen(fit, d.x, d.y - d.height / 2).y, at).toBeGreaterThanOrEqual(l.top - px)
+        }
+      }
+    }
+  })
+
+  it('desktop/tablet: the view lifts until a swing’s whole sweep clears the bottom row, stopping where the sweep’s top meets the top row', () => {
+    let whole = 0
+    let lifted = 0
+    for (const l of layouts.filter((x) => x.framing === 'scene')) {
+      for (const dpr of [1, 2]) {
+        for (const weapon of weapons) {
+          const { fit, reach } = fitFor(l, dpr, weapon)
+          const base = fitFor(l, dpr, weapon, { floor: true, reach: false }).fit
+          const at = `${l.name}@${dpr} ${weapon.name}`
+          const px = 1 / dpr
+          const limit = l.h - l.bottom
+          const sweep = (f: CameraFit) => ({ top: worldToScreen(f, 0, -reach).y, bottom: worldToScreen(f, 0, reach).y })
+          const before = sweep(base)
+          const after = sweep(fit)
+          expect(fit.originY, at).toBeLessThanOrEqual(base.originY) // only ever lifts
+          if (before.bottom <= limit + px) expect(fit.originY, at).toBe(base.originY)
+          else if (after.bottom > limit + px) {
+            // Not cleared: lifted until the sweep's top met the top row (or it was there already).
+            expect(after.top, at).toBeLessThanOrEqual(Math.max(l.top + 2 * px, before.top))
+            if (before.top >= l.top) expect(after.top, at).toBeGreaterThanOrEqual(l.top - px)
+          }
+          if (fit.originY < base.originY) lifted++
+          if (after.top >= l.top - px && after.bottom <= limit + px) whole++
+        }
+      }
+    }
+    // The lift does work, and most swords' whole sweep sits between the rows at 1440, 1024 and 768.
+    expect(lifted).toBeGreaterThan(0)
+    expect(whole).toBeGreaterThan(weapons.length * 3)
+  })
+
+  it('1440 (both panels, graph open): the Adamantite Sword’s 10.6-tile sweep (taller than the 9.9 tiles between the rows) is lifted to the top row — under a tile of its underground tail stays behind the strip', () => {
+    const l = layouts[0]
+    const { fit, reach } = fitFor(l, 1, byName('Adamantite Sword'))
+    expect(worldToScreen(fit, 0, -reach).y).toBeCloseTo(l.top, 0)
+    const hidden = worldToScreen(fit, 0, reach).y - (l.h - l.bottom)
+    expect(hidden).toBeGreaterThan(0)
+    expect(hidden).toBeLessThan(fit.tilePx)
+    // Before the lift (and the bottom-aware placement) it was 3.2 tiles.
+    const old = fitCamera(l.w, l.h, 1, { insetTop: l.top })
+    expect((worldToScreen(old, 0, reach).y - (l.h - l.bottom)) / old.tilePx).toBeGreaterThan(3)
+  })
+
+  it('with no bottom row, hint room or reach, the scene and action framings place the fight exactly as before', () => {
+    for (const [w, h, top] of [
+      [850, 802, 187],
+      [436, 668, 160],
+      [768, 614, 150],
+    ]) {
+      for (const dpr of [1, 2, 3]) {
+        const fit = fitCamera(w, h, dpr, { insetTop: top })
+        expect(fit.originY).toBe(Math.round((top + (h - top) / 2 - DEFAULT_CAMERA.focusY * fit.tilePx) * dpr) / dpr)
+      }
+    }
+    const box = actionBox(3, [{ x: 2, y: 0, width: 2, height: 3 }])
+    const fit = fitCamera(360, 447, 2, { framing: 'action', action: box, insetTop: 138, insetBottom: 52 })
+    expect(fit.originY).toBe(Math.round((138 + (447 - 138 - 52) / 2 - ((box.y0 + box.y1) / 2) * fit.tilePx) * 2) / 2)
   })
 })

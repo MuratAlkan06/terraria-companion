@@ -80,8 +80,11 @@ export function facetCounts(list: readonly WeaponListRecord[], filters: WeaponFi
   return counts
 }
 
-/** Valid values per facet for this dataset (unknown URL values are dropped, never guessed). */
-export function facetValues(list: readonly WeaponListRecord[]): Record<FacetId, readonly string[]> {
+/**
+ * Valid values per facet for this dataset (unknown URL values are dropped, never guessed). Reads
+ * only class and rarity, so the Lab's browser reuses it over full weapon records.
+ */
+export function facetValues(list: readonly Pick<WeaponListRecord, 'damageClass' | 'rarity'>[]): Record<FacetId, readonly string[]> {
   const present = new Set(list.map(rarityBucket))
   const rarity = RARITY_ORDER.map(String).filter((r) => present.has(r))
   // Keep any tier the data has that the order above doesn't know yet, then Unknown last.

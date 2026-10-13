@@ -1,8 +1,9 @@
 /**
  * Weapon Lab HTML layer (SSR markup; the PixiJS canvas is decorative and aria-hidden): the
  * permanent disclaimer (AC1), the HUD's live numbers with their EstimateLabels (AC3, UX_SPEC §8),
- * crits marked by text not colour alone (AC5, §9), the minimal picker, the LimitationCard deep-link
- * fallback, and the weapon page's SendToLabButton entry point.
+ * crits marked by text not colour alone (AC5, §9), the in-Lab browser's rows (P3-S2: every weapon,
+ * simulated vs not marked by badge) and picker intent, the LimitationCard deep-link fallback, and
+ * the weapon page's SendToLabButton entry point.
  */
 import { Tooltip } from 'radix-ui'
 import { createElement, type ReactNode } from 'react'
@@ -14,9 +15,9 @@ import { hasAssumptions } from '../../../components/assumptions'
 import { SendToLabButton } from '../../../components/SendToLabButton'
 import type { Weapon } from '../../../data-access/types'
 import weaponsJson from '../../../data/weapons.detail.json'
-import { assumptionsForEstimate, labAssumptionsFor } from '../../../lab/labAssumptions'
+import { assumptionsForEstimate } from '../../../lab/labAssumptions'
 import { createLabSession, type LabSession } from '../../../lab/labSession'
-import { APPROXIMATIONS } from '../../../sim'
+import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS } from '../../../sim'
 import {
   defaultLabWeapon,
   inGameDescription,
@@ -32,12 +33,18 @@ import { LimitationCard } from './LimitationCard'
 import { PickerIntent, type PickerAction } from './pickerIntent'
 import { SIM_DISCLAIMER, SIM_DISCLAIMER_SHORT, SimDisclaimerBar } from './SimDisclaimerBar'
 import { TargetSettingsPanel } from './TargetSettingsPanel'
-import { WeaponPicker } from './WeaponPicker'
+import { PickerRow } from './WeaponPicker'
+import { browserRows } from './browserModel'
+import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
 
 const all = weaponsJson as Weapon[]
 const byId = new Map(all.map((w) => [w.id, w]))
 const list = labWeapons(all)
-const sword = defaultLabWeapon(list)!
+/** The starter weapon the Lab falls back to (whatever archetype the data makes weakest). */
+const fallback = defaultLabWeapon(list)!
+/** A starter sword, for swing-specific checks. */
+const sword = defaultLabWeapon(list.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee'))!
+const SETTINGS = { settings: DEFAULT_LAB_SETTINGS, onSettingsChange: () => {}, locked: false }
 
 const render = (node: ReactNode) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Tooltip.Provider, null, node)))
 
@@ -90,21 +97,26 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
       expect(stat('attacks-per-sec')).toBe(hud.attacksPerSec.toFixed(2))
       expect(stat('dps')).toBe(hud.estimatedDps.toFixed(1))
       // Derived numbers (and only those) carry the "est." chip, right after the number.
-      expect([...html.matchAll(/data-estimate="([^"]+)"/g)].map((m) => m[1])).toEqual(['attacks per second', 'estimated DPS'])
-      expect(html).toMatch(/data-stat="dps"[^>]*>[^<]*<\/span><button[^>]*data-estimate="estimated DPS"[^>]*>est\./)
+      expect([...html.matchAll(/data-estimate="([^"]+)"/g)].map((m) => m[1])).toEqual(['attacks per second', 'estimated DPS while attacking'])
+      expect(html).toMatch(/data-stat="dps"[^>]*>[^<]*<\/span><button[^>]*data-estimate="estimated DPS while attacking"[^>]*>est\./)
       // Full labels are always available to screen readers, even when abbreviated on screen.
-      for (const label of ['Per hit', 'Total damage', 'Hits', 'Attacks/sec', 'Est. DPS']) expect(html).toContain(label)
+      for (const label of ['Per hit', 'Total damage', 'Hits', 'Attacks/sec', LIVE_DPS_LABEL]) expect(html).toContain(label)
+      // The live figure says what it divides by (it is not the timed test's figure).
+      expect(html).toContain(compact ? `<span aria-hidden="true">${LIVE_DPS_SHORT}</span>` : `>${LIVE_DPS_LABEL}</dt>`)
     })
   }
 
-  it('the est. DPS AssumptionsTip lists every assumption (Lab modeling choices first), sourced where a rule came from the wiki', () => {
+  it('the est. DPS AssumptionsTip leads with what it divides by, then every other assumption (Lab modeling choices first), sourced where a rule came from the wiki', () => {
     const s = session(sword)
     const dps = assumptionsForEstimate(s.assumptions, 'estimated-dps')
     if (!hasAssumptions(dps)) throw new Error('no assumptions')
-    const html = render(createElement(AssumptionsTip, { assumptions: dps, context: 'estimated DPS' }))
-    expect([...html.matchAll(/data-assumption="([^"]+)"/g)].map((m) => m[1])).toEqual(s.assumptions.map((a) => a.id))
-    expect(dps[0].id).toBe('swing-reach-arc')
-    expect(dps[0].detail).toMatch(/Lab modeling choices, not game data\.$/)
+    const html = render(createElement(AssumptionsTip, { assumptions: dps, context: 'estimated DPS while attacking' }))
+    const ids = [...html.matchAll(/data-assumption="([^"]+)"/g)].map((m) => m[1])
+    expect(ids).toEqual(['dps-while-attacking', ...s.assumptions.map((a) => a.id).filter((id) => id !== 'dps-while-attacking')])
+    expect(dps[0]).toMatchObject({ title: 'Divided by the time spent attacking' })
+    expect(dps[0].detail).toMatch(/^Estimated DPS = total damage ÷ the time spent in whole attacks/)
+    expect(dps[1].id).toBe('swing-reach-arc')
+    expect(dps[1].detail).toMatch(/Lab modeling choices, not game data\.$/)
     expect(html.match(/terraria\.wiki\.gg/g)?.length).toBeGreaterThanOrEqual(s.assumptions.filter((a) => a.sourceUrl).length)
   })
 
@@ -124,19 +136,33 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
     }
   })
 
-  it('the attacks/sec tip speaks plain words: no game-internal names, and no "shots" for a sword', () => {
+  it('the attacks/sec tip shows the engine registry’s attack-rate rule verbatim, in plain words (no game-internal names)', () => {
     for (const w of [sword, ...list.slice(0, 5)]) {
       const rate = assumptionsForEstimate(session(w).assumptions, 'attacks-per-sec')
       if (!hasAssumptions(rate)) throw new Error('no cadence assumptions')
+      expect(rate.find((a) => a.id === 'cadence'), w.name).toEqual(APPROXIMATIONS.cadence)
       const html = render(createElement(AssumptionsTip, { assumptions: rate, context: 'attacks per second' }))
       expect(html, w.name).toContain('Attack rate = 60 ÷ use time')
-      expect(html, w.name).toContain('attack animation time')
-      expect(html, w.name).not.toMatch(/useAnimation|useTime|\bShots?\b/i)
+      expect(html, w.name).toContain('how long the attack animation lasts')
+      expect(html, w.name).not.toMatch(/useAnimation|useTime/i)
     }
-    // Archetypes that fire several shots in one attack keep that sentence (conditional copy).
-    const bow = labAssumptionsFor('bow-gun', [APPROXIMATIONS.cadence]).find((a) => a.id === 'cadence')!
-    expect(bow.detail).toMatch(/Shots inside one attack repeat at the weapon’s per-hit interval\.$/)
-    expect(bow.detail).not.toMatch(/useAnimation|useTime/)
+  })
+
+  it('the est. DPS tip labels a formula thrust reach as modeled, and cites a wiki-stated one instead (AMENDMENTS-012 B56)', () => {
+    const tip = (name: string) => {
+      const w = list.find((x) => x.name === name)!
+      const dps = assumptionsForEstimate(session(w).assumptions, 'estimated-dps')
+      if (!hasAssumptions(dps)) throw new Error('no assumptions')
+      return render(createElement(AssumptionsTip, { assumptions: dps, context: 'estimated DPS' }))
+    }
+    const glaive = tip('Adamantite Glaive')
+    expect(glaive).not.toMatch(/no thrust reach|Thrust reach is modeled/)
+    expect(glaive).toContain('maximum range of approximately 11.03 tiles')
+    expect(glaive).toContain('href="https://terraria.wiki.gg/wiki/Adamantite_Glaive"')
+    const shortsword = tip('Iron Shortsword')
+    expect(shortsword).toContain('Thrust reach is modeled')
+    expect(shortsword).toMatch(/no thrust reach for this weapon/)
+    expect(shortsword).not.toContain('maximum range of approximately')
   })
 
   it('a crit is marked with the word "Crit" next to the per-hit number (not colour alone)', () => {
@@ -188,7 +214,7 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
 
   it('the target panel describes the sim’s own dummy (size and defense from the engine)', () => {
     const dummy = session(sword).sim.renderState().dummies[0]
-    const html = render(createElement(TargetSettingsPanel, { usesMana: false, dummy }))
+    const html = render(createElement(TargetSettingsPanel, { usesMana: false, dummy, ...SETTINGS }))
     expect(html).toContain('Infinite Dummy')
     expect(html).toContain(`defense ${dummy.defense} · ${dummy.width} × ${dummy.height} tiles`)
   })
@@ -196,26 +222,71 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
   it('the low-mana setting (with its wiki source) shows only for a weapon that uses mana — none of the Lab’s swords do', () => {
     const dummy = session(sword).sim.renderState().dummies[0]
     expect(list.every((w) => session(w).summary.manaCostPerUse === 0)).toBe(true)
-    const swords = render(createElement(TargetSettingsPanel, { usesMana: false, dummy }))
+    const swords = render(createElement(TargetSettingsPanel, { usesMana: false, dummy, ...SETTINGS }))
     expect(swords).not.toContain('Low-mana casting')
-    expect(swords).not.toContain('data-lab-setting')
-    const mana = render(createElement(TargetSettingsPanel, { usesMana: true, dummy }))
+    expect(swords).not.toContain('data-lab-setting="low-mana"')
+    const mana = render(createElement(TargetSettingsPanel, { usesMana: true, dummy, ...SETTINGS }))
     expect(mana).toContain('Low-mana casting')
     expect(mana).toContain('40% attack speed')
     expect(mana).toContain('href="https://terraria.wiki.gg/wiki/Mana"')
   })
 })
 
-describe('minimal weapon picker (sprite + name)', () => {
-  it('one radio per equippable weapon, the equipped one checked', () => {
-    const html = render(createElement(WeaponPicker, { weapons: list, equippedId: sword.id, sprites: null, onEquip: () => {}, name: 'p' }))
-    const radios = [...html.matchAll(/<input type="radio" id="p-(\d+)"[^>]*>/g)]
-    expect(radios.map((m) => Number(m[1]))).toEqual(list.map((w) => w.id))
-    expect(radios.filter((m) => /checked=""/.test(m[0])).map((m) => Number(m[1]))).toEqual([sword.id])
-    for (const w of list) expect(html).toContain(`>${w.name}<`)
-    expect(html).toContain(`${list.length} swung melee weapons are simulated so far`)
+describe('in-Lab browser rows (P3-S2 AC1/AC2: every weapon selectable, simulated vs not marked)', () => {
+  const rows = browserRows(all)
+  const renderRow = (row: (typeof rows)[number], extra: Partial<Parameters<typeof PickerRow>[0]> = {}) =>
+    render(
+      createElement(PickerRow, {
+        row,
+        index: 0,
+        total: rows.length,
+        name: 'p',
+        checked: false,
+        equipped: false,
+        sprites: null,
+        intent: new PickerIntent(),
+        onSelect: () => {},
+        ...extra,
+      }),
+    )
+  const radio = (html: string) => /<input type="radio"[^>]*>/.exec(html)?.[0] ?? ''
+
+  it('a simulated row: a radio with its "n of N" position, the name, base damage and a "Simulated" badge (icon + word)', () => {
+    const row = rows.find((r) => r.simulated)!
+    const html = renderRow(row, { index: 4, checked: true, equipped: true })
+    expect(radio(html)).toContain(`id="p-${row.weapon.id}"`)
+    expect(radio(html)).toContain('aria-posinset="5"')
+    expect(radio(html)).toContain(`aria-setsize="${rows.length}"`)
+    expect(radio(html)).toContain('checked=""')
+    expect(html).toContain(`>${row.weapon.name}<`)
+    expect(html).toMatch(/data-sim-badge="simulated"[^>]*><svg[^>]*aria-hidden="true"[^>]*>.*?<\/svg>Simulated<\/span>/)
+    expect(html).toContain('>Equipped<')
+    expect(html).toContain('data-lab-row="simulated"')
   })
 
+  it('a not-simulated row is just as selectable (choosing it shows its card), marked "Not simulated" with a dashed frame + icon', () => {
+    const row = rows.find((r) => !r.simulated)!
+    const html = renderRow(row, { checked: true })
+    expect(radio(html)).not.toMatch(/disabled/)
+    expect(html).toMatch(/data-sim-badge="not-simulated"[^>]*>.*?Not simulated<\/span>/)
+    expect(html).toContain('border-dashed')
+    // Checked but not equipped: "Shown" (its card is on show), never "Equipped".
+    expect(html).toContain('>Shown<')
+    expect(html).not.toContain('>Equipped<')
+  })
+
+  it('unverified damage reads "Unknown" (never blank or 0)', () => {
+    const row = rows.find((r) => r.weapon.damage === undefined)!
+    expect(renderRow(row)).toContain('data-unknown-field="damage"')
+  })
+
+  it('rarity text never sits on a light fill (contrast rule): checked and unchecked rows use night-800 surfaces', () => {
+    const row = rows[0]
+    for (const checked of [false, true]) expect(renderRow(row, { checked })).not.toContain('bg-night-700')
+  })
+})
+
+describe('weapon picker intent (radio semantics kept from P3-S1)', () => {
   // The browser's native event order for each way of choosing a row (WCAG 3.2.2: browsing with
   // arrow keys must not close the phone sheet; a deliberate pick does). `up` carries whether the
   // focused radio is checked at keyup (arrow keys check as they move, so it usually is).
@@ -321,7 +392,7 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
     const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
     expect(html).toContain('No weapon with that ID')
     expect(html).toContain('999999')
-    expect(html).toContain(`${sword.name} is equipped instead`)
+    expect(html).toContain(`${fallback.name} is equipped instead`)
   })
 })
 

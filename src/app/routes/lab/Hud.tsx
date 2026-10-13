@@ -1,4 +1,4 @@
-import { Maximize, Minimize, MousePointerClick, RotateCcw } from 'lucide-react'
+import { ChartColumn, Maximize, Minimize, MousePointerClick, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { hasAssumptions, type Assumptions } from '../../../components/assumptions'
 import { buttonClass } from '../../../components/buttonStyles'
@@ -11,21 +11,19 @@ import type { SpriteIndex, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
 import type { LabHudState } from '../../../lab/labSession'
 import { getField } from '../../../schemas/getField'
+import { format1, format2, formatInt, HUD_PANEL } from './hudStyles'
+import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
 
 /**
  * HudOverlay (UX_SPEC §3.4) — HTML over the canvas; the canvas itself is aria-hidden, so every
  * meaningful output lives here (§9). EquippedBar top-left, StatReadout cluster top-right, the
- * Reset / Fullscreen controls bottom-right. Numbers use tabular numerals so live updates never
- * shift the layout. Derived numbers carry an EstimateLabel with the session's AssumptionsTip.
- * `compact` follows the arena's own width (narrow phones, or a tablet/desktop arena squeezed by
- * side panels): short labels, content-sized columns, values that never wrap.
+ * timed tests bottom-left (./TimedTest.tsx), the Graph / Reset / Fullscreen controls bottom-right.
+ * Numbers use tabular numerals so live updates never shift the layout. Derived numbers carry an
+ * EstimateLabel with the session's AssumptionsTip. `compact` follows the arena's own width (narrow
+ * phones, or a tablet/desktop arena squeezed by side panels): short labels, content-sized columns,
+ * values that never wrap.
  */
-// Nearly opaque: the starfield must not show through the numbers.
-const PANEL = 'pointer-events-auto border-2 border-panel-border bg-night-950/95 shadow-pixel'
-
-const format1 = (n: number) => n.toFixed(1)
-const format2 = (n: number) => n.toFixed(2)
-const formatInt = (n: number) => Math.round(n).toLocaleString('en-US')
+const PANEL = HUD_PANEL
 
 export function EquippedBar({ weapon, sprites, hud, compact }: { weapon: Weapon; sprites: SpriteIndex | null; hud: LabHudState; compact: boolean }) {
   const rarityView = getField(weapon, 'rarity')
@@ -82,9 +80,12 @@ function Fact({ label, short, compact, children }: { label: string; short: strin
 
 export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; assumptions: Assumptions; compact: boolean }) {
   const last = hud.lastHit
-  // Each tip lists what its own number depends on: attacks/sec only the cadence assumptions.
+  // Each tip lists what its own number depends on: attacks/sec only the cadence assumptions; est.
+  // DPS all of them, led by what it divides by.
   const cadence = assumptionsForEstimate(assumptions, 'attacks-per-sec')
   const rateAssumptions = hasAssumptions(cadence) ? cadence : assumptions
+  const dps = assumptionsForEstimate(assumptions, 'estimated-dps')
+  const dpsAssumptions = hasAssumptions(dps) ? dps : assumptions
   return (
     <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="">
       {/* Compact: both columns reserve their width from the first frame — "999 (99 crits)" and
@@ -100,7 +101,7 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
             <span data-stat="per-hit" className="inline-flex items-center gap-1">
               {formatInt(last.amount)}
               {last.crit ? (
-                <span className="border-2 border-gold-300 px-1 text-[0.625rem] leading-3.5 font-bold tracking-wide text-gold-300 uppercase">
+                <span className="border-2 border-gold-300 px-1 text-xs leading-4 font-bold tracking-wide text-gold-300 uppercase">
                   Crit
                 </span>
               ) : null}
@@ -127,10 +128,10 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
             <EstimateLabel assumptions={rateAssumptions} context="attacks per second" />
           </span>
         </Readout>
-        <Readout label="Est. DPS" compact={compact} wide={compact}>
+        <Readout label={LIVE_DPS_LABEL} short={LIVE_DPS_SHORT} compact={compact} wide={compact}>
           <span className="inline-flex items-center gap-1">
             <span data-stat="dps">{format1(hud.estimatedDps)}</span>
-            <EstimateLabel assumptions={assumptions} context="estimated DPS" />
+            <EstimateLabel assumptions={dpsAssumptions} context="estimated DPS while attacking" />
           </span>
         </Readout>
       </dl>
@@ -141,7 +142,7 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
 function Readout({ label, short, compact, wide, children }: { label: string; short?: string; compact: boolean; wide?: boolean; children: ReactNode }) {
   return compact ? (
     <div className={cx('flex min-w-0 flex-col', wide && 'col-span-2')}>
-      <dt className="text-[0.6875rem] leading-4 font-semibold tracking-wide text-fg-muted uppercase">
+      <dt className="text-xs leading-4 font-semibold tracking-wide text-fg-muted uppercase">
         {short ? (
           <>
             <span aria-hidden="true">{short}</span>
@@ -161,23 +162,51 @@ function Readout({ label, short, compact, wide, children }: { label: string; sho
   )
 }
 
+/** The single Reset's accessible name: what one press restores (PRD P3-S2 AC3). */
+export const RESET_LABEL = 'Reset the test, target and settings'
+
 export function HudControls({
   onReset,
   fullscreen,
   onToggleFullscreen,
   compact,
+  graphOpen,
+  onToggleGraph,
+  graphId,
 }: {
   onReset: () => void
   fullscreen: boolean
   onToggleFullscreen: () => void
   compact: boolean
+  /** DpsGraph strip shown (UX_SPEC §3.4 "toggleable"; behind a "Graph" chip on phones). */
+  graphOpen?: boolean
+  onToggleGraph?: () => void
+  graphId?: string
 }) {
   const FullIcon = fullscreen ? Minimize : Maximize
+  const iconOnly = compact ? 'min-w-tap px-2' : undefined
   return (
     <div className="pointer-events-auto flex gap-2">
-      <button type="button" onClick={onReset} className={buttonClass('secondary', compact ? 'min-w-tap px-2' : undefined)} data-lab-reset="">
+      {onToggleGraph ? (
+        <button
+          type="button"
+          aria-pressed={graphOpen === true}
+          aria-controls={graphOpen ? graphId : undefined}
+          onClick={onToggleGraph}
+          className={buttonClass('secondary', cx(iconOnly, graphOpen && 'border-gold-500 bg-night-700'))}
+          data-lab-graph-toggle=""
+        >
+          <ChartColumn aria-hidden="true" className="size-5" />
+          {compact ? <span className="sr-only">Damage per second graph</span> : 'Graph'}
+        </button>
+      ) : null}
+      <button type="button" onClick={onReset} className={buttonClass('secondary', iconOnly)} data-lab-reset="">
         <RotateCcw aria-hidden="true" className="size-5" />
-        {compact ? <span className="sr-only">Reset stats and dummy</span> : 'Reset'}
+        {compact ? <span className="sr-only">{RESET_LABEL}</span> : (
+          <>
+            Reset<span className="sr-only"> the test, target and settings</span>
+          </>
+        )}
       </button>
       <button
         type="button"
@@ -192,12 +221,12 @@ export function HudControls({
   )
 }
 
-/** First-use hint; gone once the first swing of the session starts. */
-export function AttackHint({ touch }: { touch: boolean }) {
+/** First-use hint; gone once the first attack of the session starts. `verb`: "swing", "thrust"… */
+export function AttackHint({ touch, verb = 'swing' }: { touch: boolean; verb?: string }) {
   return (
     <p className={cx(PANEL, 'pointer-events-none flex items-center gap-2 px-2 py-1 text-xs text-fg md:text-sm')} data-attack-hint="">
       <MousePointerClick aria-hidden="true" className="size-4 shrink-0 text-accent" />
-      {touch ? 'Touch and hold the arena to swing' : 'Press and hold to swing · or hold Space'}
+      {touch ? `Touch and hold the arena to ${verb}` : `Press and hold to ${verb} · or hold Space`}
     </p>
   )
 }

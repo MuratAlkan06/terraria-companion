@@ -7,12 +7,14 @@ import { describe, expect, it } from 'vitest'
 import { hasAssumptions } from '../components/assumptions'
 import type { Weapon } from '../data-access/types'
 import weaponsJson from '../data/weapons.detail.json'
-import { cadenceTicksFor, TICKS_PER_SECOND, type SimEvent } from '../sim'
+import { APPROXIMATIONS, cadenceTicksFor, TICKS_PER_SECOND, type SimEvent } from '../sim'
 import { floatPose } from './floatingNumbers'
 import { createLabSession, type LabSession } from './labSession'
 import { defaultLabWeapon, labWeapons } from './labWeapons'
 
 const weapons = labWeapons(weaponsJson as Weapon[])
+/** The swung weapons among them (thrust weapons light up as their data lands — they have no arc). */
+const swords = weapons.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
 const FRAME_MS = 1000 / 60
 
 function session(weapon: Weapon, seed = 7): LabSession {
@@ -41,7 +43,7 @@ const swingParams = (w: Weapon) => {
 }
 
 describe('AC2 + AC3: swings hit the dummy; the HUD updates live', () => {
-  const sword = defaultLabWeapon(weapons)!
+  const sword = defaultLabWeapon(swords)!
 
   it('holding attack swings at the weapon’s cadence; every hit is in the HUD (per-hit, total, hits)', () => {
     const s = session(sword)
@@ -131,16 +133,17 @@ describe('AC2 + AC3: swings hit the dummy; the HUD updates live', () => {
 
 describe('AC4: two broadswords differ in arc, speed and damage — from data params, not per-weapon code', () => {
   it('every equippable sword’s swing, rate and damage come straight from its record', () => {
-    for (const w of weapons) {
+    for (const w of swords) {
       const s = session(w)
       expect(s.swing, w.name).toEqual({ arcDegrees: swingParams(w).arcDegrees, reachTiles: swingParams(w).reachTiles })
+      expect(s.reachTiles).toBe(swingParams(w).reachTiles)
       expect(s.summary.damage).toBe(w.damage)
       expect(s.summary.nominalAttacksPerSec).toBeCloseTo(TICKS_PER_SECOND / cadenceTicksFor(w, w.useAnimationTicks!), 9)
     }
   })
 
   // The shortest- and longest-reach swords in the data (whatever they are).
-  const byReach = [...weapons].sort((a, b) => swingParams(a).reachTiles - swingParams(b).reachTiles)
+  const byReach = [...swords].sort((a, b) => swingParams(a).reachTiles - swingParams(b).reachTiles)
   const [short, long] = [byReach[0], byReach.at(-1)!]
 
   it('the rendered blade sweeps the record’s arc at the record’s reach', () => {
@@ -221,15 +224,13 @@ describe('AC5: crits roll at the weapon’s crit chance and look distinct', () =
 })
 
 describe('honesty: every estimate has a populated AssumptionsTip (UX_SPEC §8)', () => {
-  it('lists the Lab’s modeling choices first, then every engine approximation verbatim (the attack-rate rule in plain words)', () => {
-    const s = session(weapons[0])
+  it('lists the Lab’s modeling choices first, then every engine approximation verbatim (the attack-rate rule included)', () => {
+    const s = session(swords[0])
     expect(hasAssumptions(s.assumptions)).toBe(true)
     const ids = s.assumptions.map((a) => a.id)
     expect(ids.slice(0, 2)).toEqual(['swing-reach-arc', 'dps-while-attacking'])
-    for (const a of s.sim.approximations) {
-      if (a.id !== 'cadence') expect(s.assumptions).toContainEqual(a)
-      else expect(s.assumptions).toContainEqual({ ...a, detail: expect.any(String) })
-    }
+    for (const a of s.sim.approximations) expect(s.assumptions).toContainEqual(a)
+    expect(s.assumptions.find((a) => a.id === 'cadence')).toEqual(APPROXIMATIONS.cadence)
     expect(new Set(ids).size).toBe(ids.length)
     for (const a of s.assumptions) {
       expect(a.title.length).toBeGreaterThan(0)
@@ -237,5 +238,35 @@ describe('honesty: every estimate has a populated AssumptionsTip (UX_SPEC §8)',
     }
     // B44/B49: the swing geometry is labeled as a modeling choice, never as game data.
     expect(s.assumptions[0].detail).toMatch(/modeling choices, not game data/)
+  })
+
+  it('thrust reach: labeled modeled only when the record lists it (B46); a wiki-stated range is cited instead (AMENDMENTS-012 B56)', () => {
+    const thrusts = weapons.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'thrust')
+    const isModeled = (w: Weapon) => (w._prov.modeledFields ?? []).includes('labBehavior.params.reachTiles')
+    const stated = thrusts.filter((w) => !isModeled(w))
+    // The nine plain spears B56 names state their range; at least one thrust weapon still uses the formula.
+    const B56 = ['Adamantite Glaive', 'Cobalt Naginata', 'Mythril Halberd', 'Orichalcum Halberd', 'Palladium Pike', 'Titanium Trident', 'Spear', 'Trident', 'Swordfish']
+    expect(stated.map((w) => w.name)).toEqual(expect.arrayContaining(B56))
+    expect(thrusts.some(isModeled)).toBe(true)
+    for (const w of thrusts) {
+      const { assumptions } = session(w)
+      const ids = assumptions.map((a) => a.id)
+      expect(new Set(ids).size, w.name).toBe(ids.length)
+      // Exactly one reach line, heading the list.
+      expect(ids.filter((id) => id.startsWith('thrust-reach')), w.name).toEqual([ids[0]])
+      if (isModeled(w)) {
+        expect(assumptions[0], w.name).toEqual(APPROXIMATIONS['thrust-reach'])
+      } else {
+        expect(ids, w.name).not.toContain('thrust-reach')
+        for (const a of assumptions) expect(a.detail, w.name).not.toMatch(/no thrust reach/)
+        const reach = w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'thrust' ? w.labBehavior.params.reachTiles : NaN
+        expect(assumptions[0], w.name).toEqual({
+          id: 'thrust-reach-stated',
+          title: 'Thrust reach is the wiki’s stated range',
+          detail: `The wiki gives this weapon a maximum range of approximately ${reach} tiles; the Lab’s thrust reaches that far.`,
+          sourceUrl: w.wikiUrl,
+        })
+      }
+    }
   })
 })

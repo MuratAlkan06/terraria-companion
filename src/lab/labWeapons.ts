@@ -5,28 +5,34 @@
  * Pure: no DOM and no renderer (Node-testable). Lab-only: it imports the sim engine, so pages
  * outside the Lab use ./labLinks.ts instead. The engine decides simulability (`assessWeapon`,
  * src/sim); the Lab UI adds which archetypes it can equip so far — `LAB_ARCHETYPES` grows as the
- * ammo (P3-S4) and mana (P3-S5) tools ship. Nothing here is per-weapon: every decision reads the
- * weapon's data.
+ * ammo (P3-S4) and mana (P3-S5) tools ship — and what setup it can provide (no ammo picker and no
+ * buff registry yet). Nothing here is per-weapon: every decision reads the weapon's data, so a
+ * weapon whose record gains params equips with no UI change.
  */
 import type { Archetype, Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
 import { assessWeapon, type NotSimulable } from '../sim'
 import { LAB_ARCHETYPES } from './labLinks'
 
+/** What the Lab UI would need before it can equip an engine-simulable weapon. */
+export type LabNeed = 'archetype' | 'ammo' | 'debuff-data'
+
 export type LabStatus =
   /** Simulated and equippable in the Lab now. */
   | { kind: 'equippable'; archetype: Archetype }
-  /** The engine can simulate it, but the Lab UI doesn't equip this archetype yet (ammo / mana tools). */
-  | { kind: 'not-in-lab-yet'; archetype: Archetype }
+  /** The engine can simulate it, but the Lab UI can't equip it yet (archetype tool, ammo picker, buff data). */
+  | { kind: 'not-in-lab-yet'; archetype: Archetype; needs: LabNeed }
   /** The engine refuses it (limitation card, custom scenario, unimplemented behavior, unverified data). */
   | { kind: 'not-simulable'; refusal: NotSimulable }
 
 export function labStatus(weapon: Weapon): LabStatus {
   const verdict = assessWeapon(weapon)
   if (!verdict.simulable) return { kind: 'not-simulable', refusal: verdict.refusal }
-  return LAB_ARCHETYPES.includes(verdict.archetype)
-    ? { kind: 'equippable', archetype: verdict.archetype }
-    : { kind: 'not-in-lab-yet', archetype: verdict.archetype }
+  const { archetype } = verdict
+  if (!LAB_ARCHETYPES.includes(archetype)) return { kind: 'not-in-lab-yet', archetype, needs: 'archetype' }
+  if (verdict.requiresAmmoClass !== null) return { kind: 'not-in-lab-yet', archetype, needs: 'ammo' }
+  if (verdict.requiresBuffIds.length > 0) return { kind: 'not-in-lab-yet', archetype, needs: 'debuff-data' }
+  return { kind: 'equippable', archetype }
 }
 
 export const isLabEquippable = (weapon: Weapon): boolean => labStatus(weapon).kind === 'equippable'
@@ -107,11 +113,27 @@ const ARCHETYPE_NOUNS: Partial<Record<Archetype, string>> = {
 export const UNASSIGNED_LIMITATION_REASON = 'Not simulated yet: Weapon Lab behavior parameters have not been assigned to this weapon.'
 export const UNASSIGNED_LIMITATION_PLAIN = 'This weapon’s unique behavior isn’t modeled in the Lab.'
 
+const ATTACK_VERBS: Partial<Record<Archetype, string>> = { 'swing-melee': 'swing', thrust: 'thrust' }
+
+/** The verb the Lab's instructions use for the equipped weapon's attack ("Hold Space to swing"). */
+export function attackVerb(archetype: Archetype): string {
+  return ATTACK_VERBS[archetype] ?? 'attack'
+}
+
+/** "swung melee weapons and thrusting weapons" — what the Lab equips today, from LAB_ARCHETYPES. */
+export function labScopeNouns(archetypes: readonly Archetype[] = LAB_ARCHETYPES): string {
+  const nouns = archetypes.map((a) => ARCHETYPE_NOUNS[a] ?? a)
+  return nouns.length <= 1 ? (nouns[0] ?? '') : `${nouns.slice(0, -1).join(', ')} and ${nouns.at(-1)}`
+}
+
 /** Plain-language "Why it isn't simulated" for a LimitationCard (UX_SPEC §8). */
 export function notSimulatedReason(status: Exclude<LabStatus, { kind: 'equippable' }>): string {
   if (status.kind === 'not-in-lab-yet') {
+    const scope = `so far it simulates ${labScopeNouns()} only`
+    if (status.needs === 'ammo') return `The Lab can't equip weapons that use ammo yet — ${scope}.`
+    if (status.needs === 'debuff-data') return `The Lab can't simulate this weapon's damage-over-time effect yet, so it isn't equipped.`
     const noun = ARCHETYPE_NOUNS[status.archetype] ?? 'weapons like this'
-    return `The Lab can't equip ${noun} yet — so far it simulates swung melee weapons only.`
+    return `The Lab can't equip ${noun} yet — ${scope}.`
   }
   const { refusal } = status
   if (refusal.reason === 'limitation' && refusal.limitation) {

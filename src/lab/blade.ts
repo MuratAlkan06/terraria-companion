@@ -6,7 +6,9 @@
  *
  * Sprite convention: swung weapon sprites are drawn diagonally, handle bottom-left, tip top-right
  * (the pipeline's reach = that diagonal × item scale, AMENDMENTS-010 B44). Facing left mirrors
- * the sprite, as the game does.
+ * the sprite, as the game does. A thrust's reach is unrelated to its sprite (often the wiki's
+ * stated range, AMENDMENTS-012 B56), so a thrust draws its sprite at native scale instead
+ * (`thrustVisual`, design review P3-S2/S3 H1).
  */
 import type { BladePose } from '../sim'
 import { GAME_PX_PER_TILE } from './art/arenaArt'
@@ -83,11 +85,88 @@ export interface SpriteTransform {
  */
 export function bladeSpriteTransform(angle: number, facing: 1 | -1, width: number, height: number, reachTiles: number): SpriteTransform {
   const diagonal = Math.hypot(width, height)
-  const s = diagonal > 0 ? (reachTiles * GAME_PX_PER_TILE) / diagonal : 1
+  return orient(angle, facing, width, height, diagonal > 0 ? (reachTiles * GAME_PX_PER_TILE) / diagonal : 1)
+}
+
+function orient(angle: number, facing: 1 | -1, width: number, height: number, s: number): SpriteTransform {
   const tilt = Math.atan2(height, width)
   return facing === 1
     ? { rotation: angle + tilt, scaleX: s, scaleY: s }
     : { rotation: angle + Math.PI - tilt, scaleX: -s, scaleY: s }
+}
+
+/**
+ * The player's front hand (game px from the player's centre, facing right): the skin pixel at the
+ * end of the front sleeve in the arena's player art (../art/arenaArt.ts `buildPlayer`). Mirrored
+ * when facing left. A thrust weapon is held here.
+ */
+export const THRUST_HAND = { x: 7, y: 5 } as const
+
+/** At full extension the held weapon lunges forward by at most this share of its own length. */
+export const THRUST_LUNGE = 0.25
+
+export interface ThrustVisual {
+  /** Native art scale: 1 game px per sprite px (|scale| = 1), like the arena's other sprites. */
+  transform: SpriteTransform
+  /** The sprite's handle (its anchor), game px from the player's centre. */
+  handle: { x: number; y: number }
+  /** The sprite's tip, game px from the player's centre. */
+  tip: { x: number; y: number }
+  /**
+   * The rest of the modeled thrust past the weapon's tip, along the weapon's own axis (game px):
+   * the extension the sprite can't show without implying a longer weapon. Null when the weapon
+   * itself reaches the modeled extension.
+   */
+  pierce: { from: { x: number; y: number }; to: { x: number; y: number } } | null
+}
+
+/**
+ * A thrust (engine `blade.kind === 'thrust'`, triangle extend/retract): the weapon sprite at its
+ * native art scale, held at the front hand and pointed along the aim, lunging forward with the
+ * extension — never behind the hand, its tip never past the modeled reach. Whatever reach is left
+ * beyond the tip is returned as `pierce` for a light streak. Render-only: the hit test stays the
+ * engine's line from the player's centre (`length` tiles along `angle`).
+ */
+export function thrustVisual(angle: number, length: number, reachTiles: number, facing: 1 | -1, width: number, height: number): ThrustVisual {
+  const diagonal = Math.hypot(width, height)
+  const dx = Math.cos(angle)
+  const dy = Math.sin(angle)
+  const hand = { x: facing * THRUST_HAND.x, y: THRUST_HAND.y }
+  // Distances measured along the aim from the player's centre, as the engine measures the thrust.
+  const handAlong = hand.x * dx + hand.y * dy
+  const reach = Math.max(0, reachTiles) * GAME_PX_PER_TILE
+  const extension = Math.min(reach, Math.max(0, length * GAME_PX_PER_TILE))
+  const fraction = reach > 0 ? extension / reach : 0
+  const lunge = fraction * Math.min(THRUST_LUNGE * diagonal, Math.max(0, reach - handAlong - diagonal))
+  const handle = { x: hand.x + dx * lunge, y: hand.y + dy * lunge }
+  const tip = { x: handle.x + dx * diagonal, y: handle.y + dy * diagonal }
+  const left = extension - (handAlong + lunge + diagonal)
+  return {
+    transform: orient(angle, facing, width, height, 1),
+    handle,
+    tip,
+    pierce: left >= 1 ? { from: tip, to: { x: tip.x + dx * left, y: tip.y + dy * left } } : null,
+  }
+}
+
+/**
+ * A straight streak on the art-pixel grid: the top-left corners (game px) of the `cell`-sized
+ * squares from `from` to `to`, in order, never the same square twice in a row.
+ */
+export function streakCells(from: { x: number; y: number }, to: { x: number; y: number }, cell: number): [number, number][] {
+  if (cell <= 0) return []
+  const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / cell))
+  const cells: [number, number][] = []
+  let last = ''
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.floor((from.x + ((to.x - from.x) * i) / steps) / cell) * cell
+    const y = Math.floor((from.y + ((to.y - from.y) * i) / steps) / cell) * cell
+    const key = `${x},${y}`
+    if (key === last) continue
+    last = key
+    cells.push([x, y])
+  }
+  return cells
 }
 
 /** Where the sprite's tip ends up relative to the pivot (game px) — the inverse check of the above. */

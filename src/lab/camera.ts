@@ -13,8 +13,18 @@
  * - `action` (phones): the fight itself — player, dummies and the equipped weapon's reach — fills
  *   the canvas between the HUD's top row and its bottom controls, zoomed up to `actionMaxTilePx`.
  *   It never zooms out past the scene framing.
+ *
+ * HUD-aware placement (design review P3-S2/S3 M6 + nit; never changes the zoom): the bottom HUD
+ * (controls, DPS graph strip) covers the canvas too, so both framings lift the fight above it. The
+ * scene band moves up toward the middle of the space between the HUD rows, at most until its top
+ * meets the top row — further if the weapon's reach circle (a swing's whole sweep) would still dip
+ * under the bottom row, as far as the circle's top stays below the top row (`reachTiles`). An
+ * action box too tall for that space (a long spear's reach circle) keeps its
+ * bottom — the fighters and their ground — above the bottom row and lets the top of the reach
+ * circle go under the top row. Either way the feet stay `floorPx` clear of the bottom row (the
+ * first-use hint floats there) and the player's head stays below the top row.
  */
-import { ARENA_CORE_X, ARENA_LAYOUT, ARENA_SET_PIECES, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
+import { ARENA_CORE_X, ARENA_LAYOUT, ARENA_SET_PIECES, buildPlayer, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
 
 export type CameraFraming = 'scene' | 'action'
 
@@ -36,8 +46,16 @@ export interface CameraOptions {
   focusY: number
   /** CSS px at the top reserved for HUD (the fit uses the height below it). */
   insetTop: number
-  /** CSS px at the bottom covered by HUD controls (action framing keeps the fight above them). */
+  /** CSS px at the bottom covered by HUD controls (the fight is placed above them). */
   insetBottom: number
+  /** CSS px kept clear between the player's feet and the bottom inset (placement only, never the zoom). */
+  floorPx: number
+  /**
+   * The equipped weapon's reach (tiles): scene framing lifts the view until the whole reach circle
+   * (a swing's full sweep) clears the bottom inset, as far as the circle's top stays below the top
+   * inset. Placement only, never the zoom; 0 = no weapon.
+   */
+  reachTiles: number
   /** Largest tile size (CSS px): big canvases show more arena instead of zooming in further. */
   maxTilePx: number
   framing: CameraFraming
@@ -62,6 +80,8 @@ export const DEFAULT_CAMERA: CameraOptions = {
   focusY: -1.25,
   insetTop: 0,
   insetBottom: 0,
+  floorPx: 0,
+  reachTiles: 0,
   maxTilePx: 48,
   framing: 'scene',
   sceneX: ARENA_CORE_X,
@@ -98,6 +118,19 @@ const ACTION_MARGIN = 0.5
 const NUMBER_HEADROOM = 1.5
 /** Ground kept below the feet in action framing (tiles). */
 const ACTION_GROUND = 1
+/** The top of the player's head (world tiles): the arena's player sprite stands on the ground line. */
+export const PLAYER_TOP_Y = ARENA_LAYOUT.groundY - (buildPlayer().length * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
+
+/**
+ * The CSS y of the world row `y` that keeps the fight clear of the HUD rows, from a preferred one:
+ * no lower than puts the feet `floorPx` above the bottom inset, no higher than puts the head under
+ * the top inset (the head wins on a canvas too short for both).
+ */
+function clearOfHud(preferred: number, y: number, tilePx: number, cssHeight: number, o: CameraOptions): number {
+  const feet = cssHeight - o.insetBottom - o.floorPx - (ARENA_LAYOUT.groundY - y) * tilePx
+  const head = o.insetTop + (y - PLAYER_TOP_Y) * tilePx
+  return Math.max(head, Math.min(preferred, feet))
+}
 
 /**
  * The fight's world box for action framing: the swing's full circle of reach around the player's
@@ -150,6 +183,17 @@ function fitScene(cssWidth: number, cssHeight: number, ratio: number, o: CameraO
     if (edge(originX) > hi + 1e-9) originX += 1 / ratio
     else if (edge(originX) + viewW < sceneX1 - 1e-9) originX -= 1 / ratio
   }
+  // The band's centre (focusY): centred below the top row as before, raised toward the middle of
+  // the space between the HUD rows — never past the band's top meeting the top row.
+  const centred = o.insetTop + usableH / 2
+  const between = Math.max(o.insetTop + (o.minTilesH * tilePx) / 2, o.insetTop + (cssHeight - o.insetBottom - o.insetTop) / 2)
+  const focus = clearOfHud(Math.min(centred, between), o.focusY, tilePx, cssHeight, o)
+  // Then the weapon's reach circle (a swing's whole sweep) lifted clear of the bottom row, as far
+  // as its top — and the player's head — stay below the top row.
+  let originY = focus - o.focusY * tilePx
+  const reach = Math.max(0, o.reachTiles) * tilePx
+  const under = originY + reach - (cssHeight - o.insetBottom)
+  if (reach > 0 && under > 0) originY -= Math.min(under, Math.max(0, originY - Math.max(reach, -PLAYER_TOP_Y * tilePx) - o.insetTop))
   return {
     cssWidth,
     cssHeight,
@@ -158,7 +202,7 @@ function fitScene(cssWidth: number, cssHeight: number, ratio: number, o: CameraO
     scale,
     tilePx,
     originX,
-    originY: snap(o.insetTop + usableH / 2 - o.focusY * tilePx, ratio),
+    originY: snap(originY, ratio),
     framing: 'scene',
   }
 }
@@ -183,6 +227,11 @@ function fitAction(cssWidth: number, cssHeight: number, ratio: number, o: Camera
   const devicePxPerGamePx = quantize(Math.min(byWidth, byHeight, byCap))
   const scale = devicePxPerGamePx / ratio
   const tilePx = scale * GAME_PX_PER_TILE
+  // Centred between the HUD rows; a box taller than that space keeps its bottom (the fighters and
+  // their ground) above the bottom row.
+  const mid = (box.y0 + box.y1) / 2
+  const boxH = (box.y1 - box.y0) * tilePx
+  const preferred = boxH > usableH ? cssHeight - o.insetBottom - boxH / 2 : o.insetTop + usableH / 2
   return {
     cssWidth,
     cssHeight,
@@ -191,7 +240,7 @@ function fitAction(cssWidth: number, cssHeight: number, ratio: number, o: Camera
     scale,
     tilePx,
     originX: snap(cssWidth / 2 - ((box.x0 + box.x1) / 2) * tilePx, ratio),
-    originY: snap(o.insetTop + usableH / 2 - ((box.y0 + box.y1) / 2) * tilePx, ratio),
+    originY: snap(clearOfHud(preferred, mid, tilePx, cssHeight, o) - mid * tilePx, ratio),
     framing: 'action',
   }
 }

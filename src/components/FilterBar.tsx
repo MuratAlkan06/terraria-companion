@@ -14,6 +14,10 @@ import { PixelPanel } from './PixelPanel'
  * with aria-pressed; selection shows a gold frame AND a check glyph (not colour alone); keyboard
  * focus is a separate dark ring + cream outline, so focused never looks like selected (as on the
  * stage chips, design review N4).
+ *
+ * `layout="disclosure"` is for narrow containers that are already a panel or a sheet (the Lab's
+ * weapon browser, UX_SPEC §3.4): the md–lg disclosure at every width — never a sheet inside a sheet,
+ * never facets that push the results off a 300px panel.
  */
 
 /** Focus treatment shared with StageSelector: distinct from the gold "selected" frame. */
@@ -46,6 +50,8 @@ export interface FilterBarProps {
   noun: string
   /** Show the active-chip row under the bar (pages hide it when an empty state shows the chips). */
   showActiveChips?: boolean
+  /** `responsive` (default): sheet < md, disclosure md–lg, open ≥ lg. `disclosure`: a disclosure at every width. */
+  layout?: 'responsive' | 'disclosure'
 }
 
 function activeFilters(facets: readonly Facet[], selected: FacetSelection) {
@@ -58,31 +64,34 @@ function activeFilters(facets: readonly Facet[], selected: FacetSelection) {
   )
 }
 
-export function FilterBar({ facets, selected, onToggle, onClearAll, resultCount, noun, showActiveChips = true }: FilterBarProps) {
+export function FilterBar({ facets, selected, onToggle, onClearAll, resultCount, noun, showActiveChips = true, layout = 'responsive' }: FilterBarProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const panelId = useId()
   const active = activeFilters(facets, selected)
+  const disclosure = layout === 'disclosure'
 
   return (
     <div className="space-y-3">
       {/* < md: Filters button opens the sheet */}
-      <div className="md:hidden">
-        <FilterSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
-          facets={facets}
-          selected={selected}
-          onToggle={onToggle}
-          onClearAll={onClearAll}
-          resultCount={resultCount}
-          noun={noun}
-          activeCount={active.length}
-        />
-      </div>
+      {disclosure ? null : (
+        <div className="md:hidden">
+          <FilterSheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            facets={facets}
+            selected={selected}
+            onToggle={onToggle}
+            onClearAll={onClearAll}
+            resultCount={resultCount}
+            noun={noun}
+            activeCount={active.length}
+          />
+        </div>
+      )}
 
-      {/* md–lg: the inline facets collapse behind a disclosure (closed by default) */}
-      <div className="hidden md:block lg:hidden">
+      {/* md–lg (every width in disclosure layout): the inline facets collapse behind a disclosure (closed by default) */}
+      <div className={disclosure ? undefined : 'hidden md:block lg:hidden'}>
         <button
           type="button"
           aria-expanded={panelOpen}
@@ -102,7 +111,11 @@ export function FilterBar({ facets, selected, onToggle, onClearAll, resultCount,
       </div>
 
       {/* md+: inline facets (always shown from lg) */}
-      <PixelPanel id={panelId} className={cx('hidden space-y-4 lg:block', panelOpen && 'md:block')}>
+      <PixelPanel
+        id={panelId}
+        padded={!disclosure}
+        className={disclosure ? cx('space-y-4 p-3', !panelOpen && 'hidden') : cx('hidden space-y-4 lg:block', panelOpen && 'md:block')}
+      >
         {facets.map((facet) => (
           <FacetGroup key={facet.id} facet={facet} selected={selected[facet.id] ?? []} onToggle={onToggle} />
         ))}

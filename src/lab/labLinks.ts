@@ -10,8 +10,13 @@
  */
 import type { Archetype, Weapon } from '../schemas'
 
-/** Archetypes the Lab UI equips today (P3-S1: swing-melee; grows with P3-S4/S5 tools). */
-export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee']
+/**
+ * Archetypes the Lab UI equips today: the ones whose attack the arena draws from the engine's blade
+ * pose — swing-melee (P3-S1) and thrust (AMENDMENTS-010 B47; spears and shortswords light up as soon
+ * as the data gives them params, with no UI change). Grows with the ammo (P3-S4) and
+ * projectile/mana (P3-S5) tools.
+ */
+export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust']
 
 /** The Lab's deep-link query parameter (`/lab?weapon=:id`, UX_SPEC §10.11). */
 export const LAB_WEAPON_PARAM = 'weapon'
@@ -21,8 +26,11 @@ export function labWeaponSearch(weaponId: number): string {
   return `?${new URLSearchParams({ [LAB_WEAPON_PARAM]: String(weaponId) })}`
 }
 
-/** True when the weapon's record gives the Lab an archetype it can equip (pipeline-authored params). */
+/**
+ * True when the weapon's record gives the Lab an archetype it can equip (pipeline-authored params)
+ * and needs nothing the Lab doesn't load yet: a damage-over-time modifier needs the buff registry.
+ */
 export function offersLab(weapon: Weapon): boolean {
   const lab = weapon.labBehavior
-  return lab.kind === 'archetype' && LAB_ARCHETYPES.includes(lab.params.archetype)
+  return lab.kind === 'archetype' && LAB_ARCHETYPES.includes(lab.params.archetype) && lab.modifiers?.dot === undefined
 }

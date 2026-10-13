@@ -11,6 +11,7 @@ import {
   defaultLabWeapon,
   inGameDescription,
   isLabEquippable,
+  labScopeNouns,
   labStatus,
   labWeapons,
   notSimulatedReason,
@@ -18,28 +19,46 @@ import {
   UNASSIGNED_LIMITATION_PLAIN,
   UNASSIGNED_LIMITATION_REASON,
 } from './labWeapons'
-import { LAB_WEAPON_PARAM, labWeaponSearch, offersLab } from './labLinks'
+import { LAB_ARCHETYPES, LAB_WEAPON_PARAM, labWeaponSearch, offersLab } from './labLinks'
 
 const weapons = weaponsJson as Weapon[]
 const byId = new Map(weapons.map((w) => [w.id, w]))
 const list = labWeapons(weapons)
 
-/** Independent derivation: the engine says simulable AND the archetype is swing-melee. */
-const simulableSwingMelee = weapons.filter((w) => {
+/**
+ * Independent derivation: the engine says simulable, the archetype is one the arena draws as a
+ * blade (swing or thrust), and it needs no setup the Lab can't provide yet (ammo, buff registry).
+ */
+const equippableByEngine = weapons.filter((w) => {
   const verdict = assessWeapon(w)
-  return verdict.simulable && verdict.archetype === 'swing-melee'
+  return verdict.simulable && ['swing-melee', 'thrust'].includes(verdict.archetype) && verdict.requiresAmmoClass === null && verdict.requiresBuffIds.length === 0
 })
 
-describe('the in-Lab picker (P3-S1 minimal picker)', () => {
-  it('is exactly the simulable swing-melee set — no more, no less', () => {
-    expect(new Set(list.map((w) => w.id))).toEqual(new Set(simulableSwingMelee.map((w) => w.id)))
-    expect(list).toHaveLength(simulableSwingMelee.length)
+describe('what the Lab equips (P3-S1 swords, + thrust per B47)', () => {
+  it('the Lab equips the swung and thrust archetypes', () => {
+    expect(LAB_ARCHETYPES).toEqual(['swing-melee', 'thrust'])
+  })
+
+  it('is exactly the engine-simulable swing/thrust set needing no ammo or buff data — no more, no less', () => {
+    expect(new Set(list.map((w) => w.id))).toEqual(new Set(equippableByEngine.map((w) => w.id)))
+    expect(list).toHaveLength(equippableByEngine.length)
     // AMENDMENTS-010 B44: 35 broadswords are simulable under the ratified geometry convention.
-    expect(list.length).toBeGreaterThanOrEqual(35)
+    expect(list.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee').length).toBeGreaterThanOrEqual(35)
     for (const w of list) {
       expect(w.labBehavior.kind).toBe('archetype')
-      if (w.labBehavior.kind === 'archetype') expect(w.labBehavior.params.archetype).toBe('swing-melee')
+      if (w.labBehavior.kind === 'archetype') expect(LAB_ARCHETYPES).toContain(w.labBehavior.params.archetype)
     }
+  })
+
+  it('a weapon with a damage-over-time modifier waits for the buff registry (never a broken equip)', () => {
+    const sword = list.find((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')!
+    if (sword.labBehavior.kind !== 'archetype') throw new Error('unreachable')
+    const burning: typeof sword = { ...sword, labBehavior: { ...sword.labBehavior, modifiers: { dot: { buffId: 'on-fire', durationTicks: 120 } } } }
+    const status = labStatus(burning)
+    expect(status).toMatchObject({ kind: 'not-in-lab-yet', needs: 'debuff-data' })
+    expect(offersLab(burning)).toBe(false)
+    if (status.kind !== 'not-in-lab-yet') throw new Error('unreachable')
+    expect(notSimulatedReason(status)).toMatch(/damage-over-time/)
   })
 
   it('excludes every limitation, unimplemented and not-yet-equippable (bow/magic) weapon', () => {
@@ -107,7 +126,8 @@ describe('/lab?weapon=:id deep links (UX_SPEC §10.11)', () => {
     expect(selection.weapon).toBe(fallback)
     expect(selection.notice).toMatchObject({ kind: 'not-equippable', status: { kind: 'not-in-lab-yet' } })
     if (selection.notice?.kind !== 'not-equippable') throw new Error('unreachable')
-    expect(notSimulatedReason(selection.notice.status)).toMatch(/swung melee weapons only/)
+    expect(notSimulatedReason(selection.notice.status)).toMatch(/so far it simulates swung melee weapons and thrusting weapons only\.$/)
+    expect(labScopeNouns()).toBe('swung melee weapons and thrusting weapons')
   })
 
   it('unknown or malformed ids fall back with a not-found notice echoing the request', () => {

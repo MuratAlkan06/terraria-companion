@@ -4,12 +4,16 @@
  *
  * - `TextureStyle.defaultOptions.scaleMode = 'nearest'` + `roundPixels`: crisp pixel art.
  * - Fixed-step sim, interpolated rendering: every frame feeds `deltaMS` to the session (whole
- *   60 Hz ticks), then draws the blade between the last two ticks with the returned alpha.
+ *   60 Hz ticks), then draws the blade between the last two ticks with the returned alpha. Swung
+ *   sprites span the modeled reach (B44: reach = sprite diagonal × scale); thrust sprites stay at
+ *   native art scale in the hand, the rest of the reach drawn as a streak. Once a timed test has
+ *   finished, no blade, trail or guide is drawn.
  * - Floating damage numbers: two pre-installed BitmapFonts and a recycling BitmapText pool; each
  *   number is measured and placed by the collision-aware layout (../floatingNumbers.ts), so no two
  *   ever overlap, and crits draw on a layer above normal hits.
  * - Camera framing (../camera.ts): `scene` on tablet/desktop, `action` (zoomed onto the fight) on
- *   phones; re-fit on resize, HUD inset changes and weapon changes (the reach decides the zoom).
+ *   phones, both placed clear of the HUD rows; re-fit on resize, HUD inset changes and weapon
+ *   changes (the reach decides the zoom).
  * - The canvas is decorative for assistive tech (`aria-hidden`); all meaningful output is the
  *   HTML HUD (UX_SPEC §9).
  */
@@ -18,7 +22,7 @@ import { PLACEHOLDER_PALETTE, PLACEHOLDER_ROWS } from '../../components/art/plac
 import type { BladePose, SimEvent } from '../../sim'
 import { ARENA_LAYOUT, buildArenaBackdrop, buildDeepTile, buildDummy, buildPlayer, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette } from '../art/arenaArt'
 import { A, ARENA_PALETTE } from '../art/arenaPalette'
-import { bladeSpriteTransform, DEG, guideCells, interpolateBlade, trailSpan } from '../blade'
+import { bladeSpriteTransform, DEG, guideCells, interpolateBlade, streakCells, thrustVisual, trailSpan } from '../blade'
 import { actionBox, fitCamera, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
 import { FloatLayout, floatPose, readsAsPartOfNumber, RecyclingPool, type FloatRect } from '../floatingNumbers'
 import type { LabSession } from '../labSession'
@@ -31,8 +35,10 @@ export interface ArenaOptions {
   reducedMotion: () => boolean
   /** CSS px reserved at the top of the canvas for the HUD (the camera centres below it). */
   insetTop?: () => number
-  /** CSS px covered by the HUD's bottom controls (action framing and numbers stay above them). */
+  /** CSS px covered by the HUD's bottom controls (the fight and the numbers stay above them). */
   insetBottom?: () => number
+  /** CSS px kept clear under the player's feet above the bottom controls (the first-use hint). */
+  floorPx?: () => number
   /** `action` zooms onto the fight (phones); `scene` keeps the arena's set pieces whole. */
   framing?: () => CameraFraming
 }
@@ -250,12 +256,13 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     const width = Math.max(1, host.clientWidth)
     const height = Math.max(1, host.clientHeight)
     app.renderer.resize(width, height)
-    const swingReach = session?.swing?.reachTiles ?? 0
     fit = fitCamera(width, height, app.renderer.resolution, {
       insetTop: options.insetTop?.() ?? 0,
       insetBottom: options.insetBottom?.() ?? 0,
+      floorPx: options.floorPx?.() ?? 0,
+      reachTiles: session?.reachTiles ?? 0,
       framing: options.framing?.() ?? 'scene',
-      action: session ? actionBox(swingReach, session.sim.renderState().dummies) : null,
+      action: session ? actionBox(session.reachTiles, session.sim.renderState().dummies) : null,
     })
     world.position.set(fit.originX, fit.originY)
     world.scale.set(fit.scale)
@@ -425,17 +432,20 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   }
 
   /**
-   * The reach guide's dashes, minus any beside a live damage number: a gold dash next to a number
-   * at its height reads as a minus sign ("–15"). Numbers are positioned for this frame first.
+   * Overlay cells (the reach guide's dashes, a thrust's streak) minus any beside a live damage
+   * number: a mark next to a number at its height reads as a minus sign ("–15"). Numbers are
+   * positioned for this frame first.
    */
-  const guideCellsClearOfNumbers = (facing: 1 | -1, arcDegrees: number, radius: number) => {
-    const cells = guideCells(facing, arcDegrees, radius, GAME_PX_PER_ART_PX, GUIDE_DASH, GUIDE_GAP)
+  const cellsClearOfNumbers = (cells: [number, number][]) => {
     const live = renderedNumbers()
     if (live.length === 0) return cells
     const size = GAME_PX_PER_ART_PX * fit.scale
     // Each cell's screen box (CSS px), with its one-art-pixel drop below it.
     return cells.filter(([x, y]) => !readsAsPartOfNumber({ x: fit.originX + x * fit.scale, y: fit.originY + y * fit.scale, w: size, h: 2 * size }, live))
   }
+
+  const guideCellsClearOfNumbers = (facing: 1 | -1, arcDegrees: number, radius: number) =>
+    cellsClearOfNumbers(guideCells(facing, arcDegrees, radius, GAME_PX_PER_ART_PX, GUIDE_DASH, GUIDE_GAP))
 
   const drawSwing = (pose: BladePose | null, facing: 1 | -1, alpha: number, now: number, reach: number, arcDegrees: number) => {
     trail.clear()
@@ -444,6 +454,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       const { angle } = interpolateBlade(pose, alpha)
       const t = bladeSpriteTransform(angle, facing, weaponTexture.width, weaponTexture.height, reach)
       blade.visible = true
+      blade.position.set(0, 0)
       blade.rotation = t.rotation
       blade.scale.set(t.scaleX, t.scaleY)
       lastSwingEnd = { at: now, facing }
@@ -460,6 +471,36 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
         drawGuide(guide, cells, guideColor, guideShadow, GUIDE_ALPHA * (1 - since / GUIDE_FADE_MS))
       }
     }
+  }
+
+  /**
+   * A thrust (engine `blade.kind === 'thrust'`; design review P3-S2/S3 H1): the weapon at its native
+   * art scale in the front hand, lunging along the aim (`thrustVisual`); the reach left past its
+   * tip is a faint one-art-pixel streak with a brighter leading point, so the sprite never implies
+   * a weapon as long as the reach. No swing trail, no arc guide.
+   */
+  const drawThrust = (pose: BladePose | null, facing: 1 | -1, alpha: number, reach: number) => {
+    trail.clear()
+    guide.clear()
+    if (!pose || reach <= 0) {
+      blade.visible = false
+      return
+    }
+    const { angle, length } = interpolateBlade(pose, alpha)
+    const v = thrustVisual(angle, length, reach, facing, weaponTexture.width, weaponTexture.height)
+    blade.visible = true
+    blade.position.set(v.handle.x, v.handle.y)
+    blade.rotation = v.transform.rotation
+    blade.scale.set(v.transform.scaleX, v.transform.scaleY)
+    if (v.pierce) drawPierce(trail, cellsClearOfNumbers(streakCells(v.pierce.from, v.pierce.to, GAME_PX_PER_ART_PX)), trailColor, rimColor)
+  }
+
+  /** Nothing moves once a timed test has finished: the frame stays clean under the results (UX_SPEC §12). */
+  const clearAttack = () => {
+    blade.visible = false
+    trail.clear()
+    guide.clear()
+    lastSwingEnd = { at: -Infinity, facing: 1 }
   }
 
   const update = () => {
@@ -502,7 +543,10 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     }
 
     playerSprite.scale.set(state.facing * GAME_PX_PER_ART_PX, GAME_PX_PER_ART_PX)
-    drawSwing(state.blade, state.facing, alpha, now, s.swing?.reachTiles ?? state.blade?.length ?? 0, s.swing?.arcDegrees ?? state.blade?.arcDegrees ?? 0)
+    // A finished test halts the engine mid-attack: no frozen blade, trail or reach guide.
+    if (s.getHud().timedTest.status === 'finished') clearAttack()
+    else if (s.swing) drawSwing(state.blade, state.facing, alpha, now, s.swing.reachTiles, s.swing.arcDegrees)
+    else drawThrust(state.blade?.kind === 'thrust' ? state.blade : null, state.facing, alpha, s.reachTiles)
     perf.frames++
     record(perf.frameMs, app.ticker.deltaMS)
   }
@@ -560,6 +604,20 @@ function drawWedge(g: Graphics, a0: number, a1: number, inner: number, outer: nu
     lead.push(Math.cos(a) * inner, Math.sin(a) * inner)
   }
   g.poly(lead, true).fill({ color, alpha: alpha * 0.45 })
+}
+
+/**
+ * The thrust's reach past the weapon tip: a faint white streak of art-pixel cells, its last two
+ * cells (the point the thrust has reached) brighter in the trail's gold rim.
+ */
+function drawPierce(g: Graphics, cells: readonly [number, number][], color: number, point: number): void {
+  if (cells.length === 0) return
+  const px = GAME_PX_PER_ART_PX
+  const lead = Math.max(0, cells.length - 2)
+  for (const [x, y] of cells.slice(0, lead)) g.rect(x, y, px, px)
+  if (lead > 0) g.fill({ color, alpha: 0.32 })
+  for (const [x, y] of cells.slice(lead)) g.rect(x, y, px, px)
+  g.fill({ color: point, alpha: 0.75 })
 }
 
 /**
