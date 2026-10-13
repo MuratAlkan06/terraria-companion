@@ -201,6 +201,9 @@
   --animate-fade-in: fade-in var(--dur-ui) var(--ease-out-strong);
   --animate-fade-out: fade-out var(--dur-exit) ease-in;
   --animate-pixel-march: pixel-march 1.2s steps(1, end) infinite;
+  /* Route-pending bar (P2-S3 design review #6): a third-width segment sweeping the top edge;
+     transform-only. Motion-safe only — reduced motion shows a static full-width bar. */
+  --animate-route-progress: route-progress 1.1s var(--ease-out-strong) infinite;
   --animate-flicker: flicker 1.6s steps(1, end) infinite;
   /* Hero ambience: stepped (few repaints/sec), restrained, motion-safe only. Two
      star periods so twinkles never blink in unison. */
@@ -223,6 +226,10 @@
   @keyframes fade-out {
     from { opacity: 1; }
     to { opacity: 0; }
+  }
+  @keyframes route-progress {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(300%); }
   }
   @keyframes pixel-march {
     0% { opacity: 0.25; }

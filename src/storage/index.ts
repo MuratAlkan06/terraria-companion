@@ -8,10 +8,11 @@
  * - Writes are a single atomic `setItem`; failures throw `StorageQuotaError` so callers
  *   can keep state in memory and warn.
  *
- * P1 registers only `settings`. Later slices add their domains to `DOMAINS`
- * (builds, favorites, progress, plans, recent, readiness, checklists).
+ * Registered: `settings` (P1), `recent` (P2-S3). Later slices add their domains to `DOMAINS`
+ * (builds, favorites, progress, plans, readiness, checklists).
  */
 import { meta } from '../data/meta'
+import { recentDomain, type RecentData } from './recent'
 import { settingsDomain, type SettingsData } from './settings'
 import type { DomainDef, Envelope, LoadResult, StorageBackend } from './types'
 
@@ -20,6 +21,7 @@ export type { Envelope, LoadResult, StorageBackend } from './types'
 /** Domain key -> current data shape. Extend as later slices add domains. */
 interface DomainDataMap {
   settings: SettingsData
+  recent: RecentData
 }
 
 export type DomainKey = keyof DomainDataMap
@@ -27,6 +29,7 @@ export type DomainData<K extends DomainKey> = DomainDataMap[K]
 
 const DOMAINS: { [K in DomainKey]: DomainDef<DomainDataMap[K]> } = {
   settings: settingsDomain,
+  recent: recentDomain,
 }
 
 export const storageKey = (domain: DomainKey): string => `tc.v1.${domain}`

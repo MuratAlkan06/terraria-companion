@@ -11,6 +11,15 @@
     background-color: var(--color-canvas);
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Below lg the bottom tab bar is fixed over the viewport: keyboard focus and scrollIntoView
+       treat it as out of view, so a focused row — and its focus ring — scrolls fully above it
+       (UX_SPEC §7 "fixed bars never cover content"). Bar height + its top border (1 art pixel)
+       + the focus ring (outline + offset, 2 art pixels) + a little air + the safe area. */
+    @variant max-lg {
+      scroll-padding-bottom: calc(
+        var(--spacing-tabbar) + var(--pixel) * 3 + var(--spacing) * 2 + env(safe-area-inset-bottom, 0px)
+      );
+    }
   }
 
   body {
@@ -79,6 +88,16 @@
 @utility pixelated {
   image-rendering: pixelated;
   shape-rendering: crispEdges;
+}
+
+/* "Unknown" marker background (UX_SPEC §5.3/§11): subtle diagonal hatch so an unverified value
+   is signalled by pattern + text, never by colour alone. */
+@utility bg-hatch-unknown {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-unknown) 22%, transparent) 0 var(--pixel),
+    transparent var(--pixel) calc(var(--pixel) * 3)
+  );
 }
 
 /* Bottom safe-area padding for fixed mobile chrome. */
