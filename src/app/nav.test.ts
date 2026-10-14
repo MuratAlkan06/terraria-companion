@@ -23,20 +23,20 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P5-S1 nav: Home + Weapons + Lab + Bosses in header and tab bar; Licensing in More + footer', () => {
-    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/bosses'])
+  it('P6-S8 nav: Home + Weapons + Lab + Bosses in header and tab bar; Guides in header + More; Licensing in More + footer', () => {
+    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/bosses', '/guides'])
     expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/about/licensing'])
     const { tabs, more } = tabBarLayout()
-    // UX_SPEC §2: Home · Weapons · Lab · Bosses · More.
+    // UX_SPEC §2: Home · Weapons · Lab · Bosses · More (Guides lives in the More sheet).
     expect({ tabs, more }).toMatchObject({
       tabs: [{ to: '/' }, { to: '/weapons', label: 'Weapons' }, { to: '/lab', label: 'Lab' }, { to: '/bosses', label: 'Bosses' }],
-      more: [{ to: '/about/licensing' }],
+      more: [{ to: '/guides', label: 'Guides' }, { to: '/about/licensing' }],
     })
     // 4 tabs + the More tab: exactly the UX_SPEC §10.12 cap.
     expect(tabs.length + (more.length > 0 ? 1 : 0)).toBeLessThanOrEqual(TAB_BAR_MAX)
   })
 
-  it.each(['lab', 'bosses'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
+  it.each(['lab', 'bosses', 'guides'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
     const route = APP_ROUTES.find((r) => r.id === id)
     if (!route) throw new Error(`no ${id} route`)
     expect(route.path).toBe(`/${id}`)
@@ -48,6 +48,13 @@ describe('route registry + data-driven nav', () => {
     const detail = APP_ROUTES.find((r) => r.path === '/weapons/:id')
     expect(detail).toBeDefined()
     expect(detail?.nav).toBeUndefined()
+  })
+
+  it('registers the guide page route (P6-S8) lazily and without a nav entry', () => {
+    const guide = APP_ROUTES.find((r) => r.path === '/guides/:slug')
+    if (!guide) throw new Error('no guide page route')
+    expect(guide.nav).toBeUndefined()
+    expect((guide.Component as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.lazy'))
   })
 
   it('sorts by order and omits routes without nav metadata', () => {
@@ -81,10 +88,13 @@ describe('route registry + data-driven nav', () => {
     // Up to 3 links: no More menu at all; a 4th goes into it.
     expect(headerNavLayout(six.slice(0, 3)).more).toEqual([])
     expect(headerNavLayout(six.slice(0, 4)).more.map((i) => i.id)).toEqual(['bosses'])
-    // Today's registry (P5-S1): Home + Weapons + Lab inline; Bosses is the first link in "More" (B34).
+    // Today's registry (P6-S8): Home + Weapons + Lab inline; Bosses then Guides in "More" (B34).
     expect(headerNavLayout()).toMatchObject({
       inline: [{ to: '/' }, { to: '/weapons' }, { to: '/lab' }],
-      more: [{ to: '/bosses', label: 'Bosses' }],
+      more: [
+        { to: '/bosses', label: 'Bosses' },
+        { to: '/guides', label: 'Guides' },
+      ],
     })
   })
 

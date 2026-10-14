@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { FlaskConical, House, Scale, Skull, Swords, type LucideIcon } from 'lucide-react'
+import { BookOpen, FlaskConical, House, Scale, Skull, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -18,8 +18,10 @@ const chunkDb = () => import('./routes/db/chunk-db')
  * (src/lab/arena), so no other route ever downloads the renderer.
  */
 const chunkLab = () => import('./routes/lab/chunk-lab')
-/** The boss section (`chunk-bosses`, UX_SPEC §1): the progression map now, boss pages later. */
+/** The boss section (`chunk-bosses`, UX_SPEC §1): the progression map and the boss pages (P5-S2). */
 const chunkBosses = () => import('./routes/bosses/chunk-bosses')
+/** Guides (`chunk-guides`, UX_SPEC §1): the index and every guide page (P6-S8). */
+const chunkGuides = () => import('./routes/guides/chunk-guides')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -88,6 +90,29 @@ export const APP_ROUTES: readonly AppRoute[] = [
       order: 30,
       description: 'The boss progression map: what unlocks what',
     },
+  },
+  {
+    // P5-S2: pages for the bosses in src/schemas/bossPages.ts; any other id renders the styled 404.
+    id: 'boss-detail',
+    path: '/bosses/:id',
+    Component: lazy(() => chunkBosses().then((m) => ({ default: m.BossPage }))),
+  },
+  {
+    id: 'guides',
+    path: '/guides',
+    Component: lazy(() => chunkGuides().then((m) => ({ default: m.GuidesIndexPage }))),
+    nav: {
+      label: 'Guides',
+      icon: BookOpen,
+      surfaces: ['header', 'more'],
+      order: 60,
+      description: 'Beginner guides with checklists that remember your progress',
+    },
+  },
+  {
+    id: 'guide',
+    path: '/guides/:slug',
+    Component: lazy(() => chunkGuides().then((m) => ({ default: m.GuidePage }))),
   },
   {
     id: 'licensing',
