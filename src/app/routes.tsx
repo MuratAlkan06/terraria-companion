@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { FlaskConical, House, Scale, Swords, type LucideIcon } from 'lucide-react'
+import { FlaskConical, House, Scale, Skull, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -18,6 +18,8 @@ const chunkDb = () => import('./routes/db/chunk-db')
  * (src/lab/arena), so no other route ever downloads the renderer.
  */
 const chunkLab = () => import('./routes/lab/chunk-lab')
+/** The boss section (`chunk-bosses`, UX_SPEC §1): the progression map now, boss pages later. */
+const chunkBosses = () => import('./routes/bosses/chunk-bosses')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -38,6 +40,11 @@ export interface AppRoute {
   path: string
   Component: ComponentType
   nav?: NavMeta
+  /**
+   * In-page capabilities other surfaces may deep-link into (e.g. the boss map's `?recommend=1`
+   * panel, P5-S5). A link to one exists only once it is listed here — absent, never disabled.
+   */
+  features?: readonly string[]
 }
 
 export const APP_ROUTES: readonly AppRoute[] = [
@@ -68,6 +75,18 @@ export const APP_ROUTES: readonly AppRoute[] = [
       surfaces: ['header', 'tabbar'],
       order: 20,
       description: 'Swing weapons at a training dummy — a browser simulation',
+    },
+  },
+  {
+    id: 'bosses',
+    path: '/bosses',
+    Component: lazy(() => chunkBosses().then((m) => ({ default: m.BossMapPage }))),
+    nav: {
+      label: 'Bosses',
+      icon: Skull,
+      surfaces: ['header', 'tabbar'],
+      order: 30,
+      description: 'The boss progression map: what unlocks what',
     },
   },
   {

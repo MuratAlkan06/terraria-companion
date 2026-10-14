@@ -261,7 +261,8 @@ describe('HomePage render (SSR markup)', () => {
     expect(actions.match(/<a [^>]*>/g)).toHaveLength(1)
     expect(actions).toMatch(/<a [^>]*href="\/lab"[^>]*>.*Test Weapons<\/a>/s)
     expect(actions).not.toMatch(/disabled/)
-    // /loadout and /bosses don't exist yet: their buttons are absent (PRD P1-S2 AC3), as is the saved-builds rail.
+    // /loadout doesn't exist and /bosses ships without its recommender panel (P5-S5): their buttons are
+    // absent (PRD P1-S2 AC3), as is the saved-builds rail.
     expect(html).not.toMatch(/Build My Loadout|What Should I Do Next/i)
     expect(html).not.toMatch(/saved builds/i)
     expect(html).not.toMatch(/href="\/(loadout|builds|bosses)/)

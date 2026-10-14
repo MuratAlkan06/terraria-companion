@@ -152,6 +152,9 @@
   --edge-recommended: var(--color-forest-300);
   --edge-optional: var(--color-stone-400);
   --edge-alt: var(--color-night-200);
+  /* P5-S1 delta: early-challenge-possible (UX_SPEC §3.7 "early-challenge icon") — the text-safe
+     warm-red tone; always paired with its own dash pattern + Zap icon, never colour alone. */
+  --edge-early: var(--color-negative);
 
   /* ---------- Typography (ADR D4: OFL fonts, self-hosted via Fontsource) ---------- */
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
