@@ -9,6 +9,12 @@ import rawMeta from '../data/meta.json'
 export type DataFile =
   | 'weapons.list'
   | 'weapons.detail'
+  | 'accessories.list'
+  | 'accessories.detail'
+  | 'armor.list'
+  | 'armor.detail'
+  | 'armor-sets'
+  | 'stage-gaps'
   | 'items.detail'
   | 'buffs'
   | 'recipes'
@@ -40,6 +46,13 @@ async function fetchJson(url: string): Promise<unknown> {
 export const DEFAULT_IMPORTERS: Importers = {
   'weapons.list': () => import('../data/weapons.list.json').then((m) => m.default),
   'weapons.detail': () => import('../data/weapons.detail.json').then((m) => m.default),
+  'accessories.list': () => import('../data/accessories.list.json').then((m) => m.default),
+  'accessories.detail': () => import('../data/accessories.detail.json').then((m) => m.default),
+  'armor.list': () => import('../data/armor.list.json').then((m) => m.default),
+  'armor.detail': () => import('../data/armor.detail.json').then((m) => m.default),
+  'armor-sets': () => import('../data/armor-sets.json').then((m) => m.default),
+  // Stage gap entries (the reasons behind declared Unknowns, e.g. a boss page's gear gap); small.
+  'stage-gaps': () => import('../data/stage-gaps.json').then((m) => m.default),
   'items.detail': () => import('../data/items.detail.json').then((m) => m.default),
   buffs: () => import('../data/buffs.json').then((m) => m.default),
   recipes: () => import('../data/recipes.json').then((m) => m.default),

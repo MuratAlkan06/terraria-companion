@@ -105,6 +105,11 @@ export const DatasetManifest = z.strictObject({
     .optional(),
   /** §7a-13 fixtures this dataset is checked against (validate/fixtures.ts); absent = all. Only subsets (the P2-S1 sample) restrict them. */
   fixtures: z.array(z.enum(FIXTURE_NAMES)).optional(),
+  /**
+   * Bosses whose pages this dataset backs (P5): each must pass the E_BOSS_CURATION gate
+   * (validate/curation.ts). The emitted app dataset lists exactly src/schemas/bossPages.ts; absent = none.
+   */
+  bossPages: z.array(Slug).optional(),
 })
 export type DatasetManifest = z.infer<typeof DatasetManifest>
 

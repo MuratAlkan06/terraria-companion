@@ -85,6 +85,13 @@ export interface NodeMapProps {
   controlsRow?: boolean
   /** Map-box edges covered by an overlay (the focus card): the map keeps its nodes clear of them. */
   inset?: Inset
+  /** A node's own page, if it has one (P5-S2 boss pages): that node is a link instead of a card button. */
+  nodeHref?: (id: string) => string | undefined
+  /**
+   * A node the map first opens centred on instead of the opening view (a `?node=` deep link from a
+   * boss page's next steps, PRD P5-S2 AC3). "Go to start" still returns to `startId`.
+   */
+  initialFocusId?: string
 }
 
 const ZOOM_STEP = 1.25
@@ -179,6 +186,8 @@ export function NodeMap({
   controlsClassName = 'right-2 bottom-2',
   controlsRow = false,
   inset,
+  nodeHref,
+  initialFocusId,
 }: NodeMapProps) {
   const content = useMemo(() => ({ width: layout.width, height: layout.height }), [layout])
   const limits = useMemo(() => ({ min: minZoom, max: MAX_ZOOM }), [minZoom])
@@ -246,18 +255,20 @@ export function NodeMap({
   }, [layout])
   const firstNode = layout.nodes.get(reading[0])
 
-  const nodeButton = (id: string) => layerRef.current?.querySelector<HTMLButtonElement>(`[data-node-id="${CSS.escape(id)}"]`) ?? null
+  const nodeButton = (id: string) => layerRef.current?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`) ?? null
 
   // Open framed on the start (OPENING_FRAME: the opening region on desktop) — again whenever the
   // layout changes (orientation switch). "Go to start" returns to the same view.
   const opening = useMemo(() => openingRect(graph, layout, scene, startId), [graph, layout, scene, startId])
+  // A deep-linked node opens centred (at the opening zoom); otherwise the opening view.
+  const firstFrame = (initialFocusId ? layout.nodes.get(initialFocusId) : undefined) ?? opening
   const centeredFor = useRef<GraphLayout | null>(null)
   const { center, frame, reveal } = pz
   useEffect(() => {
     if (!pz.ready || centeredFor.current === layout) return
     centeredFor.current = layout
-    if (opening) frame(opening, { maxK: initialZoom, animate: false })
-  }, [pz.ready, layout, opening, initialZoom, frame])
+    if (firstFrame) frame(firstFrame, { maxK: initialZoom, animate: false })
+  }, [pz.ready, layout, firstFrame, initialZoom, frame])
 
   useImperativeHandle(
     ref,
@@ -393,6 +404,7 @@ export function NodeMap({
                     controls={detailsId}
                     hit={hit}
                     onSelect={onSelect}
+                    href={nodeHref?.(id)}
                   />
                   <span id={descriptionId(id)} hidden>
                     {descriptions.get(id)}
@@ -428,7 +440,7 @@ export function NodeMap({
       <p id={INSTRUCTIONS_ID} className="sr-only">
         {`Drag to pan; zoom with the mouse wheel, a pinch, or the zoom buttons. Tab moves through the nodes in progression order; the ${
           vertical ? 'down and up' : 'right and left'
-        } arrow keys follow the connections forward and back, the ${vertical ? 'left and right arrows step along a row' : 'up and down arrows step along a column'}. Enter opens a node’s details.`}
+        } arrow keys follow the connections forward and back, the ${vertical ? 'left and right arrows step along a row' : 'up and down arrows step along a column'}. Enter opens a node’s details${nodeHref ? ', or its page when it has one' : ''}.`}
       </p>
       <div
         ref={controlsRef}

@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getField, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, getField, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
 import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
 import { loadDatasetDir } from './dataset'
@@ -13,6 +13,7 @@ import { formatError } from './errors'
 import { checkFixtures, REQUIREMENTS_BOSSES } from './fixtures'
 import { requiredGateUpstream } from './graph'
 import { validateDataset } from './index'
+import { checkSuggestionGating } from './suggestions'
 
 const DATA_DIR = join(import.meta.dirname, '../../src/data')
 const REPO = join(import.meta.dirname, '../..')
@@ -283,6 +284,90 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(mirror._prov.unverifiedFields).toContain('acquisition')
       const gaps = read<{ entries: { ref: string; field?: string; kind: string }[] }>('gaps.json').entries
       expect(gaps).toContainEqual(expect.objectContaining({ ref: 'i:5577', field: 'acquisition', kind: 'source-mismatch' }))
+    })
+  })
+
+  describe('P5-S2 boss pages: curated fields + the E_BOSS_CURATION gate (AMENDMENTS-001 A1)', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const bosses = read<Boss[]>('bosses.json')
+    const stageGaps = read<GapEntry[]>('stage-gaps.json')
+    const boss = (id: string) => bosses.find((b) => b.id === id) as Boss
+
+    it('the dataset backs exactly the app\'s boss pages (manifest.bossPages = src/schemas/bossPages.ts)', () => {
+      expect(read<{ bossPages?: string[] }>('dataset.json').bossPages).toEqual([...BOSS_PAGE_IDS])
+    })
+
+    it('every page boss carries tags, a checklist and strategies as curated fields; each line and quote cites a wiki page', () => {
+      for (const id of BOSS_PAGE_IDS) {
+        const b = boss(id)
+        for (const field of ['attackPatternTags', 'prepChecklist', 'strategies'] as const) {
+          expect(getField(b, field).status, `${id} ${field}`).toBe('editorial')
+          expect((b[field] ?? []).length, `${id} ${field}`).toBeGreaterThan(0)
+        }
+        for (const entry of [...(b.prepChecklist ?? []), ...(b.strategies ?? [])]) {
+          expect(entry.sourceUrl).toMatch(/^https:\/\/terraria\.wiki\.gg\/wiki\//)
+          expect(b._prov.sources).toContainEqual(expect.objectContaining({ kind: 'curated', overlay: 'bosses', url: entry.sourceUrl }))
+        }
+        expect(new Set(b.prepChecklist?.map((p) => p.text.toLowerCase())).size).toBe(b.prepChecklist?.length)
+      }
+    })
+
+    it('suggested gear is Unknown on every page boss, with a declared reason (no weapon passes E_SUGGESTION_GATING before them)', () => {
+      for (const id of BOSS_PAGE_IDS) {
+        expect(getField(boss(id), 'suggestedEquipment').status, id).toBe('unverified')
+        expect(stageGaps).toContainEqual(expect.objectContaining({ ref: `boss:${id}`, field: 'suggestedEquipment', kind: 'missing-field' }))
+      }
+    })
+
+    it('gate check: removing a curated field from a page boss fails the build (E_BOSS_CURATION)', () => {
+      const raw = structuredClone(loaded.raw)
+      const eye = (raw.collections.bosses as Boss[]).find((b) => b.id === 'eye-of-cthulhu') as Boss
+      delete eye.prepChecklist
+      eye._prov.editorialFields = eye._prov.editorialFields.filter((f) => f !== 'prepChecklist')
+      eye._prov.unverifiedFields = [...eye._prov.unverifiedFields, 'prepChecklist'].sort()
+      const result = validateDataset(raw, { now: new Date(meta.generatedAt) })
+      expect(result.ok).toBe(false)
+      expect(result.errors).toEqual([expect.objectContaining({ code: 'E_BOSS_CURATION', bossId: 'eye-of-cthulhu', field: 'prepChecklist' })])
+    })
+
+    it('property: no item gated by the boss itself or a later node can be suggested for it (every emitted weapon, accessory and armor set, every page boss)', () => {
+      const result = validateDataset(structuredClone(loaded.raw), { now: new Date(meta.generatedAt) })
+      if (!result.ok) throw new Error(result.errors.slice(0, 5).map(formatError).join('\n'))
+      const ds = result.dataset
+      // Independent oracle: ancestors over required-gate edges by fixpoint (not graph.ts's DFS).
+      const ancestors = new Map(ds.nodes.map((n) => [n.id, new Set<string>()]))
+      for (let changed = true; changed; ) {
+        changed = false
+        for (const e of ds.edges.filter((x) => x.type === 'required-gate')) {
+          const into = ancestors.get(e.to)!
+          for (const a of [e.from, ...(ancestors.get(e.from) ?? [])]) {
+            if (into.has(a)) continue
+            into.add(a)
+            changed = true
+          }
+        }
+      }
+      const conditionNode = new Map(ds.conditions.flatMap((c) => (c.satisfiedByNode ? [[c.id, c.satisfiedByNode] as const] : [])))
+      const suggestable = (item: Weapon | Accessory | ArmorPiece, target: Boss) => {
+        if (!item.gatedBy) return !item._prov.unverifiedFields.includes('gatedBy')
+        const gates = [...item.gatedBy.bosses, ...item.gatedBy.conditions.flatMap((c) => conditionNode.get(c) ?? [])]
+        return gates.every((g) => g !== target.nodeId && ancestors.get(target.nodeId)!.has(g))
+      }
+      const pieces = new Map(ds.armor.map((a) => [a.id, a]))
+      for (const id of BOSS_PAGE_IDS) {
+        const target = ds.bosses.find((b) => b.id === id) as Boss
+        // One suggestion naming EVERY item, so the gate judges each one.
+        const probe = { ...target, suggestedEquipment: [{ class: 'melee' as const, weapons: ds.weapons.map((w) => w.id), armorSetIds: ds.armorSets.map((s) => s.id), accessories: ds.accessories.map((a) => a.id), buffs: [] }] }
+        const rejected = new Set(checkSuggestionGating({ ...ds, bosses: ds.bosses.map((b) => (b.id === id ? probe : b)) }).map((e) => (e.code === 'E_SUGGESTION_GATING' ? e.itemRef : '')))
+        const setPieces = ds.armorSets.flatMap((s) => [...s.pieces.helmets, s.pieces.chest, s.pieces.legs]).flatMap((p) => pieces.get(p) ?? [])
+        const items = [...ds.weapons, ...ds.accessories, ...setPieces]
+        for (const item of items) {
+          expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name}`).toBe(!suggestable(item, target))
+          if (item.gatedBy?.bosses.includes(target.nodeId)) expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name} (gated by the boss itself)`).toBe(true)
+        }
+        // Today no pre-Hardmode boss has a verified-obtainable weapon before it (the declared gaps say so).
+        expect(ds.weapons.filter((w) => suggestable(w, target)), id).toEqual([])
+      }
     })
   })
 

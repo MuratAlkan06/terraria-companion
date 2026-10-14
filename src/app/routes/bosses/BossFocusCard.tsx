@@ -1,5 +1,7 @@
-import { CalendarDays, ExternalLink, Flag, X } from 'lucide-react'
+import { ArrowRight, CalendarDays, ExternalLink, Flag, X } from 'lucide-react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
+import { Link } from 'react-router'
+import { buttonClass } from '../../../components/buttonStyles'
 import { CuratedLabel } from '../../../components/CuratedLabel'
 import { cx } from '../../../components/cx'
 import { EDGE_STYLES } from '../../../components/nodeMap/edgeStyles'
@@ -20,11 +22,13 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { SpriteIndex } from '../../../data-access/types'
 import { getField } from '../../../schemas/getField'
-import { DISPLAY_ONLY_NOTE, STATE_LABEL } from './focusCardCopy'
+import { DISPLAY_ONLY_NOTE, OPEN_PAGE_LABEL, STATE_LABEL } from './focusCardCopy'
 
 /**
- * The map's compact focus card (PRD P5-S1 AC4; UX_SPEC §3.7, §4d). Boss pages are P5-S2/S3, so a
- * node opens this card instead — never a dead local link: name, kind, stage, the summon text with
+ * The map's compact focus card (PRD P5-S1 AC4; UX_SPEC §3.7, §4d). Nodes without a page open this
+ * card; a boss with a page (P5-S2) is a link on the map, and when its card is shown (a `?node=` deep
+ * link, or a jump from another card) the card's first action opens that page. Never a dead local
+ * link. The card shows: name, kind, stage, the summon text with
  * its source, the node's progress state (display only: this map marks nothing), its typed
  * connections (each with its own wiki source, and a button that moves the map to the other node)
  * and the node's wiki article.
@@ -39,6 +43,8 @@ export interface BossFocusCardProps {
   sprites: SpriteIndex | null
   worldEvil: WorldEvil | null
   state: NodeState | undefined
+  /** The node's boss page (P5-S2), when it has one: the card's first action links to it. */
+  pageHref?: string
   onClose: () => void
   /** Move the map (and this card) to another node. */
   onJump: (id: string) => void
@@ -117,7 +123,7 @@ function ConnectionList({ title, items, onJump, direction }: { title: string; it
   )
 }
 
-export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, state, onClose, onJump, headingRef, rootRef, className }: BossFocusCardProps) {
+export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, state, pageHref, onClose, onJump, headingRef, rootRef, className }: BossFocusCardProps) {
   const node = graph.nodeById.get(nodeId)
   if (!node) return null
   const record = node.boss ?? node.node
@@ -172,6 +178,12 @@ export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, state, on
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
+        {pageHref ? (
+          <Link to={pageHref} data-page-link="" className={buttonClass('primary', 'w-full')}>
+            {OPEN_PAGE_LABEL(node.name)}
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        ) : null}
         <dl className="space-y-3 text-sm">
           {stage.status === 'not-applicable' ? null : (
             <Row term="Stage">

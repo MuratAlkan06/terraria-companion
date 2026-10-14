@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { isCoveredBy, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SpriteManifest, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, isCoveredBy, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SpriteManifest, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
@@ -49,6 +49,7 @@ import { parseProjectileinfo } from '../parse/projectileinfo'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from '../parse/recipeModules'
 import { formatError, formatWarning, validateDataset } from '../validate'
 import { stationItemUses, TINKERERS_WORKSHOP_ITEM_ID } from '../validate/integrity'
+import { suggestionContext, suggestionGateFailures } from '../validate/suggestions'
 import {
   COLLECTION_KEYS,
   COLLECTIONS,
@@ -322,7 +323,8 @@ async function main(): Promise<number> {
       'Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs (i:/grp:/cond:, availability conditions included as cond:), i: sorted "ref*amount"})); same canonical recipe with a different result amount gets a -2 suffix. Drop ids: itemId-slug(npcName)-fnv1a32hex(JSON.stringify(sorted conditions)), -N suffix on collision.',
       'Drops: rows whose platform icons exclude Desktop are skipped; normal/expert/master flags give the applicable difficulties; rate/quantity cells are parsed per pipeline/parse/dropCells.ts; anything else is absent + listed (Unknown). Unregistered notes make conditions Unknown ([] + "conditions" listed).',
       'Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag): source.bossId = the registry boss of the row\'s article (pipeline/overlays/bosses.json), cross-checked against the boss\'s NPC ids (a mismatch keeps it Unknown + gap). Rows on event-boss articles (Pumpking, Betsy, Celestial Pillars…) carry no bossId: they are not Boss records (A3), so the field is not applicable.',
-      'Bosses (P2-S6): the REQUIREMENTS §6 registry in pipeline/overlays/bosses.json; npcIds, environment and per-difficulty stats from Cargo NPCs (pipeline/parse/npcStats.ts withholds every cell that is not one integer per difficulty, incl. cells flagged as based on outdated source code; multi-part bosses without a boss-level row are Unknown; values are the representative NPC\'s BASE stats = the article\'s first infobox — later-phase changes such as the second forms of Eye of Cthulhu, Plantera and Empress of Light are fight behavior and not modeled); summon items resolved through Module:Iteminfo/data; summon text, location time and attack-pattern tags only as verbatim quotes checked against the cited article revision; stage editorial; prep/suggested equipment/strategies absent + listed (A1 staging, enforced at P5).',
+      'Bosses (P2-S6): the REQUIREMENTS §6 registry in pipeline/overlays/bosses.json; npcIds, environment and per-difficulty stats from Cargo NPCs (pipeline/parse/npcStats.ts withholds every cell that is not one integer per difficulty, incl. cells flagged as based on outdated source code; multi-part bosses without a boss-level row are Unknown; values are the representative NPC\'s BASE stats = the article\'s first infobox — later-phase changes such as the second forms of Eye of Cthulhu, Plantera and Empress of Light are fight behavior and not modeled); summon items resolved through Module:Iteminfo/data; summon text, location time and attack-pattern tags only as verbatim quotes checked against the cited article revision; stage editorial.',
+      'Boss pages (P5-S2): manifest.bossPages lists the bosses whose pages ship (src/schemas/bossPages.ts); validate runs the E_BOSS_CURATION gate on them (AMENDMENTS-001 A1). Their prepChecklist (short editorial steps, each backed by a verbatim quote of the boss article or its "Guide:<boss> strategies" page), strategies (verbatim quotes; class/difficulty tags are reviewed editorial classifications) and suggestedEquipment are editorial fields, or Unknown with a declared reason (gap report). Bosses without a page keep these fields absent + listed (A1 staging).',
       'Progression (P2-S6): boss nodes 1:1 with bosses + milestone/event markers (A3) from pipeline/overlays/progression.json; every edge is typed, its note is a verbatim quote of its sourceUrl article (checked at build). Edges model one world; the hardmode condition is satisfied by the Hardmode milestone (required-gated by the Wall of Flesh).',
       'Enemies: Cargo NPCs rows with an enemy type and no boss/critter/town/projectile type, merged by name; biomes = NPCs `environment` alternatives verbatim ("/" = or, "+" = and); stage absent + listed; dropIds derived (deriveEnemyDropIds).',
       'Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.',
@@ -337,6 +339,7 @@ async function main(): Promise<number> {
       'Effect lines (P2-S8, pipeline/merge/effects.ts): every game-text line must match exactly one explicit rule — a stat rule onto the CLOSED StatKind enum (the line must state every emitted number), a special (verbatim text, simulated false; rules that would need a new StatKind name it as an amendment candidate), or flavor text; an unclassifiable line fails the build.',
     ],
     partial: { itemUniverse: ITEM_UNIVERSE_FILE, pending: PENDING },
+    bossPages: [...BOSS_PAGE_IDS],
   }
 
   // validate pass 1 → the strict-parsed (and possibly Lab-downgraded) weapons the lists project
@@ -364,6 +367,7 @@ async function main(): Promise<number> {
     return 1
   }
   const weaponDetails = first.dataset.weapons
+  const suggestionCtx = suggestionContext(first.dataset)
   const weaponList = weaponDetails.map((w) => projectList('weapons', w as unknown as Record<string, unknown>))
   const itemDetails = first.dataset.items
   const itemList = itemDetails.map((i) => projectList('items', i as unknown as Record<string, unknown>))
@@ -776,7 +780,29 @@ async function main(): Promise<number> {
         '|---|---|---|---|---|',
         ...bosses.stats.map((r) => `| ${r.name} | ${r.byDifficulty.classic} | ${r.byDifficulty.expert} | ${r.byDifficulty.master} | ${r.reasons.join('; ').replaceAll('|', '\\|') || '—'} |`),
         '',
-        `Attack-pattern tags (editorial, A1 staging — each backed by a verbatim behavior quote): ${first.dataset.bosses.map((b) => `${b.name} ${b.attackPatternTags?.length ?? 0}`).join(', ')}. Location time Unknown (no quote states it): ${first.dataset.bosses.filter((b) => !b.location.time).map((b) => b.name).join(', ') || 'none'}. prepChecklist / suggestedEquipment / strategies are absent + listed on every boss (P5 overlays, E_BOSS_CURATION gate).`,
+        `Attack-pattern tags (editorial, A1 staging — each backed by a verbatim behavior quote): ${first.dataset.bosses.map((b) => `${b.name} ${b.attackPatternTags?.length ?? 0}`).join(', ')}. Location time Unknown (no quote states it): ${first.dataset.bosses.filter((b) => !b.location.time).map((b) => b.name).join(', ') || 'none'}.`,
+      ],
+    },
+    {
+      title: 'Boss pages — P5 curated fields and the E_BOSS_CURATION gate (AMENDMENTS-001 A1)',
+      lines: [
+        `Bosses with a page (src/schemas/bossPages.ts = manifest.bossPages): ${BOSS_PAGE_IDS.join(', ')}. Each must carry ≥ 1 quoted attack-pattern tag and, for prepChecklist / strategies / suggestedEquipment, ≥ 1 curated entry or a declared honest gap (Unknown + the reason below). Every strategy is a verbatim quote of its cited page; every checklist line is short editorial wording backed by a quote checked on its page; outcome-promising quotes are rejected (pipeline/merge/overlays.ts OUTCOME_PROMISE).`,
+        '',
+        '| Boss | Checklist steps | Strategies (class-tagged / difficulty-tagged) | Suggested gear entries | Weapons passing E_SUGGESTION_GATING | Cited pages |',
+        '|---|---|---|---|---|---|',
+        ...BOSS_PAGE_IDS.map((id) => {
+          const b = first.dataset.bosses.find((x) => x.id === id)
+          if (!b) return `| ${id} | — | — | — | — | — |`
+          const or = (n: number | undefined, field: string) => (n !== undefined ? String(n) : b._prov.unverifiedFields.includes(field) ? 'Unknown' : '—')
+          const strategies = b.strategies ? `${b.strategies.length} (${b.strategies.filter((s) => s.class).length} / ${b.strategies.filter((s) => s.difficulty).length})` : or(undefined, 'strategies')
+          const eligible = first.dataset.weapons.filter((w) => suggestionGateFailures(w, b, suggestionCtx).length === 0).length
+          const pages = [...new Set(b._prov.sources.filter((s) => s.kind === 'curated').map((s) => decodeURIComponent(s.url.replace('https://terraria.wiki.gg/wiki/', '')).replaceAll('_', ' ')))]
+          return `| ${b.name} | ${or(b.prepChecklist?.length, 'prepChecklist')} | ${strategies} | ${or(b.suggestedEquipment?.length, 'suggestedEquipment')} | ${eligible} | ${pages.join('; ')} |`
+        }),
+        '',
+        'Declared gaps (rendered Unknown on the page, with the reason):',
+        '',
+        ...bosses.gaps.filter((g) => g.kind === 'missing-field').map((g) => `- ${g.ref} ${g.field}: ${g.detail}`),
       ],
     },
     {

@@ -126,6 +126,77 @@ describe('buildBosses', () => {
   })
 })
 
+describe('buildBosses — P5 curated fields (prepChecklist / strategies / suggestedEquipment)', () => {
+  const GUIDE = 'Guide:King Slime strategies'
+  const guide = article(GUIDE, 201, 'Make one or two long rows of platforms above the ground. Ironskin Potions and Regeneration Potions greatly increase survivability. The Thorn Chakram is a good option to keep the boss at range. This trick makes the fight trivial.')
+  const curatedEvidence = new Evidence(new Map([...ARTICLES, guide]))
+  const curatedIteminfo = { ...iteminfo, idsByName: new Map([...iteminfo.idsByName, ['Ironskin Potion', [292]], ['Regeneration Potion', [289]], ['Thorn Chakram', [191]]]) } as unknown as Iteminfo
+  const GAP = { gap: 'No weapon is verified as obtainable before this fight in the item data.' }
+  const curated = (over: Record<string, unknown> = {}) =>
+    overlay([
+      {
+        prepChecklist: [
+          { text: 'Build long rows of platforms', page: GUIDE, quote: 'Make one or two long rows of platforms above the ground.' },
+          { text: 'Drink Ironskin and Regeneration Potions', items: ['Ironskin Potion', 'Regeneration Potion'], page: GUIDE, quote: 'Ironskin Potions and Regeneration Potions greatly increase survivability.' },
+        ],
+        strategies: [
+          { page: 'King Slime', quote: 'When unable to reach the player, he may teleport to their location.' },
+          { class: 'melee', page: GUIDE, quote: 'The Thorn Chakram is a good option to keep the boss at range.', why: 'For Melee users.' },
+        ],
+        suggestedEquipment: GAP,
+        ...over,
+      },
+    ])
+  const run = (o: BossesOverlay) => buildBosses({ overlay: o, npcRows: NPC_ROWS, npcsFetchedAt: '2026-10-13T02:47:00.000Z', dropsFetchedAt: '2026-10-13T02:46:00.000Z', drops: DROPS, evidence: curatedEvidence, iteminfo: curatedIteminfo, images })
+
+  it('emits authored entries as editorial fields: checklist lines + resolved item ids + source, strategies = the verbatim quote', () => {
+    const out = run(curated())
+    const ks = out.bosses.find((b) => b.id === 'king-slime') as Boss
+    expect(() => Boss.parse(ks)).not.toThrow()
+    expect(ks.prepChecklist).toEqual([
+      { text: 'Build long rows of platforms', sourceUrl: 'https://terraria.wiki.gg/wiki/Guide:King_Slime_strategies' },
+      { text: 'Drink Ironskin and Regeneration Potions', itemIds: [292, 289], sourceUrl: 'https://terraria.wiki.gg/wiki/Guide:King_Slime_strategies' },
+    ])
+    expect(ks.strategies).toEqual([
+      { text: 'When unable to reach the player, he may teleport to their location.', sourceUrl: 'https://terraria.wiki.gg/wiki/King_Slime' },
+      { class: 'melee', text: 'The Thorn Chakram is a good option to keep the boss at range.', sourceUrl: 'https://terraria.wiki.gg/wiki/Guide:King_Slime_strategies' },
+    ])
+    expect(ks._prov.editorialFields).toEqual(['attackPatternTags', 'prepChecklist', 'stage', 'strategies'])
+    expect(ks._prov.sources).toContainEqual({ kind: 'curated', overlay: 'bosses', url: 'https://terraria.wiki.gg/wiki/Guide:King_Slime_strategies', rev: 201, fetchedAt: '2026-10-13' })
+  })
+
+  it('a declared gap is Unknown (absent + listed) with its reason as a missing-field gap; an uncurated field stays absent + listed with no gap', () => {
+    const out = run(curated())
+    const ks = out.bosses.find((b) => b.id === 'king-slime') as Boss
+    expect(ks.suggestedEquipment).toBeUndefined()
+    expect(ks._prov.unverifiedFields).toContain('suggestedEquipment')
+    expect(out.gaps).toContainEqual({ ref: 'boss:king-slime', field: 'suggestedEquipment', kind: 'missing-field', detail: `King Slime: ${GAP.gap}`, sources: ['https://terraria.wiki.gg/wiki/King_Slime'] })
+    const wof = out.bosses.find((b) => b.id === 'wall-of-flesh') as Boss
+    expect(wof._prov.unverifiedFields).toEqual(expect.arrayContaining(['prepChecklist', 'strategies', 'suggestedEquipment']))
+    expect(out.gaps.filter((g) => g.ref === 'boss:wall-of-flesh' && g.kind === 'missing-field' && g.field !== 'statsByDifficulty')).toEqual([])
+  })
+
+  it('a statsUnknown reason is a missing-field gap on statsByDifficulty (the boss page shows it); parsed stats add none', () => {
+    const out = run(curated())
+    expect(out.gaps.filter((g) => g.field === 'statsByDifficulty')).toEqual([
+      { ref: 'boss:wall-of-flesh', field: 'statsByDifficulty', kind: 'missing-field', detail: 'Wall of Flesh: Mouth and eyes share one health pool but have different defense.', sources: ['https://terraria.wiki.gg/wiki/Wall_of_Flesh'] },
+    ])
+  })
+
+  it('every quote is checked on its cited page and every item name must resolve', () => {
+    expect(() => run(curated({ strategies: [{ page: GUIDE, quote: 'Fight King Slime at the bottom of the ocean.' }] }))).toThrow(/strategies\.0: quote not found verbatim on "Guide:King Slime strategies"/)
+    expect(() => run(curated({ prepChecklist: [{ text: 'Drink potions', items: ['Ironskin Elixir'], page: GUIDE, quote: 'Ironskin Potions and Regeneration Potions greatly increase survivability.' }] }))).toThrow(/prepChecklist\.0: item "Ironskin Elixir"/)
+  })
+
+  it('the overlay schema rejects outcome promises, class/difficulty tags without a reviewer rationale, duplicate checklist lines and empty lists', () => {
+    expect(() => curated({ strategies: [{ page: GUIDE, quote: 'This trick makes the fight trivial.' }] })).toThrow(/promises an outcome/)
+    expect(() => curated({ strategies: [{ class: 'melee', page: GUIDE, quote: 'The Thorn Chakram is a good option to keep the boss at range.' }] })).toThrow(/needs a reviewer `why`/)
+    const line = { text: 'Build long rows of platforms', page: GUIDE, quote: 'Make one or two long rows of platforms above the ground.' }
+    expect(() => curated({ prepChecklist: [line, { ...line, text: 'build long rows of PLATFORMS' }] })).toThrow(/duplicate prep checklist text/)
+    expect(() => curated({ strategies: [] })).toThrow()
+  })
+})
+
 describe('buildProgression', () => {
   const progression = (edges: unknown[]) =>
     ProgressionOverlay.parse({

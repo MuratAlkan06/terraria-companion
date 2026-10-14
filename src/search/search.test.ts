@@ -8,6 +8,7 @@ import enemiesJson from '../data/enemies.json'
 import meta from '../data/meta.json'
 import searchDocsJson from '../data/search-docs.json'
 import type { SearchDoc } from '../schemas'
+import { BOSS_PAGE_IDS } from '../schemas/bossPages'
 import { buildSearchIndex, detailLine, type BuildDeps } from './buildIndex'
 import { createSearchEngine } from './engine'
 import { ENTITY_TYPES, searchableCounts, searchPlaceholder, searchScopeSummary } from './entityTypes'
@@ -124,9 +125,17 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
     expect(resolveTarget(zenith)).toEqual({ kind: 'internal', to: '/weapons/4956' })
   })
 
-  it('bosses (no local page yet) open their own wiki article from the doc', () => {
+  it('bosses without a page open their own wiki article from the doc', () => {
     const plantera = { id: 'boss:plantera', type: 'boss', name: 'Plantera', wikiUrl: 'https://terraria.wiki.gg/wiki/Plantera' } as const
     expect(resolveTarget(plantera)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Plantera' })
+  })
+
+  it('P5-S2: bosses with a page (src/schemas/bossPages.ts) navigate in-app to it', () => {
+    for (const id of BOSS_PAGE_IDS) {
+      expect(resolveTarget({ id: `boss:${id}`, type: 'boss', name: id, wikiUrl: `https://terraria.wiki.gg/wiki/${id}` })).toEqual({ kind: 'internal', to: `/bosses/${id}` })
+    }
+    // A malformed boss ref has no route: its wiki article, never a broken local link.
+    expect(resolveTarget({ id: 'boss:Eye' as SearchDoc['id'], type: 'boss', name: 'Eye', wikiUrl: 'https://terraria.wiki.gg/wiki/Eye_of_Cthulhu' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Eye_of_Cthulhu' })
   })
 
   it('an ammo item and a buff open their own article, not the wiki search page', () => {
@@ -166,14 +175,19 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     })
   })
 
-  it('every non-weapon row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
+  it('every row without a local page opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
     expect(all).toHaveLength(1634)
     const docById = new Map(docs.map((d) => [d.id, d]))
+    const pageBosses = new Set<string>(BOSS_PAGE_IDS.map((id) => `boss:${id}`))
     for (const option of all) {
       if (option.type === 'weapon') {
         expect(option.target).toEqual({ kind: 'internal', to: `/weapons/${option.ref.slice(2)}` })
+        continue
+      }
+      if (pageBosses.has(option.ref)) {
+        expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/bosses/${option.ref.slice(5)}` })
         continue
       }
       const wikiUrl = docById.get(option.ref)?.wikiUrl
@@ -194,8 +208,11 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     for (const [ref, record] of records) {
       const doc = docs.find((d) => d.id === ref)
       expect(doc, ref).toBeDefined()
+      expect(doc?.wikiUrl, ref).toBe(record.wikiUrl)
       const option = index.suggest(doc!.name).options.find((o) => o.ref === ref)
-      expect(option?.target, ref).toEqual({ kind: 'external', href: record.wikiUrl })
+      // P5-S2: a boss with a page navigates to it; every other record opens its own article.
+      const page = ref.startsWith('boss:') && (BOSS_PAGE_IDS as readonly string[]).includes(ref.slice(5))
+      expect(option?.target, ref).toEqual(page ? { kind: 'internal', to: `/bosses/${ref.slice(5)}` } : { kind: 'external', href: record.wikiUrl })
     }
   })
 

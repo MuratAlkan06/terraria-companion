@@ -1,5 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router'
 import { beforeAll, describe, expect, it } from 'vitest'
 import manifest from '../../../../public/sprites/manifest.json'
 import { NodeMap } from '../../../components/NodeMap'
@@ -10,6 +11,7 @@ import { layoutGraph } from '../../../components/nodeMap/layout'
 import { MAP_LAYOUT_OPTIONS } from '../../../components/nodeMap/mapConfig'
 import { createDataAccess } from '../../../data-access'
 import type { Boss, ProgressionData, ProgressionEdge, ProgressionNode, SpriteIndex } from '../../../data-access/types'
+import { BOSS_PAGE_IDS, hasBossPage } from '../../../schemas/bossPages'
 import bossesJson from '../../../data/bosses.json'
 import progressionJson from '../../../data/progression.json'
 import { APP_ROUTES, hasRoute } from '../../routes'
@@ -42,9 +44,13 @@ const escaped = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
 const attr = escaped
 
-function renderWorkspace(): string {
-  return renderToStaticMarkup(createElement(BossMapWorkspace, { data }))
+function renderWorkspace(focusId?: string): string {
+  return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(BossMapWorkspace, { data, focusId })))
 }
+
+/** Local hrefs in the markup (links into this site). */
+const localHrefs = (html: string) => [...html.matchAll(/href="(\/[^"]*)"/g)].map((m) => m[1])
+const PAGE_HREF = new RegExp(`^/bosses/(${BOSS_PAGE_IDS.join('|')})$`)
 
 describe('/bosses route registration (P5-S1)', () => {
   it('ships /bosses while the "What Should I Do Next?" hero button stays absent (its panel is P5-S5)', () => {
@@ -55,13 +61,13 @@ describe('/bosses route registration (P5-S1)', () => {
 })
 
 describe('BossMapWorkspace (SSR: phone layout, nothing persisted)', () => {
-  it('AC1: a node tree, not a list — every node a button in progression order, typed edges, stage bands', () => {
+  it('AC1: a node tree, not a list — every node a button (or, with a page, a link) in progression order, typed edges, stage bands', () => {
     const html = renderWorkspace()
     const layout = (() => {
       const input = layoutInputs(graph)
       return layoutGraph(input.nodes, input.edges, input.groups, MAP_LAYOUT_OPTIONS.vertical)
     })()
-    const ids = [...html.matchAll(/<button[^>]*data-node-id="([^"]+)"/g)].map((m) => m[1])
+    const ids = [...html.matchAll(/<(?:button|a)[^>]*data-node-id="([^"]+)"/g)].map((m) => m[1])
     expect(ids).toEqual(layout.layers.flat())
     expect(ids).toHaveLength(raw.nodes.length)
     expect(html).toContain('role="group" aria-roledescription="map" aria-label="Boss progression map"')
@@ -82,11 +88,41 @@ describe('BossMapWorkspace (SSR: phone layout, nothing persisted)', () => {
     for (const label of ['Zoom in', 'Zoom out', 'Fit all', 'Go to start']) expect(html).toContain(`aria-label="${label}"`)
   })
 
-  it('AC4: no dead local links and nothing unshipped (boss pages, recommender, reset, defeat toggles)', () => {
+  it('AC4: no dead local links and nothing unshipped (recommender, reset, defeat toggles)', () => {
     const html = renderWorkspace()
-    expect(html).not.toMatch(/href="\/bosses/)
+    for (const href of localHrefs(html)) expect(href).toMatch(PAGE_HREF)
     expect(html).not.toMatch(/What Should I Do Next|Reset progress|Mark (as )?defeated/i)
     expect(text(html)).not.toMatch(FORWARD_PROMISE)
+  })
+
+  it('P5-S1 AC4 / P5-S2: a pre-Hardmode boss node is a link to its page; every other node stays a card button', () => {
+    const html = renderWorkspace()
+    for (const node of raw.nodes) {
+      const element = new RegExp(`<(button|a)[^>]*data-node-id="${node.id}"[^>]*>`).exec(html)!
+      if (hasBossPage(node.id)) {
+        expect(element[1], node.id).toBe('a')
+        expect(element[0]).toContain(`href="/bosses/${node.id}"`)
+        expect(element[0]).not.toContain('aria-expanded')
+      } else {
+        expect(element[1], node.id).toBe('button')
+        expect(element[0]).toContain('aria-expanded="false"')
+      }
+    }
+    expect(html).toContain('Enter opens a node’s details, or its page when it has one.')
+  })
+
+  it('P5-S2 AC3: ?node=<id> opens the map on that node with its card open (a page node’s card links back to its page)', () => {
+    const html = renderWorkspace('eye-of-cthulhu')
+    expect(html).toContain('data-focus-card="eye-of-cthulhu"')
+    const pageLink = /<a[^>]*data-page-link=""[^>]*>([^<]*)/.exec(html)
+    expect(pageLink?.[0]).toContain('href="/bosses/eye-of-cthulhu"')
+    expect(pageLink?.[1]).toBe('Open the Eye of Cthulhu page')
+    const plantera = renderWorkspace('plantera')
+    expect(plantera).toContain('data-focus-card="plantera"')
+    expect(plantera).not.toContain('data-page-link')
+    expect(/<button[^>]*data-node-id="plantera"[^>]*>/.exec(plantera)?.[0]).toContain('aria-expanded="true"')
+    // An unknown id is ignored: no card, the usual opening view.
+    expect(renderWorkspace('not-a-node')).not.toContain('data-focus-card')
   })
 
   it('AC3: the world-evil setting switches the either/or branch (Crimson → Brain of Cthulhu on the path)', () => {

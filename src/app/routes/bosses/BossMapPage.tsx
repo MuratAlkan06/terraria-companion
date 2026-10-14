@@ -15,8 +15,10 @@ import { STAGES } from '../../stages'
 import { useProgressStore } from '../../progressStore'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
+import { useSearchParams } from 'react-router'
 import { BossFocusCard } from './BossFocusCard'
 import { loadBossMapData, peekBossMapData, type BossMapData } from './bossMapData'
+import { bossPageHref, MAP_NODE_PARAM } from './bossNav'
 
 /**
  * /bosses — Boss Node Map v1 (PRD P5-S1; UX_SPEC §3.7, §4d, §7, §9).
@@ -25,8 +27,11 @@ import { loadBossMapData, peekBossMapData, type BossMapData } from './bossMapDat
  *   game order, either/or fork for the world evils; vertical on phones/tablets, horizontal from lg.
  * - MapToolbar: the world-evil choice (persisted to tc.v1.progress.worldEvil) and the legend toggle.
  *   The legend docks beside the map from md, and overlays it (collapsed by default) on phones.
- * - Selecting a node opens its focus card (boss pages are P5-S2/S3): beside the map from lg, along
- *   its bottom edge below. Nothing here marks a defeat (P5-S4) — the card says so.
+ * - A boss with a page (P5-S2: pre-Hardmode, src/schemas/bossPages.ts) is a link to that page; any
+ *   other node opens its focus card: beside the map from lg, along its bottom edge below. Nothing
+ *   here marks a defeat (P5-S4) — the card says so.
+ * - `?node=<id>` (a boss page's "show on the map" links): the map opens centred on that node with its
+ *   card open (for a node with a page, the card links back to it).
  * - No "What Should I Do Next?" panel (P5-S5) and no reset-progress control (P5-S4): not shipped,
  *   so absent (UX_SPEC §3.2 rule).
  */
@@ -40,6 +45,9 @@ export default function BossMapPage() {
   useDocumentTitle('Boss Progression')
   const resource = useResource('boss-map', loadBossMapData, peekBossMapData)
   const showLoader = useDelayedFlag(resource.status === 'loading')
+  // `?node=<id>`: opened from a boss page's next steps — centre that node and open its card.
+  const [searchParams] = useSearchParams()
+  const focusId = searchParams.get(MAP_NODE_PARAM) ?? undefined
 
   return (
     <div
@@ -71,7 +79,7 @@ export default function BossMapPage() {
         />
       </header>
       {resource.status === 'ready' ? (
-        <BossMapWorkspace data={resource.data} />
+        <BossMapWorkspace key={focusId ?? ''} data={resource.data} focusId={focusId} />
       ) : resource.status === 'error' ? (
         <div className="mx-auto w-full max-w-7xl px-4 py-4 md:px-6">
           <ErrorState title="Couldn’t load the boss map" error={resource.error} onRetry={resource.retry} retryFocusId={TITLE_ID} />
@@ -125,7 +133,12 @@ export function WorldEvilToggle({ value, onChange }: { value: WorldEvil | null; 
   )
 }
 
-export function BossMapWorkspace({ data }: { data: BossMapData }) {
+/** A boss node's page, if it has one (P5-S2); every other node opens its focus card. */
+function pageOf(graph: ReturnType<typeof buildMapGraph>, id: string): string | undefined {
+  return graph.nodeById.get(id)?.kind === 'boss' ? bossPageHref(id) : undefined
+}
+
+export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId?: string }) {
   const horizontal = useBreakpoint('lg')
   const legendDocked = useBreakpoint('md')
   const coarse = useMediaQuery('(any-pointer: coarse)')
@@ -147,8 +160,10 @@ export function BossMapWorkspace({ data }: { data: BossMapData }) {
 
   const [legendOpen, setLegendOpen] = useState(legendDocked)
   // `via`: a node pressed on the map is revealed with the least movement; one reached from the
-  // card's connections ("jump") is centred, since it may be far away.
-  const [selection, setSelection] = useState<{ id: string; via: 'map' | 'jump' } | null>(null)
+  // card's connections or a page's "show on the map" link ("jump") is centred, since it may be far away.
+  const initialFocus = focusId && graph.nodeById.has(focusId) ? focusId : undefined
+  const [selection, setSelection] = useState<{ id: string; via: 'map' | 'jump' } | null>(() => (initialFocus ? { id: initialFocus, via: 'jump' } : null))
+  const nodeHref = useCallback((id: string) => pageOf(graph, id), [graph])
   const selectedId = selection?.id ?? null
   const mapRef = useRef<NodeMapHandle>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -257,6 +272,8 @@ export function BossMapWorkspace({ data }: { data: BossMapData }) {
             bandLabel={bandLabel}
             onSelect={onSelect}
             inset={cardInset}
+            nodeHref={nodeHref}
+            initialFocusId={initialFocus}
           />
           {legendDocked ? null : legendToggle}
           {legendOpen && !legendDocked ? (
@@ -277,6 +294,7 @@ export function BossMapWorkspace({ data }: { data: BossMapData }) {
               sprites={data.sprites}
               worldEvil={worldEvil}
               state={nodeStates[selectedId]}
+              pageHref={pageOf(graph, selectedId)}
               onClose={onClose}
               onJump={onJump}
               headingRef={headingRef}

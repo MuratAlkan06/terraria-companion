@@ -3,10 +3,14 @@
  * schemas keep Zod out of the runtime bundle (validation is dev-only, see ./devValidate.ts).
  */
 import type {
+  Accessory,
+  ArmorPiece,
+  ArmorSet,
   Boss,
   Buff,
   Condition,
   DropSource,
+  GapEntry,
   Item,
   LabBehavior,
   Meta,
@@ -48,6 +52,13 @@ export type WeaponListRecord = Pick<
 export interface ListRecordMap {
   weapons: WeaponListRecord
 }
+
+/** Base list fields shared by every item collection (pipeline LIST_FIELDS BASE_FIELDS). */
+type ListBase = 'id' | 'name' | 'slug' | 'type' | 'stage' | 'rarity' | 'sprite' | 'tags' | 'wikiUrl'
+/** accessories.list.json record (projection of the detail record; no `_prov`). */
+export type AccessoryListRecord = Pick<Accessory, ListBase | 'categories'>
+/** armor.list.json record (projection of the detail record; no `_prov`). */
+export type ArmorListRecord = Pick<ArmorPiece, ListBase | 'slot' | 'defense' | 'setId'>
 export interface DetailRecordMap {
   weapons: Weapon
 }
@@ -93,10 +104,14 @@ export interface SpriteIndex {
 }
 
 export type {
+  Accessory,
+  ArmorPiece,
+  ArmorSet,
   Boss,
   Buff,
   Condition,
   DropSource,
+  GapEntry,
   Item,
   Meta,
   ProgressionEdge,

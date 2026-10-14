@@ -12,6 +12,7 @@
  * | loadEnemies()             | ChunkLoadError; DataValidationError (dev)                  |
  * | loadSearchDocs()          | ChunkLoadError → search UI shows its designed error state  |
  * | loadItems() / loadBuffs() | ChunkLoadError; DataValidationError (dev)                  |
+ * | load{Accessory,Armor}List / …Details / loadArmorSets / loadStageGaps | same            |
  * | load*Index / loadItemNames| ChunkLoadError; DataValidationError (dev)                  |
  * | loadSpriteIndex()         | ChunkLoadError (manifest fetch)                            |
  *
@@ -24,6 +25,11 @@ import { ChunkLoadError, NotFoundError, SchemaVersionError } from './errors'
 import { memo, type Memo } from './memo'
 import { DEFAULT_IMPORTERS, DEFAULT_VALIDATOR, FETCHED_FILES, type DataFile, type Importers, type Validator } from './sources'
 import type {
+  Accessory,
+  AccessoryListRecord,
+  ArmorListRecord,
+  ArmorPiece,
+  ArmorSet,
   Boss,
   Buff,
   Condition,
@@ -32,6 +38,7 @@ import type {
   DropIndex,
   DropSource,
   EntityType,
+  GapEntry,
   Item,
   ItemNames,
   ItemUniverseFile,
@@ -158,6 +165,12 @@ export function createDataAccess(options: DataAccessOptions = {}) {
   const searchDocs = memo(() => loadFile<SearchDoc[]>('search-docs'))
   const items = memo(() => loadFile<Item[]>('items.detail'))
   const buffs = memo(() => loadFile<Buff[]>('buffs'))
+  const accessoryList = memo(() => loadFile<AccessoryListRecord[]>('accessories.list'))
+  const armorList = memo(() => loadFile<ArmorListRecord[]>('armor.list'))
+  const accessoryDetails = memo(async () => byKey(await loadFile<Accessory[]>('accessories.detail'), (a) => a.id))
+  const armorDetails = memo(async () => byKey(await loadFile<ArmorPiece[]>('armor.detail'), (a) => a.id))
+  const armorSets = memo(async () => byKey(await loadFile<ArmorSet[]>('armor-sets'), (s) => s.id))
+  const stageGaps = memo(() => loadFile<GapEntry[]>('stage-gaps'))
   const spriteIndex = memo(async (): Promise<SpriteIndex> => {
     const manifest = await loadFile<SpriteManifest>('sprite-manifest')
     return { fallbackMode: manifest.fallbackMode, byPath: byKey(manifest.files, (f) => f.path) }
@@ -207,9 +220,26 @@ export function createDataAccess(options: DataAccessOptions = {}) {
     /** Buff/debuff registry (§2.9) — the Lab resolves a weapon's damage-over-time debuff here. */
     loadBuffs: (): Promise<Buff[]> => buffs.get(),
     peekBuffs: (): Buff[] | undefined => buffs.peek(),
+    /** Accessory / armor list records (P2-S8): names, sprites and wiki links for item rows. */
+    loadAccessoryList: (): Promise<AccessoryListRecord[]> => accessoryList.get(),
+    peekAccessoryList: (): AccessoryListRecord[] | undefined => accessoryList.peek(),
+    loadArmorList: (): Promise<ArmorListRecord[]> => armorList.get(),
+    peekArmorList: (): ArmorListRecord[] | undefined => armorList.peek(),
+    /** Accessory / armor detail records by id and armor sets by slug (gating for suggested gear). */
+    loadAccessoryDetails: (): Promise<ReadonlyMap<number, Accessory>> => accessoryDetails.get(),
+    peekAccessoryDetails: (): ReadonlyMap<number, Accessory> | undefined => accessoryDetails.peek(),
+    loadArmorDetails: (): Promise<ReadonlyMap<number, ArmorPiece>> => armorDetails.get(),
+    peekArmorDetails: (): ReadonlyMap<number, ArmorPiece> | undefined => armorDetails.peek(),
+    loadArmorSets: (): Promise<ReadonlyMap<string, ArmorSet>> => armorSets.get(),
+    peekArmorSets: (): ReadonlyMap<string, ArmorSet> | undefined => armorSets.peek(),
+    /** Stage gap entries: the stated reasons behind declared Unknowns (e.g. a boss page's gear gap). */
+    loadStageGaps: (): Promise<GapEntry[]> => stageGaps.get(),
+    peekStageGaps: (): GapEntry[] | undefined => stageGaps.peek(),
     loadRecipeIndex: () => recipeIndex.get(),
     loadDropIndex: () => dropIndex.get(),
+    peekDropIndex: () => dropIndex.peek(),
     loadConditionIndex: () => conditionIndex.get(),
+    peekConditionIndex: () => conditionIndex.peek(),
     loadItemNames: () => itemNames.get(),
     peekItemNames: () => itemNames.peek(),
     loadSpriteIndex: () => spriteIndex.get(),
@@ -261,9 +291,23 @@ export const {
   peekItems,
   loadBuffs,
   peekBuffs,
+  loadAccessoryList,
+  peekAccessoryList,
+  loadArmorList,
+  peekArmorList,
+  loadAccessoryDetails,
+  peekAccessoryDetails,
+  loadArmorDetails,
+  peekArmorDetails,
+  loadArmorSets,
+  peekArmorSets,
+  loadStageGaps,
+  peekStageGaps,
   loadRecipeIndex,
   loadDropIndex,
+  peekDropIndex,
   loadConditionIndex,
+  peekConditionIndex,
   loadItemNames,
   peekItemNames,
   loadSpriteIndex,

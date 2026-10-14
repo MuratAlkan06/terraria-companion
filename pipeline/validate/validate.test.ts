@@ -343,6 +343,95 @@ describe('corrupted records fail with named errors', () => {
     })
   })
 
+  describe('E_BOSS_CURATION — the P5 gate for bosses whose pages ship (AMENDMENTS-001 A1)', () => {
+    const EOW = 'eater-of-worlds'
+    const SRC = 'https://terraria.wiki.gg/wiki/Guide:Eater_of_Worlds_strategies'
+    const withPages = (raw: RawDataset, pages: string[] = [EOW]) => {
+      ;(raw.manifest as Rec).bossPages = pages
+      return raw
+    }
+    const unlist = (boss: Rec, field: string) => {
+      boss._prov.unverifiedFields = boss._prov.unverifiedFields.filter((f: string) => f !== field)
+      if (!boss._prov.editorialFields.includes(field)) boss._prov.editorialFields.push(field)
+    }
+    /** The sample's Eater of Worlds with every curated minimum authored (gear = an ungated weapon). */
+    const curated = (raw: RawDataset) => {
+      const eow = find(raw, 'bosses', EOW)
+      eow.attackPatternTags = ['burrows']
+      eow.prepChecklist = [{ text: 'Bring a ranged weapon', itemIds: [98], sourceUrl: SRC }] // §7a-5: checklist items must resolve (sample records only)
+      eow.strategies = [{ class: 'ranged', text: 'Jester\'s Arrows can pierce through infinitely many segments, although the damage drops each segment.', sourceUrl: SRC }]
+      eow.suggestedEquipment = [{ class: 'ranged', weapons: [98], armorSetIds: [], accessories: [], buffs: [] }]
+      for (const f of ['attackPatternTags', 'prepChecklist', 'strategies', 'suggestedEquipment']) unlist(eow, f)
+      return raw
+    }
+    const declareGap = (raw: RawDataset, field: string) => {
+      const eow = find(raw, 'bosses', EOW)
+      delete eow[field]
+      eow._prov.editorialFields = eow._prov.editorialFields.filter((f: string) => f !== field)
+      eow._prov.unverifiedFields.push(field)
+      raw.stageGaps = [...((raw.stageGaps as Rec[] | undefined) ?? []), { ref: `boss:${EOW}`, field, kind: 'missing-field', detail: 'Eater of Worlds: no weapon is verified as obtainable before this fight.', sources: ['https://terraria.wiki.gg/wiki/Eater_of_Worlds'] }]
+    }
+    const fieldsOf = (result: ValidationResult) => expectOnly(result, 'E_BOSS_CURATION').map((e) => (e.code === 'E_BOSS_CURATION' ? `${e.bossId}:${e.field}` : ''))
+
+    it('does not apply to a dataset without boss pages (the sample as committed)', () => {
+      expect(run(sample()).ok).toBe(true)
+    })
+
+    it('fails every missing minimum of a listed boss: attackPatternTags, prepChecklist, strategies, suggestedEquipment', () => {
+      expect(fieldsOf(run(withPages(sample())))).toEqual([`${EOW}:attackPatternTags`, `${EOW}:prepChecklist`, `${EOW}:strategies`, `${EOW}:suggestedEquipment`])
+    })
+
+    it('passes once every minimum is curated', () => {
+      const result = run(withPages(curated(sample())))
+      if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    })
+
+    it('removing a curated field from a listed boss fails the build (absent + listed without a declared reason)', () => {
+      for (const field of ['prepChecklist', 'strategies', 'suggestedEquipment']) {
+        const raw = withPages(curated(sample()))
+        const eow = find(raw, 'bosses', EOW)
+        delete eow[field]
+        eow._prov.editorialFields = eow._prov.editorialFields.filter((f: string) => f !== field)
+        eow._prov.unverifiedFields.push(field)
+        expect(fieldsOf(run(raw))).toEqual([`${EOW}:${field}`])
+      }
+      const raw = withPages(curated(sample()))
+      delete find(raw, 'bosses', EOW).attackPatternTags
+      find(raw, 'bosses', EOW)._prov.editorialFields = find(raw, 'bosses', EOW)._prov.editorialFields.filter((f: string) => f !== 'attackPatternTags')
+      expect(fieldsOf(run(raw))).toEqual([`${EOW}:attackPatternTags`])
+    })
+
+    it('an empty list is not curation (it would claim there is nothing to show)', () => {
+      const raw = withPages(curated(sample()))
+      find(raw, 'bosses', EOW).strategies = []
+      expect(fieldsOf(run(raw))).toEqual([`${EOW}:strategies`])
+    })
+
+    it('a declared gap passes only with its reason in the stage gap log', () => {
+      const raw = withPages(curated(sample()))
+      declareGap(raw, 'strategies')
+      expect(run(raw).ok).toBe(true)
+      raw.stageGaps = []
+      expect(fieldsOf(run(raw))).toEqual([`${EOW}:strategies`])
+    })
+
+    it('a suggestedEquipment gap must be necessary: it is stale while any weapon passes E_SUGGESTION_GATING for the boss', () => {
+      const raw = withPages(curated(sample()))
+      declareGap(raw, 'suggestedEquipment')
+      const errors = expectOnly(run(raw), 'E_BOSS_CURATION')
+      expect(errors).toHaveLength(1)
+      expect(errors[0].message).toMatch(/declared gap is stale: 3 weapon\(s\) now pass E_SUGGESTION_GATING .*Wooden Bow \(i:39\)/)
+      // gate every ungated sample weapon behind the Wall of Flesh (not upstream of the Eater) → the gap is necessary
+      for (const id of [39, 98, 3069]) find(raw, 'weapons', id).gatedBy = { bosses: ['wall-of-flesh'], conditions: [], stage: 'early-hm' }
+      const result = run(raw)
+      if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    })
+
+    it('a listed boss without a record fails', () => {
+      expect(fieldsOf(run(withPages(curated(sample()), [EOW, 'king-slime'])))).toEqual(['king-slime:(record)'])
+    })
+  })
+
   it('E_LIST_DETAIL_DRIFT: list value differs from its detail record', () => {
     const raw = sample()
     ;(raw.lists.weapons as Rec[]).find((l) => l.id === 98)!.damage = 7

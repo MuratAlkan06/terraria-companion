@@ -5,11 +5,15 @@
  */
 import * as z from 'zod'
 import {
+  Accessory,
+  ArmorPiece,
+  ArmorSet,
   Boss,
   Buff,
   Condition,
   DropSource,
   Enemy,
+  GapEntry,
   Item,
   ItemId,
   Meta,
@@ -43,6 +47,11 @@ export const WeaponListRecordSchema = Weapon.pick({
   useAnimationTicks: true,
 }).extend({ labKind: z.enum(LAB_KINDS) })
 
+/** List records of the equipment collections (pipeline LIST_FIELDS: base fields + the type's own). Strict. */
+const LIST_BASE = { id: true, name: true, slug: true, type: true, stage: true, rarity: true, sprite: true, tags: true, wikiUrl: true } as const
+export const AccessoryListRecordSchema = Accessory.pick({ ...LIST_BASE, categories: true })
+export const ArmorListRecordSchema = ArmorPiece.pick({ ...LIST_BASE, slot: true, defense: true, setId: true })
+
 /** App-side view of the pipeline's item-universe.json (only the fields the app reads are strict). */
 const ItemUniverseSchema = z.object({
   items: z.array(
@@ -57,6 +66,12 @@ const ItemUniverseSchema = z.object({
 const SCHEMAS: Record<DataFile, z.ZodType> = {
   'weapons.list': z.array(WeaponListRecordSchema),
   'weapons.detail': z.array(Weapon),
+  'accessories.list': z.array(AccessoryListRecordSchema),
+  'accessories.detail': z.array(Accessory),
+  'armor.list': z.array(ArmorListRecordSchema),
+  'armor.detail': z.array(ArmorPiece),
+  'armor-sets': z.array(ArmorSet),
+  'stage-gaps': z.array(GapEntry),
   'items.detail': z.array(Item),
   buffs: z.array(Buff),
   recipes: z.array(Recipe),

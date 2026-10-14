@@ -8,7 +8,8 @@
  *  2. §2.1-3 Lab downgrade on raw weapons (pre-parse; unverified sim inputs → limitation)
  *  3. strict schema parse of every record (E_SCHEMA) — stops here on failure
  *  4. §7a-10 ammo classes: E_DANGLING_REF once items are produced; A1 warning + downgrade while pending
- *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, list⊂detail, search docs
+ *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, the P5 boss
+ *     curation gate (manifest.bossPages), list⊂detail, search docs
  *  6. gaps + meta
  */
 import type * as z from 'zod'
@@ -26,6 +27,7 @@ import {
   type Dataset,
   type RawDataset,
 } from './dataset'
+import { checkBossCuration } from './curation'
 import type { PipelineError, PipelineWarning } from './errors'
 import { checkFixtures } from './fixtures'
 import { checkGraph } from './graph'
@@ -133,6 +135,7 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
     ...checkGraph(dataset),
     ...(['bosses', 'nodes', 'edges'].some((k) => scope.pending.has(k as CollectionKey)) ? [] : checkFixtures(dataset, manifest.data.fixtures)),
     ...checkSuggestionGating(dataset),
+    ...checkBossCuration(dataset, manifest.data.bossPages ?? [], stageGaps),
     ...checkListDetail(raw.lists, dataset),
     ...(raw.searchDocs !== undefined ? checkSearchDocs(raw.searchDocs, dataset) : []),
   )

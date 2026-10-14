@@ -29,6 +29,8 @@ export type PipelineError =
   | { code: 'E_BUDGET'; file: string; gzBytes: number; message: string }
   /** §7a-13: a named progression fixture fact does not hold (P2-S6 AC3 as data tests). */
   | { code: 'E_FIXTURE'; name: string; message: string }
+  /** AMENDMENTS-001 A1 P5 gate: a boss whose page ships lacks a curated minimum (validate/curation.ts). */
+  | { code: 'E_BOSS_CURATION'; bossId: string; field: string; message: string }
 
 export type PipelineErrorCode = PipelineError['code']
 

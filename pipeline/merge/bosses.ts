@@ -9,14 +9,20 @@
  * - statsByDifficulty: the overlay's representative row (`primary`) through parse/npcStats.ts. A
  *   difficulty is emitted only when both hp and defense are single verified integers; contact damage
  *   is added when verified (> 0; 0 = no contact damage → not applicable). Multi-part bosses whose
- *   boss-level stats are not one row (`statsUnknown`) and every unparseable cell are Unknown.
+ *   boss-level stats are not one row (`statsUnknown`) and every unparseable cell are Unknown; a
+ *   `statsUnknown` reason is also a `missing-field` gap on `statsByDifficulty` (the page shows it).
  * - location.biomes: the primary row's Cargo `environment` alternatives verbatim (as enemies);
  *   location.time: only with a quote stating it, else Unknown.
  * - summon: item names → Iteminfo IDs (exact + unambiguous or the build fails), registry
  *   conditions, the verbatim quote as text, its article as sourceUrl.
  * - attackPatternTags: A1 staging — only tags with a behavior quote (editorialFields); else absent +
- *   listed. suggestedEquipment / prepChecklist / strategies: absent + listed (enforced at P5 by
- *   E_BOSS_CURATION, not here).
+ *   listed.
+ * - prepChecklist / strategies / suggestedEquipment (P5, overlays.ts "P5 curated boss fields"):
+ *   authored entries → emitted + editorialFields, each quote checked on its page (strategies emit the
+ *   quote itself as text; checklist lines are short editorial wording backed by their quote); a
+ *   declared `{ gap }` → absent + listed + a `missing-field` gap carrying the reason; not curated →
+ *   absent + listed (A1 staging). Item names resolve through Module:Iteminfo/data. Whether a boss
+ *   with a page is fully curated is validate's E_BOSS_CURATION gate, not checked here.
  * - stage: editorial (overlay). dropIds: derived from DropSource.source.bossId (§7a-3).
  * - Nodes: one boss node per boss (same slug, Boss↔Node 1:1) + the overlay's event / milestone
  *   markers (A3: markers only). Edges: overlay, note = the verbatim quote, sourceUrl = its article.
@@ -30,12 +36,78 @@ import { parseNpcStat, type PerDifficulty } from '../parse/npcStats'
 import { stripMarkup } from '../parse/text'
 import { BOSS_TYPES } from './drops'
 import { Evidence } from './evidence'
-import type { BossesOverlay, BossOverlayEntry, NpcRowRef, ProgressionOverlay } from './overlays'
+import { CURATED_BOSS_FIELDS, isCurationGap, type BossesOverlay, type BossOverlayEntry, type NpcRowRef, type ProgressionOverlay } from './overlays'
 import { GapLog, isoDate, makeProv, moduleSource } from './prov'
 import { OverlayError } from './registry'
 
 const DIFFS: readonly Difficulty[] = ['classic', 'expert', 'master']
-const A1_STAGED = ['prepChecklist', 'strategies', 'suggestedEquipment'] as const
+
+type CuratedFields = Pick<Boss, 'prepChecklist' | 'strategies' | 'suggestedEquipment'>
+
+/**
+ * The P5 curated fields of one overlay entry (see the module doc): emitted values, the curated
+ * sources their quotes cite, and which fields are editorial / Unknown (+ the declared gaps).
+ */
+function curatedFields(e: BossOverlayEntry, evidence: Evidence, iteminfo: Iteminfo, wikiUrl: string): { fields: CuratedFields; sources: ProvSource[]; editorial: string[]; unverified: string[]; gaps: GapEntry[] } {
+  const where = `overlay bosses/${e.id}`
+  const sources: ProvSource[] = []
+  const quoted = (page: string, quote: string, at: string) => {
+    const p = evidence.quote(page, quote, `${where} ${at}`)
+    sources.push(Evidence.source('bosses', p))
+    return p.url
+  }
+  const itemId = (name: string, at: string) => {
+    const r = resolveItemName(iteminfo, name)
+    if (!r.ok || r.ambiguous) throw new OverlayError(`[E_SCHEMA] ${where} ${at}: item "${name}" does not resolve to exactly one Module:Iteminfo/data item${r.ok ? ` (ambiguous: ${r.ambiguous?.join(', ')})` : ` (${r.reason})`}`)
+    return r.id
+  }
+  const fields: CuratedFields = {}
+  const editorial: string[] = []
+  const unverified: string[] = []
+  const gaps: GapEntry[] = []
+  for (const field of CURATED_BOSS_FIELDS) {
+    const value = e[field]
+    if (value === undefined) {
+      unverified.push(field) // A1 staging: not curated
+      continue
+    }
+    if (isCurationGap(value)) {
+      unverified.push(field)
+      gaps.push({ ref: `boss:${e.id}`, field, kind: 'missing-field', detail: `${e.name}: ${value.gap}`, sources: [wikiUrl] })
+      continue
+    }
+    editorial.push(field)
+  }
+  if (Array.isArray(e.prepChecklist)) {
+    fields.prepChecklist = e.prepChecklist.map((p, i) => ({
+      text: p.text,
+      ...(p.items ? { itemIds: p.items.map((n) => itemId(n, `prepChecklist.${i}`)) } : {}),
+      sourceUrl: quoted(p.page, p.quote, `prepChecklist.${i}`),
+    }))
+  }
+  if (Array.isArray(e.strategies)) {
+    fields.strategies = e.strategies.map((s, i) => ({
+      ...(s.class ? { class: s.class } : {}),
+      ...(s.difficulty ? { difficulty: s.difficulty } : {}),
+      text: s.quote,
+      sourceUrl: quoted(s.page, s.quote, `strategies.${i}`),
+    }))
+  }
+  if (Array.isArray(e.suggestedEquipment)) {
+    fields.suggestedEquipment = e.suggestedEquipment.map((g, i) => {
+      quoted(g.page, g.quote, `suggestedEquipment.${i}`)
+      return {
+        class: g.class,
+        weapons: g.weapons.map((n) => itemId(n, `suggestedEquipment.${i}.weapons`)),
+        armorSetIds: [...g.armorSets],
+        accessories: g.accessories.map((n) => itemId(n, `suggestedEquipment.${i}.accessories`)),
+        buffs: [...g.buffs],
+        ...(g.note ? { note: g.note } : {}),
+      }
+    })
+  }
+  return { fields, sources, editorial, unverified, gaps }
+}
 
 const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
 const types = (row: CargoRow) => str(row.type).split('^').map((t) => t.trim()).filter(Boolean)
@@ -138,6 +210,7 @@ export function buildBosses(input: BossBuildInput): BossBuild {
     if (e.statsUnknown) {
       for (const d of DIFFS) unverified.push(`statsByDifficulty.${d}`)
       statRow.reasons.push(e.statsUnknown)
+      gaps.add({ ref: `boss:${e.id}`, field: 'statsByDifficulty', kind: 'missing-field', detail: `${e.name}: ${e.statsUnknown}`, sources: [wikiUrl] })
     } else {
       const parsed = (k: 'life' | 'defense' | 'damage'): PerDifficulty => {
         const p = parseNpcStat(str(primary[k]), k)
@@ -180,7 +253,12 @@ export function buildBosses(input: BossBuildInput): BossBuild {
     const tags = e.attackPatternTags.map((t) => t.tag).sort()
     if (tags.length > 0) editorial.push('attackPatternTags')
     else unverified.push('attackPatternTags')
-    unverified.push(...A1_STAGED)
+
+    // P5 curated fields (prep checklist, strategies, suggested equipment)
+    const curated = curatedFields(e, evidence, iteminfo, wikiUrl)
+    editorial.push(...curated.editorial)
+    unverified.push(...curated.unverified)
+    for (const g of curated.gaps) gaps.add(g)
 
     // sprite
     const sp = bossSprite(e, input.npcRows, input.images)
@@ -197,8 +275,9 @@ export function buildBosses(input: BossBuildInput): BossBuild {
       { kind: 'cargo:NPCs', url: wikiUrl, fetchedAt: isoDate(input.npcsFetchedAt) },
       ...(dropIds.length > 0 ? [{ kind: 'cargo:Drops' as const, url: wikiUrl, fetchedAt: isoDate(input.dropsFetchedAt) }] : []),
       Evidence.source('bosses', summonPage),
-      ...(items.length > 0 ? [iteminfoSrc] : []),
+      ...(items.length > 0 || curated.fields.prepChecklist?.some((p) => p.itemIds) || curated.fields.suggestedEquipment ? [iteminfoSrc] : []),
       ...tagSources,
+      ...curated.sources,
     ]
     const prov = makeProv(sources, unverified)
     prov.editorialFields = editorial.sort()
@@ -216,6 +295,7 @@ export function buildBosses(input: BossBuildInput): BossBuild {
       statsByDifficulty,
       ...(tags.length > 0 ? { attackPatternTags: tags } : {}),
       dropIds,
+      ...curated.fields,
       _prov: prov,
     })
   }

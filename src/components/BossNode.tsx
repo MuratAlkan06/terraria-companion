@@ -1,5 +1,6 @@
 import { CalendarDays, Flag } from 'lucide-react'
 import type { CSSProperties } from 'react'
+import { Link } from 'react-router'
 import type { SpriteIndex } from '../data-access/types'
 import { cx } from './cx'
 import { WORLD_EVIL_LABEL, type MapNode, type NodeState } from './nodeMap/graph'
@@ -7,7 +8,8 @@ import type { PlacedNode } from './nodeMap/layout'
 import { SpriteImg } from './SpriteImg'
 
 /**
- * BossNode (UX_SPEC §3.1/§3.7): one progression-map node, a real <button> positioned on the map.
+ * BossNode (UX_SPEC §3.1/§3.7): one progression-map node, a real <button> positioned on the map —
+ * or, for a boss with a page (P5-S2, `href`), a real link to that page (same look and hit area).
  * - Boss: sprite (B30 still thumbnail for heavy GIFs) inside a defeat-state RING, name below.
  * - Event / milestone: a compact marker (AMENDMENTS-001 A3: markers only) — flag or calendar glyph
  *   plus name, so markers never read as boss fights.
@@ -39,6 +41,11 @@ export interface BossNodeProps {
   /** Hit-area reach past the box, in map px per screen axis. */
   hit: { x: number; y: number }
   onSelect: (id: string) => void
+  /**
+   * The node's own page (P5-S2 boss pages): the node is then a LINK to it instead of a button that
+   * opens the focus card. Same look, data hooks and hit area.
+   */
+  href?: string
 }
 
 /** Sprite box inside the ring (map px). */
@@ -62,7 +69,7 @@ const RING: Readonly<Record<'not-attempted' | NodeState, string>> = {
   skipped: 'border-dashed border-stone-500 bg-slot',
 }
 
-export function BossNode({ node, box, sprites, inPlay, selected, state, describedBy, controls, hit, onSelect }: BossNodeProps) {
+export function BossNode({ node, box, sprites, inPlay, selected, state, describedBy, controls, hit, onSelect, href }: BossNodeProps) {
   const defeatState = state ?? 'not-attempted'
   const style = {
     left: box.x,
@@ -72,28 +79,25 @@ export function BossNode({ node, box, sprites, inPlay, selected, state, describe
     '--hit-x': `${hit.x}px`,
     '--hit-y': `${hit.y}px`,
   } as CSSProperties
-  return (
-    <button
-      type="button"
-      data-node-id={node.id}
-      data-kind={node.kind}
-      data-in-play={inPlay ? 'true' : 'false'}
-      data-defeat-state={defeatState}
-      aria-label={node.name}
-      aria-describedby={describedBy}
-      aria-expanded={selected}
-      aria-controls={selected ? controls : undefined}
-      onClick={() => onSelect(node.id)}
-      style={style}
-      className={cx(
-        BASE,
-        KIND_CLASSES[node.kind],
-        node.kind === 'boss' && (selected ? 'border-gold-400' : 'border-panel-border'),
-        node.kind !== 'boss' && selected && 'border-gold-400',
-        selected && 'bg-night-700 shadow-pixel-drop',
-        !inPlay && 'border-dashed opacity-45',
-      )}
-    >
+  const common = {
+    'data-node-id': node.id,
+    'data-kind': node.kind,
+    'data-in-play': inPlay ? 'true' : 'false',
+    'data-defeat-state': defeatState,
+    'aria-label': node.name,
+    'aria-describedby': describedBy,
+    style,
+    className: cx(
+      BASE,
+      KIND_CLASSES[node.kind],
+      node.kind === 'boss' && (selected ? 'border-gold-400' : 'border-panel-border'),
+      node.kind !== 'boss' && selected && 'border-gold-400',
+      selected && 'bg-night-700 shadow-pixel-drop',
+      !inPlay && 'border-dashed opacity-45',
+    ),
+  }
+  const content = (
+    <>
       {node.kind === 'boss' ? (
         <>
           <span
@@ -126,6 +130,18 @@ export function BossNode({ node, box, sprites, inPlay, selected, state, describe
           {WORLD_EVIL_LABEL[node.worldEvil]}
         </span>
       ) : null}
+    </>
+  )
+  if (href) {
+    return (
+      <Link to={href} data-node-page="" {...common}>
+        {content}
+      </Link>
+    )
+  }
+  return (
+    <button type="button" aria-expanded={selected} aria-controls={selected ? controls : undefined} onClick={() => onSelect(node.id)} {...common}>
+      {content}
     </button>
   )
 }

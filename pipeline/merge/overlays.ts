@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as z from 'zod'
-import { AttackPatternTag, Boss, Condition, DamageClass, EdgeType, IsoDate, ItemId, NpcId, PlainText, PlainText1, Slug, Stage, StatKind, WorldEvil } from '../../src/schemas'
+import { AttackPatternTag, Boss, Condition, DamageClass, Difficulty, EdgeType, IsoDate, ItemId, NpcId, PlainText, PlainText1, Slug, Stage, StatKind, WorldEvil } from '../../src/schemas'
 
 export const OVERLAY_DIR = resolve(import.meta.dirname, '..', 'overlays')
 
@@ -70,6 +70,68 @@ const Page = z.string().min(1)
 const NpcRowRef = z.strictObject({ npcId: NpcId, variant: z.string().min(1).optional() })
 export type NpcRowRef = z.infer<typeof NpcRowRef>
 
+// ---------------------------------------------------------------------------------------------
+// P5 curated boss fields (AMENDMENTS-001 A1 staging; enforced by the E_BOSS_CURATION gate for the
+// bosses whose pages ship — src/schemas/bossPages.ts). Each field is EITHER authored entries, every
+// one backed by a verbatim quote of its cited page (checked against the cached revision like every
+// overlay quote), OR a reasoned honest gap: the field is emitted Unknown (absent + listed) and the
+// reason becomes a gaps.json `missing-field` entry. An absent field is simply not curated (the
+// P2-S6 staging state) — the gate rejects that for a boss with a page.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Copy that promises a fight's outcome (PRD §9 honesty: no outcome language). Strategy quotes and
+ * checklist lines are rejected when they match; the wiki says plenty without it.
+ */
+export const OUTCOME_PROMISE =
+  /\b(guarantee[sd]?|impossible to die|can(?:not|'t) (?:die|lose)|will (?:win|die)|win the fight|kill (?:it|him|her) in seconds|trivial|easy win)\b/i
+
+/** One prep-checklist step: our short wording; the quote is its evidence (not emitted). */
+const BossPrepEntry = z.strictObject({
+  /** The checklist line shown to the user (editorial; must say no more than the quote). */
+  text: PlainText1.max(140),
+  /** Items the step names: display names resolved through Module:Iteminfo/data (exact, unambiguous). */
+  items: z.array(z.string().min(1)).min(1).optional(),
+  page: Page,
+  quote: Quote,
+})
+export type BossPrepEntry = z.infer<typeof BossPrepEntry>
+
+/** One strategy: the quote itself is emitted as the text (curated text can only repeat the wiki). */
+const BossStrategyEntry = z.strictObject({
+  class: DamageClass.optional(),
+  difficulty: Difficulty.optional(),
+  page: Page,
+  quote: Quote,
+  /** Pipeline-only reviewer rationale (why the class / difficulty tag applies); required with a tag. */
+  why: z.string().min(1).optional(),
+})
+export type BossStrategyEntry = z.infer<typeof BossStrategyEntry>
+
+/** Suggested per-class equipment; every item must pass E_SUGGESTION_GATING (validate, §7a-5). */
+const BossGearEntry = z.strictObject({
+  class: DamageClass,
+  /** Display names → Module:Iteminfo/data IDs (exact, unambiguous). */
+  weapons: z.array(z.string().min(1)).min(1),
+  armorSets: z.array(Slug),
+  accessories: z.array(z.string().min(1)),
+  buffs: z.array(Slug),
+  note: PlainText1.optional(),
+  page: Page,
+  quote: Quote,
+})
+export type BossGearEntry = z.infer<typeof BossGearEntry>
+
+/** A reasoned honest gap (emitted Unknown + a `missing-field` gap entry carrying the reason). */
+const CurationGap = z.strictObject({ gap: PlainText.min(20) })
+export type CurationGap = z.infer<typeof CurationGap>
+
+export const isCurationGap = (v: unknown): v is CurationGap => typeof v === 'object' && v !== null && !Array.isArray(v) && 'gap' in v
+
+/** The three A1-staged list fields an overlay entry may curate (attackPatternTags are quoted tags, above). */
+export const CURATED_BOSS_FIELDS = ['prepChecklist', 'strategies', 'suggestedEquipment'] as const
+export type CuratedBossField = (typeof CURATED_BOSS_FIELDS)[number]
+
 const BossOverlayEntry = z.strictObject({
   id: Slug,
   name: PlainText1,
@@ -96,6 +158,10 @@ const BossOverlayEntry = z.strictObject({
   time: z.strictObject({ value: Boss.shape.location.shape.time.unwrap(), quote: Quote }).optional(),
   /** A1 staging: only tags with a verbatim behavior quote; editorial. */
   attackPatternTags: z.array(z.strictObject({ tag: AttackPatternTag, quote: Quote, page: Page.optional() })),
+  /** P5 curated fields (see above): entries, or `{ gap }`; absent = not curated. */
+  prepChecklist: z.union([z.array(BossPrepEntry).min(1), CurationGap]).optional(),
+  strategies: z.union([z.array(BossStrategyEntry).min(1), CurationGap]).optional(),
+  suggestedEquipment: z.union([z.array(BossGearEntry).min(1), CurationGap]).optional(),
 })
 export type BossOverlayEntry = z.infer<typeof BossOverlayEntry>
 
@@ -112,6 +178,22 @@ export const BossesOverlay = z
     for (const e of o.entries) {
       const tags = e.attackPatternTags.map((t) => t.tag)
       if (new Set(tags).size !== tags.length) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": duplicate attack pattern tag` })
+      if (Array.isArray(e.prepChecklist)) {
+        // Checklist entry ids derive from the text (persisted check-offs, A7), so texts are unique per boss.
+        const texts = e.prepChecklist.map((p) => p.text.toLowerCase())
+        if (new Set(texts).size !== texts.length) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": duplicate prep checklist text` })
+        for (const p of e.prepChecklist) {
+          if (OUTCOME_PROMISE.test(p.text)) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": prep checklist text promises an outcome: "${p.text}"` })
+        }
+      }
+      if (Array.isArray(e.strategies)) {
+        const quotes = e.strategies.map((s) => s.quote)
+        if (new Set(quotes).size !== quotes.length) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": duplicate strategy quote` })
+        for (const s of e.strategies) {
+          if ((s.class || s.difficulty) && !s.why) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": a class/difficulty-tagged strategy needs a reviewer \`why\`: "${s.quote}"` })
+          if (OUTCOME_PROMISE.test(s.quote)) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": strategy quote promises an outcome: "${s.quote}"` })
+        }
+      }
     }
   })
 export type BossesOverlay = z.infer<typeof BossesOverlay>
@@ -345,8 +427,13 @@ export const loadWithheldOverlay = (dir = OVERLAY_DIR): WithheldOverlay => Withh
 
 /** Every article an overlay cites as evidence (fetched by the sync plan, quote-checked by the build). */
 export function evidencePages(b: BossesOverlay, p: ProgressionOverlay, w: WithheldOverlay): string[] {
+  const curatedPages = (e: BossOverlayEntry) =>
+    CURATED_BOSS_FIELDS.flatMap((f) => {
+      const v = e[f]
+      return Array.isArray(v) ? v.map((x) => x.page) : []
+    })
   return [
-    ...b.entries.flatMap((e) => [e.page, ...e.attackPatternTags.flatMap((t) => (t.page ? [t.page] : []))]),
+    ...b.entries.flatMap((e) => [e.page, ...e.attackPatternTags.flatMap((t) => (t.page ? [t.page] : [])), ...curatedPages(e)]),
     ...p.nodes.map((n) => n.page),
     ...p.edges.map((e) => e.page),
     ...w.entries.flatMap((e) => e.evidence.map((x) => x.page)),
