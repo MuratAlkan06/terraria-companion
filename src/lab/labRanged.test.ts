@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Item, Weapon } from '../data-access/types'
-import { createLabSim, DEFAULT_LAB_SETTINGS, TICKS_PER_SECOND, type LabSettings, type SimEvent } from '../sim'
+import { createLabSim, DEFAULT_DUMMY, DEFAULT_LAB_SETTINGS, TICKS_PER_SECOND, type LabSettings, type SimEvent } from '../sim'
 import { createLabSession, MANA_WARNING_CLEAR_TICKS, RATE_WINDOW_ATTACKS, type LabSession } from './labSession'
 import { ammoChoices, ammoClassOf, labDummiesFor, RANGED_TARGET_X_TILES, resolveAmmo } from './labSetup'
 import { labWeapons } from './labWeapons'
@@ -98,7 +98,7 @@ describe('P3-S4 AC1–AC3: shots travel to the dummy, ammo changes damage and sp
   it('projectile weapons face the ranged dummy; a straight shot flies to its near face and stops there', () => {
     expect(labDummiesFor('bow-gun')?.[0].x).toBe(RANGED_TARGET_X_TILES)
     expect(labDummiesFor('magic-bolt')?.[0].x).toBe(RANGED_TARGET_X_TILES)
-    expect(labDummiesFor('swing-melee')).toBeUndefined()
+    expect(labDummiesFor('swing-melee')).toEqual([{ ...DEFAULT_DUMMY }]) // melee: the engine's own point-blank dummy
     const s = session(bow)
     const dummy = s.sim.renderState().dummies[0]
     expect(dummy.x).toBe(RANGED_TARGET_X_TILES)

@@ -47,6 +47,10 @@ export type ApproximationId =
   | 'multi-hit'
   | 'knockback'
   | 'dummy-hitbox'
+  | 'boomerang-flight'
+  | 'flail-launch'
+  | 'yoyo-control'
+  | 'beam-geometry'
   | 'whip-arc'
   | 'summon-average-rate'
   | 'summon-hit-cap'
@@ -251,6 +255,34 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     detail:
       "The standard dummy's hitbox uses the Target Dummy's placed size (2×3 tiles); its exact in-game hitbox is not documented.",
     sourceUrl: `${WIKI}Target_Dummy`,
+  },
+  // P3-S6 / P3-S7: the returning (boomerang / flail / yoyo variants) and piercing-beam archetypes
+  'boomerang-flight': {
+    id: 'boomerang-flight',
+    title: 'Boomerang: out until it hits, then back',
+    detail:
+      "The boomerang flies straight toward the aim at the weapon's velocity and turns back at its first hit, as the wiki says most boomerangs do, or at the end of its throw range; it returns straight to you at the speed it was thrown (in-game it slows before turning and flies back faster). It can hit dummies on the way back too, but not the one that turned it. The next throw waits until it is back in hand.",
+    sourceUrl: `${WIKI}Combat_Wrench`,
+  },
+  'flail-launch': {
+    id: 'flail-launch',
+    title: 'Launched flail: out until it strikes, then back',
+    detail:
+      "As the wiki describes, a launched flail extends at a fixed speed until it strikes an enemy or reaches its maximum length, then retracts. The Lab extends it at the weapon's velocity and retracts it at the same speed (the wiki says slightly faster, without a number); the dummy it struck is not hit again as it retracts. The next launch waits until it is back.",
+    sourceUrl: `${WIKI}Flails`,
+  },
+  'yoyo-control': {
+    id: 'yoyo-control',
+    title: 'Yoyo follows the aim point',
+    detail:
+      "The yoyo moves toward the aim point at the weapon's velocity, never farther than its reach, and stays out while the attack is held; let go and it comes back. It hits each dummy at most once every 10 ticks, the wiki's invincibility frames per yoyo hit (about 6 hits per second). Not modeled: the limited spin time after which most yoyos return on their own, bouncing off enemies on hit, and the yoyo's own acceleration.",
+    sourceUrl: `${WIKI}Yoyos`,
+  },
+  'beam-geometry': {
+    id: 'beam-geometry',
+    title: 'Held beam is a straight line',
+    detail:
+      "The beam is a line from you toward the aim that reaches to the edge of the arena and passes through every dummy on it. Each dummy takes a hit once per the beam's hit interval while the attack is held; during a cooldown between attacks the beam is off. Beam width and any build-up over time are not modeled.",
   },
   // AMENDMENTS-013 B63: the remaining-archetype modeling conventions (labels for the P3-S7+ interpreters)
   'whip-arc': {

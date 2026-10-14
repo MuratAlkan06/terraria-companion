@@ -9,7 +9,7 @@
  * is per-weapon: every decision reads the data, so a weapon whose record gains params — or whose
  * ammo or debuff gains verified data — equips with no UI change.
  */
-import type { Archetype, Weapon } from '../schemas'
+import { tooltipBehavior, type Archetype, type Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
 import { assessWeapon, createLabSim, type NotSimulable, type SimRefusal } from '../sim'
 import { LAB_ARCHETYPES } from './labLinks'
@@ -117,16 +117,19 @@ export function resolveLabSelection(
 }
 
 /**
- * "What it does in-game" for a LimitationCard: the limitation's verified text, else the item
- * tooltip. A limitation whose text is only the pipeline's pointer to the wiki ("See the … wiki page
- * for its in-game behavior.") is not a description — the card's wiki link says that already.
+ * "What it does in-game" for a LimitationCard — verified BEHAVIOR text (UX_SPEC §8): the limitation's
+ * text (a reviewed article sentence, or the tooltip's behavior lines — pipeline labDowngrade
+ * `limitation`), else the tooltip's behavior lines. Never the tooltip's flavor-text quote
+ * ("'Greetings, programs!'", schemas `tooltipBehavior`). A limitation whose text is only the
+ * pipeline's pointer to the wiki ("See the … wiki page for its in-game behavior.") is not a
+ * description — the card's wiki link says that already.
  */
 export function inGameDescription(weapon: Weapon): string | undefined {
   const lab = weapon.labBehavior
   const pointer = `See the ${weapon.name} wiki page for its in-game behavior.`
-  if (lab.kind === 'limitation' && lab.inGameBehavior !== pointer) return lab.inGameBehavior
+  if (lab.kind === 'limitation' && lab.inGameBehavior !== pointer) return tooltipBehavior(lab.inGameBehavior)
   const tooltip = getField(weapon, 'behaviorText')
-  return tooltip.status === 'verified' || tooltip.status === 'editorial' ? (tooltip.value as string) : undefined
+  return tooltip.status === 'verified' || tooltip.status === 'editorial' ? tooltipBehavior(tooltip.value as string) : undefined
 }
 
 const ARCHETYPE_NOUNS: Partial<Record<Archetype, string>> = {
@@ -134,17 +137,25 @@ const ARCHETYPE_NOUNS: Partial<Record<Archetype, string>> = {
   thrust: 'thrusting weapons',
   'bow-gun': 'bows and guns',
   'magic-bolt': 'bolt-casting magic weapons',
+  returning: 'boomerangs, launched flails and yoyos',
+  'piercing-beam': 'piercing shots and held beams',
 }
 
 /**
- * The pipeline's default limitation reason (pipeline/merge/weapons.ts `LAB_DEFAULT_REASON`) speaks
- * in its own bookkeeping terms; the card says the same thing in plain language (design review M4).
- * Every curated reason is already written for players and is shown verbatim.
+ * The default limitation card's reason — the pipeline emits it verbatim (pipeline/merge/weapons.ts
+ * `LAB_DEFAULT_REASON`; AMENDMENTS-014 B72(a): the design-reviewed string). Every reason is written
+ * for players and shown as is.
  */
-export const UNASSIGNED_LIMITATION_REASON = 'Not simulated yet: Weapon Lab behavior parameters have not been assigned to this weapon.'
 export const UNASSIGNED_LIMITATION_PLAIN = 'This weapon’s unique behavior isn’t modeled in the Lab.'
 
-const ATTACK_VERBS: Partial<Record<Archetype, string>> = { 'swing-melee': 'swing', thrust: 'thrust', 'bow-gun': 'shoot', 'magic-bolt': 'cast' }
+const ATTACK_VERBS: Partial<Record<Archetype, string>> = {
+  'swing-melee': 'swing',
+  thrust: 'thrust',
+  'bow-gun': 'shoot',
+  'magic-bolt': 'cast',
+  returning: 'throw',
+  'piercing-beam': 'fire',
+}
 
 /** The verb the Lab's instructions use for the equipped weapon's attack ("Hold Space to swing"). */
 export function attackVerb(archetype: Archetype): string {
@@ -152,8 +163,8 @@ export function attackVerb(archetype: Archetype): string {
 }
 
 /**
- * "swung melee weapons, thrusting weapons, bows and guns, and bolt-casting magic weapons" — what the
- * Lab equips today, from LAB_ARCHETYPES (a serial comma once there are three or more: a noun may
+ * "swung melee weapons, thrusting weapons, bows and guns, …, and piercing shots and held beams" — what
+ * the Lab equips today, from LAB_ARCHETYPES (a serial comma once there are three or more: a noun may
  * itself contain "and").
  */
 export function labScopeNouns(archetypes: readonly Archetype[] = LAB_ARCHETYPES): string {
@@ -173,10 +184,58 @@ export function notSimulatedReason(status: Exclude<LabStatus, { kind: 'equippabl
     return `The Lab can't equip ${noun} yet — ${scope}.`
   }
   const { refusal } = status
-  if (refusal.reason === 'limitation' && refusal.limitation) {
-    return refusal.limitation.reason === UNASSIGNED_LIMITATION_REASON ? UNASSIGNED_LIMITATION_PLAIN : refusal.limitation.reason
-  }
+  if (refusal.reason === 'limitation' && refusal.limitation) return refusal.limitation.reason
   return refusal.message
+}
+
+/** One behavior stat the EquippedBar shows beside damage, use time and crit (from the archetype params). */
+export interface BehaviorFact {
+  key: 'range' | 'flight' | 'hit-rate' | 'pierce'
+  label: string
+  /** Compact HUD label. */
+  short: string
+  value: string
+  /** Compact HUD value (default `value`). */
+  shortValue?: string
+}
+
+/** Tiles with at most two decimals (13.64, 8.13, 12). */
+const tiles = (n: number) => String(Number(n.toFixed(2)))
+
+const FLIGHT: Record<'boomerang' | 'flail' | 'yoyo', { value: string; shortValue: string }> = {
+  boomerang: { value: 'out & back', shortValue: 'out & back' },
+  flail: { value: 'out & back on a chain', shortValue: 'chain' },
+  yoyo: { value: 'held out on a string', shortValue: 'held' },
+}
+
+/**
+ * The equipped weapon's behavior stats from its params (PRD P3-S7 AC2 "projectile count/behavior";
+ * P3-S6 pierce count and beam tick rate): a returning weapon's throw range and flight, a held beam's
+ * hit interval, a projectile's pierce (extra dummies after the first, B37). Nothing per weapon.
+ */
+export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact[] {
+  const lab = weapon.labBehavior
+  if (lab.kind !== 'archetype') return []
+  const p = lab.params
+  const pierce = (n: number | 'infinite' | undefined): BehaviorFact[] =>
+    n === undefined || n === 0 ? [] : [{ key: 'pierce', label: 'Pierce', short: 'Pierce', value: n === 'infinite' ? 'every dummy' : `+${n} ${n === 1 ? 'dummy' : 'dummies'}`, shortValue: n === 'infinite' ? '∞' : `+${n}` }]
+  switch (p.archetype) {
+    case 'returning':
+      return [
+        { key: 'range', label: 'Range', short: 'Rng', value: `${tiles(p.throwRangeTiles)} tiles`, shortValue: `${tiles(p.throwRangeTiles)}t` },
+        { key: 'flight', label: 'Flight', short: 'Flight', ...FLIGHT[p.variant] },
+      ]
+    case 'piercing-beam':
+      return p.mode === 'channel-beam'
+        ? [{ key: 'hit-rate', label: 'Hits every', short: 'Hit', value: `${p.tickRateTicks} ticks`, shortValue: `${p.tickRateTicks}t` }]
+        : pierce(p.pierce)
+    case 'magic-bolt':
+      return pierce(p.projectile.pierce)
+    case 'swing-melee':
+      return pierce(p.emitted?.pierce)
+    default:
+      return []
+  }
 }
 
 /** Where the card's "how it behaves" link points: the limitation's source, else the weapon page. */

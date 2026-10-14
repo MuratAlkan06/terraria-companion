@@ -13,9 +13,11 @@ import type { Archetype, Weapon } from '../schemas'
 /**
  * Archetypes the Lab UI equips: swing-melee (P3-S1) and thrust (AMENDMENTS-010 B47) draw the
  * engine's blade pose; bow-gun (P3-S4, with its ammo picker) and magic-bolt (P3-S5, with mana) draw
- * the engine's projectiles. Weapons light up as soon as their data gives them params, with no UI change.
+ * the engine's projectiles; returning (P3-S7: the thrown weapon itself, on its string or chain) and
+ * piercing-beam (P3-S6: piercing shots, or the engine's beam pose) too. Weapons light up as soon as
+ * their data gives them params, with no UI change.
  */
-export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust', 'bow-gun', 'magic-bolt']
+export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'piercing-beam']
 
 /** The Lab's deep-link query parameter (`/lab?weapon=:id`, UX_SPEC §10.11). */
 export const LAB_WEAPON_PARAM = 'weapon'

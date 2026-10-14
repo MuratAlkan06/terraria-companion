@@ -141,6 +141,12 @@ export interface ResultsSummaryProps {
   usesAmmo?: boolean
   /** A weapon with a mana cost: show the mana the run used. */
   usesMana?: boolean
+  /**
+   * Multiple Dummies (PRD P3-S6 AC4): the row's dummy ids, nearest first (the first is the primary
+   * target) — the totals are then over all dummies, with the primary target's DPS and each dummy's
+   * numbers apart. Null or absent: one dummy.
+   */
+  dummyIds?: readonly string[] | null
   /** The test result's AssumptionsTip (labAssumptions 'timed-test-dps'). */
   assumptions: Assumptions
   onRunAgain: () => void
@@ -148,80 +154,110 @@ export interface ResultsSummaryProps {
   compact: boolean
 }
 
-export function ResultsSummary({ result, weaponName, appliesDot, usesAmmo = false, usesMana = false, assumptions, onRunAgain, onReset, compact }: ResultsSummaryProps) {
+export function ResultsSummary({ result, weaponName, appliesDot, usesAmmo = false, usesMana = false, dummyIds = null, assumptions, onRunAgain, onReset, compact }: ResultsSummaryProps) {
   const reducedMotion = useReducedMotion()
   const dps = useCountUp(result.estimatedDps, 300, !reducedMotion)
   const counting = dps !== result.estimatedDps
   const final = format1(result.estimatedDps)
   const critRate = result.hits > 0 ? Math.round((result.crits / result.hits) * 100) : 0
+  const row = dummyIds && dummyIds.length > 1 ? dummyIds.map((id, i) => ({ id, number: i + 1, stats: result.perDummy[id] })) : null
   return (
+    // A column that shrinks to the room it has (the arena above the HUD controls): the heading and the
+    // actions always show; only the numbers between them scroll (a 5-dummy row on a phone is taller
+    // than its room — design review P3-S6/S7).
     <section
       aria-labelledby={RESULTS_TITLE_ID}
-      className={cx(HUD_PANEL, 'w-full max-w-sm animate-sheet-in', compact ? 'p-2.5' : 'p-3')}
+      className={cx(HUD_PANEL, 'flex max-h-full min-h-0 w-full max-w-sm animate-sheet-in flex-col', compact ? 'p-2.5' : 'p-3')}
       data-results-summary=""
     >
       {/* Focused when the test ends: the ring is drawn inside the heading's box so it never covers the line below. */}
-      <h2 id={RESULTS_TITLE_ID} tabIndex={-1} className="font-display text-sm leading-relaxed text-accent text-shadow-pixel focus-visible:-outline-offset-2">
+      <h2 id={RESULTS_TITLE_ID} tabIndex={-1} className="shrink-0 font-display text-sm leading-relaxed text-accent text-shadow-pixel focus-visible:-outline-offset-2">
         {testName(result.durationSec)} results
       </h2>
-      <p className="text-xs text-fg-muted">
-        {weaponName} vs the Infinite Dummy · browser simulation, approximate values
-      </p>
-      <dl className={cx('mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-sm tabular-nums', compact && 'text-[0.8125rem]')}>
-        <Row label={testDpsLabel(result.durationSec)} emphasis>
-          <span className="inline-flex items-center gap-1.5">
-            {/* One value for everyone: the final number reserves the width (the count-up drawn over it
-                in the same grid cell never shifts the row) and is what screen readers read; it is only
-                transparent while the aria-hidden count-up runs, which then unmounts. */}
-            <span className="inline-grid text-lg leading-6 font-bold text-fg">
-              <span className={cx('text-right [grid-area:1/1]', counting && 'opacity-0')} data-result="dps">
-                {final}
-              </span>
-              {counting ? (
-                <span aria-hidden="true" className="text-right [grid-area:1/1]" data-result="dps-animated">
-                  {format1(dps)}
+      {/* overflow-x-hidden: an est. button's invisible 44px tap area (its ::before) reaches past the right
+          edge — clipped there anyway, it must not add a sideways scrollbar (design review: 2px on a phone). */}
+      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-1" data-results-body="">
+        <p className="text-xs text-fg-muted">
+          {weaponName} vs {row ? `${row.length} Infinite Dummies in a row (totals over all; dummy 1 is the primary target)` : 'the Infinite Dummy'} · browser simulation,
+          approximate values
+        </p>
+        <dl className={cx('mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-sm tabular-nums', compact && 'text-[0.8125rem]')}>
+          <Row label={testDpsLabel(result.durationSec)} emphasis>
+            <span className="inline-flex items-center gap-1.5">
+              {/* One value for everyone: the final number reserves the width (the count-up drawn over it
+                  in the same grid cell never shifts the row) and is what screen readers read; it is only
+                  transparent while the aria-hidden count-up runs, which then unmounts. */}
+              <span className="inline-grid text-lg leading-6 font-bold text-fg">
+                <span className={cx('text-right [grid-area:1/1]', counting && 'opacity-0')} data-result="dps">
+                  {final}
                 </span>
-              ) : null}
+                {counting ? (
+                  <span aria-hidden="true" className="text-right [grid-area:1/1]" data-result="dps-animated">
+                    {format1(dps)}
+                  </span>
+                ) : null}
+              </span>
+              <EstimateLabel assumptions={assumptions} context={`estimated DPS over the ${testName(result.durationSec)}${row ? ', all dummies' : ''}`} />
             </span>
-            <EstimateLabel assumptions={assumptions} context={`estimated DPS over the ${testName(result.durationSec)}`} />
-          </span>
-        </Row>
-        <Row label="Total damage">
-          <span data-result="total">{formatInt(result.totalDamage)}</span>
-        </Row>
-        {/* The two parts of the total, nested under it (indented on a rule, a size smaller). */}
-        {appliesDot ? (
-          <>
-            <Row label="Direct damage" nested>
-              <span data-result="direct">{formatInt(result.directDamage)}</span>
-            </Row>
-            <Row label="DoT damage" srLabel="Damage over time (DoT)" nested>
-              <span data-result="dot">{formatInt(result.dotDamage)}</span>
-            </Row>
-          </>
-        ) : null}
-        <Row label="Hits">
-          <span data-result="hits">{formatInt(result.hits)}</span>
-        </Row>
-        <Row label="Crits">
-          <span data-result="crits">{formatInt(result.crits)}</span>
-          <span className="ml-1 text-xs font-normal text-fg-muted">({critRate}% of hits)</span>
-        </Row>
-        {usesAmmo ? (
-          <Row label="Ammo used">
-            <span data-result="ammo">{formatInt(result.ammoConsumed)}</span>
           </Row>
-        ) : null}
-        {usesMana ? (
-          <Row label="Mana used">
-            <span data-result="mana">{formatInt(result.manaConsumed)}</span>
+          {row ? (
+            <Row label="Primary target" srLabel={`${testDpsLabel(result.durationSec)}, primary target`} nested>
+              <span className="inline-flex items-center gap-1.5">
+                <span data-result="primary-dps">{format1((row[0].stats?.damage ?? 0) / result.durationSec)}</span>
+                <EstimateLabel assumptions={assumptions} context={`estimated DPS over the ${testName(result.durationSec)}, primary target`} />
+              </span>
+            </Row>
+          ) : null}
+          <Row label="Total damage">
+            <span data-result="total">{formatInt(result.totalDamage)}</span>
           </Row>
-        ) : null}
-      </dl>
-      <p className="mt-2 text-xs text-fg-muted">
-        Seed <span className="tabular-nums" data-result="seed">{result.seed}</span> · Run again replays this exact run.
-      </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+          {/* The two parts of the total, nested under it (indented on a rule, a size smaller). */}
+          {appliesDot ? (
+            <>
+              <Row label="Direct damage" nested>
+                <span data-result="direct">{formatInt(result.directDamage)}</span>
+              </Row>
+              <Row label="DoT damage" srLabel="Damage over time (DoT)" nested>
+                <span data-result="dot">{formatInt(result.dotDamage)}</span>
+              </Row>
+            </>
+          ) : null}
+          {/* Multiple Dummies: the total's split over the row, each dummy's hits beside it. */}
+          {row
+            ? row.map((d) => (
+                <Row key={d.id} label={`Dummy ${d.number}${d.number === 1 ? ' (primary)' : ''}`} nested>
+                  <span data-result="dummy" data-dummy={d.number}>
+                    {formatInt(d.stats?.damage ?? 0)}
+                    <span className="ml-1 text-xs font-normal text-fg-muted">
+                      ({formatInt(d.stats?.hits ?? 0)} {d.stats?.hits === 1 ? 'hit' : 'hits'})
+                    </span>
+                  </span>
+                </Row>
+              ))
+            : null}
+          <Row label="Hits">
+            <span data-result="hits">{formatInt(result.hits)}</span>
+          </Row>
+          <Row label="Crits">
+            <span data-result="crits">{formatInt(result.crits)}</span>
+            <span className="ml-1 text-xs font-normal text-fg-muted">({critRate}% of hits)</span>
+          </Row>
+          {usesAmmo ? (
+            <Row label="Ammo used">
+              <span data-result="ammo">{formatInt(result.ammoConsumed)}</span>
+            </Row>
+          ) : null}
+          {usesMana ? (
+            <Row label="Mana used">
+              <span data-result="mana">{formatInt(result.manaConsumed)}</span>
+            </Row>
+          ) : null}
+        </dl>
+        <p className="mt-2 text-xs text-fg-muted">
+          Seed <span className="tabular-nums" data-result="seed">{result.seed}</span> · Run again replays this exact run.
+        </p>
+      </div>
+      <div className="mt-2 flex shrink-0 flex-wrap gap-2" data-results-actions="">
         <button type="button" onClick={onRunAgain} className={buttonClass('primary', compact ? 'px-3' : undefined)} data-results-run-again="">
           <Repeat aria-hidden="true" className="size-5" />
           Run again

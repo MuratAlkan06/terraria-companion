@@ -5,10 +5,12 @@ import { assessWeapon, createLabSim, type SimRefusal } from './index'
 import { modifierEntry, NotImplementedError } from './modifiers'
 import {
   ammoFixture,
+  beamFixture,
   bowFixture,
   dotBuffFixture,
   fixtureProv,
   fixtureWeapon,
+  returningFixture,
   spearFixture,
   staffFixture,
   swordFixture,
@@ -31,6 +33,11 @@ describe('fixtures are schema-conformant (real Zod schemas)', () => {
     ['spear', spearFixture(3)],
     ['bow', bowFixture()],
     ['staff', staffFixture()],
+    ['boomerang', returningFixture({ variant: 'boomerang' })],
+    ['flail', returningFixture({ variant: 'flail', hitsPerPass: 1 })],
+    ['yoyo', returningFixture({ variant: 'yoyo', throwRangeTiles: 8 })],
+    ['channel beam', beamFixture({ mode: 'channel-beam', tickRateTicks: 6 })],
+    ['pierce bolt', beamFixture({ mode: 'pierce-projectile', pierce: 'infinite', projectile: { velocityTps: 30 } })],
     ['staff+dot+homing', staffFixture({}, {}, { dot: { buffId: 'fixture-burn', durationTicks: { minTicks: 60, maxTicks: 240 } }, homing: { strength: 0.2, acquisitionRangeTiles: 20 } })],
   ])('%s parses as Weapon', (_name, weapon) => {
     expect(Weapon.safeParse(weapon).success).toBe(true)
@@ -70,13 +77,44 @@ describe('honesty guard — NotSimulable, never a guess', () => {
   })
 
   it.each<ArchetypeParams>([
-    { archetype: 'returning', variant: 'boomerang', throwRangeTiles: 10, returnMode: 'auto-return', control: 'fire-and-forget' },
-    { archetype: 'piercing-beam', mode: 'channel-beam', tickRateTicks: 5 },
     { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'hover-strike', attackRateTicks: 30 },
     { archetype: 'whip', arcDegrees: 90, rangeTiles: 5, tagDamageFlat: 4 },
     { archetype: 'explosive-aoe', blastRadiusTiles: 3, trigger: 'impact', falloff: 'none' },
   ])('unimplemented archetype $archetype → archetype-not-implemented', (params) => {
     expect(notSimulable(fixtureWeapon(params))).toMatchObject({ reason: 'archetype-not-implemented', archetype: params.archetype })
+  })
+
+  it('returning: the velocity is required; a variant’s flight must be its documented one; homing and unhonorable hitsPerPass are refused', () => {
+    expect(notSimulable(returningFixture({ variant: 'boomerang' }, { shootSpeedTps: undefined }))).toMatchObject({ reason: 'missing-required-field', fields: ['shootSpeedTps'] })
+    const refusal = (w: Weapon) => refusalOf(createLabSim({ weapon: w }))
+    for (const [variant, returnMode, control] of [
+      ['boomerang', 'tethered', 'fire-and-forget'],
+      ['flail', 'auto-return', 'cursor-follow'],
+      ['yoyo', 'auto-return', 'fire-and-forget'],
+    ] as const) {
+      expect(refusal(returningFixture({ variant, returnMode, control })), variant).toMatchObject({
+        kind: 'not-simulable',
+        reason: 'invalid-data',
+        fields: ['labBehavior.params.returnMode', 'labBehavior.params.control'],
+      })
+    }
+    expect(refusal(returningFixture({ variant: 'boomerang' }, {}, { homing: { strength: 0.2, acquisitionRangeTiles: 10 } }))).toMatchObject({
+      reason: 'modifier-not-implemented',
+      fields: ['labBehavior.modifiers.homing'],
+    })
+    expect(refusal(returningFixture({ variant: 'boomerang', hitsPerPass: 3 }))).toMatchObject({ reason: 'invalid-data', fields: ['labBehavior.params.hitsPerPass'] })
+    // a re-hit interval makes it honorable: the weapon's multiHit, or a yoyo's own
+    expect(createLabSim({ weapon: returningFixture({ variant: 'boomerang', hitsPerPass: 3 }, {}, { multiHit: { localImmunityTicks: 10 } }) }).ok).toBe(true)
+    expect(createLabSim({ weapon: returningFixture({ variant: 'yoyo', hitsPerPass: 3 }) }).ok).toBe(true)
+  })
+
+  it('piercing-beam: contradictory pierce, ammo it can’t carry, a missing speed and homing on a beam are refused', () => {
+    const refusal = (w: Weapon) => refusalOf(createLabSim({ weapon: w }))
+    expect(refusal(beamFixture({ mode: 'pierce-projectile', pierce: 2, projectile: { velocityTps: 30, pierce: 1 } }))).toMatchObject({ reason: 'invalid-data', fields: ['labBehavior.params.pierce', 'labBehavior.params.projectile.pierce'] })
+    expect(refusal(beamFixture({ mode: 'pierce-projectile', pierce: 2 }, { ammoClass: 'fixture-arrow', shootSpeedTps: 20 }))).toMatchObject({ reason: 'invalid-data', fields: ['ammoClass', 'labBehavior.params'] })
+    expect(refusal(beamFixture({ mode: 'pierce-projectile', pierce: 2 }))).toMatchObject({ reason: 'missing-required-field', fields: ['shootSpeedTps'] })
+    expect(createLabSim({ weapon: beamFixture({ mode: 'pierce-projectile', pierce: 2 }, { shootSpeedTps: 20 }) }).ok).toBe(true) // the weapon's velocity when the params carry no projectile
+    expect(refusal(beamFixture({ mode: 'channel-beam', tickRateTicks: 6 }, {}, { homing: { strength: 0.2, acquisitionRangeTiles: 10 } }))).toMatchObject({ reason: 'modifier-not-implemented' })
   })
 
   it('a required field listed unverified is refused (absent + listed)', () => {

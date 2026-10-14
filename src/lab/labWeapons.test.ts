@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Weapon } from '../data-access/types'
 import weaponsJson from '../data/weapons.detail.json'
+import { isFlavorLine, tooltipBehavior } from '../schemas'
 import { assessWeapon, createLabSim, IMPLEMENTED_ARCHETYPES } from '../sim'
 import {
   behaviorSourceUrl,
@@ -18,7 +19,6 @@ import {
   notSimulatedReason,
   resolveLabSelection,
   UNASSIGNED_LIMITATION_PLAIN,
-  UNASSIGNED_LIMITATION_REASON,
 } from './labWeapons'
 import { LAB_ARCHETYPES, LAB_WEAPON_PARAM, labWeaponSearch, offersLab } from './labLinks'
 import { ALL_ITEMS, LAB_SETUP } from './testing/labData'
@@ -39,9 +39,9 @@ const equippableByEngine = weapons.filter((w) => {
   return ammoOptions.some((ammo) => createLabSim({ weapon: w, buffs: LAB_SETUP.buffs, ...(ammo ? { ammo } : {}) }).ok)
 })
 
-describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 magic bolts)', () => {
+describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 magic bolts, P3-S6/S7 beams and returning weapons)', () => {
   it('the Lab equips every archetype the engine implements', () => {
-    expect(LAB_ARCHETYPES).toEqual(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt'])
+    expect(LAB_ARCHETYPES).toEqual(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'piercing-beam'])
     expect([...LAB_ARCHETYPES].sort()).toEqual([...IMPLEMENTED_ARCHETYPES].sort())
   })
 
@@ -50,8 +50,8 @@ describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 
     expect(list).toHaveLength(equippableByEngine.length)
     // AMENDMENTS-010 B44: 35 broadswords are simulable under the ratified geometry convention.
     expect(list.filter((w) => isArchetype(w, 'swing-melee')).length).toBeGreaterThanOrEqual(35)
-    // P3-S4 / P3-S5: bows, guns and repeaters and magic bolts equip (every one in today's data).
-    for (const archetype of ['bow-gun', 'magic-bolt']) {
+    // P3-S4 / P3-S5 / P3-S7: bows, guns and repeaters, magic bolts and returning weapons equip (every one in today's data).
+    for (const archetype of ['bow-gun', 'magic-bolt', 'returning']) {
       const engine = weapons.filter((w) => isArchetype(w, archetype) && assessWeapon(w).simulable)
       expect(engine.length, archetype).toBeGreaterThan(0)
       expect(list.filter((w) => isArchetype(w, archetype)), archetype).toHaveLength(engine.length)
@@ -126,17 +126,51 @@ describe('/lab?weapon=:id deep links (UX_SPEC §10.11)', () => {
       expect(selection.weapon).toBe(fallback)
       expect(selection.notice).toMatchObject({ kind: 'not-equippable', weapon: w, status: { kind: 'not-simulable' } })
       if (selection.notice?.kind !== 'not-equippable') throw new Error('unreachable')
-      // "Why it isn't simulated": the limitation's own plain-language reason — the pipeline's
-      // default (bookkeeping) reason is restated in plain language (design review M4).
+      // "Why it isn't simulated": the limitation's own plain-language reason, verbatim — the default
+      // card's included (AMENDMENTS-014 B72(a): the pipeline emits the design-reviewed string itself;
+      // the old bookkeeping string's mapping is gone, checked below).
       const reason = notSimulatedReason(selection.notice.status)
       expect(reason.length).toBeGreaterThan(10)
       if (w.labBehavior.kind === 'limitation') {
-        expect(reason).toBe(w.labBehavior.reason === UNASSIGNED_LIMITATION_REASON ? UNASSIGNED_LIMITATION_PLAIN : w.labBehavior.reason)
+        expect(reason).toBe(w.labBehavior.reason)
         expect(behaviorSourceUrl(w)).toBe(w.labBehavior.sourceUrl)
       }
       // "What it does in-game" is real text or absent — never the pipeline's bare wiki pointer.
       expect(inGameDescription(w) ?? '').not.toBe(`See the ${w.name} wiki page for its in-game behavior.`)
     }
+    // B72(a): the default card arrives as the design-reviewed string; nothing emits the old one any more
+    const reasons = refused.map((w) => (w.labBehavior.kind === 'limitation' ? w.labBehavior.reason : ''))
+    expect(reasons).toContain(UNASSIGNED_LIMITATION_PLAIN)
+    expect(reasons.some((r) => /parameters have not been assigned/.test(r))).toBe(false)
+  })
+
+  it('"What it does in-game" is behavior, never the tooltip’s flavor quote (design review P3-S6/S7: Light Disc read "\'Greetings, programs!\'")', () => {
+    // across every weapon the card could show: no flavor line, ever
+    for (const w of weapons) {
+      const text = inGameDescription(w)
+      if (text === undefined) continue
+      for (const line of text.split('\n')) expect(isFlavorLine(line), `${w.name}: "${line}"`).toBe(false)
+    }
+    // the returning-family cards whose tooltip is only a flavor quote show a reviewed sentence of their article
+    const card = (name: string) => inGameDescription(weapons.find((w) => w.name === name)!)
+    expect(card('Light Disc')).toBe(
+      'It does not necessarily return immediately upon contact with objects, but instead can bounce off blocks before returning. Unlike most boomerangs, it does not have to return to the player before being fired, with a maximum of six Light Discs that can be thrown out at one time.',
+    )
+    for (const name of ['Light Disc', 'Sergeant United Shield', 'Combat Wrench', 'Trimarang', 'Flaming Mace']) {
+      const w = weapons.find((x) => x.name === name)!
+      expect(w.behaviorText, name).toMatch(/^'.*'$/) // the tooltip is flavor only
+      expect(tooltipBehavior(w.behaviorText), name).toBeUndefined()
+      expect(card(name)?.length, name).toBeGreaterThan(20)
+      expect(card(name), name).not.toContain(w.behaviorText!)
+    }
+    // a tooltip with behavior lines keeps them and drops only its flavor line
+    expect(card('Dao of Pow')).toBe('Has a chance to confuse')
+    // flavor only, no reviewed sentence: no description (the card says "No verified description yet.")
+    expect(card('Volcano')).toBeUndefined()
+    // the UI's tooltip fallback (a weapon the Lab can't equip for another reason) drops the flavor line too
+    const sword = list.find((w) => isArchetype(w, 'swing-melee'))!
+    expect(inGameDescription({ ...sword, behaviorText: "Shoots a beam\n'Forged in fire'" })).toBe('Shoots a beam')
+    expect(inGameDescription({ ...sword, behaviorText: "'Forged in fire'" })).toBeUndefined()
   })
 
   it('a bow whose ammo type has no ammo the engine can fire says so plainly (never a broken equip)', () => {
@@ -154,7 +188,9 @@ describe('/lab?weapon=:id deep links (UX_SPEC §10.11)', () => {
   })
 
   it('names what the Lab simulates in plain words (a serial comma: a noun may contain "and")', () => {
-    expect(labScopeNouns()).toBe('swung melee weapons, thrusting weapons, bows and guns, and bolt-casting magic weapons')
+    expect(labScopeNouns()).toBe(
+      'swung melee weapons, thrusting weapons, bows and guns, bolt-casting magic weapons, boomerangs, launched flails and yoyos, and piercing shots and held beams',
+    )
     expect(labScopeNouns(['swing-melee', 'thrust'])).toBe('swung melee weapons and thrusting weapons')
   })
 

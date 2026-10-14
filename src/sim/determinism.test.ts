@@ -4,8 +4,8 @@
  * inaccuracy, DoT chance + duration ranges) and every float path (homing, gravity, regen).
  */
 import { describe, expect, it } from 'vitest'
-import { createLabSim, mulberry32, type LabSim, type LabSimOptions, type SimSnapshot, type TimedTestDuration, type TimedTestResult } from './index'
-import { ammoFixture, bowFixture, dotBuffFixture, staffFixture, swordFixture } from './testing/fixtures'
+import { createLabSim, dummyRow, mulberry32, type LabSim, type LabSimOptions, type SimSnapshot, type TimedTestDuration, type TimedTestResult } from './index'
+import { ammoFixture, beamFixture, bowFixture, dotBuffFixture, returningFixture, staffFixture, swordFixture } from './testing/fixtures'
 
 const SCENARIOS: Record<string, () => LabSimOptions> = {
   'sword (variance + crits)': () => ({ weapon: swordFixture({ autoReuse: true, critPct: 6 }), seed: 11 }),
@@ -40,6 +40,36 @@ const SCENARIOS: Record<string, () => LabSimOptions> = {
     ammo: ammoFixture({ damage: 7, velocityBonusTps: 2 }),
     dummies: [{ x: 10, y: 0 }],
     seed: 434,
+  }),
+  // P3-S6 / P3-S7 (pinned 2026-10-13): the returning variants and the piercing-beam modes on dummy rows.
+  'boomerang (turns at its first hit, dummy row)': () => ({
+    weapon: returningFixture({ variant: 'boomerang', throwRangeTiles: 14 }, { damage: 12, critPct: 6, shootSpeedTps: 33 }),
+    dummies: dummyRow(3, 6),
+    seed: 61,
+  }),
+  'launched flail (turns on strike, DoT chance)': () => ({
+    weapon: returningFixture({ variant: 'flail', throwRangeTiles: 9.4 }, { damage: 14, critPct: 4, shootSpeedTps: 45, useTimeTicks: 28, useAnimationTicks: 28, autoReuse: true }, {
+      dot: { buffId: 'fixture-burn', chancePct: 50, durationTicks: { minTicks: 60, maxTicks: 180 } },
+    }),
+    buffs: [dotBuffFixture(4)],
+    dummies: dummyRow(3, 4),
+    seed: 62,
+  }),
+  'yoyo (tethered dwell at the auto-aim point)': () => ({
+    weapon: returningFixture({ variant: 'yoyo', throwRangeTiles: 9.25 }, { damage: 17, critPct: 2, shootSpeedTps: 60, useTimeTicks: 25, useAnimationTicks: 25 }),
+    dummies: dummyRow(2, 6),
+    seed: 63,
+  }),
+  'pierce bolt (pierce 2 vs an armored row of 4, slow-cast)': () => ({
+    weapon: beamFixture({ mode: 'pierce-projectile', pierce: 2, projectile: { velocityTps: 24 } }, { critPct: 4, manaCost: 6 }),
+    dummies: dummyRow(4, 6).map((d, i) => (i === 1 ? { ...d, defense: 8 } : d)),
+    settings: { maxMana: 60 },
+    seed: 64,
+  }),
+  'channel beam (tick rate across uses, reuse delay)': () => ({
+    weapon: beamFixture({ mode: 'channel-beam', tickRateTicks: 7 }, { critPct: 4, useTimeTicks: 18, useAnimationTicks: 18, reuseDelayTicks: 4 }),
+    dummies: dummyRow(3, 4),
+    seed: 65,
   }),
 }
 
@@ -171,6 +201,18 @@ describe('seeded reproducibility', () => {
     }
   })
 
+  it('the row scenarios attribute every hit to a dummy: per-dummy totals add up, pierce and flail reach exactly the dummies they should', () => {
+    const per = (name: string) => runTimed(SCENARIOS[name](), 30, PATTERNS['60 fps']).result
+    for (const name of ['boomerang (turns at its first hit, dummy row)', 'pierce bolt (pierce 2 vs an armored row of 4, slow-cast)', 'channel beam (tick rate across uses, reuse delay)']) {
+      const result = per(name)
+      const dummies = Object.values(result.perDummy)
+      expect(dummies.reduce((a, d) => a + d.damage, 0), name).toBe(result.totalDamage)
+      expect(dummies.reduce((a, d) => a + d.hits, 0), name).toBe(result.hits)
+    }
+    expect(Object.values(per('pierce bolt (pierce 2 vs an armored row of 4, slow-cast)').perDummy).map((d) => d.hits > 0)).toEqual([true, true, true, false]) // 1 + pierce 2
+    expect(Object.values(per('launched flail (turns on strike, DoT chance)').perDummy).map((d) => d.hits > 0)).toEqual([true, false, false])
+  })
+
   it('the reuse-delay scenario attacks once per useAnimation + reuseDelay (12 + 14 = 26 ticks)', () => {
     const { result } = runTimed(SCENARIOS['burst rifle (reuse delay, slight spread)'](), 30, PATTERNS['60 fps'])
     expect(result.uses).toBe(Math.ceil(1800 / 26)) // uses start at ticks 0, 26, 52, … < 1800
@@ -188,6 +230,9 @@ describe('seeded reproducibility', () => {
  * - staff: re-pinned 2026-10-13 for the B35 `slow-cast` default — mana-limited at max mana 60: 10 paid
  *   casts, then 32 slow casts (use time × 2.5) in 30 s.
  * - burst rifle: pinned 2026-10-13 with the reuse-delay change (new scenario).
+ * - The five P3-S6 / P3-S7 scenarios (returning variants, piercing-beam modes): pinned 2026-10-13 as
+ *   new scenarios; the kernel hooks they use (ready gate, guided projectiles, persistent hit sources)
+ *   left the five earlier fingerprints unchanged — README changelog.
  */
 const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
   'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
@@ -195,6 +240,11 @@ const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; cri
   'staff (inaccuracy, homing, DoT ranges, mana regen)': { total: 799, dot: 97, hits: 42, crits: 4, uses: 42, digest: '876a8729' },
   'burst staff (useTime < useAnimation, slow-cast)': { total: 4073, dot: 0, hits: 258, crits: 13, uses: 43, digest: 'b6630161' },
   'burst rifle (reuse delay, slight spread)': { total: 3278, dot: 0, hits: 207, crits: 11, uses: 70, digest: '9bcbb3a6' },
+  'boomerang (turns at its first hit, dummy row)': { total: 1073, dot: 0, hits: 86, crits: 3, uses: 86, digest: 'd0de41e8' },
+  'launched flail (turns on strike, DoT chance)': { total: 1129, dot: 109, hits: 67, crits: 7, uses: 67, digest: '92a82efb' },
+  'yoyo (tethered dwell at the auto-aim point)': { total: 3288, dot: 0, hits: 180, crits: 15, uses: 1, digest: '2bfbdb43' },
+  'pierce bolt (pierce 2 vs an armored row of 4, slow-cast)': { total: 2576, dot: 0, hits: 129, crits: 8, uses: 44, digest: 'f5383fcd' },
+  'channel beam (tick rate across uses, reuse delay)': { total: 15858, dot: 0, hits: 738, crits: 54, uses: 82, digest: 'c0eea291' },
 }
 
 describe('timed-test controller (P3-S3 AC3)', () => {

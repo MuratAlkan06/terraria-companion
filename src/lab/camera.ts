@@ -150,6 +150,23 @@ export function actionBox(reachTiles: number, dummies: readonly { x: number; y: 
   return { x0: x0 - ACTION_MARGIN, x1: x1 + ACTION_MARGIN, y0: y0 - ACTION_MARGIN, y1: ARENA_LAYOUT.groundY + ACTION_GROUND }
 }
 
+/** Air kept beyond the far dummy of a row in scene framing (tiles): room for its damage numbers. */
+const ROW_MARGIN_TILES = 1.5
+
+/**
+ * Scene framing's always-shown x-range with the dummies in it: the arena's core composition, widened
+ * only as far as a row of Multiple Dummies reaches past it (plus room for its numbers). A dummy inside
+ * the core changes nothing, so the single-dummy framing is exactly the core's.
+ */
+export function sceneXFor(dummies: readonly { x: number; width: number }[], core: readonly [number, number] = ARENA_CORE_X): [number, number] {
+  let [x0, x1] = core
+  for (const d of dummies) {
+    x0 = Math.min(x0, d.x - d.width / 2 - ROW_MARGIN_TILES)
+    x1 = Math.max(x1, d.x + d.width / 2 + ROW_MARGIN_TILES)
+  }
+  return [x0, x1]
+}
+
 export function fitCamera(cssWidth: number, cssHeight: number, dpr: number, options: Partial<CameraOptions> = {}): CameraFit {
   const o = { ...DEFAULT_CAMERA, ...options }
   const ratio = dpr > 0 && Number.isFinite(dpr) ? dpr : 1

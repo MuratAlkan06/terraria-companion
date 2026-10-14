@@ -32,6 +32,8 @@ function frame(dtMs: number) {
 Tiles (16 px at 1×), ticks (60/s), velocities in tiles/second at every public boundary
 (DATA_SCHEMA_SPEC §2 unit rules). World origin = the player's center; **x right, y down**.
 Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — point-blank.
+Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMMY_ROW_SPACING_TILES`
+(3) apart, ids `dummy-0…` nearest first; the first is the primary target (auto-aim's dummy).
 
 ## API surface
 
@@ -41,7 +43,8 @@ Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — 
 | `assessWeapon(weapon)` → `{ simulable: true, archetype, requiresAmmoClass, requiresBuffIds } \| { simulable: false, refusal }` | Weapon-only verdict (no ammo/buffs needed). Use it for the in-Lab browser's "simulated vs limitation" badge (P3-S2) and the coverage report (P3-S13). |
 | `cadenceTicksFor(weapon, useAnimationTicks)` | The effective ticks per attack, incl. the weapon's reuse delay (see "Cadence"). |
 | `APPROXIMATIONS`, `sim.approximations` | Plain-language assumptions; `sim.approximations` is the subset for the equipped weapon — render it verbatim in the AssumptionsTip paired with every EstimateLabel. Modeling-convention entries carry a `ruling` (see "Modeling conventions"). |
-| `IMPLEMENTED_ARCHETYPES` | `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`. |
+| `IMPLEMENTED_ARCHETYPES` | `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`. |
+| `dummyRow(count, firstX?, spacingTiles?)`, `DUMMY_ROW_SPACING_TILES` | Multiple Dummies: a row of standard dummies (see "Units and coordinates"). |
 | `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `mulberry32` | Constants / utilities. |
 | `type *` from `./types` | All public types (`LabSim`, `SimSnapshot`, `SimEvent`, `RenderState`, `SimRefusal`, …). |
 
@@ -76,13 +79,14 @@ Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — 
 | `step(n = 1)` → ticks run | Headless stepping. |
 | `setInput({ attacking?, aim? })` | `aim: null` auto-aims at the first dummy. Rejected with `config-locked` during a timed test. |
 | `updateSettings(patch)` | Validated; `config-locked` during a timed test. |
-| `reset({ seed? })` | **The single ResetButton action**: stats, projectiles, debuffs, mana, RNG (re-seeded), timed test aborted. Input is kept. |
+| `reset({ seed? })` | **The single ResetButton action**: stats, projectiles, debuffs, mana, RNG (re-seeded), timed test aborted. Input and dummies are kept. |
+| `setDummies(dummies, { seed? })` | Replace the target dummies (e.g. `dummyRow(3, 6)`), then a full `reset()`. `config-locked` during a timed test; invalid dummies → `invalid-dummy` (current ones kept). |
 | `resetStats()` | Zero stats + graph only (world keeps running). |
 | `startTimedTest(10 \| 30, { seed? })` | Full reset, then exactly 600/1800 ticks with attack held and aim frozen; config locked; then the sim **halts** (`advance`/`step` run 0 ticks) until `reset()` or another `startTimedTest` ("Run again" reproduces the result exactly). |
 | `snapshot()` | Plain-data `SimSnapshot` (safe to keep; deep copies). |
 | `renderState()` | Positions for the renderer (`alpha` included). |
 | `drainEvents()` | Pending events, oldest first; clears the queue. |
-| `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, … for the EquippedBar. |
+| `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, `returnsToHand` (a returning weapon: an attack lasts until it is back), … for the EquippedBar. |
 
 ### HUD mapping (UX_SPEC §3.4)
 
@@ -97,22 +101,25 @@ Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — 
 | ManaBar | `snapshot().mana` (`null` for weapons without a mana cost) |
 | AmmoCounter | `stats.ammoConsumed` |
 | TimedTestControl | `snapshot().timedTest` (`status`, `remainingSec`, `result`) — announce `finished` via `aria-live` |
-| Multiple dummies | `stats.perDummy[id]` |
+| Multiple dummies (primary = first dummy vs all) | `stats.perDummy[id]`; a finished test's `result.perDummy` |
 
 ### Events (`SimEvent`, deterministic log)
 
 `use-start`, `use-blocked` (`block` setting only; once per out-of-mana streak), `projectile-spawn`,
-`projectile-despawn` (`pierce-exhausted` / `lifetime` / `out-of-bounds`), `damage`
-(`source: 'melee' | 'projectile' | 'dot'`, `amount`, `crit`, `x`, `y` = impact point; crits render
-larger, DoT smaller), `debuff-applied` (`refreshed`), `debuff-expired`. Every event has `tick` and
-`seq`. `snapshot().eventDigest` is an FNV-1a fingerprint of the whole stream since the last reset.
+`projectile-despawn` (`pierce-exhausted` / `lifetime` / `out-of-bounds` / `returned` — a returning
+weapon caught: the next attack may start on the following tick), `damage`
+(`source: 'melee' | 'projectile' | 'dot'`, `sourceId` `use:<n>` / `proj:<id>` / `beam` / `buff:<id>`,
+`amount`, `crit`, `x`, `y` = impact point; crits render larger, DoT smaller), `debuff-applied`
+(`refreshed`), `debuff-expired`. Every event has `tick` and `seq`. `snapshot().eventDigest` is an
+FNV-1a fingerprint of the whole stream since the last reset.
 
 ### Render state
 
 `renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, size, defense, active
-debuffs), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`), and
-`blade` (`swing` | `thrust`: `prevAngle → angle`, `prevLength → length`, radians, 0 = +x, π/2 = down).
-Interpolate with `alpha`.
+debuffs), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`; a returning
+weapon in flight is its one projectile), and `blade` (`swing` | `thrust` | `beam`: `prevAngle → angle`,
+`prevLength → length`, radians, 0 = +x, π/2 = down; a `beam` runs from the player along `angle` for
+`length` tiles while the attack is held). Interpolate with `alpha`.
 
 ## Refusals (render, don't guess)
 
@@ -122,8 +129,8 @@ Interpolate with `alpha`.
 |---|---|
 | `limitation` | LimitationCard from `refusal.limitation` (`inGameBehavior`, `reason`, `sourceUrl`). |
 | `custom-scenario` | Custom-scenario banner (`scenarioId`). |
-| `archetype-not-implemented` | "Not simulated yet" card (returning, piercing-beam, minion-sentry, whip, explosive-aoe). |
-| `modifier-not-implemented` | bounce / chain. The registry stubs throw `NotImplementedError`; the guard turns that into this result. |
+| `archetype-not-implemented` | Not-simulated card (minion-sentry, whip, explosive-aoe). |
+| `modifier-not-implemented` | bounce / chain (the registry stubs throw `NotImplementedError`; the guard turns that into this result); homing on a returning weapon or a held beam (their flight / line ignores steering — refused, never ignored). |
 | `missing-required-field` / `unverified-required-field` | `fields` lists dot-paths. Normally unreachable: the pipeline downgrades such weapons to limitations (§2.1 rule 3); this is defense in depth. |
 | `invalid-data` | Contradictory or malformed values. |
 | `dependency-data-unavailable` | The chosen ammo or referenced buff lacks verified data (e.g. ammo with no damage value). |
@@ -132,8 +139,8 @@ Interpolate with `alpha`.
 `buff-registry-required`, `invalid-settings`, `invalid-dummy`, `invalid-arena`.
 
 Required weapon fields for every archetype: `damageClass`, `damage`, `critPct`,
-`useTimeTicks`, `useAnimationTicks`; plus `shootSpeedTps` (bow-gun) and `manaCost`
-(magic-bolt). `autoReuse`/`manaCost`/`reuseDelayTicks` may be absent (defaults: false / no cost /
+`useTimeTicks`, `useAnimationTicks`; plus `shootSpeedTps` (bow-gun, returning, and piercing-beam
+`pierce-projectile` params without a projectile spec) and `manaCost` (magic-bolt). `autoReuse`/`manaCost`/`reuseDelayTicks` may be absent (defaults: false / no cost /
 no cooldown) but block if listed unverified. Any `labBehavior.*` path or
 `simRequiredWeaponFields(archetype)` path listed unverified blocks (mirrors the pipeline rule). A
 `_prov.modeledFields` path that no ratified modeling convention governs is `invalid-data` (B49:
@@ -194,10 +201,15 @@ Order (wiki Damage): **variance → defense → crit**.
 
 ## Extending
 
-- **New archetype** (returning, piercing-beam, minion-sentry, whip, explosive-aoe): add
-  `interpreters/<name>.ts` implementing `ArchetypeInterpreter` (`prepare` → `Behavior` with
-  `activate` / optional `tickUse` / `blade`), register it in `interpreters/index.ts`. The kernel
-  does not change.
+- **New archetype** (minion-sentry, whip, explosive-aoe): add `interpreters/<name>.ts` implementing
+  `ArchetypeInterpreter` (`prepare` → `Behavior` with `activate` / optional `tickUse` / `ready` /
+  `blade`), register it in `interpreters/index.ts` — which also flips the pipeline's recorded
+  "params complete, pending interpreter" weapons on the next `npm run pipeline:build`
+  (AMENDMENTS-013 B61). The kernel does not switch on archetype; its generic hooks are a use gate
+  (`Behavior.ready`), guided projectiles (`ProjectileLaunch.guide`: steer / stop at a hit / `caught`),
+  per-world persistent hit sources (`KernelApi.persistentSource`), and `attacking` / `arena` /
+  `activeProjectiles` on `KernelApi`. A `Behavior` is shared by every world a sim builds (reset makes a
+  new world): it keeps no per-world state of its own.
 - **New modifier** (bounce, chain): replace the throwing stub in `modifiers.ts` with a
   `ModifierRuntime` using the hooks in `contracts.ts`. Bounce/chain will likely need one more hook
   (projectile-hit → redirect); add it to `ModifierRuntime` and call it from the projectile step.
@@ -236,20 +248,37 @@ See `approximations.ts` for the user-facing copy. Summary (✓ = rule verified o
 | multi-hit | ◇ | `localImmunityTicks` re-hit cooldown per source per dummy. |
 | knockback | ✓ | Ignored (Target Dummy never moves). |
 | dummy-hitbox | ◇ | 2×3 tiles = placed size ✓; NPC pixel hitbox undocumented. |
+| boomerang-flight | ✓/◇ | Turns back at its first hit ✓ (wiki Combat Wrench: most boomerangs "instantly turn around after hitting enemies") or at its throw range; back at the throw speed ◇ (in-game it returns faster); one out at a time ◇. |
+| flail-launch | ✓/◇ | Extends until it strikes or reaches its length, then retracts ✓ (wiki Flails); retract speed = extend speed ◇ ("slightly faster", no number); the struck dummy isn't hit again on the way back ◇. |
+| yoyo-control | ✓/◇ | Re-hits every 10 ticks ✓ (wiki Yoyos); follows the aim within its reach at the weapon velocity, stays out while held ◇; spin-time limit, bouncing and its own acceleration not modeled. |
+| beam-geometry | ◇ | A line from the player toward the current aim to the arena edge, through every dummy; one hit per dummy per `tickRateTicks`; off while released and during a cooldown. |
 
-## Modeling conventions (AMENDMENTS-010 B44 / B46 / B47, record marker B49)
+## Modeling conventions (AMENDMENTS-010 B44 / B46 / B47, AMENDMENTS-013 B63, record marker B49)
 
 Some archetype params are not stated by the wiki and come from a ratified **modeling convention**
 (`MODELING_CONVENTIONS` in src/schemas/weapon.ts — each names its ruling). A weapon lists every
-such param path in `_prov.modeledFields`; the guard maps each path to its convention and adds that
+such param path in `_prov.modeledFields`; the guard maps each entry to its convention and adds that
 convention's labeled approximation (with `ruling`) to `sim.approximations`, so the AssumptionsTip
-always says the value is modeled. A listed path no convention governs is refused (`invalid-data`).
+always says the value is modeled. A listed entry no convention governs is refused (`invalid-data`).
+
+**Entry format (AMENDMENTS-014 B72(b), binding):** an entry is the param's dot-path
+(`labBehavior.params.<param>`); where more than one convention governs that path for the archetype
+it MUST be qualified `<path>#<convention id>` (e.g.
+`labBehavior.params.attackRateTicks#summon-hit-cap`). An unqualified entry for a shared path resolves
+to no convention and is refused — it can never pick up the wrong label (`modelingConventionFor`).
 
 | Convention | Ruling | Params | Engine label |
 |---|---|---|---|
 | swing-geometry | B44 | swing `arcDegrees`, `reachTiles` | none here — the Lab UI's own `swing-reach-arc` assumption labels it (src/lab/labAssumptions.ts); fold it into the engine registry when the Lab drops its local copy |
 | thrust-reach | B46 | thrust `reachTiles` | `thrust-reach` |
 | slight-spread | B47 | bow-gun `spreadDegrees` (10°) | `slight-spread` |
+| whip-arc | B63 P-1 | whip `arcDegrees` (180° forward; every whip record) | `whip-arc` |
+| summon-average-rate | B63 P-2 | minion-sentry `attackRateTicks` — shared path: entry `…attackRateTicks#summon-average-rate` | `summon-average-rate` |
+| summon-hit-cap | B63 P-3 | minion-sentry `attackRateTicks` (an UPPER BOUND) — shared path: entry `…attackRateTicks#summon-hit-cap` | `summon-hit-cap` |
+| square-blast-radius | B63 P-5 | explosive-aoe `blastRadiusTiles` (inscribed circle of a stated square area) | `square-blast-radius` |
+
+The four B63 labels surface once the whip / minion-sentry / explosive-aoe interpreters ship (P3-S9–
+S11); until then those weapons are emitted as limitations (B61).
 
 The pipeline applies B46 only where the weapon's article states no range. Where it states one, that
 range is the thrust `reachTiles` (AMENDMENTS-012 B56): extracted wiki data, not listed in
@@ -265,6 +294,26 @@ never from projectilesPerUse); ammo `ProjectileSpec.velocityTps` is not used for
 `weapon.shootSpeedTps`); `ProjectileSpec.damageMultiplierPct` = % of the damage the projectile would
 otherwise deal, rounded down.
 
+**returning** (P3-S7) — the weapon itself flies at `weapon.shootSpeedTps`, out and back; one out at a
+time (the next use waits until it is caught). Each `variant` requires its family's documented flight
+(any other combination is `invalid-data`): `boomerang` and `flail` = `auto-return` + `fire-and-forget`
+(straight toward the aim latched at the throw; turns back at its first hit — wiki Combat Wrench / Flails
+— or at `throwRangeTiles`; back straight to the player); `yoyo` = `tethered` + `cursor-follow` (toward
+the current aim, clamped to `throwRangeTiles` from the player, while attack is held; back when released).
+A *pass* is one way (out, back; a yoyo's time out is one pass). `hitsPerPass` = max hits on each dummy
+per pass; absent = once per dummy per pass, except that a yoyo re-hits every 10 ticks (wiki Yoyos); a
+weapon `multiHit` sets the re-hit interval instead; hitsPerPass > 1 with no re-hit interval is
+`invalid-data`. Turning starts a new pass (pass-scoped blocks lift; a running re-hit cooldown stays),
+except that the dummy which turned it isn't hit again on the way back.
+
+**piercing-beam** (P3-S6) — `pierce-projectile`: one projectile per activation; `pierce` = extra
+dummies after the first (as B37), `infinite` = all on its line; speed = `projectile.velocityTps`, else
+`weapon.shootSpeedTps`; a `projectile.pierce` that differs from `pierce` is `invalid-data`; the params
+carry no ammo, so a weapon with `ammoClass` is refused. `channel-beam`: while a use is in progress AND
+attack is held, a line from the player toward the current aim to the arena edge hits every dummy on it
+once per `tickRateTicks` (a per-world hit source, so the cadence runs on across uses); mana per use as
+any weapon; damage × `projectile.damageMultiplierPct` when a projectile spec is given.
+
 ## Resolved questions
 
 1. **`simRequiredWeaponFields` predated B14** (omitted `useAnimationTicks` and melee `autoReuse`).
@@ -278,6 +327,22 @@ otherwise deal, rounded down.
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
 `determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+
+- **2026-10-13: returning + piercing-beam interpreters, Multiple Dummies (PRD P3-S6 / P3-S7).**
+  New interpreters `returning` (boomerang / launched flail / yoyo variants) and `piercing-beam`
+  (`pierce-projectile` / `channel-beam`), registered (the B61 flip: `pipeline:build` emits the 22
+  recorded returning weapons). Generic kernel hooks, inert for every earlier archetype: a use gate
+  (`Behavior.ready`), guided projectiles (`ProjectileLaunch.guide` + `hitCooldownTicks`; despawn reason
+  `returned`), per-world persistent hit sources, `KernelApi.attacking` / `arena` / `activeProjectiles`,
+  `blade(use, k)` with a `beam` pose. API: `dummyRow`, `DUMMY_ROW_SPACING_TILES`, `LabSim.setDummies`,
+  `WeaponSummary.returnsToHand`, `TimedTestResult.perDummy`. New approximations `boomerang-flight`,
+  `flail-launch`, `yoyo-control`, `beam-geometry`. Fingerprints: the five earlier scenarios are
+  **unchanged** (proved by the unchanged pins). New scenarios pinned: boomerang (turns at its first hit,
+  dummy row) `{ total: 1073, dot: 0, hits: 86, crits: 3, uses: 86, digest: 'd0de41e8' }`; launched
+  flail (turns on strike, DoT chance) `{ 1129, 109, 67, 7, 67, '92a82efb' }`; yoyo (tethered dwell at the
+  auto-aim point) `{ 3288, 0, 180, 15, 1, '2bfbdb43' }`; pierce bolt (pierce 2 vs an armored row of 4,
+  slow-cast) `{ 2576, 0, 129, 8, 44, 'f5383fcd' }`; channel beam (tick rate across uses, reuse delay)
+  `{ 15858, 0, 738, 54, 82, 'c0eea291' }`.
 
 - **2026-10-13: cooldown × mana labels (AMENDMENTS-012 B57(e)).** New approximations
   `slow-cast-cooldown` and `cooldown-mana-regen` name the two existing, undocumented Lab choices

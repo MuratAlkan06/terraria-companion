@@ -3,7 +3,17 @@
  * Owns the fixed-step clock, the timed-test controller (exactly 600/1800 ticks, config-locked), and
  * world resets. See ./README.md for the API contract the Lab UI consumes.
  */
-import { DEFAULT_ARENA, DEFAULT_DUMMY_X_TILES, DEFAULT_DUMMY_Y_TILES, DEFAULT_MAX_MANA, TICKS_PER_SECOND, TIMED_TEST_DURATIONS, timedTestTicks, type TimedTestDuration } from './constants'
+import {
+  DEFAULT_ARENA,
+  DEFAULT_DUMMY_X_TILES,
+  DEFAULT_DUMMY_Y_TILES,
+  DEFAULT_MAX_MANA,
+  DUMMY_ROW_SPACING_TILES,
+  TICKS_PER_SECOND,
+  TIMED_TEST_DURATIONS,
+  timedTestTicks,
+  type TimedTestDuration,
+} from './constants'
 import { FixedStepClock } from './clock'
 import { prepareSimulation, type SimPlan } from './guard'
 import { toSeed } from './rng'
@@ -18,6 +28,7 @@ import type {
   LabSim,
   LabSimOptions,
   RenderState,
+  SetDummiesResult,
   SettingsUpdateResult,
   SimEvent,
   SimSnapshot,
@@ -39,6 +50,17 @@ export const DEFAULT_LAB_SETTINGS: Readonly<LabSettings> = Object.freeze({
 })
 
 export const DEFAULT_DUMMY: Readonly<DummySpec> = Object.freeze({ id: 'dummy-0', x: DEFAULT_DUMMY_X_TILES, y: DEFAULT_DUMMY_Y_TILES })
+
+/**
+ * Multiple Dummies (PRD P3-S6 AC1): `count` standard dummies in a row on the ground, the first (the
+ * primary target — auto-aim's dummy) centred at `firstX`, each next one `spacingTiles` further away.
+ * Ids `dummy-0` … `dummy-<count − 1>`, nearest first. Throws on a count that is not a positive integer
+ * (a programming error, not data).
+ */
+export function dummyRow(count: number, firstX: number = DEFAULT_DUMMY_X_TILES, spacingTiles: number = DUMMY_ROW_SPACING_TILES): DummySpec[] {
+  if (!Number.isInteger(count) || count < 1) throw new RangeError(`dummyRow: count must be a positive integer, got ${count}`)
+  return Array.from({ length: count }, (_, i) => ({ id: `dummy-${i}`, x: firstX + i * spacingTiles, y: DEFAULT_DUMMY_Y_TILES }))
+}
 
 const MAX_MANA_LIMIT = 10_000
 
@@ -107,7 +129,7 @@ class Sim implements LabSim {
   private settings: LabSettings
   private test: TestState = { ...IDLE_TEST }
   private readonly plan: SimPlan
-  private readonly dummies: readonly DummySpec[]
+  private dummies: readonly DummySpec[]
   private readonly arena: ArenaBounds
 
   constructor(plan: SimPlan, seed: number, settings: LabSettings, dummies: readonly DummySpec[], arena: ArenaBounds) {
@@ -202,6 +224,16 @@ class Sim implements LabSim {
     this.test = { ...IDLE_TEST }
   }
 
+  setDummies(dummies: readonly DummySpec[], options?: { seed?: number }): SetDummiesResult {
+    if (this.locked()) return { ok: false, reason: 'config-locked' }
+    const next = dummies.map((d) => ({ ...d }))
+    const error = validateDummies(next)
+    if (error) return { ok: false, reason: 'invalid-dummy', message: error }
+    this.dummies = next
+    this.reset(options)
+    return { ok: true }
+  }
+
   resetStats(): { ok: true } | { ok: false; reason: 'config-locked' } {
     if (this.locked()) return { ok: false, reason: 'config-locked' }
     this.world.stats.reset()
@@ -241,6 +273,7 @@ class Sim implements LabSim {
         manaConsumed: s.manaConsumed,
         debuffsApplied: s.debuffsApplied,
         dpsSeries: s.dpsSeries,
+        perDummy: s.perDummy,
         eventDigest: this.world.eventDigest(),
       },
     }
@@ -254,7 +287,13 @@ class Sim implements LabSim {
       ticksElapsed: t.ticksElapsed,
       ticksTotal: t.ticksTotal,
       remainingSec: t.status === 'running' ? (t.ticksTotal - t.ticksElapsed) / TICKS_PER_SECOND : 0,
-      result: t.result ? { ...t.result, dpsSeries: [...t.result.dpsSeries] } : null,
+      result: t.result
+        ? {
+            ...t.result,
+            dpsSeries: [...t.result.dpsSeries],
+            perDummy: Object.fromEntries(Object.entries(t.result.perDummy).map(([id, d]) => [id, { ...d }])),
+          }
+        : null,
     }
   }
 

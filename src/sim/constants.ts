@@ -49,6 +49,21 @@ export const DEFAULT_DUMMY_HEIGHT_TILES = 3
 /** Default dummy center: point-blank, its near face 1 tile from the player's center (Lab choice). */
 export const DEFAULT_DUMMY_X_TILES = 2
 export const DEFAULT_DUMMY_Y_TILES = 0
+/**
+ * Multiple Dummies (PRD P3-S6 AC1, `dummyRow`): standard dummies in a row on the ground, centres this
+ * far apart — one tile of air between 2-tile-wide dummies. Lab choice (no game value).
+ */
+export const DUMMY_ROW_SPACING_TILES = 3
+
+/**
+ * Yoyo re-hit interval — VERIFIED (https://terraria.wiki.gg/wiki/Yoyos): "Yoyos inflict 10 ticks of
+ * global invincibility frames on direct hits, meaning they can hit for up to 6 times per second."
+ * The Lab applies it per dummy (approximation id `yoyo-control`).
+ */
+export const YOYO_HIT_COOLDOWN_TICKS = 10
+
+/** A guided (returning) projectile counts as back at the target point within this distance (tiles). */
+export const ARRIVE_EPSILON_TILES = 1e-9
 
 /** Arena bounds (tiles, relative to the player at the origin; y grows downward). Lab choice. */
 export const DEFAULT_ARENA = { minX: -60, maxX: 60, minY: -40, maxY: 40 } as const

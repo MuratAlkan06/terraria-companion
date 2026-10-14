@@ -225,6 +225,7 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
     manaCostPerUse: manaCost,
     usesAmmo: behavior.usesAmmo,
     baseHitDamage: behavior.baseHitDamage,
+    returnsToHand: behavior.returnsToHand === true,
   }
 
   return {

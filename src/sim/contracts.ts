@@ -10,11 +10,11 @@ import type { Archetype, ArchetypeParams, Buff, Item, Weapon } from '../schemas'
 import type { ApproximationId } from './approximations'
 import type { Aabb } from './geometry'
 import type { Rng } from './rng'
-import type { BladePose, LabSettings, SimRefusal, Vec2 } from './types'
+import type { ArenaBounds, BladePose, LabSettings, SimRefusal, Vec2 } from './types'
 
 /** Anything that can damage a dummy, with its own local-immunity bookkeeping. */
 export interface HitSource {
-  /** `use:<n>` (melee) or `proj:<id>`. */
+  /** `use:<n>` (melee), `proj:<id>`, or a persistent source's key (`beam`). */
   readonly key: string
   readonly kind: 'melee' | 'projectile'
   /** Damage before variance/defense/crit. */
@@ -57,6 +57,13 @@ export interface ProjectileLaunch extends ProjectileShape {
   vx: number
   vy: number
   damage: number
+  /**
+   * The archetype's own re-hit interval for this projectile (e.g. a yoyo's 10 ticks); a weapon's
+   * `multiHit` modifier (data) takes precedence. Absent: the weapon's multiHit, else one hit per dummy.
+   */
+  hitCooldownTicks?: number
+  /** Flight control for a projectile that doesn't fly straight (a returning weapon). */
+  guide?: ProjectileGuide
 }
 
 export interface ProjectileState {
@@ -73,6 +80,22 @@ export interface ProjectileState {
   readonly lifetimeTicks: number
   readonly source: HitSource
   readonly spriteKey?: string
+  readonly guide?: ProjectileGuide
+}
+
+/**
+ * Per-flight control of a guided projectile (the returning archetype: out, back, held at the aim).
+ * Created per launch, so it may keep that flight's state; the kernel calls it in the fixed
+ * projectile step (world.ts header), so guided flight stays deterministic.
+ */
+export interface ProjectileGuide {
+  /**
+   * Before movement each tick: set `p.vx` / `p.vy` (tiles/tick). `caught` = back in hand: the
+   * projectile is removed without moving (`projectile-despawn` reason `returned`).
+   */
+  steer(k: KernelApi, p: ProjectileState): 'caught' | void
+  /** After each hit it lands: `stop` ends this tick's move at the impact point (it turns back there). */
+  afterHit?(k: KernelApi, p: ProjectileState, dummy: DummyState): 'stop' | void
 }
 
 export interface ActiveUse {
@@ -99,25 +122,44 @@ export interface KernelApi {
   readonly facing: 1 | -1
   readonly dummies: readonly DummyState[]
   readonly settings: Readonly<LabSettings>
+  /** Attack is held (input, or forced by a timed test) — a yoyo stays out while it is. */
+  readonly attacking: boolean
+  /** Projectile despawn bounds (a held beam reaches to them). */
+  readonly arena: Readonly<ArenaBounds>
+  /** Projectiles in flight, in spawn order. */
+  readonly activeProjectiles: readonly ProjectileState[]
   spawnProjectile(launch: ProjectileLaunch): void
   /** Applies a direct hit (immunity → variance → defense → crit → stats/events → modifier hooks). */
   strike(source: HitSource, dummy: DummyState, at: Vec2): boolean
+  /**
+   * This world's hit source for `key`, created on first use and kept until the next reset — for a
+   * damage source that outlives single uses (a held beam's per-dummy hit interval).
+   */
+  persistentSource(key: string, kind: HitSource['kind'], baseDamage: number, cooldownTicks: number | null): HitSource
   consumeAmmo(count: number): void
   applyDebuff(dummy: DummyState, buffId: string, dps: number, durationTicks: number): void
 }
 
-/** A prepared archetype behavior for one weapon (+ ammo). */
+/**
+ * A prepared archetype behavior for one weapon (+ ammo). Shared by every world the sim builds
+ * (reset makes a new world), so it must keep no per-world state of its own: per-flight state lives
+ * in a projectile's guide, per-world state in the kernel (`persistentSource`, `activeProjectiles`).
+ */
 export interface Behavior {
   readonly archetype: Archetype
   readonly baseHitDamage: number
   readonly usesAmmo: boolean
   readonly approximations: readonly ApproximationId[]
+  /** The weapon itself is thrown and comes back; the next attack waits for it (WeaponSummary.returnsToHand). */
+  readonly returnsToHand?: boolean
   /** Called on each activation: at use start, then every activationTicks inside the use. */
   activate(k: KernelApi, use: ActiveUse): void
-  /** Called every tick of a use, after any activation (melee hit detection). */
+  /** Called every tick of a use, after any activation (melee hit detection, a held beam). */
   tickUse?(k: KernelApi, use: ActiveUse): void
-  /** Melee pose for the renderer at the end of the use's current tick. */
-  blade?(use: ActiveUse): BladePose | null
+  /** Optional gate on starting a use (absent = always ready): false while a returning weapon is still out. */
+  ready?(k: KernelApi): boolean
+  /** Melee / beam pose for the renderer at the end of the use's current tick. */
+  blade?(use: ActiveUse, k: KernelApi): BladePose | null
 }
 
 export type PrepareResult = { ok: true; behavior: Behavior } | { ok: false; refusal: SimRefusal }

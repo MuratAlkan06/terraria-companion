@@ -1,4 +1,4 @@
-import { ChartColumn, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail } from 'lucide-react'
+import { ChartColumn, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail, Star } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { hasAssumptions, type Assumptions } from '../../../components/assumptions'
 import { buttonClass } from '../../../components/buttonStyles'
@@ -11,10 +11,11 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import { Toggletip } from '../../../components/Toggletip'
 import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import type { LabHudState, LabManaHud } from '../../../lab/labSession'
+import type { LabHudState, LabManaHud, LabTargetsHud } from '../../../lab/labSession'
+import { behaviorFacts } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS } from '../../../sim'
-import { format1, format2, formatInt, HUD_PANEL } from './hudStyles'
+import { format1, format2, formatInt, HUD_PANEL, HUD_SURFACE } from './hudStyles'
 import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
 
 /**
@@ -59,15 +60,21 @@ export function EquippedBar({ weapon, sprites, hud, compact }: { weapon: Weapon;
           <Fact label="Crit" short="Crit" compact={compact}>
             {summary.critChancePct}%
           </Fact>
+          {/* Behavior stats from the params: a thrown weapon's range and flight, a beam's hit rate, a pierce count. */}
+          {behaviorFacts(weapon).map((f) => (
+            <Fact key={f.key} label={f.label} short={f.short} compact={compact} data={f.key}>
+              {compact ? (f.shortValue ?? f.value) : f.value}
+            </Fact>
+          ))}
         </dl>
       </div>
     </section>
   )
 }
 
-function Fact({ label, short, compact, children }: { label: string; short: string; compact: boolean; children: ReactNode }) {
+function Fact({ label, short, compact, data, children }: { label: string; short: string; compact: boolean; data?: string; children: ReactNode }) {
   return (
-    <div className="flex gap-1 whitespace-nowrap">
+    <div className="flex gap-1 whitespace-nowrap" data-fact={data}>
       <dt>
         {compact ? (
           <>
@@ -85,15 +92,23 @@ function Fact({ label, short, compact, children }: { label: string; short: strin
 
 export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; assumptions: Assumptions; compact: boolean }) {
   const last = hud.lastHit
-  // Each tip lists what its own number depends on: attacks/sec only the cadence assumptions; est.
-  // DPS all of them, led by what it divides by.
-  const cadence = assumptionsForEstimate(assumptions, 'attacks-per-sec')
+  // Each tip lists what its own number depends on: attacks/sec only the cadence assumptions (a yoyo's
+  // hits/sec what decides its hit rate); est. DPS all of them, led by what it divides by.
+  const hitRate = hud.rateReadout === 'hits'
+  const cadence = assumptionsForEstimate(assumptions, hitRate ? 'hits-per-sec' : 'attacks-per-sec')
   const rateAssumptions = hasAssumptions(cadence) ? cadence : assumptions
   const dps = assumptionsForEstimate(assumptions, 'estimated-dps')
   const dpsAssumptions = hasAssumptions(dps) ? dps : assumptions
+  // Multiple Dummies (PRD P3-S6 AC4): the totals are over all dummies; the primary target's own numbers sit apart.
+  const targets = hud.targets
   return (
-    <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="">
+    <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="" data-stat-scope={targets ? 'all-dummies' : 'one-dummy'}>
       {hud.mana?.ignoreMana ? <TestModeChip className={compact ? 'mb-1.5' : 'mb-2'} /> : null}
+      {targets && !compact ? (
+        <p className="mb-1.5 flex items-center gap-1 text-xs text-fg-muted" data-stat-scope-note="">
+          Totals over all {targets.dummies.length} dummies · <Star aria-hidden="true" className="size-3 text-accent" /> dummy 1 is the primary target
+        </p>
+      ) : null}
       {/* Compact: both columns reserve their width from the first frame — "999 (99 crits)" and
           "8.57 est." — so the box doesn't grow (and squeeze the EquippedBar) as the numbers climb. */}
       <dl
@@ -119,33 +134,84 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
             </span>
           )}
         </Readout>
-        <Readout label="Total damage" short="Total" compact={compact}>
+        <Readout label={targets ? 'Total damage, all dummies' : 'Total damage'} visibleLabel={targets && !compact ? 'Total damage' : undefined} short="Total" compact={compact}>
           <span data-stat="total">{formatInt(hud.totalDamage)}</span>
         </Readout>
+        {targets && !compact ? (
+          <Readout label="Total damage, primary target" visibleLabel="Primary target" compact={compact} nested>
+            <span data-stat="primary-total">{formatInt(targets.primary.damage)}</span>
+          </Readout>
+        ) : null}
         <Readout label="Hits" compact={compact}>
           <span data-stat="hits">{formatInt(hud.hits)}</span>
           <span className="ml-1 text-xs font-normal text-fg-muted" data-stat="crits">
             ({formatInt(hud.crits)} crit{hud.crits === 1 ? '' : 's'})
           </span>
         </Readout>
-        <Readout label="Attacks/sec" short="Atk/s" compact={compact}>
-          <span className="inline-flex items-center gap-1">
-            <span data-stat="attacks-per-sec">{format2(hud.attacksPerSec)}</span>
-            <EstimateLabel assumptions={rateAssumptions} context="attacks per second" />
-          </span>
-        </Readout>
-        <Readout label={LIVE_DPS_LABEL} short={LIVE_DPS_SHORT} compact={compact} wide={compact}>
+        {/* A yoyo (tethered) is one attack for as long as it is out, hitting all the while: its rate is hits/sec. */}
+        {hitRate ? (
+          <Readout label="Hits/sec" short="Hits/s" compact={compact}>
+            <span className="inline-flex items-center gap-1">
+              <span data-stat="hits-per-sec">{format2(hud.hitsPerSec)}</span>
+              <EstimateLabel assumptions={rateAssumptions} context="hits per second" />
+            </span>
+          </Readout>
+        ) : (
+          <Readout label="Attacks/sec" short="Atk/s" compact={compact}>
+            <span className="inline-flex items-center gap-1">
+              <span data-stat="attacks-per-sec">{format2(hud.attacksPerSec)}</span>
+              <EstimateLabel assumptions={rateAssumptions} context="attacks per second" />
+            </span>
+          </Readout>
+        )}
+        <Readout
+          label={targets ? `${LIVE_DPS_LABEL}, all dummies` : LIVE_DPS_LABEL}
+          visibleLabel={targets && !compact ? LIVE_DPS_LABEL : undefined}
+          short={targets ? 'DPS, all' : LIVE_DPS_SHORT}
+          compact={compact}
+          wide={compact && !targets}
+        >
           <span className="inline-flex items-center gap-1">
             <span data-stat="dps">{format1(hud.estimatedDps)}</span>
-            <EstimateLabel assumptions={dpsAssumptions} context="estimated DPS while attacking" />
+            <EstimateLabel assumptions={dpsAssumptions} context={targets ? 'estimated DPS while attacking, all dummies' : 'estimated DPS while attacking'} />
           </span>
         </Readout>
+        {targets ? (
+          <Readout label={`${LIVE_DPS_LABEL}, primary target`} visibleLabel={compact ? undefined : 'Primary target'} short="DPS, #1" compact={compact} nested={!compact}>
+            <span className="inline-flex items-center gap-1">
+              <span data-stat="primary-dps">{format1(targets.primary.estimatedDps)}</span>
+              <EstimateLabel assumptions={dpsAssumptions} context="estimated DPS while attacking, primary target" />
+            </span>
+          </Readout>
+        ) : null}
       </dl>
     </section>
   )
 }
 
-function Readout({ label, short, compact, wide, children }: { label: string; short?: string; compact: boolean; wide?: boolean; children: ReactNode }) {
+/**
+ * One stat: `label` is its full name (screen readers always get it); `visibleLabel` a shorter visible
+ * one in the full HUD; `short` the compact HUD's. `nested`: a part of the row above (the primary
+ * target's share of a total), indented on a rule.
+ */
+function Readout({
+  label,
+  visibleLabel,
+  short,
+  compact,
+  wide,
+  nested,
+  children,
+}: {
+  label: string
+  visibleLabel?: string
+  short?: string
+  compact: boolean
+  wide?: boolean
+  nested?: boolean
+  children: ReactNode
+}) {
+  const shown = visibleLabel ?? label
   return compact ? (
     <div className={cx('flex min-w-0 flex-col', wide && 'col-span-2')}>
       <dt className="text-xs leading-4 font-semibold tracking-wide text-fg-muted uppercase">
@@ -161,10 +227,58 @@ function Readout({ label, short, compact, wide, children }: { label: string; sho
       <dd className="min-h-5 font-semibold whitespace-nowrap text-fg">{children}</dd>
     </div>
   ) : (
-    <div className="contents">
-      <dt className="py-0.5 text-fg-muted">{label}</dt>
-      <dd className="py-0.5 text-right font-semibold whitespace-nowrap text-fg">{children}</dd>
+    <div className="contents" data-readout-nested={nested ? '' : undefined}>
+      <dt className={cx('py-0.5 text-fg-muted', nested && 'ml-1 border-l-2 border-night-600 pl-2.5 text-xs')}>
+        {shown === label ? (
+          label
+        ) : (
+          <>
+            <span aria-hidden="true">{shown}</span>
+            <span className="sr-only">{label}</span>
+          </>
+        )}
+      </dt>
+      <dd className={cx('py-0.5 text-right font-semibold whitespace-nowrap text-fg', nested && 'text-xs')}>{children}</dd>
     </div>
+  )
+}
+
+/**
+ * Hits per dummy (PRD P3-S6 AC2), Multiple Dummies only: one cell per dummy, nearest first, numbered
+ * as the arena labels them, the primary target starred (with words for screen readers). Hits — and
+ * damage, where there is room — live. A readout only: it never takes the pointer from the arena.
+ */
+export function TargetStrip({ targets, compact }: { targets: LabTargetsHud; compact: boolean }) {
+  return (
+    <section aria-label="Hits per dummy" className={cx(HUD_SURFACE, 'pointer-events-none w-full', compact ? 'p-1' : 'p-1.5')} data-target-strip="">
+      <ol className="grid auto-cols-fr grid-flow-col gap-1 text-xs leading-4 tabular-nums">
+        {targets.dummies.map((d) => (
+          <li
+            key={d.id}
+            className={cx('flex min-w-0 flex-col items-center border-2 px-1 py-0.5', d.primary ? 'border-gold-600' : 'border-night-600')}
+            data-dummy={d.number}
+            data-dummy-hits={d.hits}
+          >
+            <span className="flex items-center gap-0.5 font-semibold text-fg-muted">
+              <span aria-hidden="true">#{d.number}</span>
+              <span className="sr-only">
+                Dummy {d.number}
+                {d.primary ? ', the primary target' : ''}:
+              </span>
+              {d.primary ? <Star aria-hidden="true" className="size-3 text-accent" /> : null}
+            </span>
+            <span className="font-semibold whitespace-nowrap text-fg">
+              <span data-stat="dummy-hits">{formatInt(d.hits)}</span> {d.hits === 1 ? 'hit' : 'hits'}
+            </span>
+            {compact ? null : (
+              <span className="whitespace-nowrap text-fg-muted">
+                <span data-stat="dummy-damage">{formatInt(d.damage)}</span> dmg
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 
@@ -227,12 +341,16 @@ export function HudControls({
   )
 }
 
-/** First-use hint; gone once the first attack of the session starts. `verb`: "swing", "thrust"… */
-export function AttackHint({ touch, verb = 'swing' }: { touch: boolean; verb?: string }) {
+/**
+ * First-use hint; gone once the first attack of the session starts. `verb`: "swing", "thrust"…;
+ * `steer`: a weapon that follows the pointer while held (a yoyo, a held beam) says so.
+ */
+export function AttackHint({ touch, verb = 'swing', steer = null }: { touch: boolean; verb?: string; steer?: 'yoyo' | 'beam' | null }) {
+  const follow = steer ? (touch ? ' — drag to steer it' : ' — move to steer it') : ''
   return (
     <p className={cx(PANEL, 'pointer-events-none flex items-center gap-2 px-2 py-1 text-xs text-fg md:text-sm')} data-attack-hint="">
       <MousePointerClick aria-hidden="true" className="size-4 shrink-0 text-accent" />
-      {touch ? `Touch and hold the arena to ${verb}` : `Press and hold to ${verb} · or hold Space`}
+      {touch ? `Touch and hold the arena to ${verb}${follow}` : `Press and hold to ${verb}${follow} · or hold Space`}
     </p>
   )
 }

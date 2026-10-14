@@ -150,6 +150,21 @@ export const Weapon = z.strictObject({
 })
 export type Weapon = z.infer<typeof Weapon>
 
+/**
+ * The behavior lines of a weapon tooltip (`behaviorText`). Terraria prints an item's flavor text as a
+ * line of its own in single quotes ("'Greetings, programs!'") — a joke or a quote, not what the item
+ * does — so a LimitationCard's "What it does in-game" (UX_SPEC §8: verified behavior text) never shows
+ * it. Undefined when no line is left (the tooltip is flavor only, or absent).
+ */
+export function tooltipBehavior(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const lines = text.split('\n').filter((line) => line.trim() !== '' && !isFlavorLine(line))
+  return lines.length > 0 ? lines.join('\n') : undefined
+}
+
+/** A whole line in single quotes — straight or typographic — is the tooltip's flavor text. */
+export const isFlavorLine = (line: string): boolean => /^\s*['‘].*['’]\s*$/.test(line)
+
 export const CustomScenario = z.strictObject({
   // overlay → lab-scenarios.json
   id: Slug,

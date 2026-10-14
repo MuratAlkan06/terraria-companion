@@ -141,12 +141,13 @@ export type SimEvent =
   | (EventBase & {
       type: 'projectile-despawn'
       projectileId: number
-      reason: 'pierce-exhausted' | 'lifetime' | 'out-of-bounds'
+      /** `returned`: a returning weapon (boomerang, flail, yoyo) is back in hand — the next attack may start. */
+      reason: 'pierce-exhausted' | 'lifetime' | 'out-of-bounds' | 'returned'
     })
   | (EventBase & {
       type: 'damage'
       source: DamageSourceKind
-      /** `use:<n>` for melee, `proj:<id>` for projectiles, `buff:<buffId>` for DoT. */
+      /** `use:<n>` for melee, `proj:<id>` for projectiles, `beam` for a held beam, `buff:<buffId>` for DoT. */
       sourceId: string
       dummyId: string
       amount: number
@@ -228,6 +229,12 @@ export interface WeaponSummary {
   usesAmmo: boolean
   /** Weapon + ammo damage for bow-gun, else weapon damage. */
   baseHitDamage: number
+  /**
+   * The weapon itself is thrown and comes back (returning archetype: boomerang, flail, yoyo): an
+   * attack lasts until it is back in hand (`projectile-despawn` reason `returned`), and the next
+   * attack can't start sooner.
+   */
+  returnsToHand: boolean
 }
 
 export interface TimedTestResult {
@@ -246,6 +253,8 @@ export interface TimedTestResult {
   manaConsumed: number
   debuffsApplied: number
   dpsSeries: number[]
+  /** Per-dummy totals of the run (the primary target is the first dummy; Multiple Dummies). */
+  perDummy: Record<string, DummyStats>
   /** FNV-1a digest of the full event log of the run (determinism fingerprint). */
   eventDigest: string
 }
@@ -286,7 +295,8 @@ export interface SimSnapshot {
 // Render state (renderer interpolates prev → current with `alpha`)
 
 export interface BladePose {
-  kind: 'swing' | 'thrust'
+  /** `beam`: a held beam (piercing-beam channel mode) — a line from the player along `angle`. */
+  kind: 'swing' | 'thrust' | 'beam'
   /** Radians, world space (0 = +x, π/2 = down). */
   angle: number
   prevAngle: number
@@ -323,6 +333,8 @@ export type SettingsUpdateResult =
 
 export type StartTimedTestResult = { ok: true } | { ok: false; reason: 'already-running' | 'invalid-duration' }
 
+export type SetDummiesResult = { ok: true } | { ok: false; reason: 'config-locked' } | { ok: false; reason: 'invalid-dummy'; message: string }
+
 export interface AdvanceResult {
   ticksRun: number
   alpha: number
@@ -340,6 +352,11 @@ export interface LabSim {
   updateSettings(patch: Partial<LabSettings>): SettingsUpdateResult
   /** Full reset (stats, projectiles, debuffs, mana, RNG re-seeded, timed test aborted). */
   reset(options?: { seed?: number }): void
+  /**
+   * Replace the target dummies (e.g. Multiple Dummies: `dummyRow`), then a full `reset()`. Rejected
+   * during a timed test; invalid dummies are refused and the current ones kept.
+   */
+  setDummies(dummies: readonly DummySpec[], options?: { seed?: number }): SetDummiesResult
   /** Zero the stats + graph only; the world keeps running. Rejected during a timed test. */
   resetStats(): { ok: true } | { ok: false; reason: 'config-locked' }
   startTimedTest(durationSec: TimedTestDuration, options?: { seed?: number }): StartTimedTestResult

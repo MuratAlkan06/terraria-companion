@@ -19,9 +19,18 @@
  *   the engine's own path (../projectiles.ts) on the art-pixel grid — a small pixel shape with a
  *   trail of its last ticks of flight, seen from the hand on, ending at its hit (or leaving the
  *   arena / timing out) with a short fading tracer.
+ * - Returning weapons (P3-S7, ../thrownVisuals.ts): the weapon's own sprite where the engine says it
+ *   is, at the size it flies at in-game (native art scale; a yoyo at half its inventory icon, the
+ *   in-game yoyo's size) — boomerangs and yoyos spinning in quarter turns, a flail head pointing
+ *   along its chain — with a yoyo's string or a flail's chain drawn from the hand on the art-pixel
+ *   grid. A held beam (P3-S6, the engine's `blade.kind === 'beam'`): a line of art pixels from the
+ *   hand along the beam, a bright core with a glow cell either side.
+ * - Multiple Dummies (P3-S6): one view per engine dummy, rebuilt whenever the engine's row changes,
+ *   each numbered under its feet (the primary target's number in gold) as the HUD's hit strip names
+ *   them; scene framing widens to keep the whole row in view (../camera.ts `sceneXFor`).
  * - Camera framing (../camera.ts): `scene` on tablet/desktop, `action` (zoomed onto the fight) on
- *   phones, both placed clear of the HUD rows; re-fit on resize, HUD inset changes and weapon
- *   changes (the reach decides the zoom).
+ *   phones, both placed clear of the HUD rows; re-fit on resize, HUD inset changes, weapon changes
+ *   (the reach decides the zoom) and target changes.
  * - The canvas is decorative for assistive tech (`aria-hidden`); all meaningful output is the
  *   HTML HUD (UX_SPEC §9).
  */
@@ -31,11 +40,12 @@ import type { BladePose, RenderState } from '../../sim'
 import { ARENA_LAYOUT, buildArenaBackdrop, buildDeepTile, buildDummy, buildPlayer, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette } from '../art/arenaArt'
 import { A, ARENA_PALETTE } from '../art/arenaPalette'
 import { bladeSpriteTransform, DEG, guideCells, heldWeaponVisual, holdStyleFor, interpolateBlade, streakCells, thrustVisual, trailSpan } from '../blade'
-import { actionBox, fitCamera, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
+import { actionBox, fitCamera, sceneXFor, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
 import { DotNumberTicker, FloatLayout, floatPose, readsAsPartOfNumber, RecyclingPool, TRACER_CLEARANCE, type FloatRect, type MarkClearance } from '../floatingNumbers'
 import { dotAnchor, numberZone } from '../numberZone'
 import type { LabSession } from '../labSession'
 import { bodyCells, ProjectileTracks, projectileStyleFor, toGamePx, trailCells, type ProjectileStyle, type ProjectileTone } from '../projectiles'
+import { beamCells, dummySignature, handPoint, spinRotation, tetherCells, tetherFor, thrownPosition, thrownScale } from '../thrownVisuals'
 import { glowTexture, loadImageTexture, textureFromRows, tokenHex } from './textures'
 
 TextureStyle.defaultOptions.scaleMode = 'nearest'
@@ -234,8 +244,17 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const held = new Sprite()
   held.visible = false
   const shots = new Graphics()
+  // A held beam (under the shots), and a thrown returning weapon on its string or chain.
+  const beam = new Graphics()
+  const tether = new Graphics()
+  const thrown = new Sprite()
+  thrown.anchor.set(0.5)
+  thrown.visible = false
 
-  world.addChild(deep, backdropSprite, glows, dummies, playerSprite, guide, trail, blade, held, shots)
+  world.addChild(deep, backdropSprite, glows, dummies, playerSprite, guide, trail, blade, held, beam, shots, tether, thrown)
+  // Multiple Dummies: each dummy's number under its feet, in screen space (crisp at any zoom), under the damage numbers.
+  const dummyLabels = new Container()
+  app.stage.addChildAt(dummyLabels, app.stage.getChildIndex(normalNumbers))
 
   // The original placeholder art, one silhouette per damage class (fallback mode / no sprite).
   const placeholders = new Map<string, Texture>()
@@ -256,6 +275,12 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const trailColor = tokenHex('var(--color-white)')
   const rimColor = tokenHex('var(--color-gold-200)')
   // Shot colours per style (tokens): steel-tipped wooden arrows, hot gold slugs, pale-blue bolts.
+  // A yoyo's string, a flail's chain, a held beam's core and glow (tokens).
+  const stringColor = tokenHex('var(--color-white)')
+  const chainColor = tokenHex('var(--color-stone-300)')
+  const beamCore = tokenHex('var(--color-white)')
+  const beamGlow = tokenHex('var(--color-night-200)')
+  const primaryLabel = tokenHex('var(--color-gold-300)')
   const shotTones: Record<ProjectileStyle, Partial<Record<ProjectileTone, number>> & { trail: number; trailAlpha: number }> = {
     arrow: { tip: tokenHex('var(--color-stone-200)'), shaft: tokenHex('var(--color-earth-400)'), fletch: tokenHex('var(--color-white)'), trail: tokenHex('var(--color-stone-300)'), trailAlpha: 0.35 },
     bullet: { core: tokenHex('var(--color-white)'), glow: tokenHex('var(--color-gold-300)'), trail: tokenHex('var(--color-gold-400)'), trailAlpha: 0.6 },
@@ -304,6 +329,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       reachTiles: session?.frameTiles ?? 0,
       framing: options.framing?.() ?? 'scene',
       action: session ? actionBox(session.frameTiles, session.sim.renderState().dummies) : null,
+      sceneX: sceneXFor(session?.sim.renderState().dummies ?? []),
     })
     world.position.set(fit.originX, fit.originY)
     world.scale.set(fit.scale)
@@ -316,7 +342,8 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   // ---------------------------------------------------------------------------- session
   let unsubscribeReset: (() => void) | null = null
   let spriteRequest = 0
-  const dummyViews = new Map<string, { root: Container; flash: Sprite; hitAt: number; dir: number }>()
+  const dummyViews = new Map<string, { root: Container; flash: Sprite; hitAt: number; dir: number; label: BitmapText | null; x: number }>()
+  let builtDummies = ''
 
   const numbers = new RecyclingPool<FloatingNumber>(NUMBER_POOL, () => {
     const text = new BitmapText({ text: '', style: { fontFamily: DAMAGE_FONT, fontSize: 16 } })
@@ -344,6 +371,9 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     tracks.clear()
     dotNumbers.clear()
     shots.clear()
+    beam.clear()
+    tether.clear()
+    thrown.visible = false
     held.visible = false
     heldUntil = -Infinity
     for (const view of dummyViews.values()) {
@@ -356,8 +386,11 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
 
   const buildDummies = (s: LabSession) => {
     dummies.removeChildren().forEach((c) => c.destroy({ children: true }))
+    dummyLabels.removeChildren().forEach((c) => c.destroy())
     dummyViews.clear()
-    for (const d of s.sim.renderState().dummies) {
+    const list = s.sim.renderState().dummies
+    builtDummies = dummySignature(list)
+    for (const [i, d] of list.entries()) {
       const root = new Container()
       root.position.set(d.x * GAME_PX_PER_TILE, (d.y + d.height / 2) * GAME_PX_PER_TILE)
       const body = new Sprite(dummyTexture)
@@ -370,7 +403,15 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       flash.alpha = 0
       root.addChild(body, flash)
       dummies.addChild(root)
-      dummyViews.set(d.id, { root, flash, hitAt: -Infinity, dir: 1 })
+      // A row's dummies are numbered as the HUD's hit strip names them; the primary target (1) in gold.
+      let label: BitmapText | null = null
+      if (list.length > 1) {
+        label = new BitmapText({ text: String(i + 1), style: { fontFamily: DOT_FONT, fontSize: FONT_SIZE[DOT_FONT] } })
+        label.anchor.set(0.5, 0)
+        if (i === 0) label.tint = primaryLabel
+        dummyLabels.addChild(label)
+      }
+      dummyViews.set(d.id, { root, flash, hitAt: -Infinity, dir: 1, label, x: d.x })
     }
   }
 
@@ -378,6 +419,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     weaponTexture = texture
     blade.texture = texture
     held.texture = texture
+    thrown.texture = texture
   }
 
   const setSession = (next: LabSession, sprite: ArenaWeaponSprite) => {
@@ -389,6 +431,9 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     clearEffects()
     buildDummies(next)
     shotStyle = projectileStyleFor(next.weapon)
+    thrown.visible = false
+    tether.clear()
+    beam.clear()
     // Action framing follows the equipped weapon's reach.
     refit()
     const request = ++spriteRequest
@@ -607,13 +652,73 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     }
   }
 
+  /**
+   * A returning weapon in flight (../thrownVisuals.ts): its sprite at its in-game size (`thrownScale`) where the
+   * engine has it (interpolated like the blade), boomerangs and yoyos spinning in quarter turns, a
+   * flail head pointing along its chain; the string or chain from the hand on the art-pixel grid,
+   * minus any cell beside a live damage number.
+   */
+  const drawThrown = (state: RenderState, alpha: number, variant: 'boomerang' | 'flail' | 'yoyo') => {
+    tether.clear()
+    const p = state.projectiles[0]
+    if (!p) {
+      thrown.visible = false
+      return
+    }
+    const at = toGamePx(thrownPosition(p, alpha))
+    const hand = handPoint(state.facing)
+    thrown.visible = true
+    thrown.position.set(at.x, at.y)
+    // Sprites are drawn handle bottom-left, tip top-right: a flail head turned that diagonal toward its flight.
+    thrown.rotation = variant === 'flail' ? Math.atan2(at.y - hand.y, at.x - hand.x) + Math.atan2(weaponTexture.height, weaponTexture.width) : spinRotation(state.tick - 1 + alpha, state.facing)
+    // The size it flies at in-game: native art scale, a yoyo at half its inventory icon (thrownScale).
+    thrown.scale.set(thrownScale(variant))
+    const kind = tetherFor(variant)
+    const cells = cellsClearOfNumbers(tetherCells(kind, hand, at, GAME_PX_PER_ART_PX))
+    if (cells.length === 0) return
+    for (const [x, y] of cells) tether.rect(x, y, GAME_PX_PER_ART_PX, GAME_PX_PER_ART_PX)
+    tether.fill({ color: kind === 'chain' ? chainColor : stringColor, alpha: kind === 'chain' ? 0.9 : 0.7 })
+  }
+
+  /**
+   * A held beam (engine `blade.kind === 'beam'`): from the hand along the beam to its end, core + glow
+   * cells — drawn whole, under the damage numbers: unlike a short streak, a continuous beam never reads
+   * as a minus sign beside a number, and cutting it around the numbers would break it up.
+   */
+  const drawBeam = (pose: BladePose | null, facing: 1 | -1) => {
+    beam.clear()
+    if (!pose || pose.kind !== 'beam') return
+    const hand = handPoint(facing)
+    // The beam starts at the player's centre in the engine; drawn from the hand, it ends where the engine's does.
+    const end = { x: Math.cos(pose.angle) * pose.length * GAME_PX_PER_TILE, y: Math.sin(pose.angle) * pose.length * GAME_PX_PER_TILE }
+    const length = Math.hypot(end.x - hand.x, end.y - hand.y)
+    const cells = beamCells(hand, Math.atan2(end.y - hand.y, end.x - hand.x), length, GAME_PX_PER_ART_PX)
+    const px = GAME_PX_PER_ART_PX
+    for (const [x, y] of cells.glow) beam.rect(x, y, px, px)
+    beam.fill({ color: beamGlow, alpha: 0.45 })
+    for (const [x, y] of cells.core) beam.rect(x, y, px, px)
+    beam.fill({ color: beamCore, alpha: 0.9 })
+  }
+
+  /** Each row dummy's number, under its feet (screen space, whole CSS pixels). */
+  const placeDummyLabels = () => {
+    for (const view of dummyViews.values()) {
+      if (!view.label) continue
+      const p = worldToScreen(fit, view.x, ARENA_LAYOUT.groundY + 0.25)
+      view.label.position.set(Math.round(p.x), Math.round(p.y))
+    }
+  }
+
   /** Nothing moves once a timed test has finished: the frame stays clean under the results (UX_SPEC §12). */
   const clearAttack = () => {
     blade.visible = false
     held.visible = false
+    thrown.visible = false
     trail.clear()
     guide.clear()
     shots.clear()
+    beam.clear()
+    tether.clear()
     lastSwingEnd = { at: -Infinity, facing: 1 }
   }
 
@@ -627,6 +732,11 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     const reduced = options.reducedMotion()
     const state = s.sim.renderState()
     const finished = s.getHud().timedTest.status === 'finished'
+    // The target changed (Multiple Dummies, Reset): new dummy views, and a framing that shows them all.
+    if (dummySignature(state.dummies) !== builtDummies) {
+      buildDummies(s)
+      refit()
+    }
 
     for (const event of events) {
       if (event.type === 'damage') {
@@ -635,7 +745,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
           dotNumbers.add(event)
           continue
         }
-        tracks.impact(event)
+        if (!s.returning) tracks.impact(event)
         spawnNumber(event, event.crit ? 'crit' : 'normal', now, reduced, state)
         const view = dummyViews.get(event.dummyId)
         if (view) {
@@ -643,16 +753,17 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
           view.dir = event.x <= state.dummies.find((d) => d.id === event.dummyId)!.x ? 1 : -1
         }
       } else if (event.type === 'projectile-spawn') {
-        tracks.spawn(event, state.facing)
+        // A returning weapon is drawn as itself (drawThrown), not as a shot.
+        if (!s.returning) tracks.spawn(event, state.facing)
       } else if (event.type === 'projectile-despawn') {
-        tracks.despawn(event)
+        if (!s.returning) tracks.despawn(event)
       } else if (event.type === 'use-start') {
         heldUntil = event.tick + event.durationTicks
       }
     }
     // A finished test shows the DoT it dealt up to the last tick.
     for (const n of dotNumbers.drain(state.tick, finished)) spawnNumber(n, 'dot', now, reduced, state)
-    tracks.sync(state.projectiles, state.tick, state.facing)
+    if (!s.returning) tracks.sync(state.projectiles, state.tick, state.facing)
 
     for (const view of dummyViews.values()) {
       const age = now - view.hitAt
@@ -672,14 +783,17 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       n.text.alpha = pose.alpha
       n.text.scale.set(pose.scale)
     }
+    placeDummyLabels()
 
     playerSprite.scale.set(state.facing * GAME_PX_PER_ART_PX, GAME_PX_PER_ART_PX)
     // A finished test halts the engine mid-attack: no frozen blade, shot, trail or reach guide.
     if (finished) clearAttack()
     else {
       if (s.swing) drawSwing(state.blade, state.facing, alpha, now, s.swing.reachTiles, s.swing.arcDegrees)
+      else if (s.returning) drawThrown(state, alpha, s.returning.variant)
       else if (s.firesProjectiles) drawHeld(state)
       else drawThrust(state.blade?.kind === 'thrust' ? state.blade : null, state.facing, alpha, s.reachTiles)
+      if (s.beam) drawBeam(state.blade, state.facing)
       // Any projectile the engine runs. Render time trails the sim by one tick, like the blade.
       drawShots(state.tick - 1 + alpha, now)
     }

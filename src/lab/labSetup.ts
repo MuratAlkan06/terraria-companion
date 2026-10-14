@@ -19,9 +19,10 @@
  * projectiles face the same Infinite Dummy RANGED_TARGET_X_TILES away, so a shot visibly travels
  * before it lands (PRD P3-S4 AC1) — at point-blank a shot crosses the 1-tile gap within its first
  * tick and is never seen. Spread shots can miss at this range, as they would in-game from there.
+ * Multiple Dummies (P3-S6, `target-row`): the engine's row starting at that same spot.
  */
 import type { Archetype, Buff, Item, Weapon } from '../schemas'
-import { createLabSim, DEFAULT_DUMMY, type DummySpec, type SimRefusal } from '../sim'
+import { createLabSim, DEFAULT_DUMMY, dummyRow, type DummySpec, type SimRefusal } from '../sim'
 
 export interface LabSetup {
   /** Every ammo item in the data (Item records that carry `ammoStats`). */
@@ -109,9 +110,35 @@ const POINT_BLANK_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust']
 /** Ranged target: the Infinite Dummy's centre this many tiles in front of the player (face at 5). */
 export const RANGED_TARGET_X_TILES = 6
 
+/**
+ * Weapons that send something out (projectiles, a thrown returning weapon, a beam) — everything but a
+ * blade held in the hand. They face the ranged dummy, and the arena draws what they send.
+ */
 export const firesProjectiles = (archetype: Archetype): boolean => !POINT_BLANK_ARCHETYPES.includes(archetype)
 
-/** The dummies the Lab places for an archetype (undefined = the engine's default point-blank dummy). */
-export function labDummiesFor(archetype: Archetype): DummySpec[] | undefined {
-  return firesProjectiles(archetype) ? [{ ...DEFAULT_DUMMY, x: RANGED_TARGET_X_TILES }] : undefined
+/**
+ * The Lab's target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1): the Infinite Dummy, or Multiple
+ * Dummies — a row of `count` dummies (the engine's `dummyRow`), the first one where the single dummy
+ * stands. The first is the PRIMARY target: the one Space and the timed tests aim at, whose stats the
+ * HUD reports apart from the all-dummy totals (AC4).
+ */
+export type LabTarget = { kind: 'single' } | { kind: 'row'; count: number }
+
+export const DEFAULT_LAB_TARGET: LabTarget = Object.freeze({ kind: 'single' })
+/** Multiple Dummies: how many the row may hold, and how many it starts with. */
+export const ROW_COUNTS = [2, 3, 4, 5] as const
+export const DEFAULT_ROW_COUNT = 3
+
+/** A target the Lab offers (single, or a row of an offered size). */
+export const isLabTarget = (target: LabTarget): boolean => target.kind === 'single' || (ROW_COUNTS as readonly number[]).includes(target.count)
+
+export const sameTarget = (a: LabTarget, b: LabTarget): boolean => a.kind === b.kind && (a.kind === 'single' || (b.kind === 'row' && a.count === b.count))
+
+/** Where the (first) dummy stands for an archetype: point-blank for blades, else the ranged distance. */
+export const targetX = (archetype: Archetype): number => (firesProjectiles(archetype) ? RANGED_TARGET_X_TILES : DEFAULT_DUMMY.x)
+
+/** The dummies the Lab places for an archetype and target. */
+export function labDummiesFor(archetype: Archetype, target: LabTarget = DEFAULT_LAB_TARGET): DummySpec[] {
+  const x = targetX(archetype)
+  return target.kind === 'row' ? dummyRow(target.count, x) : [{ ...DEFAULT_DUMMY, x }]
 }

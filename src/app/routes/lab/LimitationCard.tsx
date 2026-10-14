@@ -7,7 +7,7 @@ import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
 import { SpriteImg } from '../../../components/SpriteImg'
 import type { SpriteIndex, Weapon } from '../../../data-access/types'
-import { behaviorSourceUrl, inGameDescription, notSimulatedReason, type LabNotice } from '../../../lab/labWeapons'
+import { behaviorSourceUrl, inGameDescription, notSimulatedReason, UNASSIGNED_LIMITATION_PLAIN, type LabNotice } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { weaponHref } from '../db/weapons/weaponNav'
 
@@ -53,6 +53,10 @@ export function LimitationCard({ notice, fallback, sprites, onBack }: Limitation
   const rarityView = getField(weapon, 'rarity')
   const rarity = rarityView.status === 'verified' ? asRarity(rarityView.value as number | string) : undefined
   const description = inGameDescription(weapon)
+  const reason = notSimulatedReason(status)
+  // The weapon's own limitation reason (not the default sentence) says what it does that the Lab
+  // doesn't model — so with no separate description, point at it rather than contradict it.
+  const reasonDescribes = status.kind === 'not-simulable' && status.refusal.reason === 'limitation' && reason !== UNASSIGNED_LIMITATION_PLAIN
 
   return (
     <PixelPanel as="section" aria-labelledby={LIMITATION_TITLE_ID} className="w-full max-w-lg space-y-4" data-limitation-card="">
@@ -72,14 +76,14 @@ export function LimitationCard({ notice, fallback, sprites, onBack }: Limitation
         <h3 className="text-sm font-semibold text-fg">What it does in-game</h3>
         {/* A15: wiki-derived text renders as plain text. No verified text: say so (never filler); the source link follows. */}
         <p className="text-sm whitespace-pre-line text-fg-muted" data-limitation-description={description ? 'verified' : 'none'}>
-          {description ?? 'No verified description yet.'}
+          {description ?? (reasonDescribes ? 'No separate description verified — see below.' : 'No verified description yet.')}
         </p>
         <ProvenanceLink href={behaviorSourceUrl(weapon)} label="How it behaves, on the wiki" srContext={`(${weapon.name})`} />
       </div>
 
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-fg">Why it isn’t simulated</h3>
-        <p className="text-sm text-fg-muted">{notSimulatedReason(status)}</p>
+        <p className="text-sm text-fg-muted">{reason}</p>
       </div>
 
       <p className="text-sm">

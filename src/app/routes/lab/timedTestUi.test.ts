@@ -153,6 +153,36 @@ describe('ResultsSummary (P3-S3 AC3/AC4)', () => {
     expect(html).not.toMatch(/sr-only" data-result="dps"|invisible/)
   })
 
+  it('taller than its room (5 dummies on a phone), only the numbers scroll: the heading and Run again / Reset always show', () => {
+    const five = render(
+      createElement(ResultsSummary, {
+        ...props,
+        appliesDot: false,
+        compact: true,
+        dummyIds: ['dummy-0', 'dummy-1', 'dummy-2', 'dummy-3', 'dummy-4'],
+      }),
+    )
+    // the panel is a column that shrinks to its room (max-h-full, min-h-0)…
+    const section = /<section[^>]*data-results-summary=""[^>]*>/.exec(five)![0]
+    for (const c of ['flex', 'flex-col', 'max-h-full', 'min-h-0']) expect(section).toMatch(new RegExp(`class="[^"]*(?<![\\w-])${c}(?![\\w-])`))
+    // …whose order is heading → scrolling body → actions; the body alone scrolls, the others never shrink
+    const order = [...five.matchAll(/<h2[^>]*id="[^"]*"|data-results-body=""|data-results-actions=""/g)].map((m) => (m[0].startsWith('<h2') ? 'heading' : m[0].includes('body') ? 'body' : 'actions'))
+    expect(order).toEqual(['heading', 'body', 'actions'])
+    expect(five).toMatch(/<h2[^>]*class="[^"]*\bshrink-0\b/)
+    expect(five).toMatch(/<div class="[^"]*\bmin-h-0 flex-1 overflow-y-auto\b[^"]*" data-results-body="">/)
+    // …up and down only: an est. button's tap area past the right edge never adds a sideways scrollbar (2px on a phone)
+    expect(five).toMatch(/<div class="[^"]*\boverflow-x-hidden\b[^"]*" data-results-body="">/)
+    expect(five).toMatch(/<div class="[^"]*\bshrink-0\b[^"]*" data-results-actions="">/)
+    // the five per-dummy rows (and every number) are inside the scrolling body; the buttons are not
+    const body = /data-results-body="">([\s\S]*?)<\/div><div class="[^"]*" data-results-actions="">/.exec(five)![1]
+    expect(body.match(/data-result="dummy"/g)).toHaveLength(5)
+    expect(body).toContain('data-result="seed"')
+    expect(body).not.toMatch(/data-results-(run-again|reset)/)
+    const actions = /data-results-actions="">([\s\S]*?)<\/section>/.exec(five)![1]
+    expect(actions).toContain('data-results-run-again=""')
+    expect(actions).toContain('data-results-reset=""')
+  })
+
   it('the completion announcement says the test, the estimate (labeled), hits and total', () => {
     expect(completionAnnouncement(result)).toBe(
       `10-second test complete. Estimated DPS ${result.estimatedDps.toFixed(1)}, labeled estimate. ${result.hits.toLocaleString('en-US')} hits, ${result.totalDamage.toLocaleString('en-US')} total damage.`,

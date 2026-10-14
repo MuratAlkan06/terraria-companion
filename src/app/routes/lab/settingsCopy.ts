@@ -4,6 +4,7 @@
  * the same way (design review P3-S4/S5 M6).
  */
 import { LAB_ASSUMPTIONS } from '../../../lab/labAssumptions'
+import type { LabTarget } from '../../../lab/labSetup'
 import type { InsufficientManaPolicy, LabSettings } from '../../../sim'
 
 /** The low-mana casting choices, as the panel titles them. */
@@ -13,6 +14,10 @@ export const LOW_MANA_POLICY_TITLE: Record<InsufficientManaPolicy, string> = {
 }
 
 const RESTARTED = 'the stats start again from zero.'
+
+/** "3 Infinite Dummies in a row — the stats start again from zero." (a new target, P3-S6) */
+export const targetAnnouncement = (target: LabTarget): string =>
+  `${target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : 'One Infinite Dummy'} — ${RESTARTED}`
 
 /** "Wooden Arrow loaded — the stats start again from zero." */
 export const ammoLoadedAnnouncement = (ammoName: string): string => `${ammoName} loaded — ${RESTARTED}`

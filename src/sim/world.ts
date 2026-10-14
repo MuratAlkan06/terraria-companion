@@ -3,10 +3,12 @@
  *
  * Tick order (fixed — part of the determinism contract):
  *   1. resolve aim/facing from the latched input
- *   2. use cycle: end finished use (its reuse delay starts) → start a new one if attacking and the
- *      reuse delay has passed (mana gate) → activation (every activationTicks) → behavior.tickUse
- *      (melee hit detection)
- *   3. projectiles in spawn order: modifier steer → gravity → swept move/collide → age/lifetime → bounds
+ *   2. use cycle: end finished use (its reuse delay starts) → start a new one if attacking, the
+ *      reuse delay has passed and the behavior is ready (a returning weapon is back) (mana gate) →
+ *      activation (every activationTicks) → behavior.tickUse (melee hit detection, a held beam)
+ *   3. projectiles in spawn order: guide steer (a returning weapon; `caught` removes it) or
+ *      modifier steer → gravity → swept move/collide (a guide may stop the move at a hit) →
+ *      age/lifetime → bounds
  *   4. debuffs: DoT accrual → duration countdown → expiry
  *   5. mana regeneration
  *   6. stats.endTick(); tick++
@@ -83,6 +85,8 @@ export class World implements KernelApi {
   private seq = 0
   private events: SimEvent[] = []
   private readonly digest = new Digest()
+  /** Hit sources that outlive single uses (`persistentSource`), per world. */
+  private readonly persistent = new Map<string, HitSource>()
 
   constructor(cfg: WorldConfig) {
     this.cfg = cfg
@@ -129,7 +133,7 @@ export class World implements KernelApi {
       this.use = null
     }
     if (!this.input.attacking) this.blocked = false
-    if (!this.use && this.input.attacking && this.tick >= this.readyAt) this.tryStartUse()
+    if (!this.use && this.input.attacking && this.tick >= this.readyAt && (this.cfg.behavior.ready?.(this) ?? true)) this.tryStartUse()
     const use = this.use
     if (!use) return
     use.elapsed = this.tick - use.startTick
@@ -186,11 +190,20 @@ export class World implements KernelApi {
     for (const p of this.projectiles) {
       p.prevX = p.x
       p.prevY = p.y
-      for (const m of this.cfg.modifiers) m.steer?.(this, p)
+      if (p.guide) {
+        // A guided flight (returning weapon) is steered by its interpreter alone.
+        if (p.guide.steer(this, p) === 'caught') {
+          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'returned' })
+          continue
+        }
+      } else {
+        for (const m of this.cfg.modifiers) m.steer?.(this, p)
+      }
       if (p.gravity && p.age >= GRAVITY_DELAY_TICKS) p.vy = Math.min(p.vy + GRAVITY_TILES_PER_TICK2, MAX_FALL_TILES_PER_TICK)
       const nx = p.x + p.vx
       const ny = p.y + p.vy
       let alive = true
+      let stopped = false
       const contacts: Array<{ t: number; dummy: DummyState }> = []
       for (const dummy of this.dummies) {
         const t = segmentAabbEntry(p.x, p.y, nx, ny, dummy.box)
@@ -200,6 +213,12 @@ export class World implements KernelApi {
       for (const { t, dummy } of contacts) {
         const at = { x: p.x + (nx - p.x) * t, y: p.y + (ny - p.y) * t }
         if (!this.strike(p.source, dummy, at)) continue
+        if (p.guide?.afterHit?.(this, p, dummy) === 'stop') {
+          p.x = at.x
+          p.y = at.y
+          stopped = true
+          break
+        }
         p.hitsLeft--
         if (p.hitsLeft <= 0) {
           p.x = at.x
@@ -210,8 +229,10 @@ export class World implements KernelApi {
         }
       }
       if (!alive) continue
-      p.x = nx
-      p.y = ny
+      if (!stopped) {
+        p.x = nx
+        p.y = ny
+      }
       p.age++
       if (p.age >= p.lifetimeTicks) {
         this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'lifetime' })
@@ -270,6 +291,18 @@ export class World implements KernelApi {
   // -------------------------------------------------------------------------------------------
   // KernelApi
 
+  get attacking(): boolean {
+    return this.input.attacking
+  }
+
+  get arena(): Readonly<ArenaBounds> {
+    return this.cfg.arena
+  }
+
+  get activeProjectiles(): readonly ProjectileState[] {
+    return this.projectiles
+  }
+
   spawnProjectile(launch: ProjectileLaunch): void {
     const id = this.nextProjectileId++
     this.projectiles.push({
@@ -284,8 +317,9 @@ export class World implements KernelApi {
       hitsLeft: launch.pierce === Infinity ? Infinity : 1 + launch.pierce,
       gravity: launch.gravity,
       lifetimeTicks: launch.lifetimeTicks,
-      source: this.hitSource(`proj:${id}`, 'projectile', launch.damage),
+      source: this.hitSource(`proj:${id}`, 'projectile', launch.damage, launch.hitCooldownTicks),
       spriteKey: launch.spriteKey,
+      ...(launch.guide ? { guide: launch.guide } : {}),
     })
     this.stats.projectile()
     this.emit({ type: 'projectile-spawn', projectileId: id, x: launch.x, y: launch.y, vx: launch.vx * TICKS_PER_SECOND, vy: launch.vy * TICKS_PER_SECOND })
@@ -300,6 +334,15 @@ export class World implements KernelApi {
     this.emit({ type: 'damage', source: source.kind, sourceId: source.key, dummyId: dummy.id, amount: roll.amount, crit: roll.crit, x: at.x, y: at.y })
     for (const m of this.cfg.modifiers) m.afterStrike?.(this, source, dummy)
     return true
+  }
+
+  persistentSource(key: string, kind: HitSource['kind'], baseDamage: number, cooldownTicks: number | null): HitSource {
+    let source = this.persistent.get(key)
+    if (!source) {
+      source = { key, kind, baseDamage, cooldownTicks, immuneUntil: new Map() }
+      this.persistent.set(key, source)
+    }
+    return source
   }
 
   consumeAmmo(count: number): void {
@@ -381,13 +424,14 @@ export class World implements KernelApi {
     if (!use || !this.cfg.behavior.blade) return null
     // Only while the use is still in progress at the last processed tick.
     if (this.tick - 1 - use.startTick >= use.durationTicks) return null
-    return this.cfg.behavior.blade(use)
+    return this.cfg.behavior.blade(use, this)
   }
 
   // -------------------------------------------------------------------------------------------
 
-  private hitSource(key: string, kind: HitSource['kind'], baseDamage: number): HitSource {
-    return { key, kind, baseDamage, cooldownTicks: this.hitCooldown, immuneUntil: new Map() }
+  /** The weapon's multiHit cooldown (data) wins; else the archetype's own interval for the source, if any. */
+  private hitSource(key: string, kind: HitSource['kind'], baseDamage: number, archetypeCooldownTicks?: number): HitSource {
+    return { key, kind, baseDamage, cooldownTicks: this.hitCooldown ?? archetypeCooldownTicks ?? null, immuneUntil: new Map() }
   }
 
   private emit(input: EventInput): void {

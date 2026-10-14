@@ -1,4 +1,4 @@
-import { Check, Keyboard, MousePointerClick, RotateCcw, Timer } from 'lucide-react'
+import { Check, Keyboard, MousePointerClick, Move, RotateCcw, Star, Timer } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cx } from '../../../components/cx'
 import { PixelArt } from '../../../components/PixelArt'
@@ -9,7 +9,7 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import type { Item, SpriteIndex } from '../../../data-access/types'
 import { buildDummy } from '../../../lab/art/arenaArt'
 import { ARENA_PALETTE } from '../../../lab/art/arenaPalette'
-import { ammoClassName, type AmmoChoices } from '../../../lab/labSetup'
+import { ammoClassName, DEFAULT_LAB_TARGET, DEFAULT_ROW_COUNT, ROW_COUNTS, type AmmoChoices, type LabTarget } from '../../../lab/labSetup'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS, type InsufficientManaPolicy, type LabSettings, type RenderState } from '../../../sim'
 import { RangeCommit } from './rangeCommit'
@@ -17,12 +17,18 @@ import { AMMO_EFFECTS_NOTE, LOW_MANA_POLICY_TITLE } from './settingsCopy'
 
 type DummyView = Pick<RenderState['dummies'][number], 'x' | 'width' | 'height' | 'defense'>
 
+/** How the equipped weapon is steered, when it is more than "press to attack" (the Controls list says so). */
+export type SteerHint = 'yoyo' | 'beam' | null
+
 /**
- * TargetSettingsPanel (UX_SPEC §3.4 "Target & settings"): the Infinite Dummy, the setup and test
- * settings that apply to the equipped weapon, and how to attack. Nothing here is a disabled
- * placeholder: each section shows only when it applies; more targets arrive with their slices
- * (P3-S6/S12).
+ * TargetSettingsPanel (UX_SPEC §3.4 "Target & settings"): the target, the setup and test settings
+ * that apply to the equipped weapon, and how to attack. Nothing here is a disabled placeholder: each
+ * section shows only when it applies; further targets arrive with their slices (P3-S12).
  *
+ * - Target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1): the Infinite Dummy or Multiple Dummies — a row
+ *   of 2–5 (3 to start) whose first dummy is the primary target. Choosing one restarts the stats
+ *   (src/lab/labSession.ts `setTarget`); Reset restores the Infinite Dummy. The card under the picker
+ *   describes the engine's own dummies (size, defense, distances).
  * - Ammo (PRD P3-S4 AC2, bows and guns): only the ammo that fits the weapon, as the engine accepts
  *   it (src/lab/labSetup.ts) — sprite, name, damage and its speed multiplier (every row). Choosing
  *   one loads it; the stats restart. The help says plainly that special ammo effects aren't modeled.
@@ -68,7 +74,15 @@ export interface AmmoPickerProps {
 
 export interface TargetSettingsPanelProps {
   usesMana: boolean
+  /** The first (primary) dummy, as the engine places it. */
   dummy: DummyView
+  /** Every dummy, nearest first (Multiple Dummies); default just `dummy`. */
+  dummies?: readonly DummyView[]
+  /** The current target, and the picker's change handler (no handler: the card alone). */
+  target?: LabTarget
+  onTargetChange?: (target: LabTarget) => void
+  /** How the equipped weapon is steered beyond press-and-hold (a yoyo, a held beam). */
+  steer?: SteerHint
   settings: LabSettings
   onSettingsChange: (patch: Partial<LabSettings>) => void
   locked: boolean
@@ -78,29 +92,58 @@ export interface TargetSettingsPanelProps {
   ammo?: AmmoPickerProps | null
 }
 
-export function TargetSettingsPanel({ usesMana, dummy, settings, onSettingsChange, locked, verb = 'swing', ammo = null }: TargetSettingsPanelProps) {
+export function TargetSettingsPanel({
+  usesMana,
+  dummy,
+  dummies,
+  target = DEFAULT_LAB_TARGET,
+  onTargetChange,
+  steer = null,
+  settings,
+  onSettingsChange,
+  locked,
+  verb = 'swing',
+  ammo = null,
+}: TargetSettingsPanelProps) {
   const dummyRows = useMemo(() => buildDummy(), [])
   const { width, height, defense } = dummy
   const variance = APPROXIMATIONS['damage-variance']
   const varianceDefault = DEFAULT_LAB_SETTINGS.damageVariance
+  const row = target.kind === 'row' ? (dummies ?? [dummy]) : null
 
   return (
     <div className="space-y-6 text-sm">
-      <section aria-labelledby="lab-target-title" className="space-y-3">
-        <div className="flex items-center gap-3 border-2 border-gold-600 bg-night-700 p-3">
+      <section aria-labelledby="lab-target-title" className="space-y-3" data-lab-setting="target">
+        <h3 id="lab-target-title" className="text-xs font-semibold tracking-wide text-fg-muted uppercase">
+          Target
+        </h3>
+        {onTargetChange ? <TargetPicker target={target} onChange={onTargetChange} locked={locked} /> : null}
+        <div className="flex items-center gap-3 border-2 border-gold-600 bg-night-700 p-3" data-target-card={target.kind}>
           <span className="grid size-16 shrink-0 place-items-center border-2 border-slot-border bg-slot">
             <PixelArt rows={dummyRows} palette={ARENA_PALETTE} className="h-12 w-8" />
           </span>
           <div className="min-w-0 space-y-0.5">
-            <h3 id="lab-target-title" className="font-semibold">
-              Infinite Dummy
-            </h3>
+            <p className="font-semibold" data-target-name="">
+              {row ? `${row.length} Infinite Dummies` : 'Infinite Dummy'}
+            </p>
             <p className="text-xs text-fg-muted">
-              Never dies or moves · defense {defense} · {width} × {height} tiles
+              {row ? 'Never die or move' : 'Never dies or moves'} · defense {defense} · {width} × {height} tiles{row ? ' each' : ''}
             </p>
-            <p className="text-xs text-fg-muted" data-dummy-distance={dummy.x}>
-              Centre {formatTiles(dummy.x)} tiles in front of you
-            </p>
+            {row ? (
+              <>
+                <p className="text-xs text-fg-muted" data-dummy-distance={dummy.x}>
+                  Centres {row.map((d) => formatTiles(d.x)).join(', ')} tiles in front of you
+                </p>
+                <p className="flex items-center gap-1 text-xs text-fg-muted" data-primary-note="">
+                  <Star aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+                  <span>Dummy 1 is the primary target: Space and the timed tests aim at it.</span>
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-fg-muted" data-dummy-distance={dummy.x}>
+                Centre {formatTiles(dummy.x)} tiles in front of you
+              </p>
+            )}
           </div>
         </div>
         <ProvenanceLink href={TARGET_DUMMY_URL} label="Target Dummy, on the wiki" />
@@ -130,7 +173,7 @@ export function TargetSettingsPanel({ usesMana, dummy, settings, onSettingsChang
         </div>
         <p className="flex gap-2 text-xs text-fg-muted">
           <RotateCcw aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent" />
-          <span>Reset restores the default settings, along with the test and the dummy{ammo ? '; the loaded ammo stays' : ''}.</span>
+          <span>Reset restores the default settings, along with the test and the target{ammo ? '; the loaded ammo stays' : ''}.</span>
         </p>
       </section>
 
@@ -143,9 +186,22 @@ export function TargetSettingsPanel({ usesMana, dummy, settings, onSettingsChang
             <MousePointerClick aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
             <span>Press and hold the arena (touch and hold on phones) to {verb} toward the pointer.</span>
           </li>
+          {steer === 'yoyo' ? (
+            <li className="flex gap-2" data-steer-hint="yoyo">
+              <Move aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>The yoyo stays out while you hold, following the pointer within its reach; let go to call it back.</span>
+            </li>
+          ) : steer === 'beam' ? (
+            <li className="flex gap-2" data-steer-hint="beam">
+              <Move aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>The beam stays on while you hold and follows the pointer; let go to stop it.</span>
+            </li>
+          ) : null}
           <li className="flex gap-2">
             <Keyboard aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
-            <span>Hold Space to {verb} at the dummy.</span>
+            <span>
+              Hold Space to {verb} at the {row ? 'first ' : ''}dummy{steer === 'yoyo' ? ' — the yoyo goes to it and stays while you hold' : ''}.
+            </span>
           </li>
           <li className="flex gap-2">
             <Timer aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
@@ -153,7 +209,7 @@ export function TargetSettingsPanel({ usesMana, dummy, settings, onSettingsChang
           </li>
           <li className="flex gap-2">
             <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
-            <span>Reset stops a test and restores the stats, the dummy and the default settings instantly.</span>
+            <span>Reset stops a test and restores the stats, the target and the default settings instantly.</span>
           </li>
         </ul>
       </section>
@@ -162,6 +218,94 @@ export function TargetSettingsPanel({ usesMana, dummy, settings, onSettingsChang
 }
 
 const formatTiles = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+
+const RADIO_CARD = cx(
+  'flex min-h-tap items-center gap-3 border-2 px-3 py-1.5',
+  'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-focus-visible:outline-solid',
+  'peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+)
+
+/**
+ * The target picker: the Infinite Dummy or Multiple Dummies (radio cards, as the panel's other
+ * choices), and while Multiple Dummies is chosen how many stand in the row (2–5). The row size
+ * chosen last is kept for this visit, so switching back and forth doesn't forget it.
+ */
+function TargetPicker({ target, onChange, locked }: { target: LabTarget; onChange: (target: LabTarget) => void; locked: boolean }) {
+  const [lastCount, setLastCount] = useState<number>(target.kind === 'row' ? target.count : DEFAULT_ROW_COUNT)
+  const count = target.kind === 'row' ? target.count : lastCount
+  const choices: readonly { kind: LabTarget['kind']; title: string; note: string }[] = [
+    { kind: 'single', title: 'Infinite Dummy', note: 'One dummy · default' },
+    { kind: 'row', title: 'Multiple Dummies', note: `A row of ${ROW_COUNTS[0]}–${ROW_COUNTS.at(-1)}: piercing and multi-target tests` },
+  ]
+  const pickRow = (n: number) => {
+    setLastCount(n)
+    onChange({ kind: 'row', count: n })
+  }
+  return (
+    <div className="space-y-3">
+      <fieldset className="min-w-0 space-y-1.5" data-lab-setting="target-kind">
+        <legend className="sr-only">Target</legend>
+        {choices.map((c) => {
+          const id = `lab-target-${c.kind}`
+          const checked = target.kind === c.kind
+          return (
+            <div key={c.kind} className="relative">
+              <input
+                type="radio"
+                id={id}
+                name="lab-target"
+                value={c.kind}
+                checked={checked}
+                disabled={locked}
+                onChange={() => (c.kind === 'single' ? onChange({ kind: 'single' }) : pickRow(count))}
+                className="peer sr-only"
+              />
+              <label htmlFor={id} className={cx(RADIO_CARD, checked ? 'border-gold-500 bg-night-800' : 'border-panel-border bg-panel hover:border-border-strong')}>
+                <span aria-hidden="true" className={cx('grid size-4 shrink-0 place-items-center border-2', checked ? 'border-gold-300' : 'border-stone-500')}>
+                  {checked ? <span className="size-1.5 bg-gold-300" /> : null}
+                </span>
+                <span className="flex flex-col">
+                  <span className="font-semibold">{c.title}</span>
+                  <span className="text-xs text-fg-muted">{c.note}</span>
+                </span>
+              </label>
+            </div>
+          )
+        })}
+      </fieldset>
+      {target.kind === 'row' ? (
+        <fieldset className="min-w-0" data-lab-setting="target-count">
+          <legend className="mb-1.5 font-semibold">Dummies in the row</legend>
+          <div className="grid grid-cols-4 gap-1.5">
+            {ROW_COUNTS.map((n) => {
+              const id = `lab-target-count-${n}`
+              const checked = target.count === n
+              return (
+                <div key={n} className="relative">
+                  <input type="radio" id={id} name="lab-target-count" value={n} checked={checked} disabled={locked} onChange={() => pickRow(n)} className="peer sr-only" />
+                  <label
+                    htmlFor={id}
+                    className={cx(
+                      RADIO_CARD,
+                      'justify-center px-0 font-semibold tabular-nums',
+                      checked ? 'border-gold-500 bg-night-800 text-accent' : 'border-panel-border bg-panel hover:border-border-strong',
+                    )}
+                  >
+                    {n}
+                  </label>
+                </div>
+              )
+            })}
+          </div>
+        </fieldset>
+      ) : null}
+      <p className="flex gap-2 text-xs text-fg-muted" data-target-restart-note="">
+        <RotateCcw aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent" />
+        <span>Changing the target restarts the stats. Reset brings back the Infinite Dummy.</span>
+      </p>
+    </div>
+  )
+}
 
 function AmmoPicker({ choices, selectedId, onSelect, sprites, locked }: AmmoPickerProps & { locked: boolean }) {
   const className = ammoClassName(choices)

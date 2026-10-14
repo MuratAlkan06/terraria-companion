@@ -16,7 +16,9 @@
  * cooldown) — the rate the weapon attacks at now, so low-mana casts at 40% speed show in it within
  * a few casts, as the slow-cast chip says (design review P3-S4/S5 H3), while one regen-funded
  * full-speed cast among them barely moves it; before the first attack it is the weapon's nominal
- * rate. DpsGraph = the engine's per-second series.
+ * rate. A tethered weapon (a yoyo) shows hits/sec instead (`hit-rate`): hits ÷ the same attack time as
+ * est. DPS — one throw lasts as long as it is held out, so its attack rate is no measure of how fast
+ * it lands hits. DpsGraph = the engine's per-second series.
  *
  * Timed tests (PRD P3-S3 AC3) run on the engine's controller: exactly 600 / 1800 ticks, attack held,
  * auto-aimed at the dummy, config locked (input and settings changes are refused while it runs).
@@ -26,7 +28,14 @@
  * Setup (./labSetup.ts): a bow or gun fires the ammo it is created with (the engine fixes ammo per
  * sim, so switching ammo is a new session — stats, "Ammo used" included, start from zero); a
  * damage-over-time weapon gets the buff registry; weapons that fire projectiles face the ranged
- * dummy. Mana (PRD P3-S5, AMENDMENTS-008 B35): the HUD's ManaBar reads the engine's pool, refreshed
+ * dummy. The target (PRD P3-S6 AC1, UX_SPEC §3.4 target picker) is the Infinite Dummy or Multiple
+ * Dummies — a row whose first dummy is the PRIMARY target; `setTarget` swaps the engine's dummies and
+ * starts the stats over, and the HUD reports the primary target apart from all dummies (AC4).
+ *
+ * Weapons that come back to hand (returning archetype, `WeaponSummary.returnsToHand`; PRD P3-S7): an
+ * attack lasts until the weapon is back (the engine's `projectile-despawn` reason `returned`), at least
+ * its use time — the attack time and the attacks/sec window grow while it is still out, so a yoyo held
+ * out for ten seconds is one ten-second attack (`attack-until-back`). Mana (PRD P3-S5, AMENDMENTS-008 B35): the HUD's ManaBar reads the engine's pool, refreshed
  * on every attack and every tenth of a second while it regenerates; `slowCasting` is the latest
  * attack's own flag from the engine (a low-mana cast at 40% speed). The low-mana WARNING is latched
  * (design review P3-S4/S5 B1): raised the moment a cast can't be paid (a slow or blocked cast, or the
@@ -56,7 +65,7 @@ import {
   type WeaponSummary,
 } from '../sim'
 import { labAssumptionsFor, type LabAssumption } from './labAssumptions'
-import { ammoClassOf, firesProjectiles, labDummiesFor, resolveAmmo, type LabSetup } from './labSetup'
+import { ammoClassOf, DEFAULT_LAB_TARGET, firesProjectiles, isLabTarget, labDummiesFor, resolveAmmo, sameTarget, type LabSetup, type LabTarget } from './labSetup'
 
 export interface LabTimedTestHud {
   status: TimedTestStatus
@@ -102,6 +111,28 @@ export interface LabManaHud {
   slowCasting: boolean
 }
 
+/** One dummy's live numbers (Multiple Dummies), as of the last publish. */
+export interface LabDummyHud {
+  id: string
+  /** 1-based position in the row, nearest first (the arena labels the dummies with it). */
+  number: number
+  /** The primary target: the first dummy — the one Space and the timed tests aim at. */
+  primary: boolean
+  hits: number
+  crits: number
+  /** Direct + damage over time. */
+  damage: number
+  /** This dummy's damage ÷ the time spent attacking (as the live est. DPS). */
+  estimatedDps: number
+}
+
+/** Multiple Dummies: every dummy's numbers, and the primary target's (PRD P3-S6 AC2/AC4). */
+export interface LabTargetsHud {
+  /** Nearest first; the first is the primary target. */
+  dummies: readonly LabDummyHud[]
+  primary: LabDummyHud
+}
+
 export interface LabHudState {
   weapon: WeaponSummary
   lastHit: { amount: number; crit: boolean } | null
@@ -120,6 +151,14 @@ export interface LabHudState {
    * (low-mana slow casts included); the weapon's nominal rate before the first attack.
    */
   attacksPerSec: number
+  /** Hits ÷ seconds spent attacking (the est. DPS denominator); 0 before any attack time. */
+  hitsPerSec: number
+  /**
+   * The rate the HUD shows: `attacks`, or `hits` for a tethered weapon (a yoyo) — one throw is one
+   * attack that lasts as long as it is held out, hitting all the while, so its attacks/sec (≈ 1 ÷ the
+   * hold) says nothing about how fast it lands hits (design review P3-S6/S7).
+   */
+  rateReadout: 'attacks' | 'hits'
   /** Total damage ÷ seconds spent in whole attack cycles (use time + cooldown) since the last reset. */
   estimatedDps: number
   /** Seconds of whole attack cycles (use time + cooldown) counted since the last reset. */
@@ -129,6 +168,10 @@ export interface LabHudState {
   timedTest: LabTimedTestHud
   graph: LabGraphHud
   settings: LabSettings
+  /** The Lab's target (Infinite Dummy, or Multiple Dummies). */
+  target: LabTarget
+  /** Per-dummy numbers while the target is Multiple Dummies, else null (one dummy: the totals are its numbers). */
+  targets: LabTargetsHud | null
   /** A timed test is running: the weapon, target and settings can't change (UX_SPEC §5.7). */
   locked: boolean
 }
@@ -137,6 +180,12 @@ export interface LabHudState {
 export interface SwingShape {
   arcDegrees: number
   reachTiles: number
+}
+
+/** A weapon thrown out and back (returning params): how the arena draws it — spinning, on a string or a chain. */
+export interface ReturningShape {
+  variant: 'boomerang' | 'flail' | 'yoyo'
+  throwRangeTiles: number
 }
 
 export type InputSource = 'pointer' | 'key'
@@ -150,6 +199,8 @@ export interface LabSessionOptions {
   setup?: LabSetup
   /** The chosen ammo's item id (a bow or gun); anything not among its usable ammo loads the default. */
   ammoId?: number | null
+  /** The target to start with (e.g. carried over from the previously equipped weapon); default the Infinite Dummy. */
+  target?: LabTarget
 }
 
 export type CreateLabSessionResult = { ok: true; session: LabSession } | { ok: false; refusal: SimRefusal }
@@ -171,7 +222,8 @@ export function createLabSession(weapon: Weapon, options: LabSessionOptions = {}
   const { setup } = options
   const ammo = setup ? resolveAmmo(weapon, setup, options.ammoId) : null
   const lab = weapon.labBehavior
-  const dummies = lab.kind === 'archetype' ? labDummiesFor(lab.params.archetype) : undefined
+  const target = options.target && isLabTarget(options.target) ? options.target : DEFAULT_LAB_TARGET
+  const dummies = lab.kind === 'archetype' ? labDummiesFor(lab.params.archetype, target) : undefined
   const created = createLabSim({
     weapon,
     seed: nextSeed(),
@@ -181,7 +233,7 @@ export function createLabSession(weapon: Weapon, options: LabSessionOptions = {}
     ...(dummies ? { dummies } : {}),
   })
   if (!created.ok) return { ok: false, refusal: created.refusal }
-  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? []) }
+  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? [], target) }
 }
 
 /** A finished (or running) timed test: what "Run again" replays. */
@@ -196,6 +248,8 @@ interface TimedRun {
 const COUNTDOWN_STEP_TICKS = TICKS_PER_SECOND / 10
 /** ManaBar refresh while the pool regenerates: every tenth of a second. */
 const MANA_STEP_TICKS = TICKS_PER_SECOND / 10
+/** HUD refresh while a weapon that comes back is still out: every tenth of a second. */
+const OUT_STEP_TICKS = TICKS_PER_SECOND / 10
 /** The low-mana warning clears once the pool has covered the cost this long (at least; see the header). */
 export const MANA_WARNING_CLEAR_TICKS = TICKS_PER_SECOND
 /** The live attacks/sec counts this many of the latest attacks. */
@@ -223,7 +277,12 @@ export class LabSession {
   readonly firesProjectiles: boolean
   /** The buff registry the engine resolves damage over time with (names for the HUD). */
   readonly buffs: readonly Buff[]
-  readonly assumptions: readonly LabAssumption[]
+  /** A returning weapon (the arena draws the weapon itself in flight), else null. */
+  readonly returning: ReturningShape | null
+  /** Tethered to the hand while attack is held (returning `returnMode: 'tethered'`: a yoyo) — the HUD shows hits/sec. */
+  readonly tethered: boolean
+  /** A held beam (piercing-beam channel mode: the engine's `blade.kind === 'beam'`). */
+  readonly beam: boolean
 
   private readonly nextSeed: () => number
   private readonly held: Record<InputSource, boolean> = { pointer: false, key: false }
@@ -242,11 +301,16 @@ export class LabSession {
   /** The latched low-mana warning, and the tick since which the pool has covered the cost. */
   private manaWarning = false
   private manaCoveredSince: number | null = null
+  /** The latest attack of a weapon that comes back to hand, while it is still out (see the header). */
+  private out: { start: number; nominal: number; credited: number } | null = null
+  private target: LabTarget
+  private dummyIds: string[]
+  private assumptionList: { target: LabTarget; list: readonly LabAssumption[] } | null = null
   private hud: LabHudState
   private readonly listeners = new Set<() => void>()
   private readonly resetListeners = new Set<() => void>()
 
-  constructor(weapon: Weapon, sim: LabSim, nextSeed: () => number, ammo: Item | null = null, buffs: readonly Buff[] = []) {
+  constructor(weapon: Weapon, sim: LabSim, nextSeed: () => number, ammo: Item | null = null, buffs: readonly Buff[] = [], target: LabTarget = DEFAULT_LAB_TARGET) {
     this.weapon = weapon
     this.sim = sim
     this.nextSeed = nextSeed
@@ -258,10 +322,23 @@ export class LabSession {
     const params = lab.kind === 'archetype' ? lab.params : null
     this.swing = params?.archetype === 'swing-melee' ? { arcDegrees: params.arcDegrees, reachTiles: params.reachTiles } : null
     this.reachTiles = params?.archetype === 'swing-melee' || params?.archetype === 'thrust' ? params.reachTiles : 0
+    this.returning = params?.archetype === 'returning' ? { variant: params.variant, throwRangeTiles: params.throwRangeTiles } : null
+    this.tethered = params?.archetype === 'returning' && params.returnMode === 'tethered'
+    this.beam = params?.archetype === 'piercing-beam' && params.mode === 'channel-beam'
     this.firesProjectiles = firesProjectiles(this.summary.archetype)
     this.frameTiles = this.firesProjectiles ? RANGED_FRAME_TILES : this.reachTiles
-    this.assumptions = labAssumptionsFor(this.summary.archetype, sim.approximations, weapon)
+    this.target = target
+    this.dummyIds = sim.renderState().dummies.map((d) => d.id)
     this.hud = this.computeHud(sim.snapshot())
+  }
+
+  /** The AssumptionsTip list for the equipped weapon and the current target. */
+  get assumptions(): readonly LabAssumption[] {
+    if (!this.assumptionList || !sameTarget(this.assumptionList.target, this.target)) {
+      const list = labAssumptionsFor(this.summary.archetype, this.sim.approximations, this.weapon, { target: this.target, returnsToHand: this.summary.returnsToHand })
+      this.assumptionList = { target: this.target, list }
+    }
+    return this.assumptionList.list
   }
 
   // ------------------------------------------------------------------------------- input
@@ -325,9 +402,16 @@ export class LabSession {
         this.recentAttackTicks.push(cadence)
         if (this.recentAttackTicks.length > RATE_WINDOW_ATTACKS) this.recentAttackTicks.shift()
         this.slowestAttackTicks = Math.max(this.slowestAttackTicks, cadence)
+        // A weapon that comes back: this attack lasts until it is back in hand (at least the cycle above).
+        if (this.summary.returnsToHand) this.out = { start: e.tick, nominal: cadence, credited: cadence }
         this.latched = false
         this.slowCasting = e.slowCast
         if (e.slowCast) this.raiseManaWarning()
+        changed = true
+      } else if (e.type === 'projectile-despawn' && e.reason === 'returned') {
+        // Caught: the next attack may start on the following tick — that is where this one ends.
+        this.extendOut(e.tick + 1)
+        this.out = null
         changed = true
       } else if (e.type === 'use-blocked') {
         // A cast stopped for mana.
@@ -341,6 +425,9 @@ export class LabSession {
     if (ticksRun > 0) {
       const before = this.ticks
       this.ticks += ticksRun
+      // Still out (a boomerang in flight, a yoyo held out): the attack keeps lasting — the HUD follows
+      // it a tenth of a second at a time.
+      if (this.extendOut(this.ticks) && Math.floor(before / OUT_STEP_TICKS) !== Math.floor(this.ticks / OUT_STEP_TICKS)) changed = true
       // The DPS graph gains a bar each whole second (idle seconds too).
       if (Math.floor(before / TICKS_PER_SECOND) !== Math.floor(this.ticks / TICKS_PER_SECOND)) changed = true
       // A running test steps its countdown ring, and publishes the moment it finishes.
@@ -366,11 +453,15 @@ export class LabSession {
    * stats and the dummy, and restores the default test settings — instant, no confirmation.
    */
   reset(): void {
-    // The first reset ends any test (settings are locked while one runs); the second rebuilds the
-    // world with the default settings, so the mana pool starts full at the default capacity.
+    // The first reset ends any test (settings are locked while one runs); then the world is rebuilt
+    // with the default settings and the default target (the Infinite Dummy), so the mana pool starts
+    // full at the default capacity.
     this.sim.reset({ seed: this.nextSeed() })
     this.sim.updateSettings({ ...DEFAULT_LAB_SETTINGS })
-    this.sim.reset()
+    this.target = DEFAULT_LAB_TARGET
+    const dummies = labDummiesFor(this.summary.archetype, DEFAULT_LAB_TARGET)
+    this.sim.setDummies(dummies)
+    this.dummyIds = dummies.map((d, i) => d.id ?? `dummy-${i}`)
     this.run = null
     this.ticks = 0
     this.latched = false
@@ -396,6 +487,27 @@ export class LabSession {
     return { ...result, restarted }
   }
 
+  /**
+   * Change the target (PRD P3-S6 AC1): the Infinite Dummy, or a row of Multiple Dummies. A new world
+   * with the new dummies starts the stats over, like switching ammo — the settings stay. Refused while
+   * a timed test runs (and for a target the Lab doesn't offer); true when the target is in place.
+   */
+  setTarget(target: LabTarget): boolean {
+    if (this.locked || !isLabTarget(target)) return false
+    if (sameTarget(target, this.target)) return true
+    const dummies = labDummiesFor(this.summary.archetype, target)
+    if (!this.sim.setDummies(dummies, { seed: this.nextSeed() }).ok) return false
+    this.target = target
+    this.dummyIds = dummies.map((d, i) => d.id ?? `dummy-${i}`)
+    this.run = null
+    this.ticks = 0
+    this.clearSessionCounters()
+    this.syncInput()
+    this.notifyReset()
+    this.publish()
+    return true
+  }
+
   /** A fresh world with the current settings (stats, pool, dummy, projectiles) — the settings stay. */
   private restart(): void {
     this.sim.reset({ seed: this.nextSeed() })
@@ -407,6 +519,7 @@ export class LabSession {
   }
 
   private clearSessionCounters(): void {
+    this.out = null
     this.busyTicks = 0
     this.recentAttackTicks = []
     this.slowestAttackTicks = 0
@@ -497,6 +610,25 @@ export class LabSession {
     }
   }
 
+  /**
+   * The attack in progress of a weapon that comes back lasts until `now` (world ticks; the session's
+   * tick count mirrors the engine's since every reset): grow its share of the attack time and of the
+   * attacks/sec window. True when it grew.
+   */
+  private extendOut(now: number): boolean {
+    const out = this.out
+    if (!out) return false
+    const length = Math.max(out.nominal, now - out.start)
+    const grown = length - out.credited
+    if (grown <= 0) return false
+    out.credited = length
+    this.busyTicks += grown
+    const last = this.recentAttackTicks.length - 1
+    if (last >= 0) this.recentAttackTicks[last] += grown
+    this.slowestAttackTicks = Math.max(this.slowestAttackTicks, length)
+    return true
+  }
+
   /** The latest attacks ÷ the ticks they took, per second; the nominal rate before any attack. */
   private liveAttackRate(): number {
     const window = this.recentAttackTicks
@@ -520,6 +652,16 @@ export class LabSession {
     }
   }
 
+  private targetsHud(stats: SimSnapshot['stats'], attackSeconds: number): LabTargetsHud | null {
+    if (this.target.kind !== 'row') return null
+    const dummies = this.dummyIds.map((id, i): LabDummyHud => {
+      const d = stats.perDummy[id]
+      const damage = d?.damage ?? 0
+      return { id, number: i + 1, primary: i === 0, hits: d?.hits ?? 0, crits: d?.crits ?? 0, damage, estimatedDps: attackSeconds > 0 ? damage / attackSeconds : 0 }
+    })
+    return { dummies, primary: dummies[0] }
+  }
+
   private computeHud({ stats, timedTest, settings, mana }: SimSnapshot): LabHudState {
     const attackSeconds = this.busyTicks / TICKS_PER_SECOND
     return {
@@ -534,6 +676,8 @@ export class LabSession {
       manaConsumed: stats.manaConsumed,
       mana: this.manaHud(mana, settings),
       attacksPerSec: this.liveAttackRate(),
+      hitsPerSec: attackSeconds > 0 ? stats.hits / attackSeconds : 0,
+      rateReadout: this.tethered ? 'hits' : 'attacks',
       estimatedDps: attackSeconds > 0 ? stats.totalDamage / attackSeconds : 0,
       attackSeconds,
       resets: this.resets,
@@ -551,6 +695,8 @@ export class LabSession {
         elapsedTicks: stats.ticks,
       },
       settings,
+      target: this.target,
+      targets: this.targetsHud(stats, attackSeconds),
       locked: timedTest.status === 'running',
     }
   }

@@ -17,17 +17,23 @@
  *   modeling choices.
  * - `ammo-effects` (bows and guns, design review P3-S4/S5 H2): only each ammo's damage and speed
  *   reach the engine; special ammo effects are not modeled — said plainly with the modeling choices.
+ * - `target-row` (PRD P3-S6): Multiple Dummies is a Lab test setup (count, spacing, which dummy is the
+ *   primary target) — listed with the modeling choices while that target is chosen.
+ * - `attack-until-back` (PRD P3-S7): for a weapon that comes back to hand, how long one attack lasts
+ *   in the HUD's measurements (labSession.ts) — right after the rule it extends.
  * - `dps-while-attacking`: how the HUD's live estimate is measured (labSession.ts) — first in its tip.
  * - `attack-rate`: how the HUD's live attacks/sec is measured — the latest RATE_WINDOW_ATTACKS attacks
  *   (labSession.ts, design review P3-S4/S5 H3) — it heads the attacks/sec tip only (no DPS figure is
  *   measured that way).
+ * - `hit-rate`: a tethered weapon's (yoyo's) HUD shows hits/sec in place of attacks/sec (design review
+ *   P3-S6/S7) — it heads that readout's tip.
  * - `timed-test` / `dps-graph`: how the standardized test's result and the per-second graph are
  *   measured (PRD P3-S3 AC2–AC4); they replace `dps-while-attacking` at the head of their own tips.
  * - Every engine approximation is shown verbatim (its copy is already in plain words).
  */
 import type { Archetype, Weapon } from '../schemas'
-import type { Approximation } from '../sim'
-import { firesProjectiles, RANGED_TARGET_X_TILES } from './labSetup'
+import { DUMMY_ROW_SPACING_TILES, type Approximation } from '../sim'
+import { firesProjectiles, RANGED_TARGET_X_TILES, ROW_COUNTS, type LabTarget } from './labSetup'
 
 /** Same shape as an engine approximation, so the tip renders both identically. */
 export interface LabAssumption {
@@ -51,6 +57,23 @@ export const LAB_ASSUMPTIONS = {
     id: 'target-distance',
     title: `Dummy ${RANGED_TARGET_X_TILES} tiles away`,
     detail: `For weapons that fire projectiles, the Infinite Dummy’s centre stands ${RANGED_TARGET_X_TILES} tiles in front of you (melee weapons test at point-blank), so shots visibly travel before they land. Spread shots can miss at this range, as they would in-game from there. The distance is a Lab choice.`,
+  },
+  'target-row': {
+    id: 'target-row',
+    title: `Multiple Dummies: a row ${DUMMY_ROW_SPACING_TILES} tiles apart`,
+    detail: `Multiple Dummies stands ${ROW_COUNTS[0]} to ${ROW_COUNTS.at(-1)} Infinite Dummies in a row on flat ground, centres ${DUMMY_ROW_SPACING_TILES} tiles apart, the first where the single dummy stands. The first is the primary target — the one holding Space and the timed tests aim at — and its numbers are shown apart from the totals over all dummies. The row is a Lab test setup.`,
+  },
+  'attack-until-back': {
+    id: 'attack-until-back',
+    title: 'A throw lasts until it is back',
+    detail:
+      'For weapons that are thrown and come back (boomerangs, launched flails, yoyos), an attack lasts until the weapon is back in your hand — at least its use time — because the next throw waits for it. A yoyo held out counts as one long attack, so for a yoyo the Lab shows hits per second rather than attacks per second.',
+  },
+  'hit-rate': {
+    id: 'hit-rate',
+    title: 'Hits per second while it is out',
+    detail:
+      'A yoyo stays out — one long attack — for as long as you hold attack, hitting all the while, so the Lab counts its hits, not its throws: Hits/sec = hits ÷ the time spent attacking (each throw until the yoyo is back in hand), the same time est. DPS divides by; idle time is not counted. With Multiple Dummies it counts the hits on every dummy.',
   },
   'ammo-effects': {
     id: 'ammo-effects',
@@ -114,27 +137,38 @@ function statedThrustReach(weapon: Pick<Weapon, 'wikiUrl' | 'labBehavior'>, engi
   ]
 }
 
+/** What else decides the list: the Lab's target (Multiple Dummies) and whether the weapon comes back to hand. */
+export interface LabAssumptionContext {
+  target?: LabTarget
+  /** WeaponSummary.returnsToHand: an attack lasts until the thrown weapon is back. */
+  returnsToHand?: boolean
+}
+
 /**
- * The full list for an AssumptionsTip: modeling choices (the archetype's, then the engine's
- * convention labels — those carry a `ruling`) or the stated reach they replace, the HUD's
- * measurement rule, then every other engine approximation for the equipped weapon, verbatim.
+ * The full list for an AssumptionsTip: modeling choices (the archetype's and the target's, then the
+ * engine's convention labels — those carry a `ruling`) or the stated reach they replace, the HUD's
+ * measurement rule (and, for a weapon that comes back, how long one of its attacks lasts), then every
+ * other engine approximation for the equipped weapon, verbatim.
  */
 export function labAssumptionsFor(
   archetype: Archetype,
   engine: readonly Approximation[],
   weapon: Pick<Weapon, 'wikiUrl' | 'labBehavior'>,
+  context: LabAssumptionContext = {},
 ): LabAssumption[] {
   return [
     ...archetypeAssumptions(archetype),
+    ...(context.target?.kind === 'row' ? [LAB_ASSUMPTIONS['target-row']] : []),
     ...engine.filter((a) => a.ruling),
     ...statedThrustReach(weapon, engine),
     LAB_ASSUMPTIONS['dps-while-attacking'],
+    ...(context.returnsToHand ? [LAB_ASSUMPTIONS['attack-until-back']] : []),
     ...engine.filter((a) => !a.ruling),
   ]
 }
 
 /** The HUD numbers that carry an EstimateLabel. */
-export type LabEstimate = 'attacks-per-sec' | 'estimated-dps' | 'timed-test-dps' | 'dps-graph'
+export type LabEstimate = 'attacks-per-sec' | 'hits-per-sec' | 'estimated-dps' | 'timed-test-dps' | 'dps-graph'
 
 /**
  * The measurement rule that heads each DPS estimate's tip — what the damage is divided by comes
@@ -142,6 +176,7 @@ export type LabEstimate = 'attacks-per-sec' | 'estimated-dps' | 'timed-test-dps'
  */
 const MEASURED_BY: Record<LabEstimate, LabAssumption> = {
   'attacks-per-sec': LAB_ASSUMPTIONS['attack-rate'],
+  'hits-per-sec': LAB_ASSUMPTIONS['hit-rate'],
   'estimated-dps': LAB_ASSUMPTIONS['dps-while-attacking'],
   'timed-test-dps': LAB_ASSUMPTIONS['timed-test'],
   'dps-graph': LAB_ASSUMPTIONS['dps-graph'],
@@ -153,16 +188,25 @@ const MEASURED_BY: Record<LabEstimate, LabAssumption> = {
  * speed bonuses), and — for mana weapons — the slowed low-mana cast and its cooldown. Hit geometry,
  * damage rolls, crits and defense don't change how often the weapon attacks.
  */
-const CADENCE_IDS: ReadonlySet<string> = new Set(['fixed-tick', 'cadence', 'reuse-delay', 'auto-reuse', 'no-equipment', 'insufficient-mana', 'slow-cast-cooldown'])
+const CADENCE_IDS: ReadonlySet<string> = new Set(['fixed-tick', 'cadence', 'reuse-delay', 'auto-reuse', 'no-equipment', 'insufficient-mana', 'slow-cast-cooldown', 'attack-until-back'])
+
+/**
+ * What decides a yoyo's hit rate: the cadence (how soon it is thrown again), how its time out is
+ * counted, how it moves and how often it may re-hit a dummy (`yoyo-control`: every 10 ticks), and how
+ * many dummies there are to hit.
+ */
+const HIT_RATE_IDS: ReadonlySet<string> = new Set([...CADENCE_IDS, 'yoyo-control', 'target-row'])
 
 /**
  * The assumptions behind one HUD estimate, led by how it is measured: attacks/sec by `attack-rate`,
- * then only the cadence ones in the full list's order. Each DPS figure depends on all of them: the
- * live est. DPS led by `dps-while-attacking` (then the modeling choices and the rest, in order); the
- * timed-test result and the DPS graph by their own rule, which replaces the live estimate's.
+ * then only the cadence ones in the full list's order; a yoyo's hits/sec by `hit-rate`, then what
+ * decides its hit rate. Each DPS figure depends on all of them: the live est. DPS led by
+ * `dps-while-attacking` (then the modeling choices and the rest, in order); the timed-test result and
+ * the DPS graph by their own rule, which replaces the live estimate's.
  */
 export function assumptionsForEstimate<A extends { id: string }>(all: readonly A[], estimate: LabEstimate): (A | LabAssumption)[] {
   const measured = MEASURED_BY[estimate]
   if (estimate === 'attacks-per-sec') return [measured, ...all.filter((a) => CADENCE_IDS.has(a.id))]
+  if (estimate === 'hits-per-sec') return [measured, ...all.filter((a) => HIT_RATE_IDS.has(a.id))]
   return [measured, ...all.filter((a) => a.id !== LAB_ASSUMPTIONS['dps-while-attacking'].id)]
 }

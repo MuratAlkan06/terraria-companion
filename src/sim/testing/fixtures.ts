@@ -100,6 +100,27 @@ export const staffFixture = (
     modifiers,
   )
 
+type ReturningParams = Extract<ArchetypeParams, { archetype: 'returning' }>
+type BeamParams = Extract<ArchetypeParams, { archetype: 'piercing-beam' }>
+
+/** A returning weapon (melee, 30 tiles/s = ½ tile per tick unless overridden). Variant defaults follow the family rules. */
+export const returningFixture = (params: Partial<ReturningParams> & Pick<ReturningParams, 'variant'>, overrides: Partial<Weapon> = {}, modifiers?: LabModifiers): Weapon => {
+  const modes = params.variant === 'yoyo' ? ({ returnMode: 'tethered', control: 'cursor-follow' } as const) : ({ returnMode: 'auto-return', control: 'fire-and-forget' } as const)
+  return fixtureWeapon(
+    { archetype: 'returning', throwRangeTiles: 12, ...modes, ...params },
+    { id: 900_005, name: `Fixture ${params.variant}`, slug: `fixture-${params.variant}`, shootSpeedTps: 30, ...overrides },
+    modifiers,
+  )
+}
+
+/** A piercing-beam magic weapon (mana cost 4). Pass `{ mode: 'channel-beam', tickRateTicks }` or `{ mode: 'pierce-projectile', pierce, projectile? }`. */
+export const beamFixture = (params: Omit<BeamParams, 'archetype'>, overrides: Partial<Weapon> = {}, modifiers?: LabModifiers): Weapon =>
+  fixtureWeapon(
+    { archetype: 'piercing-beam', ...params } as ArchetypeParams,
+    { id: 900_006, name: 'Fixture Beam', slug: 'fixture-beam', damageClass: 'magic', damage: 20, useTimeTicks: 20, useAnimationTicks: 20, manaCost: 4, ...overrides },
+    modifiers,
+  )
+
 export function ammoFixture(ammoStats: Partial<NonNullable<Item['ammoStats']>> = {}, overrides: Partial<Item> = {}): Item {
   return {
     id: 900_100,

@@ -144,6 +144,36 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
     }
   })
 
+  it('a yoyo’s readout is Hits/sec (it is one attack while held out), its tip led by how hits/sec is counted', () => {
+    const yoyo = list
+      .filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'returning' && w.labBehavior.params.variant === 'yoyo' && !w.labBehavior.modifiers)
+      .sort((a, b) => (a.damage ?? 0) - (b.damage ?? 0) || a.id - b.id)[0]
+    const s = session(yoyo)
+    s.press('key')
+    for (let i = 0; i < 240; i++) s.frame(1000 / 60)
+    const hud = s.getHud()
+    expect(hud.rateReadout).toBe('hits')
+    if (!hasAssumptions(s.assumptions)) throw new Error('no assumptions')
+    for (const compact of [false, true]) {
+      const html = render(createElement(StatReadouts, { hud, assumptions: s.assumptions, compact }))
+      const stat = (name: string) => new RegExp(`data-stat="${name}"[^>]*>([^<]*)<`).exec(html)?.[1]
+      expect(stat('hits-per-sec')).toBe(hud.hitsPerSec.toFixed(2))
+      expect(Number(stat('hits-per-sec'))).toBeGreaterThan(4)
+      expect(html).not.toContain('data-stat="attacks-per-sec"')
+      expect(html).toContain('Hits/sec')
+      expect(html).not.toContain('Attacks/sec')
+      if (compact) expect(html).toContain('<span aria-hidden="true">Hits/s</span>')
+      expect([...html.matchAll(/data-estimate="([^"]+)"/g)].map((m) => m[1])).toEqual(['hits per second', 'estimated DPS while attacking'])
+    }
+    const tip = assumptionsForEstimate(s.assumptions, 'hits-per-sec')
+    expect(tip.map((a) => a.id).slice(0, 1)).toEqual(['hit-rate'])
+    expect(tip[0].detail).toMatch(/^A yoyo stays out — one long attack — .*Hits\/sec = hits ÷ the time spent attacking/)
+    // what decides the hit rate: how the time out is counted and the yoyo's re-hit interval
+    expect(tip.map((a) => a.id)).toEqual(expect.arrayContaining(['attack-until-back', 'yoyo-control']))
+    expect(tip.map((a) => a.id)).not.toContain('attack-rate')
+    expect(s.assumptions.find((a) => a.id === 'attack-until-back')?.detail).toContain('for a yoyo the Lab shows hits per second rather than attacks per second')
+  })
+
   it('the attacks/sec tip shows the engine registry’s attack-rate rule verbatim, in plain words (no game-internal names)', () => {
     for (const w of [sword, ...list.slice(0, 5)]) {
       const rate = assumptionsForEstimate(session(w).assumptions, 'attacks-per-sec')
@@ -423,6 +453,29 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
     expect(html).toContain('This weapon’s unique behavior isn’t modeled in the Lab.')
     expect(html).not.toMatch(/modeled in the Lab yet/)
     expect(html).not.toMatch(/The wiki describes how|parameters have not been assigned/)
+  })
+
+  it('Volcano: no verified description, but its reason describes the behavior → the card points below instead of contradicting it', () => {
+    const volcano = all.find((w) => w.name === 'Volcano')!
+    expect(inGameDescription(volcano)).toBeUndefined()
+    const selection = resolveLabSelection(String(volcano.id), byId, list, LAB_SETUP)!
+    const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
+    expect(html).toContain('data-limitation-description="none"')
+    expect(html).toContain('No separate description verified — see below.')
+    expect(html).not.toContain('No verified description yet.')
+    expect(html).toContain('Hits create an explosion that damages the target and two more enemies')
+  })
+
+  it('Light Disc: "Why it isn’t simulated" no longer repeats the facts "What it does in-game" already gives (design review P5-S1)', () => {
+    const disc = all.find((w) => w.name === 'Light Disc')!
+    const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
+    const runs = (s: string) => new Set(words(s).flatMap((_, i, ws) => (i + 4 <= ws.length ? [ws.slice(i, i + 4).join(' ')] : [])))
+    const described = runs(inGameDescription(disc)!)
+    const status = labStatus(disc, LAB_SETUP)
+    expect(status.kind).toBe('not-simulable')
+    const reason = notSimulatedReason(status as Exclude<typeof status, { kind: 'equippable' }>)
+    expect([...runs(reason)].filter((run) => described.has(run))).toEqual([])
+    expect(reason).toMatch(/\bmodeled\b/)
   })
 
   it('a weapon with verified tooltip text shows that text as "What it does in-game"', () => {

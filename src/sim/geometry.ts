@@ -70,6 +70,21 @@ export function angleTo(from: Vec2, to: Vec2): number {
   return dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx)
 }
 
+/**
+ * Distance (tiles) from `from` — inside `box` — along `angle` to where the ray leaves the box (0 when
+ * `from` is outside or on its edge going out).
+ */
+export function rayExitDistance(from: Vec2, angle: number, box: Aabb): number {
+  const dx = Math.cos(angle)
+  const dy = Math.sin(angle)
+  let t = Infinity
+  if (dx > 0) t = Math.min(t, (box.maxX - from.x) / dx)
+  else if (dx < 0) t = Math.min(t, (box.minX - from.x) / dx)
+  if (dy > 0) t = Math.min(t, (box.maxY - from.y) / dy)
+  else if (dy < 0) t = Math.min(t, (box.minY - from.y) / dy)
+  return Number.isFinite(t) ? Math.max(0, t) : 0
+}
+
 /** Squared distance from point to the AABB center (nearest-target ordering). */
 export function distSqToCenter(x: number, y: number, box: Aabb): number {
   const c = aabbCenter(box)
