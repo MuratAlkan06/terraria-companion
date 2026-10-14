@@ -101,7 +101,7 @@ describe('target picker (UX_SPEC §3.4; PRD P3-S6 AC1)', () => {
   it('locked during a timed test: every target input is disabled', () => {
     const html = panel(session(pierceStaff, row(2)), { locked: true })
     const inputs = [...html.matchAll(/<input [^>]*id="lab-target-[^"]+"[^>]*>/g)]
-    expect(inputs.length).toBe(2 + ROW_COUNTS.length)
+    expect(inputs.length).toBe(3 + ROW_COUNTS.length) // Infinite Dummy, Multiple Dummies, Debuff Dummy + the row sizes
     for (const m of inputs) expect(m[0]).toContain('disabled=""')
   })
 

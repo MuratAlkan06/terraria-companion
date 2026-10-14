@@ -156,6 +156,37 @@ export const whipFixture = (params: Partial<WhipParams> = {}, overrides: Partial
     modifiers,
   )
 
+type ExplosiveParams = Extract<ArchetypeParams, { archetype: 'explosive-aoe' }>
+
+/**
+ * A thrown explosive shaped like the pipeline emits the Bomb (P3-S11): classless, critPct not applicable
+ * (AMENDMENTS-015 B85(b): absent, not listed), use time 25, throw speed 18.75 tiles/s (Iteminfo
+ * shootSpeed 5), 100 damage. Default params: a 3 s fuse (180 ticks), 4-tile radius, no falloff; pass
+ * `{ trigger: 'impact' }` for an impact explosive (no fuse — schema: fuseTicks iff timed).
+ */
+export const explosiveFixture = (params: Partial<ExplosiveParams> = {}, overrides: Partial<Weapon> = {}, modifiers?: LabModifiers): Weapon => {
+  const trigger = params.trigger ?? 'timed'
+  return fixtureWeapon(
+    { archetype: 'explosive-aoe', blastRadiusTiles: 4, trigger, ...(trigger === 'timed' ? { fuseTicks: 180 } : {}), falloff: 'none', ...params } as ArchetypeParams,
+    {
+      id: 900_009,
+      name: 'Fixture Bomb',
+      slug: 'fixture-bomb',
+      damageClass: 'other',
+      critPct: undefined,
+      damage: 100,
+      useTimeTicks: 25,
+      useAnimationTicks: 25,
+      knockback: 8,
+      autoReuse: false,
+      shootSpeedTps: 18.75,
+      _prov: fixtureProv(),
+      ...overrides,
+    },
+    modifiers,
+  )
+}
+
 export function ammoFixture(ammoStats: Partial<NonNullable<Item['ammoStats']>> = {}, overrides: Partial<Item> = {}): Item {
   return {
     id: 900_100,

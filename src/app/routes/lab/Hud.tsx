@@ -1,21 +1,25 @@
-import { ChartColumn, Crosshair, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail, Star, Tag, Users } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Bomb, ChartColumn, Crosshair, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail, Star, Tag, Users } from 'lucide-react'
+import { useMemo, type ReactNode } from 'react'
 import { hasAssumptions, type Assumptions } from '../../../components/assumptions'
 import { buttonClass } from '../../../components/buttonStyles'
 import { cx } from '../../../components/cx'
 import { EstimateLabel } from '../../../components/EstimateLabel'
+import { PixelArt } from '../../../components/PixelArt'
 import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
 import { SpriteImg } from '../../../components/SpriteImg'
 import { Toggletip } from '../../../components/Toggletip'
 import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
+import { buildDebuffIcon } from '../../../lab/art/arenaArt'
+import { ARENA_PALETTE } from '../../../lab/art/arenaPalette'
+import { debuffGlyph, type DebuffGlyph } from '../../../lab/debuffVisuals'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import type { LabHitSource, LabHudState, LabManaHud, LabSummonsHud, LabTagHud, LabTargetsHud } from '../../../lab/labSession'
+import type { ExplosiveShape, LabBlastHud, LabDebuffDummyHud, LabDebuffHud, LabHitSource, LabHudState, LabManaHud, LabSummonsHud, LabTagHud, LabTargetsHud } from '../../../lab/labSession'
 import { behaviorFacts } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS } from '../../../sim'
-import { format1, format2, formatInt, HUD_PANEL, HUD_SURFACE, slotNumber } from './hudStyles'
+import { dpsCeiling, format1, format2, formatInt, HUD_PANEL, HUD_SURFACE, slotNumber } from './hudStyles'
 import { LIVE_DPS_LABEL, LIVE_DPS_SHORT, LIVE_DPS_SUMMON_LABEL, LIVE_DPS_SUMMON_SHORT } from './timedTestCopy'
 
 /**
@@ -35,6 +39,8 @@ export function EquippedBar({ weapon, sprites, hud, compact }: { weapon: Weapon;
   const rarityView = getField(weapon, 'rarity')
   const rarity = rarityView.status === 'verified' ? asRarity(rarityView.value as number | string) : undefined
   const { weapon: summary } = hud
+  // Classless damage never crits (B85(b), labeled `classless-crit`): said in words, not as a bare "0%".
+  const classless = weapon.damageClass === 'other'
   return (
     <section aria-label="Equipped weapon" className={cx(PANEL, 'flex max-w-full min-w-0 items-center', compact ? 'gap-2 p-1.5' : 'gap-3 p-2')} data-equipped-bar="">
       <span className="grid shrink-0 place-items-center border-2 border-slot-border bg-slot">
@@ -53,16 +59,17 @@ export function EquippedBar({ weapon, sprites, hud, compact }: { weapon: Weapon;
           <Fact label="Damage" short="Dmg" compact={compact}>
             {summary.damage}
           </Fact>
-          <Fact label="Use time" short="Use" compact={compact}>
+          <Fact label="Use time" short="Use" compact={compact} spoken={compact ? `${weapon.useAnimationTicks} ticks` : undefined}>
             {weapon.useAnimationTicks}
             {compact ? 't' : ' ticks'}
           </Fact>
-          <Fact label="Crit" short="Crit" compact={compact}>
-            {summary.critChancePct}%
+          <Fact label="Crit" short="Crit" compact={compact} data="crit" spoken={classless ? 'never: classless damage can’t deal critical hits' : undefined}>
+            {classless ? 'never' : `${summary.critChancePct}%`}
           </Fact>
-          {/* Behavior stats from the params: a thrown weapon's range and flight, a beam's hit rate, a pierce count. */}
+          {/* Behavior stats from the params: a thrown weapon's range and flight, a beam's hit rate, a pierce count.
+              Compact values are abbreviated ("13.64t"); screen readers hear the full one ("13.64 tiles"). */}
           {behaviorFacts(weapon).map((f) => (
-            <Fact key={f.key} label={f.label} short={f.short} compact={compact} data={f.key}>
+            <Fact key={f.key} label={f.label} short={f.short} compact={compact} data={f.key} spoken={f.spoken ?? (compact && f.shortValue !== undefined && f.shortValue !== f.value ? f.value : undefined)}>
               {compact ? (f.shortValue ?? f.value) : f.value}
             </Fact>
           ))}
@@ -72,7 +79,8 @@ export function EquippedBar({ weapon, sprites, hud, compact }: { weapon: Weapon;
   )
 }
 
-function Fact({ label, short, compact, data, children }: { label: string; short: string; compact: boolean; data?: string; children: ReactNode }) {
+/** One fact: `spoken` is what screen readers hear instead of the shown value (an abbreviated one's full words). */
+function Fact({ label, short, compact, data, spoken, children }: { label: string; short: string; compact: boolean; data?: string; spoken?: string; children: ReactNode }) {
   return (
     <div className="flex gap-1 whitespace-nowrap" data-fact={data}>
       <dt>
@@ -85,8 +93,33 @@ function Fact({ label, short, compact, data, children }: { label: string; short:
           label
         )}
       </dt>
-      <dd className="font-semibold text-fg">{children}</dd>
+      <dd className="font-semibold text-fg">
+        {spoken ? (
+          <>
+            <span aria-hidden="true">{children}</span>
+            <span className="sr-only">{spoken}</span>
+          </>
+        ) : (
+          children
+        )}
+      </dd>
     </div>
+  )
+}
+
+/** The widest est. DPS the compact readout reserves room for (see `dpsCeiling`). */
+const DPS_ROOM_MAX = 999.9
+
+/** A number in the room of a wider one (`room`, invisible, same grid cell): its box never grows past that as it climbs. */
+function Reserved({ room, children }: { room: string | null; children: ReactNode }) {
+  if (room === null) return children
+  return (
+    <span className="inline-grid justify-items-end">
+      <span aria-hidden="true" className="invisible [grid-area:1/1]">
+        {room}
+      </span>
+      <span className="[grid-area:1/1]">{children}</span>
+    </span>
   )
 }
 
@@ -115,6 +148,10 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
   const dpsLabel = hud.summons ? LIVE_DPS_SUMMON_LABEL : LIVE_DPS_LABEL
   const dpsShort = hud.summons ? LIVE_DPS_SUMMON_SHORT : LIVE_DPS_SHORT
   const dpsContext = hud.summons ? 'estimated DPS since summoning' : 'estimated DPS while attacking'
+  // Compact with Multiple Dummies, the two DPS values share the columns: reserve the widest they can read —
+  // up to "999.9" (a four-digit DPS, only a whole row in one blast can reach, would squeeze the EquippedBar
+  // for every throw before it; past it the box grows once, as before).
+  const dpsRoom = compact && targets ? format1(Math.min(dpsCeiling(hud), DPS_ROOM_MAX)) : null
   return (
     <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="" data-stat-scope={targets ? 'all-dummies' : 'one-dummy'}>
       {hud.mana?.ignoreMana ? <TestModeChip className={compact ? 'mb-1.5' : 'mb-2'} /> : null}
@@ -187,14 +224,18 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
           wide={compact && !targets}
         >
           <span className="inline-flex items-center gap-1">
-            <span data-stat="dps">{format1(hud.estimatedDps)}</span>
+            <Reserved room={dpsRoom}>
+              <span data-stat="dps">{format1(hud.estimatedDps)}</span>
+            </Reserved>
             <EstimateLabel assumptions={dpsAssumptions} context={targets ? `${dpsContext}, all dummies` : dpsContext} />
           </span>
         </Readout>
         {targets ? (
           <Readout label={`${dpsLabel}, primary target`} visibleLabel={compact ? undefined : 'Primary target'} short="DPS, #1" compact={compact} nested={!compact}>
             <span className="inline-flex items-center gap-1">
-              <span data-stat="primary-dps">{format1(targets.primary.estimatedDps)}</span>
+              <Reserved room={dpsRoom}>
+                <span data-stat="primary-dps">{format1(targets.primary.estimatedDps)}</span>
+              </Reserved>
               <EstimateLabel assumptions={dpsAssumptions} context={`${dpsContext}, primary target`} />
             </span>
           </Readout>
@@ -770,6 +811,251 @@ export function AmmoCounter({ ammo, sprites, used, compact }: { ammo: Item; spri
           Ammo used <span className="font-semibold text-fg" data-stat="ammo-used">{formatInt(used)}</span>
         </p>
       </div>
+    </section>
+  )
+}
+
+/**
+ * Consumables counter (UX_SPEC §3.4 contextual resource; PRD P3-S11): a thrown explosive is the weapon
+ * item itself, used up by each throw — "Explosives used" since the last reset (the engine's
+ * `consumablesUsed`; never ammo). Readout-only: aiming passes through it.
+ */
+export function ConsumableCounter({ used, compact }: { used: number; compact: boolean }) {
+  return (
+    <section aria-label="Explosives used" className={cx(HUD_SURFACE, 'pointer-events-none flex max-w-64 items-center gap-2 text-xs', compact ? 'p-1.5' : 'p-2')} data-consumable-counter="">
+      <Bomb aria-hidden="true" className="size-4 shrink-0 text-accent" />
+      <p className="text-fg-muted tabular-nums">
+        Explosives used{' '}
+        <span className="inline-block min-w-[3ch] font-semibold text-fg" data-stat="explosives-used">
+          {formatInt(used)}
+        </span>
+        {/* The compact HUD keeps it to one line: the controls list says one is used per throw. */}
+        {compact ? null : <span className="whitespace-nowrap"> · one per throw</span>}
+      </p>
+    </section>
+  )
+}
+
+/** Tiles with at most two decimals (4, 7.8, 8.75). */
+const tilesText = (n: number) => String(Number(n.toFixed(2)))
+
+/** One dummy's share of a blast, as the readout lists it. */
+interface BlastRow {
+  id: string
+  number: number
+  /** Damage taken; null: outside the blast (or no blast yet, `pending`). */
+  amount: number | null
+  crit: boolean
+  keptPct: number | null
+}
+
+/**
+ * The latest blast (PRD P3-S11 AC1), readout-only: its number, radius and falloff, and what that one
+ * explosion dealt each dummy — "#1 104 · #2 98 · #3 outside" — with, under falloff, the percent of the
+ * blast's damage each kept. The floating numbers show the same over the dummies. `strip`: the compact
+ * HUD's version, one wrapping row in the bottom HUD area.
+ *
+ * Its room is laid out from the session's start (design review P3-S11 #2, the stable-HUD pattern of the
+ * ManaBar's notice): before the first blast it says "No blast yet" with a dash per dummy, and an invisible
+ * copy of the widest readout it can show for these dummies — "Blast 9,999", every share "9,999 crit
+ * (100%)" or "outside", whichever is wider — shares its grid cell, so the box (and the camera framed
+ * around the HUD) never changes size when the first or any later blast lands.
+ */
+export function BlastReadout({
+  blast,
+  explosive,
+  dummyNumbers,
+  critPossible = false,
+  compact,
+  strip = false,
+}: {
+  /** The latest blast, or null before the first one (since the last reset). */
+  blast: LabBlastHud | null
+  explosive: Pick<ExplosiveShape, 'blastRadiusTiles' | 'falloff'>
+  /** The dummies' numbers (1 for the single dummy), as the arena labels them. */
+  dummyNumbers: readonly number[]
+  /** The weapon can crit (not classless): the reserved room holds a "crit" mark. */
+  critPossible?: boolean
+  compact: boolean
+  strip?: boolean
+}) {
+  const radiusTiles = blast?.radiusTiles ?? explosive.blastRadiusTiles
+  const falloff = blast?.falloff ?? explosive.falloff
+  const single = dummyNumbers.length === 1
+  const rows: readonly BlastRow[] = blast?.dummies ?? dummyNumbers.map((number) => ({ id: `dummy-${number}`, number, amount: null, crit: false, keptPct: null }))
+  const widest = dummyNumbers.map((number): BlastRow => ({ id: `room-${number}`, number, amount: 9999, crit: critPossible, keptPct: falloff === 'linear' ? 100 : null }))
+  const layout = strip ? 'flex w-full flex-wrap items-center gap-x-3 gap-y-0.5' : ''
+  const body = (title: ReactNode, list: readonly BlastRow[], pending: boolean, room: boolean) => (
+    <>
+      <p className="flex items-center gap-1.5 text-fg-muted">
+        <Bomb aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+        {/* Each phrase on one line: a narrow box wraps between them, never inside one. */}
+        <span>
+          <span className="font-semibold whitespace-nowrap text-fg">{title}</span> · <span className="whitespace-nowrap">{tilesText(radiusTiles)}-tile radius</span> ·{' '}
+          <span className="whitespace-nowrap" data-blast-falloff-label="">
+            {falloff === 'none' ? 'no falloff: full damage inside' : 'falls off with distance'}
+          </span>
+        </span>
+      </p>
+      <ol className={cx('flex flex-wrap gap-x-2.5 gap-y-0.5 tabular-nums', !strip && 'mt-1')}>
+        {list.map((d) => (
+          <li key={d.id} className="whitespace-nowrap" data-blast-dummy={room ? undefined : d.number} data-blast-amount={room ? undefined : pending ? 'pending' : (d.amount ?? 'outside')}>
+            {single ? (
+              <span className="sr-only">The dummy: </span>
+            ) : (
+              <>
+                <span aria-hidden="true" className="text-fg-muted">
+                  #{d.number}{' '}
+                </span>
+                <span className="sr-only">Dummy {d.number}: </span>
+              </>
+            )}
+            {pending ? (
+              <span className="text-fg-muted">
+                <span aria-hidden="true">–</span>
+                <span className="sr-only">no blast yet</span>
+              </span>
+            ) : room ? (
+              // The wider of a share and "outside" (one grid cell): the reserved room fits either.
+              <span className="inline-grid">
+                <span className="[grid-area:1/1]">
+                  <span className="font-semibold">{formatInt(9999)}</span>
+                  {d.crit ? <span className="ml-0.5 font-bold uppercase">crit</span> : null}
+                  {d.keptPct !== null ? <span> ({d.keptPct}%)</span> : null}
+                </span>
+                <span className="[grid-area:1/1]">outside</span>
+              </span>
+            ) : d.amount === null ? (
+              <span className="text-fg-muted">outside</span>
+            ) : (
+              <>
+                <span className={cx('font-semibold', d.crit ? 'text-gold-300' : 'text-fg')}>{formatInt(d.amount)}</span>
+                {d.crit ? <span className="ml-0.5 font-bold text-gold-300 uppercase">crit</span> : null}
+                {falloff === 'linear' && d.keptPct !== null ? <span className="text-fg-muted"> ({d.keptPct}%)</span> : null}
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+    </>
+  )
+  return (
+    <section
+      aria-label="Latest blast"
+      className={cx(HUD_SURFACE, 'pointer-events-none text-xs', strip ? 'w-full p-1' : cx('w-full max-w-64', compact ? 'p-1.5' : 'p-2'))}
+      data-blast-readout={blast?.index ?? 0}
+      data-blast-falloff={falloff}
+    >
+      <div className="grid">
+        <div aria-hidden="true" className={cx('invisible [grid-area:1/1]', layout)} data-blast-room="">
+          {body(`Blast ${formatInt(9999)}`, widest, false, true)}
+        </div>
+        <div className={cx('[grid-area:1/1]', layout)} data-blast-shown="">
+          {body(blast ? `Blast ${formatInt(blast.index)}` : 'No blast yet', rows, blast === null, false)}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** A debuff's time-left bar in its glyph's tint (../../../lab/debuffVisuals.ts DEBUFF_TINT_TOKENS). */
+const DEBUFF_BAR: Readonly<Record<DebuffGlyph, string>> = { flame: 'bg-gold-400', frost: 'bg-night-200', drop: 'bg-negative' }
+
+/** One debuff's row: icon, name, damage per second, seconds left and the bar. `room`: the reserved copy (no meter). */
+function DebuffRow({ debuff: d, icons, room = false }: { debuff: LabDebuffHud; icons: Readonly<Record<DebuffGlyph, string[]>>; room?: boolean }) {
+  // Its kind's glyph (a flame, a snowflake, else a drop) and the bar in the glyph's tint; the name says which.
+  const glyph = debuffGlyph(d.buffId)
+  return (
+    <li data-debuff={room ? undefined : d.buffId} data-debuff-glyph={room ? undefined : glyph}>
+      <div className="flex items-center gap-1.5">
+        <PixelArt rows={icons[glyph]} palette={ARENA_PALETTE} className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate font-semibold text-fg" title={room ? undefined : d.name}>
+          {d.name}
+        </span>
+        {d.dps !== null ? (
+          <span className="shrink-0 text-fg-muted tabular-nums">
+            {formatInt(d.dps)}
+            <span aria-hidden="true">/s</span>
+            <span className="sr-only"> damage per second</span>
+          </span>
+        ) : null}
+        <span className="inline-block min-w-[4ch] shrink-0 text-right font-semibold text-fg tabular-nums" data-debuff-left={room ? undefined : d.remainingSec.toFixed(1)}>
+          {d.remainingSec.toFixed(1)}s<span className="sr-only"> left</span>
+        </span>
+      </div>
+      {room ? (
+        <div className="mt-0.5 h-2.5 border-2 border-night-600" />
+      ) : (
+        <div
+          role="meter"
+          aria-label={`${d.name}, time left`}
+          aria-valuemin={0}
+          aria-valuemax={d.durationSec}
+          aria-valuenow={d.remainingSec}
+          aria-valuetext={`${d.remainingSec.toFixed(1)} of ${d.durationSec.toFixed(1)} seconds left`}
+          className="mt-0.5 h-2.5 border-2 border-night-600 bg-night-900"
+          data-debuff-bar={d.fraction.toFixed(2)}
+        >
+          <span aria-hidden="true" className={cx('block h-full', DEBUFF_BAR[glyph])} style={{ width: `${d.fraction * 100}%` }} />
+        </div>
+      )}
+    </li>
+  )
+}
+
+/**
+ * Debuff Dummy panel (PRD P3-S11 AC3), readout-only: every debuff active on the dummy — its icon, name,
+ * damage per second and a bar of its time left (full = the duration it was last applied with), the
+ * seconds in words beside it — then the debuffs applied since the last reset (AC2's stat) and the damage
+ * over time dealt. Shape, words and numbers, never colour alone. `strip`: the compact HUD's version.
+ *
+ * Its room is laid out from the session's start (the stable-HUD pattern of the BlastReadout): an invisible
+ * row for each debuff the weapon can apply (`panel.applies`) shares a grid cell with the list — "No debuffs
+ * yet" before the first one — so the box (and the camera framed around the HUD) never changes size when
+ * a debuff lands or runs out.
+ */
+export function DebuffPanel({ panel, applied, compact, strip = false }: { panel: LabDebuffDummyHud; applied: number; compact: boolean; strip?: boolean }) {
+  const icons = useMemo(() => ({ flame: buildDebuffIcon('flame'), frost: buildDebuffIcon('frost'), drop: buildDebuffIcon('drop') }), [])
+  const none = !panel.weaponApplies ? 'None — this weapon applies no debuff.' : applied === 0 ? 'No debuffs yet.' : 'None active right now.'
+  return (
+    <section
+      aria-label="Debuff Dummy: active debuffs"
+      className={cx(HUD_SURFACE, 'pointer-events-none text-xs', strip ? 'w-full p-1.5' : cx('w-full max-w-64', compact ? 'p-1.5' : 'p-2'))}
+      data-debuff-panel={panel.debuffs.length}
+    >
+      <p className="flex items-baseline justify-between gap-2 text-fg-muted tabular-nums">
+        <span className="font-semibold tracking-wide uppercase">Debuffs</span>
+        <span>
+          applied{' '}
+          <span className="font-semibold text-fg" data-stat="debuffs-applied">
+            {formatInt(applied)}
+          </span>
+        </span>
+      </p>
+      <div className="mt-1 grid">
+        <ul aria-hidden="true" className="invisible space-y-1 [grid-area:1/1]" data-debuff-room={panel.applies.length}>
+          {panel.applies.map((d) => (
+            <DebuffRow key={d.buffId} debuff={{ ...d, remainingSec: 99.9, durationSec: 99.9, fraction: 1 }} icons={icons} room />
+          ))}
+        </ul>
+        {panel.debuffs.length === 0 ? (
+          <p className="text-fg-muted [grid-area:1/1]" data-debuffs-none="">
+            {none}
+          </p>
+        ) : (
+          <ul className="space-y-1 [grid-area:1/1]">
+            {panel.debuffs.map((d) => (
+              <DebuffRow key={d.buffId} debuff={d} icons={icons} />
+            ))}
+          </ul>
+        )}
+      </div>
+      <p className="mt-1 text-fg-muted tabular-nums">
+        Damage over time{' '}
+        <span className="font-semibold text-fg" data-stat="dummy-dot">
+          {formatInt(panel.dotDamage)}
+        </span>
+      </p>
     </section>
   )
 }

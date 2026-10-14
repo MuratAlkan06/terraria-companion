@@ -8,9 +8,10 @@
  *      has room or a new press) (mana gate) → activation (every activationTicks) → behavior.tickUse
  *      (melee hit detection, a held beam, a whip's sweep and tags)
  *   3. summons (minions, sentries) in summon order: brain step — target → attack when due → move
- *   4. projectiles in spawn order: guide steer (a returning weapon; `caught` removes it) or
- *      modifier steer → gravity → swept move/collide (a guide may stop the move at a hit) →
- *      age/lifetime → bounds
+ *   4. projectiles in spawn order: guide steer (a returning weapon; `caught` removes it — a thrown
+ *      explosive; `detonated` removes it after its explosion) or modifier steer → gravity → swept
+ *      move/collide (a guide may stop the move at a hit; a guide with `touch` takes each contact
+ *      instead of a hit — a detonation there removes it) → age/lifetime → bounds
  *   5. debuffs: DoT accrual → duration countdown → expiry; then whip tags: countdown → expiry
  *   6. mana regeneration
  *   7. stats.endTick(); tick++
@@ -22,6 +23,7 @@ import type {
   AgentSpawn,
   AgentState,
   Behavior,
+  BlastFalloff,
   DummyState,
   HitOwner,
   HitSource,
@@ -43,9 +45,9 @@ import {
   MAX_PENDING_EVENTS,
   TICKS_PER_SECOND,
 } from './constants'
-import { applyDefense, applyVariancePct, rollHit } from './damage'
+import { applyDefense, applyVariancePct, blastDamage, blastKeptPct, rollHit } from './damage'
 import { Digest } from './digest'
-import { aabbCenter, aabbFromCenter, angleTo, segmentAabbEntry } from './geometry'
+import { aabbCenter, aabbFromCenter, angleTo, nearestPointInAabb, segmentAabbEntry } from './geometry'
 import { mulberry32, type Rng } from './rng'
 import { StatsAccumulator } from './stats'
 import type { ArenaBounds, BladePose, DummySpec, LabInput, LabSettings, ManaState, RenderState, SimEvent, SummonKind, SummonsState, Vec2 } from './types'
@@ -251,9 +253,10 @@ export class World implements KernelApi {
       p.prevX = p.x
       p.prevY = p.y
       if (p.guide) {
-        // A guided flight (returning weapon) is steered by its interpreter alone.
-        if (p.guide.steer(this, p) === 'caught') {
-          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'returned' })
+        // A guided flight (returning weapon, thrown explosive) is steered by its interpreter alone.
+        const steered = p.guide.steer(this, p)
+        if (steered === 'caught' || steered === 'detonated') {
+          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: steered === 'caught' ? 'returned' : 'detonated' })
           continue
         }
       } else {
@@ -273,6 +276,15 @@ export class World implements KernelApi {
       contacts.sort((a, b) => a.t - b.t || a.dummy.index - b.dummy.index)
       for (const { t, dummy } of contacts) {
         const at = { x: p.x + (nx - p.x) * t, y: p.y + (ny - p.y) * t }
+        if (p.guide?.touch) {
+          // No contact hit of its own (a thrown explosive): the touch may set it off right there.
+          if (p.guide.touch(this, p, dummy, at) !== 'detonated') continue
+          p.x = at.x
+          p.y = at.y
+          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'detonated' })
+          alive = false
+          break
+        }
         if (!this.strike(p.source, dummy, at)) continue
         if (p.guide?.afterHit?.(this, p, dummy) === 'stop') {
           p.x = at.x
@@ -419,6 +431,11 @@ export class World implements KernelApi {
   }
 
   strike(source: HitSource, dummy: DummyState, at: Vec2, damage: number = source.baseDamage): boolean {
+    return this.hit(source, dummy, at, damage)
+  }
+
+  /** `strike`, plus a blast hit's kept percent on its damage event (`explode`). */
+  private hit(source: HitSource, dummy: DummyState, at: Vec2, damage: number, blastKeptPct?: number): boolean {
     const until = source.immuneUntil.get(dummy.index)
     if (until !== undefined && this.tick < until) return false
     source.immuneUntil.set(dummy.index, source.cooldownTicks === null ? Infinity : this.tick + source.cooldownTicks)
@@ -443,9 +460,25 @@ export class World implements KernelApi {
       x: at.x,
       y: at.y,
       ...(tagBonus === undefined ? {} : { tagBonus }),
+      ...(blastKeptPct === undefined ? {} : { blastKeptPct }),
     })
     for (const m of owner?.modifiers ?? this.cfg.modifiers) m.afterStrike?.(this, source, dummy)
     return true
+  }
+
+  explode(p: ProjectileState, at: Vec2, radiusTiles: number, falloff: BlastFalloff): number {
+    this.emit({ type: 'explosion', projectileId: p.id, x: at.x, y: at.y, radiusTiles })
+    this.stats.explosion()
+    let hits = 0
+    for (const dummy of this.dummies) {
+      // Any part of its hitbox inside the circle: the distance is to the hitbox point nearest the centre.
+      const near = nearestPointInAabb(at.x, at.y, dummy.box)
+      const keptPct = blastKeptPct(Math.sqrt((near.x - at.x) ** 2 + (near.y - at.y) ** 2), radiusTiles, falloff)
+      const damage = blastDamage(p.source.baseDamage, keptPct)
+      if (damage <= 0) continue // outside, or the falloff left it nothing: not hit
+      if (this.hit(p.source, dummy, near, damage, keptPct)) hits++
+    }
+    return hits
   }
 
   summon(spawn: AgentSpawn): AgentState {
@@ -500,12 +533,20 @@ export class World implements KernelApi {
     this.stats.ammo(count)
   }
 
+  consumeItem(count: number): void {
+    this.stats.consumable(count)
+  }
+
   applyDebuff(dummy: DummyState, buffId: string, dps: number, durationTicks: number): void {
     const existing = dummy.debuffs.find((b) => b.buffId === buffId)
     if (existing) {
-      existing.remainingTicks = Math.max(existing.remainingTicks, durationTicks)
+      // Refresh, never stack: the longer of what is left and the new duration (that one restarts the bar).
+      if (durationTicks >= existing.remainingTicks) {
+        existing.remainingTicks = durationTicks
+        existing.durationTicks = durationTicks
+      }
     } else {
-      dummy.debuffs.push({ buffId, dps, remainingTicks: durationTicks, acc: 0 })
+      dummy.debuffs.push({ buffId, dps, remainingTicks: durationTicks, durationTicks, acc: 0 })
       dummy.debuffs.sort((a, b) => (a.buffId < b.buffId ? -1 : a.buffId > b.buffId ? 1 : 0))
     }
     this.stats.debuff()
@@ -575,7 +616,7 @@ export class World implements KernelApi {
           width: d.box.maxX - d.box.minX,
           height: d.box.maxY - d.box.minY,
           defense: d.defense,
-          debuffs: d.debuffs.map((b) => ({ buffId: b.buffId, remainingTicks: b.remainingTicks })),
+          debuffs: d.debuffs.map((b) => ({ buffId: b.buffId, remainingTicks: b.remainingTicks, durationTicks: b.durationTicks })),
           tag: d.tag ? { remainingTicks: d.tag.remainingTicks, durationTicks: d.tag.durationTicks, damageFlat: d.tag.damageFlat, critPct: d.tag.critPct } : null,
         }
       }),

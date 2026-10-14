@@ -117,27 +117,28 @@ export const RANGED_TARGET_X_TILES = 6
 export const firesProjectiles = (archetype: Archetype): boolean => !POINT_BLANK_ARCHETYPES.includes(archetype)
 
 /**
- * The Lab's target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1): the Infinite Dummy, or Multiple
- * Dummies — a row of `count` dummies (the engine's `dummyRow`), the first one where the single dummy
- * stands. The first is the PRIMARY target: the one Space and the timed tests aim at, whose stats the
- * HUD reports apart from the all-dummy totals (AC4).
+ * The Lab's target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1, P3-S11 AC3): the Infinite Dummy,
+ * Multiple Dummies — a row of `count` dummies (the engine's `dummyRow`), the first one where the single
+ * dummy stands; the first is the PRIMARY target: the one Space and the timed tests aim at, whose stats
+ * the HUD reports apart from the all-dummy totals (AC4) — or the Debuff Dummy: the same single dummy,
+ * whose active debuffs and their time left the HUD lists (the engine's debuff state).
  */
-export type LabTarget = { kind: 'single' } | { kind: 'row'; count: number }
+export type LabTarget = { kind: 'single' } | { kind: 'row'; count: number } | { kind: 'debuff' }
 
 export const DEFAULT_LAB_TARGET: LabTarget = Object.freeze({ kind: 'single' })
 /** Multiple Dummies: how many the row may hold, and how many it starts with. */
 export const ROW_COUNTS = [2, 3, 4, 5] as const
 export const DEFAULT_ROW_COUNT = 3
 
-/** A target the Lab offers (single, or a row of an offered size). */
-export const isLabTarget = (target: LabTarget): boolean => target.kind === 'single' || (ROW_COUNTS as readonly number[]).includes(target.count)
+/** A target the Lab offers (single, the Debuff Dummy, or a row of an offered size). */
+export const isLabTarget = (target: LabTarget): boolean => target.kind !== 'row' || (ROW_COUNTS as readonly number[]).includes(target.count)
 
-export const sameTarget = (a: LabTarget, b: LabTarget): boolean => a.kind === b.kind && (a.kind === 'single' || (b.kind === 'row' && a.count === b.count))
+export const sameTarget = (a: LabTarget, b: LabTarget): boolean => a.kind === b.kind && (a.kind !== 'row' || (b.kind === 'row' && a.count === b.count))
 
 /** Where the (first) dummy stands for an archetype: point-blank for blades, else the ranged distance. */
 export const targetX = (archetype: Archetype): number => (firesProjectiles(archetype) ? RANGED_TARGET_X_TILES : DEFAULT_DUMMY.x)
 
-/** The dummies the Lab places for an archetype and target. */
+/** The dummies the Lab places for an archetype and target (the Debuff Dummy stands where the single dummy does). */
 export function labDummiesFor(archetype: Archetype, target: LabTarget = DEFAULT_LAB_TARGET): DummySpec[] {
   const x = targetX(archetype)
   return target.kind === 'row' ? dummyRow(target.count, x) : [{ ...DEFAULT_DUMMY, x }]

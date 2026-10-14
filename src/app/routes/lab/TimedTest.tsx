@@ -18,8 +18,9 @@ import { lockReason, testDpsLabel, testName } from './timedTestCopy'
  * - `ResultsSummary`: slides up 260 ms when the run ends (readouts are frozen by then — the engine
  *   halts), the estimated DPS counts up 300 ms in tabular numerals with its width reserved (no
  *   shift), no confetti; reduced motion: no slide, no count-up. "Run again" replays the exact run;
- *   "Reset" is the single Lab reset. The DoT rows appear only for a weapon that applies DoT, the
- *   "Ammo used" / "Mana used" rows only for a weapon that uses them.
+ *   "Reset" is the single Lab reset. The DoT rows — direct / DoT damage and "Debuffs applied" (PRD
+ *   P3-S11 AC2/AC4) — appear only for a weapon that applies DoT, the "Ammo used" / "Mana used" /
+ *   "Explosives used" rows only for a weapon that uses them.
  * - `LockBadge` / `LockNotice`: why the panels are disabled while a test runs (§5.7).
  * Copy shared with the announcer lives in ./timedTestCopy.ts. The countdown and the results heading
  * are programmatically focusable (tabIndex −1): the Lab moves focus to them as each one replaces
@@ -141,6 +142,10 @@ export interface ResultsSummaryProps {
   usesAmmo?: boolean
   /** A weapon with a mana cost: show the mana the run used. */
   usesMana?: boolean
+  /** A thrown explosive (P3-S11): show the explosives the run used (one per throw). */
+  usesItems?: boolean
+  /** The single target's name in the run line (default "the Infinite Dummy"; the Debuff Dummy, P3-S11). */
+  targetName?: string
   /**
    * Multiple Dummies (PRD P3-S6 AC4): the row's dummy ids, nearest first (the first is the primary
    * target) — the totals are then over all dummies, with the primary target's DPS and each dummy's
@@ -166,6 +171,8 @@ export function ResultsSummary({
   appliesDot,
   usesAmmo = false,
   usesMana = false,
+  usesItems = false,
+  targetName = 'the Infinite Dummy',
   dummyIds = null,
   sources = null,
   assumptions,
@@ -178,6 +185,8 @@ export function ResultsSummary({
   const counting = dps !== result.estimatedDps
   const final = format1(result.estimatedDps)
   const critRate = result.hits > 0 ? Math.round((result.crits / result.hits) * 100) : 0
+  // Thrown explosives still on their fuses when the run ended (one explosion per throw).
+  const unexploded = Math.max(0, result.consumablesUsed - result.explosions)
   const row = dummyIds && dummyIds.length > 1 ? dummyIds.map((id, i) => ({ id, number: i + 1, stats: result.perDummy[id] })) : null
   return (
     // A column that shrinks to the room it has (the arena above the HUD controls): the heading and the
@@ -196,7 +205,7 @@ export function ResultsSummary({
           edge — clipped there anyway, it must not add a sideways scrollbar (design review: 2px on a phone). */}
       <div className="-mx-1 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-1" data-results-body="">
         <p className="text-xs text-fg-muted">
-          {weaponName} vs {row ? `${row.length} Infinite Dummies in a row (totals over all; dummy 1 is the primary target)` : 'the Infinite Dummy'} · browser simulation,
+          {weaponName} vs {row ? `${row.length} Infinite Dummies in a row (totals over all; dummy 1 is the primary target)` : targetName} · browser simulation,
           approximate values
         </p>
         <dl className={cx('mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-sm tabular-nums', compact && 'text-[0.8125rem]')}>
@@ -264,6 +273,11 @@ export function ResultsSummary({
               </Row>
             </>
           ) : null}
+          {appliesDot ? (
+            <Row label="Debuffs applied">
+              <span data-result="debuffs-applied">{formatInt(result.debuffsApplied)}</span>
+            </Row>
+          ) : null}
           {/* Multiple Dummies: the total's split over the row, each dummy's hits beside it. */}
           {row
             ? row.map((d) => (
@@ -293,6 +307,21 @@ export function ResultsSummary({
             <Row label="Mana used">
               <span data-result="mana">{formatInt(result.manaConsumed)}</span>
             </Row>
+          ) : null}
+          {usesItems ? (
+            <>
+              <Row label="Explosives used">
+                <span data-result="explosives-used">{formatInt(result.consumablesUsed)}</span>
+              </Row>
+              {/* Thrown during the fuse's last seconds: used, but not gone off by the end — said under the count, not
+                  only in a tip (design review P3-S11 #8). A second description of the same term, across both
+                  columns, so its length never squeezes the labels' column. */}
+              {unexploded > 0 ? (
+                <dd className="col-span-2 text-right text-xs text-fg-muted" data-result="unexploded">
+                  ({formatInt(unexploded)} unexploded at test end)
+                </dd>
+              ) : null}
+            </>
           ) : null}
         </dl>
         <p className="mt-2 text-xs text-fg-muted">

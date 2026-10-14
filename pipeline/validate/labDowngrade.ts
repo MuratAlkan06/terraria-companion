@@ -11,7 +11,7 @@
  *    datasets) the AMENDMENTS-001 A1 demotion applies: a WARNING and the labBehavior is downgraded
  *    with reason "compatible ammo data unverified".
  */
-import { isCoveredBy, simRequiredWeaponFields, tooltipBehavior, type Archetype, type Item, type LabBehavior, type Weapon } from '../../src/schemas'
+import { isCoveredBy, simRequiredWeaponFields, tooltipBehavior, type Archetype, type DamageClass, type Item, type LabBehavior, type Weapon } from '../../src/schemas'
 import { danglingRef, type PipelineError, type PipelineWarning } from './errors'
 
 const ARCHETYPES: readonly string[] = [
@@ -55,9 +55,12 @@ function dropModeledLab<T>(prov: T): T {
   return (kept.length > 0 ? { ...rest, modeledFields: kept } : rest) as T
 }
 
-/** Unverified listed paths that block simulation of this archetype. */
-export function blockingUnverifiedFields(archetype: string, unverifiedFields: readonly string[]): string[] {
-  const required = ARCHETYPES.includes(archetype) ? simRequiredWeaponFields(archetype as Archetype) : []
+/**
+ * Unverified listed paths that block simulation of this archetype. `damageClass` (the record's, when
+ * known): a classless weapon's critPct is not sim-required (src/schemas simRequiredWeaponFields, P3-S11).
+ */
+export function blockingUnverifiedFields(archetype: string, unverifiedFields: readonly string[], damageClass?: DamageClass): string[] {
+  const required = ARCHETYPES.includes(archetype) ? simRequiredWeaponFields(archetype as Archetype, damageClass) : []
   return unverifiedFields.filter(
     (path) => path === 'labBehavior' || path.startsWith('labBehavior.') || required.some((f) => isCoveredBy([f], path)),
   )
@@ -73,7 +76,8 @@ export function downgradeUnverifiedArchetype(raw: unknown): { record: unknown; w
   const archetype = isObject(params) && typeof params.archetype === 'string' ? params.archetype : ''
   const prov = raw._prov
   const listed = isObject(prov) && Array.isArray(prov.unverifiedFields) ? prov.unverifiedFields.filter((p): p is string => typeof p === 'string') : []
-  const blocking = blockingUnverifiedFields(archetype, listed)
+  const damageClass = typeof raw.damageClass === 'string' ? (raw.damageClass as DamageClass) : undefined
+  const blocking = blockingUnverifiedFields(archetype, listed, damageClass)
   if (blocking.length === 0) return { record: raw }
   const reason = `required simulation parameter unverified: ${blocking.join(', ')}`
   return {

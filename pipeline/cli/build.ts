@@ -33,6 +33,7 @@ import { BUFF_IDS_PAGE, buildBuffs, cargoBuffNames } from '../merge/buffs'
 import { buildDrops, indexNpcs, type ArticleDropCaptions } from '../merge/drops'
 import { buildEnemies } from '../merge/enemies'
 import { Evidence } from '../merge/evidence'
+import { explosiveEvidence, explosiveTable, EXPLOSIVES_CLASS_PAGE, statedExplosionDamage } from '../merge/explosives'
 import { createGatingDeriver, GATING_BLOCKERS, type GatingBlocker } from '../merge/gating'
 import { AI_CLASS_EVIDENCE } from '../merge/labFamilies'
 import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } from '../merge/labParams'
@@ -46,6 +47,7 @@ import { buildWeapons, type WithheldField } from '../merge/weapons'
 import { captionConditions, parseDropListing } from '../parse/dropCaptions'
 import { parseBuffIdTable } from '../parse/infobox'
 import { parseIteminfo } from '../parse/iteminfo'
+import { stripMarkup } from '../parse/text'
 import { parseProjectileinfo } from '../parse/projectileinfo'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from '../parse/recipeModules'
 import { formatError, formatWarning, validateDataset } from '../validate'
@@ -214,6 +216,8 @@ async function main(): Promise<number> {
     images: sync.weaponImages,
     gating: derive,
     withheld,
+    // P3-S11: thrown explosives' blast damage / knockback against the Explosives (class) table + their article
+    explosive: explosiveEvidence(sync.articles, (page, sentence) => void evidence.sentence(page, sentence, `explosive damage sentence (${page})`)),
   })
 
   // P2-S7 buff registry (A4 bound): debuffs inflicted by emitted weapons / ammo, ammo-granted buffs,
@@ -479,6 +483,7 @@ async function main(): Promise<number> {
   const useTimeVsWiki = xc('useTimeTicks vs wiki "Use time"')
   const crit = xc('critPct (+4% base)')
   const summonCrit = xc('critPct (summon: wiki shows none)')
+  const classlessCrit = xc('critPct (classless: wiki shows none)')
   const velocity = xc('shootSpeed vs wiki "Velocity" (not cross-checked: different quantity)')
   const rarity = xc('rarity')
   const specialRarityWeapons = weaponDetails.filter((w) => typeof w.rarity === 'string').length
@@ -548,9 +553,30 @@ async function main(): Promise<number> {
   const REMAINING = ['returning', 'whip', 'minion-sentry', 'explosive-aoe', 'piercing-beam']
   const remaining = lab.decisions.filter((d) => REMAINING.includes(d.family)).sort((a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name))
   const variantOf = (d: (typeof remaining)[number]) => d.variant ?? (d.reasonKey === 'ammo-explosive' ? 'launcher' : d.reasonKey === 'thrown-flail' ? 'flail' : d.family === 'piercing-beam' ? 'not a beam (signal only)' : '—')
+  // AMENDMENTS-015 B77 wording fix: an emitted (simulated) or validate-downgraded member is a member — not "not a member (data)"
   const remainingState = (d: (typeof remaining)[number]) =>
-    d.pending ? ((d.pipelineBlocked?.length ?? 0) > 0 ? 'complete (core field unverified)' : 'complete') : d.reasonKey === 'incomplete' ? 'incomplete' : d.reasonKey === 'overlay' ? 'reviewed limitation' : d.reasonKey === 'flagged' ? 'flagged, not reviewed' : d.reasonKey === 'dot-underivable' ? 'DoT underivable' : 'not a member (data)'
-  const REMAINING_STATES = ['complete', 'complete (core field unverified)', 'incomplete', 'reviewed limitation', 'flagged, not reviewed', 'DoT underivable', 'not a member (data)']
+    labSimulated(d.id)
+      ? 'simulated'
+      : d.pending
+        ? (d.pipelineBlocked?.length ?? 0) > 0
+          ? 'complete (core field unverified)'
+          : 'complete'
+        : d.archetype
+          ? 'downgraded at validate'
+          : d.reasonKey === 'incomplete'
+            ? 'incomplete'
+            : d.reasonKey === 'overlay'
+              ? 'reviewed limitation'
+              : d.reasonKey === 'flagged'
+                ? 'flagged, not reviewed'
+                : d.reasonKey === 'dot-underivable'
+                  ? 'DoT underivable'
+                  : 'not a member (data)'
+  const REMAINING_STATES = ['simulated', 'complete', 'complete (core field unverified)', 'downgraded at validate', 'incomplete', 'reviewed limitation', 'flagged, not reviewed', 'DoT underivable', 'not a member (data)']
+  // ---- P3-S11 thrown explosives: blast damage / knockback verification (merge/explosives.ts) ----
+  const explosivesTable = explosiveTable(sync.articles.get(EXPLOSIVES_CLASS_PAGE))
+  const thrownExplosives = remaining.filter((d) => d.family === 'explosive-aoe' && d.variant === 'explosive')
+  const cargoRowOf = new Map(weapons.identification.included.map((c) => [c.item.id, c.row]))
   const variantRows = [...new Set(remaining.map((d) => `${d.family}|${variantOf(d)}`))].sort()
   const paramFmt = (o: Record<string, unknown> | undefined) => (o ? Object.entries(o).filter(([k]) => k !== 'archetype').map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(', ') : '')
   // AMENDMENTS-013 B63: the convention rulings applied (P-1 / P-2 / P-3 / P-5), P-4 rejected, P-6 taxonomy
@@ -710,8 +736,8 @@ async function main(): Promise<number> {
       text: 'The 1.4.5.8 patch notes (wiki page "1.4.5.8", rev 1029883) name three weapons — Clay Bud Staff (now always knocks enemies away), Last Prism (laser fades without enough mana), Acorn Slingshot (crash fix) — all behavioral; no numeric item stat changed, so no extracted field is in the patch-diff set. The Cargo cross-check above is the re-confirmation for every compared field.',
     },
     {
-      id: 'critPct for summon weapons',
-      text: `The wiki's Critical hit page (rev 1032172) states summon damage cannot normally deal critical hits, and the infobox shows no crit for all ${summonCrit.agree} summon weapons; critPct is therefore not applicable (absent, not listed). Classless weapons show no crit either but no rule is documented → Unknown.`,
+      id: 'critPct for summon and classless weapons',
+      text: `The wiki's Critical hit page (rev 1032172) states summon damage cannot normally deal critical hits, and the infobox shows no crit for all ${summonCrit.agree} summon weapons; critPct is therefore not applicable (absent, not listed). The same page states damage of no class "can never deal critical hits" (AMENDMENTS-015 B85(b), superseding B17's Unknown): classless weapons' critPct is not applicable too — the infobox shows no crit for ${classlessCrit.agree} of the ${classlessCrit.agree + classlessCrit.mismatch} classless weapons${classlessCrit.mismatch > 0 ? ` (${classlessCrit.mismatch} showing one: source-mismatch, Unknown)` : ''}.`,
     },
     {
       id: '#5 Equipinfo columns (defense, tooltip, wing flight time) (RESOLVED, P2-S8)',
@@ -909,7 +935,7 @@ async function main(): Promise<number> {
       lines: [
         `Rules: pipeline/merge/labParams.ts (header = the tooling doc). Param semantics are binding as documented in src/sim/README.md ("Cadence" and "Param semantics"; AMENDMENTS-008 B37): pierce = extra dummies after the first; projectilesPerUse = projectiles per activation (bursts come from useTime < useAnimation); ammo speed only from the ammo's velocityBonusTps / velocityMultiplier; magic-bolt speed = params.projectile.velocityTps. Family = the wiki category of the weapon's article (${Object.entries(FAMILY_CATEGORIES).map(([f, cats]) => `${f}: ${cats.length ? cats.map((c) => c.replace('Category:', '')).join(' + ') : 'no wiki category — the held-beam data signal'}`).join('; ')}). "Derived" = every param computed from the data modules / sprite metadata and the article screen found nothing the params cannot express; "overlay" = the screen flagged the weapon and a reviewed entry in pipeline/overlays/lab-params.json (verbatim quotes, checked against the cached article revision) decided it; "downgraded" = params were assigned but a core field the sim needs is unverified, so the validate stage's §2.1-3 rule (incl. AMENDMENTS-008 B36) emits a limitation. Every emitted archetype weapon passed src/sim assessWeapon (build-time guard contract).`,
         '',
-        `Families since the remaining-archetype slice: returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category — the held-beam data signal: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6–S11): "params complete, pending interpreter" weapons have every param recorded below but are emitted as limitations naming what the Lab does not model (the guard contract above holds; the same build emits their params once \`IMPLEMENTED_ARCHETYPES\` includes the archetype).`,
+        `Families since the remaining-archetype slice: returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category — the held-beam data signal: held magic/ranged weapons outside every category family). Their sim interpreters have shipped with the Lab — returning + piercing-beam (P3-S6/S7), minion-sentry + whip (P3-S9/S10), explosive-aoe (P3-S11) — so every schema archetype is in \`IMPLEMENTED_ARCHETYPES\` and no weapon is "params complete, pending interpreter" any more (that column is kept for the record; AMENDMENTS-013 B61 flipped each family as it shipped). A member whose params are complete is emitted simulable, unless a core field the sim needs is unverified (then the validate stage downgrades it, visibly).`,
         '',
         '| Family (archetype) | Weapons | Derived | Overlay (reviewed) | Params complete, pending interpreter (core field unverified) | Downgraded at validate | Limitation (of which: a param missing) | **Simulable** | Simulable % |',
         '|---|---:|---:|---:|---:|---:|---:|---:|---:|',
@@ -952,7 +978,7 @@ async function main(): Promise<number> {
         '',
         `**Article screen** (high recall; a flag only routes a weapon to review, it never sets a value): ${SCREEN_RULES.map((r) => `${r.id} — ${r.label} (${r.families.join(', ')})`).join('; ')}; the tooltip is screened with the same rules; plus data flags: shoots-projectile (Iteminfo shoot > 0, melee), infobox-projectile, inflicts-debuff (Cargo debuffs / infobox buff), burst (useTime < useAnimation). Hard (non-overridable) data rules: use style / class / ammo / mana / channel signals per archetype; thrust: the Iteminfo projectile must be the stab itself (Projectileinfo name = weapon name); the reach is the range the article states (AMENDMENTS-012 B56) or, where none is stated, the B46 convention; a debuff with damage over time must be derivable from the infobox debuff rows (B48(c)). Since B48(a) Iteminfo reuseDelay is part of the sim cadence (no longer a limitation). Flag counts among family weapons: ${[...labFlagCounts].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}.`,
         '',
-        `**Remaining-archetype families (P3-S0 extension; rules: pipeline/merge/labFamilies.ts header)** — ${remaining.length} weapons. No archetype of these families has a sim interpreter yet, so none is simulable in this build (no target this slice — P3-S13 is the gate); "complete" = every required param is stated or derived and recorded below, ready for the interpreter. Per family / variant:`,
+        `**Remaining-archetype families (P3-S0 extension; rules: pipeline/merge/labFamilies.ts header)** — ${remaining.length} weapons, every archetype simulated since P3-S11. "simulated" = emitted as an archetype weapon (every param stated, derived or modeled by a ratified convention; every core field verified); "complete" / "complete (core field unverified)" = params complete but pending an interpreter (none since P3-S11); "downgraded at validate" = params complete, a core field the sim needs unverified; "not a member (data)" = the game data does not describe the family's behavior (launchers, thrown flails…). Per family / variant:`,
         '',
         `| Family | Variant | Weapons | ${REMAINING_STATES.join(' | ')} |`,
         `|---|---|---:|${REMAINING_STATES.map(() => '---:').join('|')}|`,
@@ -989,7 +1015,25 @@ async function main(): Promise<number> {
         '',
         '**Schema deltas surfaced (not applied; for the schema owner)**: (S-1) returning params carry no count of projectiles that may be out at once — Bananarang (10), Trimarang (3), Light Disc (6) and Possessed Hatchet (unlimited) are reviewed limitations for it, while the Boomerangs article states "Most boomerangs cannot be fired again before returning to the player" (the interpreter\'s default); (S-2) yoyo spin duration (infobox "Spin duration", Yoyos table) has no returning param — it bounds how long a yoyo stays out; (S-3) explosive-aoe carries no ammo class — all launchers are limitations for it; (S-4) whips: Possession "swings four times per use" (no swings-per-use param).',
         '',
-        `**Sim-side follow-ups (the Lab owns src/sim; not changed here)**: (a) summon weapons have \`critPct\` not applicable (wiki: summon damage cannot normally crit — absent, not listed: ${summonCritNa.length} whip / minion / sentry weapons), but the guard's COMMON_REQUIRED_FIELDS requires critPct, so P3-S9 / P3-S10 must treat summon crit as not applicable or every summon weapon is refused as missing-required-field; (b) every thrown explosive has damage / critPct / knockback Unknown (Iteminfo damage 0 vs the infobox — a withheld source mismatch), so the ${remaining.filter((d) => d.family === 'explosive-aoe' && d.pending).length} complete explosives would be downgraded at validate until that is resolved; (c) boomerang / launched-flail cadence: most cannot be re-thrown before returning (Boomerangs article; KO Cannon: "its fire rate is dependent only on the distance to its impact").`,
+        `**Sim-side follow-ups**: (a) RESOLVED (AMENDMENTS-013 B64, P3-S9 / P3-S10): summon weapons' \`critPct\` is not applicable (wiki: summon damage cannot normally crit — absent, not listed: ${summonCritNa.length} whip / minion / sentry weapons) and the guard does not require it; (b) RESOLVED (P3-S11): thrown explosives' damage / knockback now verify against a second wiki statement (the thrown-explosives paragraph below), and a classless weapon's \`critPct\` is not applicable (AMENDMENTS-015 B85(b): the wiki Critical hit page — damage of no class "can never deal critical hits"; absent, not listed) and not sim-required (\`simRequiredWeaponFields(archetype, damageClass)\`; the Lab labels it \`classless-crit\`); ${thrownExplosives.filter((d) => labSimulated(d.id)).length} of the ${thrownExplosives.length} thrown explosives are simulated; (c) boomerang / launched-flail cadence: most cannot be re-thrown before returning (Boomerangs article; KO Cannon: "its fire rate is dependent only on the distance to its impact").`,
+        '',
+        `**Thrown explosives — blast damage / knockback verification (P3-S11; pipeline/merge/explosives.ts)**: why they were withheld — a thrown explosive's ITEM carries no damage of its own (Module:Iteminfo/data \`damage\` 0 or −1, \`knockBack\` 0: the game sets the explosion's damage and knockback on the projectile when it goes off — the Explosives (class) table cites "the Desktop 1.4.5.5 source code, method Kill() in Terraria.Projectile.cs"; Module:Projectileinfo/data has no damage field), so the Iteminfo-vs-infobox cross-check had nothing to compare and both fields stayed Unknown (not a disagreement). Now a value is taken when two independent wiki statements of it agree: the item infobox (Cargo \`damage\` / \`knockback\`) AND the item's row of the Explosives (class) types table (rev ${explosivesTable && 'rev' in explosivesTable.source ? explosivesTable.source.rev : '?'}; hand-written rows, e.g. Freeze Bomb "0 (to enemies) 1 (to user)"), plus — for damage — the weapon's own article sentence "deals N damage to all …" where it states one (verbatim on the cached revision). Any disagreement withholds the field (source-mismatch gap); a value of 0 stays Unknown. critPct is not applicable (classless, B85(b) — above). The table's "Radius" column (the tile / liquid effect radius from Kill(): Dynamite 7, liquid bombs 3–3.5, Dirt Bomb 4.2) is NOT the damage area and is not used: the blast radius stays the article-stated / B62-inherited / B63 P-5 value (liquid bombs inherit the Bomb's 4-tile damage radius under B62 — recorded here for review).`,
+        '',
+        '| Explosive | Iteminfo damage / knockback (item) | Infobox damage / knockback | Explosives (class) table damage / knockback | Own article states | Emitted damage / knockback / critPct | Lab |',
+        '|---|---|---|---|---|---|---|',
+        ...thrownExplosives.map((d) => {
+          const w = labFinal(d.id)
+          const st = (iteminfo.items.get(d.id)?.stats ?? {}) as Record<string, unknown>
+          const row = cargoRowOf.get(d.id)
+          const t = explosivesTable?.rows.get(d.id)
+          const stated = statedExplosionDamage(sync.articles.get(weapons.pageOf.get(d.id) ?? ''))
+          const params = w?.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'explosive-aoe' ? w.labBehavior.params : null
+          const lab = params
+            ? `simulated (${params.trigger}${params.fuseTicks !== undefined ? ` ${params.fuseTicks} ticks` : ''}, radius ${params.blastRadiusTiles}, falloff ${params.falloff})`
+            : `limitation: ${(w?.labBehavior.kind === 'limitation' ? w.labBehavior.reason : '?').replaceAll('|', '\\|')}`
+          const emitted = w ? `${statusOf(w, 'damage', w.damage)} / ${statusOf(w, 'knockback', w.knockback)} / ${statusOf(w, 'critPct', w.critPct)}` : '?'
+          return `| ${d.name} (${d.id}) | ${String(st.damage)} / ${String(st.knockBack)} | ${stripMarkup(String(row?.damage ?? '—'))} / ${stripMarkup(String(row?.knockback ?? '—'))} | ${t ? `${t.damage ?? '—'} / ${t.knockback ?? '—'}` : 'no row'} | ${stated ? `${stated.value} damage` : '—'} | ${emitted} | ${lab} |`
+        }),
         '',
         `**Recorded for later (quote-checked, never emitted; the bounce / chain sim stubs throw NotImplemented, so these weapons stay limitations with their specific reason)**: ${recordedRows.map((d) => `${d.name} ${Object.entries(d.recorded ?? {}).map(([k, v]) => `${k} ${v}`).join(', ')}`).join('; ') || 'none'}. Chain targets: none quotable among the family articles (no "chains to N enemies" statement).`,
         '',

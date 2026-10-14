@@ -9,10 +9,15 @@
  *   above the player down to a strip of ground) is centred below the HUD, the player stands at
  *   `anchorX` of the width, and the platforms are always whole: a narrow arena zooms out (the extra
  *   height shows more sky and ground) and shifts sideways rather than slicing a platform, and no
- *   view edge ever cuts a set piece when a small shift avoids it.
+ *   view edge ever cuts a set piece when a small shift avoids it. A thrown explosive's blast circle
+ *   (`blast`, design review P3-S11 #3) is kept whole the same way: only a ring the composition
+ *   would cut zooms the view out, only as far as the ring needs, and shifts it just enough.
  * - `action` (phones): the fight itself — player, dummies and the equipped weapon's reach — fills
  *   the canvas between the HUD's top row and its bottom controls, zoomed up to `actionMaxTilePx`.
- *   It never zooms out past the scene framing.
+ *   It never zooms out past the scene framing — except for a box that must be seen whole
+ *   (`actionWhole`: a thrown explosive's blast circle, design review P3-S11 #3), which the scene's
+ *   framing would cut: then it zooms out as far as the box needs (down to one device pixel per game
+ *   pixel), so the whole ring — its underground lower arc too — sits above the bottom HUD row.
  *
  * HUD-aware placement (design review P3-S2/S3 M6 + nit; never changes the zoom): the bottom HUD
  * (controls, DPS graph strip) covers the canvas too, so both framings lift the fight above it. The
@@ -65,8 +70,19 @@ export interface CameraOptions {
   sceneMarginX: number
   /** Scene framing: world x-ranges a view edge should not cut. */
   setPieces: readonly (readonly [number, number])[]
+  /**
+   * Scene framing: a thrown explosive's blast circle, kept whole between the HUD rows (design review
+   * P3-S11 #3) — its x-range joins `sceneX`, and the zoom steps out only if the ring wouldn't fit
+   * between the rows; null = none. (The action framing has it in `action`.)
+   */
+  blast: WorldCircle | null
   /** Action framing: the world box the fight occupies (see `actionBox`); null = scene framing. */
   action: WorldBox | null
+  /**
+   * Action framing: the box must be seen whole (it holds a thrown explosive's blast circle), so the action
+   * framing is kept even where it zooms out further than the scene's — which would cut the circle.
+   */
+  actionWhole: boolean
   /** Action framing: largest tile size (CSS px) — 2× the arena's 16 px tile. */
   actionMaxTilePx: number
 }
@@ -87,7 +103,9 @@ export const DEFAULT_CAMERA: CameraOptions = {
   sceneX: ARENA_CORE_X,
   sceneMarginX: 0.25,
   setPieces: ARENA_SET_PIECES,
+  blast: null,
   action: null,
+  actionWhole: false,
   actionMaxTilePx: 2 * GAME_PX_PER_TILE,
 }
 
@@ -132,26 +150,44 @@ function clearOfHud(preferred: number, y: number, tilePx: number, cssHeight: num
   return Math.max(head, Math.min(preferred, feet))
 }
 
+/** A circle in the world (tiles): a thrown explosive's blast where it goes off. */
+export interface WorldCircle {
+  x: number
+  y: number
+  radiusTiles: number
+}
+
 /**
  * The fight's world box for action framing: the swing's full circle of reach around the player's
  * centre (a pointer can aim either way), every dummy with headroom for its damage numbers, and a
- * strip of ground under the feet. From the weapon's own data (`reachTiles`), never per weapon.
+ * strip of ground under the feet — and, for a thrown explosive, its whole blast circle (`blast`, where a
+ * Space or timed-test throw goes off; design review P3-S11 #3: the ring, its underground lower arc
+ * too, must be observable, like the reach). From the weapon's own data, never per weapon.
  */
-export function actionBox(reachTiles: number, dummies: readonly { x: number; y: number; width: number; height: number }[]): WorldBox {
+export function actionBox(reachTiles: number, dummies: readonly { x: number; y: number; width: number; height: number }[], blast: WorldCircle | null = null): WorldBox {
   const reach = Math.max(0, reachTiles)
   let x0 = -reach
   let x1 = reach
   let y0 = -reach
+  let y1 = ARENA_LAYOUT.groundY + ACTION_GROUND
   for (const d of dummies) {
     x0 = Math.min(x0, d.x - d.width / 2)
     x1 = Math.max(x1, d.x + d.width / 2)
     y0 = Math.min(y0, d.y - d.height / 2 - NUMBER_HEADROOM)
   }
-  return { x0: x0 - ACTION_MARGIN, x1: x1 + ACTION_MARGIN, y0: y0 - ACTION_MARGIN, y1: ARENA_LAYOUT.groundY + ACTION_GROUND }
+  if (blast && blast.radiusTiles > 0) {
+    x0 = Math.min(x0, blast.x - blast.radiusTiles)
+    x1 = Math.max(x1, blast.x + blast.radiusTiles)
+    y0 = Math.min(y0, blast.y - blast.radiusTiles)
+    y1 = Math.max(y1, blast.y + blast.radiusTiles + ACTION_MARGIN)
+  }
+  return { x0: x0 - ACTION_MARGIN, x1: x1 + ACTION_MARGIN, y0: y0 - ACTION_MARGIN, y1 }
 }
 
 /** Air kept beyond the far dummy of a row in scene framing (tiles): room for its damage numbers. */
 const ROW_MARGIN_TILES = 1.5
+/** Air kept around a blast ring in scene framing (tiles): its two-art-px stroke reaches 1½ art px past the radius. */
+const RING_MARGIN_TILES = (1.5 * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
 
 /**
  * Scene framing's always-shown x-range with the dummies in it: the arena's core composition, widened
@@ -173,17 +209,21 @@ export function fitCamera(cssWidth: number, cssHeight: number, dpr: number, opti
   const scene = fitScene(cssWidth, cssHeight, ratio, o)
   if (o.framing !== 'action' || !o.action) return scene
   const action = fitAction(cssWidth, cssHeight, ratio, o, o.action)
-  return action.devicePxPerGamePx >= scene.devicePxPerGamePx ? action : scene
+  return action.devicePxPerGamePx >= scene.devicePxPerGamePx || o.actionWhole ? action : scene
 }
 
 function fitScene(cssWidth: number, cssHeight: number, ratio: number, o: CameraOptions): CameraFit {
   const usableH = Math.max(1, cssHeight - o.insetTop)
-  const [sceneX0, sceneX1] = o.sceneX
+  // A blast ring kept whole (P3-S11 #3): its x-range is shown whole like the platforms', and the zoom
+  // steps out only if the ring wouldn't fit between the HUD rows.
+  const ring = o.blast && o.blast.radiusTiles > 0 ? { ...o.blast, r: o.blast.radiusTiles + RING_MARGIN_TILES } : null
+  const [sceneX0, sceneX1] = ring ? [Math.min(o.sceneX[0], ring.x - ring.r), Math.max(o.sceneX[1], ring.x + ring.r)] : o.sceneX
   const needW = Math.max(o.minTilesW, sceneX1 - sceneX0 + 2 * o.sceneMarginX)
   const byWidth = (cssWidth * ratio) / (needW * GAME_PX_PER_TILE)
   const byHeight = (usableH * ratio) / (o.minTilesH * GAME_PX_PER_TILE)
   const byCap = (o.maxTilePx * ratio) / GAME_PX_PER_TILE
-  const devicePxPerGamePx = quantize(Math.min(byWidth, byHeight, byCap))
+  const byRing = ring ? (Math.max(1, cssHeight - o.insetTop - o.insetBottom) * ratio) / (2 * ring.r * GAME_PX_PER_TILE) : Infinity
+  const devicePxPerGamePx = quantize(Math.min(byWidth, byHeight, byCap, byRing))
   const scale = devicePxPerGamePx / ratio
   const tilePx = scale * GAME_PX_PER_TILE
   const viewW = cssWidth / tilePx
@@ -211,6 +251,12 @@ function fitScene(cssWidth: number, cssHeight: number, ratio: number, o: CameraO
   const reach = Math.max(0, o.reachTiles) * tilePx
   const under = originY + reach - (cssHeight - o.insetBottom)
   if (reach > 0 && under > 0) originY -= Math.min(under, Math.max(0, originY - Math.max(reach, -PLAYER_TOP_Y * tilePx) - o.insetTop))
+  if (ring) {
+    // A blast ring: moved just enough to sit whole between the rows — one taller than the room (only at
+    // one device pixel per game pixel) keeps its lower arc above the bottom row — the head below the top row.
+    originY = Math.min(cssHeight - o.insetBottom - (ring.y + ring.r) * tilePx, Math.max(o.insetTop - (ring.y - ring.r) * tilePx, originY))
+    originY = Math.max(originY, o.insetTop - PLAYER_TOP_Y * tilePx)
+  }
   return {
     cssWidth,
     cssHeight,

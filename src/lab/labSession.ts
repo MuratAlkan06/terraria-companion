@@ -53,11 +53,21 @@
  * with the slots full), damage by source (the weapon's own hits, the summons', the whip tag's share,
  * DoT), who dealt the latest hit, and the dummies the whip has tagged with their time left. Changing a slot setting restarts the
  * stats while summons are involved (a fresh world, the loadout summoned again), as a mana setting does.
+ *
+ * Thrown explosives (PRD P3-S11 AC1): each throw uses one explosive up (the engine's
+ * `stats.consumablesUsed`, "Explosives used"); the HUD reports the LATEST BLAST — its radius and falloff
+ * and what it dealt each dummy (the engine's `explosion` event and its hits, each with the percent of the
+ * blast's damage it kept) — so one explosion's per-dummy damage reads at a glance. The Debuff Dummy
+ * (AC3): the target's active debuffs with their names, damage per second and time left (the engine's
+ * debuff state, refreshed a tenth of a second at a time while any runs), and the debuffs applied since
+ * the last reset (AC2's stat).
  */
 import type { Buff, Item, Weapon } from '../schemas'
 import {
   createLabSim,
   DEFAULT_LAB_SETTINGS,
+  GROUND_Y_TILES,
+  THROWN_REST_HEIGHT_TILES,
   TICKS_PER_SECOND,
   timedTestTicks,
   type DamageBreakdown,
@@ -179,6 +189,54 @@ export interface LabTargetsHud {
 /** Who dealt a hit: the equipped weapon itself, or one of the summons. */
 export type LabHitSource = 'weapon' | SummonKind
 
+/** One dummy's share of the latest blast (row order): what it took, or null when the blast missed it. */
+export interface LabBlastDummyHud {
+  id: string
+  /** 1-based position in the row (the arena's label); 1 for the single dummy. */
+  number: number
+  amount: number | null
+  crit: boolean
+  /** The percent of the blast's damage it kept at its distance (100 without falloff), else null. */
+  keptPct: number | null
+}
+
+/** The latest explosion (PRD P3-S11 AC1): its radius and falloff, and what it dealt each dummy. */
+export interface LabBlastHud {
+  /** 1-based count of explosions since the last reset (this one's number). */
+  index: number
+  radiusTiles: number
+  falloff: 'none' | 'linear'
+  dummies: readonly LabBlastDummyHud[]
+}
+
+/** One debuff active on the Debuff Dummy (PRD P3-S11 AC3), from the engine's debuff state. */
+export interface LabDebuffHud {
+  buffId: string
+  /** The buff registry's name (else the id). */
+  name: string
+  /** Seconds left, and the duration it was last (re)applied with (the bar's full length). */
+  remainingSec: number
+  durationSec: number
+  /** remaining ÷ duration, 0..1 (the bar). */
+  fraction: number
+  /** The registry's verified damage per second (null when it has none). */
+  dps: number | null
+}
+
+/** The Debuff Dummy's panel: its active debuffs, and what applied them. */
+export interface LabDebuffDummyHud {
+  debuffs: readonly LabDebuffHud[]
+  /** The equipped weapon (or its minion loadout) applies a debuff at all — else the panel says it applies none. */
+  weaponApplies: boolean
+  /**
+   * The debuffs the weapon and its minion loadout can apply (one row each): the panel lays their rows out
+   * from the session's start, so the first debuff never resizes it (the stable-HUD pattern).
+   */
+  applies: readonly Pick<LabDebuffHud, 'buffId' | 'name' | 'dps'>[]
+  /** Damage over time this dummy has taken since the last reset. */
+  dotDamage: number
+}
+
 export interface LabHudState {
   weapon: WeaponSummary
   /** The latest direct hit (the engine's `stats.lastHit`) and who dealt it (whip vs minion in a mixed run). */
@@ -190,6 +248,10 @@ export interface LabHudState {
   crits: number
   /** "Ammo used" since the last reset (bows and guns: one per shot). */
   ammoConsumed: number
+  /** "Explosives used" since the last reset (a thrown explosive: one per throw — WeaponSummary.consumable). */
+  consumablesUsed: number
+  /** Debuffs applied (and refreshed) since the last reset — the engine's `stats.debuffsApplied` (PRD P3-S11 AC2). */
+  debuffsApplied: number
   /** "Mana used" since the last reset (counted in test mode too). */
   manaConsumed: number
   mana: LabManaHud | null
@@ -216,7 +278,7 @@ export interface LabHudState {
   timedTest: LabTimedTestHud
   graph: LabGraphHud
   settings: LabSettings
-  /** The Lab's target (Infinite Dummy, or Multiple Dummies). */
+  /** The Lab's target (the Infinite Dummy, Multiple Dummies, or the Debuff Dummy). */
   target: LabTarget
   /** Per-dummy numbers while the target is Multiple Dummies, else null (one dummy: the totals are its numbers). */
   targets: LabTargetsHud | null
@@ -226,6 +288,10 @@ export interface LabHudState {
   breakdown: DamageBreakdown | null
   /** Dummies the whip has tagged now, nearest first (empty without a whip). */
   tags: readonly LabTagHud[]
+  /** The latest explosion of a thrown explosive since the last reset, else null. */
+  lastBlast: LabBlastHud | null
+  /** The Debuff Dummy's panel while that is the target, else null. */
+  debuffDummy: LabDebuffDummyHud | null
   /** A timed test is running: the weapon, target and settings can't change (UX_SPEC §5.7). */
   locked: boolean
 }
@@ -240,6 +306,15 @@ export interface SwingShape {
 export interface ReturningShape {
   variant: 'boomerang' | 'flail' | 'yoyo'
   throwRangeTiles: number
+}
+
+/** A thrown explosive (explosive-aoe params): what the arena and the HUD say about its blast. */
+export interface ExplosiveShape {
+  blastRadiusTiles: number
+  trigger: 'impact' | 'timed'
+  /** Ticks from the throw to the explosion (timed), else null. */
+  fuseTicks: number | null
+  falloff: 'none' | 'linear'
 }
 
 export type InputSource = 'pointer' | 'key'
@@ -316,6 +391,8 @@ const MANA_STEP_TICKS = TICKS_PER_SECOND / 10
 const OUT_STEP_TICKS = TICKS_PER_SECOND / 10
 /** HUD refresh while a whip tag runs (its time left): every tenth of a second. */
 const TAG_STEP_TICKS = TICKS_PER_SECOND / 10
+/** HUD refresh while a debuff runs on the Debuff Dummy (its bar): every tenth of a second. */
+const DEBUFF_STEP_TICKS = TICKS_PER_SECOND / 10
 /** The low-mana warning clears once the pool has covered the cost this long (at least; see the header). */
 export const MANA_WARNING_CLEAR_TICKS = TICKS_PER_SECOND
 /** The live attacks/sec counts this many of the latest attacks. */
@@ -353,6 +430,8 @@ export class LabSession {
   readonly whip: { arcDegrees: number; rangeTiles: number } | null
   /** A summon staff (P3-S9): what one use summons, else null. */
   readonly summonKind: SummonKind | null
+  /** A thrown explosive (P3-S11): its blast, trigger and falloff, else null. */
+  readonly explosive: ExplosiveShape | null
   /** The minion loadout (a minion staff whose minions are out beside a whip), else null. */
   readonly loadout: Weapon | null
 
@@ -385,6 +464,9 @@ export class LabSession {
   private summonsReplaced = 0
   /** Who dealt the latest direct hit (the engine's `stats.lastHit` has no source). */
   private lastHitSource: LabHitSource = 'weapon'
+  /** The latest explosion (its projectile, count, radius) and its hits by dummy id. */
+  private blast: { projectileId: number; index: number; radiusTiles: number; hits: Map<string, { amount: number; crit: boolean; keptPct: number }> } | null = null
+  private blasts = 0
   private assumptionList: { target: LabTarget; list: readonly LabAssumption[] } | null = null
   private hud: LabHudState
   private readonly listeners = new Set<() => void>()
@@ -415,12 +497,25 @@ export class LabSession {
     this.beam = params?.archetype === 'piercing-beam' && params.mode === 'channel-beam'
     this.whip = params?.archetype === 'whip' ? { arcDegrees: params.arcDegrees, rangeTiles: params.rangeTiles } : null
     this.summonKind = params?.archetype === 'minion-sentry' ? params.variant : null
+    this.explosive =
+      params?.archetype === 'explosive-aoe' ? { blastRadiusTiles: params.blastRadiusTiles, trigger: params.trigger, fuseTicks: params.fuseTicks ?? null, falloff: params.falloff } : null
     this.loadout = sim.loadout ? loadout : null
     this.firesProjectiles = firesProjectiles(this.summary.archetype)
     this.frameTiles = this.firesProjectiles ? RANGED_FRAME_TILES : this.reachTiles
     this.target = target
     this.dummyIds = sim.renderState().dummies.map((d) => d.id)
     this.hud = this.computeHud(sim.snapshot())
+  }
+
+  /**
+   * A thrown explosive's blast as the phone camera frames it (design review P3-S11 #3): the circle of its
+   * radius around where a Space or timed-test throw comes to rest and goes off — on the ground under the
+   * first dummy (the engine's landing point). Framing only; null for any other weapon.
+   */
+  blastFrame(): { x: number; y: number; radiusTiles: number } | null {
+    const first = this.explosive ? this.sim.renderState().dummies[0] : undefined
+    if (!this.explosive || !first) return null
+    return { x: first.x, y: GROUND_Y_TILES - THROWN_REST_HEIGHT_TILES, radiusTiles: this.explosive.blastRadiusTiles }
   }
 
   /** Summons are involved: a summon staff, or the minion loadout. */
@@ -521,6 +616,15 @@ export class LabSession {
       } else if (e.type === 'damage') {
         // The latest direct hit's source, as the engine's `lastHit` counts it (damage over time is no hit).
         if (e.source !== 'dot') this.lastHitSource = e.source === 'minion' || e.source === 'sentry' ? e.source : 'weapon'
+        // A blast's hit (its projectile's, labeled with the percent it kept): the latest blast's share.
+        if (e.blastKeptPct !== undefined && this.blast && e.sourceId === `proj:${this.blast.projectileId}`) this.blast.hits.set(e.dummyId, { amount: e.amount, crit: e.crit, keptPct: e.blastKeptPct })
+        changed = true
+      } else if (e.type === 'explosion') {
+        // A thrown explosive went off: its hits follow in this batch (same tick).
+        this.blast = { projectileId: e.projectileId, index: ++this.blasts, radiusTiles: e.radiusTiles, hits: new Map() }
+        changed = true
+      } else if (e.type === 'debuff-applied' || e.type === 'debuff-expired') {
+        // The Debuff Dummy's list (and the debuffs-applied count) changed.
         changed = true
       } else if (e.type === 'dismiss') {
         // A summon leaving changes the count; the oldest replaced by a new one is announced.
@@ -551,6 +655,8 @@ export class LabSession {
       if (Math.floor(before / TICKS_PER_SECOND) !== Math.floor(this.ticks / TICKS_PER_SECOND)) changed = true
       // A whip tag's time left, a tenth of a second at a time; summons keep est. DPS moving between hits.
       if ((this.tagEnds.size > 0 || this.summonSince !== null) && Math.floor(before / TAG_STEP_TICKS) !== Math.floor(this.ticks / TAG_STEP_TICKS)) changed = true
+      // The Debuff Dummy's bars, a tenth of a second at a time while any debuff runs on it.
+      if ((this.hud.debuffDummy?.debuffs.length ?? 0) > 0 && Math.floor(before / DEBUFF_STEP_TICKS) !== Math.floor(this.ticks / DEBUFF_STEP_TICKS)) changed = true
       // A running test steps its countdown ring, and publishes the moment it finishes.
       if (this.run && before < this.run.ticksTotal) {
         if (Math.floor(before / COUNTDOWN_STEP_TICKS) !== Math.floor(this.ticks / COUNTDOWN_STEP_TICKS) || this.ticks >= this.run.ticksTotal) changed = true
@@ -611,7 +717,7 @@ export class LabSession {
   }
 
   /**
-   * Change the target (PRD P3-S6 AC1): the Infinite Dummy, or a row of Multiple Dummies. A new world
+   * Change the target (PRD P3-S6 AC1, P3-S11 AC3): the Infinite Dummy, a row of Multiple Dummies, or the Debuff Dummy. A new world
    * with the new dummies starts the stats over, like switching ammo — the settings stay. Refused while
    * a timed test runs (and for a target the Lab doesn't offer); true when the target is in place.
    */
@@ -647,6 +753,8 @@ export class LabSession {
     this.tagEnds.clear()
     this.summonsReplaced = 0
     this.lastHitSource = 'weapon'
+    this.blast = null
+    this.blasts = 0
     this.busyTicks = 0
     this.recentAttackTicks = []
     this.slowestAttackTicks = 0
@@ -809,6 +917,44 @@ export class LabSession {
     }
   }
 
+  /** The latest blast, by dummy in row order (a dummy outside it: null). */
+  private blastHud(): LabBlastHud | null {
+    const blast = this.blast
+    if (!blast || !this.explosive) return null
+    return {
+      index: blast.index,
+      radiusTiles: blast.radiusTiles,
+      falloff: this.explosive.falloff,
+      dummies: this.dummyIds.map((id, i) => {
+        const hit = blast.hits.get(id)
+        return { id, number: i + 1, amount: hit?.amount ?? null, crit: hit?.crit ?? false, keptPct: hit?.keptPct ?? null }
+      }),
+    }
+  }
+
+  /** The Debuff Dummy's panel (that target only): the engine's debuff state on its dummy, named from the registry. */
+  private debuffDummyHud(stats: SimSnapshot['stats']): LabDebuffDummyHud | null {
+    if (this.target.kind !== 'debuff') return null
+    const dummy = this.sim.renderState().dummies[0]
+    const named = (buffId: string) => {
+      const buff = this.buffs.find((b) => b.id === buffId)
+      const dps = buff?.dot?.dps
+      return { buffId, name: buff?.name ?? buffId, dps: typeof dps === 'number' ? dps : null }
+    }
+    const applied = [this.weapon.labBehavior, this.loadout?.labBehavior].flatMap((lab) => (lab?.kind === 'archetype' && lab.modifiers?.dot ? [lab.modifiers.dot.buffId] : []))
+    return {
+      debuffs: (dummy?.debuffs ?? []).map((d) => ({
+        ...named(d.buffId),
+        remainingSec: d.remainingTicks / TICKS_PER_SECOND,
+        durationSec: d.durationTicks / TICKS_PER_SECOND,
+        fraction: d.durationTicks > 0 ? Math.min(1, Math.max(0, d.remainingTicks / d.durationTicks)) : 0,
+      })),
+      weaponApplies: applied.length > 0,
+      applies: [...new Set(applied)].map(named),
+      dotDamage: (dummy ? stats.perDummy[dummy.id]?.dotDamage : undefined) ?? 0,
+    }
+  }
+
   private tagsHud(): LabTagHud[] {
     if (this.tagEnds.size === 0) return []
     return this.dummyIds.flatMap((id, i) => {
@@ -830,6 +976,8 @@ export class LabSession {
       hits: stats.hits,
       crits: stats.crits,
       ammoConsumed: stats.ammoConsumed,
+      consumablesUsed: stats.consumablesUsed,
+      debuffsApplied: stats.debuffsApplied,
       manaConsumed: stats.manaConsumed,
       mana: this.manaHud(mana, settings),
       attacksPerSec: this.liveAttackRate(),
@@ -857,6 +1005,8 @@ export class LabSession {
       summons: this.summonsHud(summons),
       breakdown: this.hasSummons || this.whip ? stats.breakdown : null,
       tags: this.tagsHud(),
+      lastBlast: this.blastHud(),
+      debuffDummy: this.debuffDummyHud(stats),
       locked: timedTest.status === 'running',
     }
   }

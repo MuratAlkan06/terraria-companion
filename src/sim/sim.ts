@@ -293,6 +293,8 @@ class Sim implements LabSim {
         uses: s.uses,
         attacksPerSec: s.uses / durationSec,
         ammoConsumed: s.ammoConsumed,
+        consumablesUsed: s.consumablesUsed,
+        explosions: s.explosions,
         manaConsumed: s.manaConsumed,
         debuffsApplied: s.debuffsApplied,
         dpsSeries: s.dpsSeries,

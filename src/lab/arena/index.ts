@@ -35,29 +35,40 @@
  *   fade under reduced motion). Summon hits are numbered in their own pale
  *   blue; on a tagged dummy the tag's share follows as a green "+N" ("19+4": the hit untagged, plus
  *   what the tag added — the HUD's tag bonus).
+ * - Thrown explosives (P3-S11, ../explosiveVisuals.ts): each one the engine has in flight or at rest, as
+ *   the weapon's own sprite at native art scale — tumbling in quarter turns while it flies, upright at
+ *   rest, several resting on one spot fanned out sideways like a stack of minions — a fused one sparking
+ *   at its fuse end every tick (reduced motion: a static glow), and each explosion as a ring of art-pixel
+ *   cells at exactly its blast radius over a fading flash, growing from the centre (reduced motion: one
+ *   static frame of the full ring). Its hits number over every dummy it reached, like any hit.
+ * - Debuffs (P3-S11 AC2, ../debuffVisuals.ts): a debuffed dummy shows its longest-running debuff's glyph
+ *   over its head — a flame, a snowflake, else a drop — with a timer bar in the glyph's tint (that
+ *   debuff's time left), beside any whip tag marker.
  * - Multiple Dummies (P3-S6): one view per engine dummy, rebuilt whenever the engine's row changes,
  *   each numbered under its feet (the primary target's number in gold) as the HUD's hit strip names
  *   them; scene framing widens to keep the whole row in view (../camera.ts `sceneXFor`).
  * - Camera framing (../camera.ts): `scene` on tablet/desktop, `action` (zoomed onto the fight) on
  *   phones, both placed clear of the HUD rows; re-fit on resize, HUD inset changes, weapon changes
- *   (the reach decides the zoom) and target changes.
+ *   (the reach — or a thrown explosive's whole blast circle — decides the zoom) and target changes.
  * - The canvas is decorative for assistive tech (`aria-hidden`); all meaningful output is the
  *   HTML HUD (UX_SPEC §9).
  */
 import { Application, BitmapFont, BitmapText, Container, Graphics, Sprite, TextureStyle, TilingSprite, type Texture } from 'pixi.js'
 import { PLACEHOLDER_PALETTE, PLACEHOLDER_ROWS, placeholderVariantFor } from '../../components/art/placeholderSprites'
 import type { BladePose, RenderState } from '../../sim'
-import { ARENA_LAYOUT, buildArenaBackdrop, buildDeepTile, buildDummy, buildPlayer, buildSummon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette, type SummonArt } from '../art/arenaArt'
+import { ARENA_LAYOUT, buildArenaBackdrop, buildDebuffIcon, buildDeepTile, buildDummy, buildPlayer, buildSummon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette, type SummonArt } from '../art/arenaArt'
 import { A, ARENA_PALETTE } from '../art/arenaPalette'
 import { bladeSpriteTransform, DEG, guideCells, heldWeaponVisual, holdStyleFor, interpolateBlade, streakCells, thrustVisual, trailSpan } from '../blade'
 import { actionBox, fitCamera, sceneXFor, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
+import { debuffMarker, DEBUFF_TINT_TOKENS, markerClearOfHud, type DebuffGlyph } from '../debuffVisuals'
+import { blastPose, discSpans, ExplosiveStack, explosiveRotation, fuseSparkCells, fuseTip, ringCells } from '../explosiveVisuals'
 import { DotNumberTicker, FloatLayout, floatPose, readsAsPartOfNumber, RecyclingPool, TRACER_CLEARANCE, type FloatRect, type MarkClearance } from '../floatingNumbers'
 import { dotAnchor, numberZone } from '../numberZone'
 import type { LabSession } from '../labSession'
 import { bodyCells, ProjectileTracks, projectileStyleFor, toGamePx, trailCells, type ProjectileStyle, type ProjectileTone } from '../projectiles'
 import { agentPosition, despawnPose, despawnPuffCells, ShotTracers, StackSpread, summonFocus, sweepOf, tagMarker, tagMarkerStyle, whipCells } from '../summonVisuals'
 import { beamCells, dummySignature, handPoint, spinRotation, tetherCells, tetherFor, thrownPosition, thrownScale } from '../thrownVisuals'
-import { glowTexture, loadImageTexture, textureFromRows, tokenHex } from './textures'
+import { glowTexture, loadImageTexture, textureFromRows, textureTopPoint, tokenHex } from './textures'
 
 TextureStyle.defaultOptions.scaleMode = 'nearest'
 
@@ -271,6 +282,13 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   }
   const tagTexture = own(textureFromRows(buildTagIcon(), ARENA_PALETTE))
   const tagHollowTexture = own(textureFromRows(buildTagIcon('outline'), ARENA_PALETTE))
+  const debuffTextures: Record<DebuffGlyph, Texture> = {
+    flame: own(textureFromRows(buildDebuffIcon('flame'), ARENA_PALETTE)),
+    frost: own(textureFromRows(buildDebuffIcon('frost'), ARENA_PALETTE)),
+    drop: own(textureFromRows(buildDebuffIcon('drop'), ARENA_PALETTE)),
+  }
+  // A dummy's markers (the tallest icon, 2 art px over its bar's line, tiles): kept under the HUD's top row.
+  const markerHeightTiles = ((Math.max(tagTexture.height, ...Object.values(debuffTextures).map((t) => t.height)) + 2) * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
 
   const dummyRows = buildDummy()
   const dummyTexture = own(textureFromRows(dummyRows, ARENA_PALETTE))
@@ -303,8 +321,12 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const puffs = new Graphics()
   const lash = new Graphics()
   const tracerLines = new Graphics()
+  // P3-S11: thrown explosives (one sprite per engine projectile), a fused one's spark, and their blasts' rings over the scene.
+  const explosivesLayer = new Container()
+  const sparks = new Graphics()
+  const blastLayer = new Graphics()
 
-  world.addChild(deep, backdropSprite, glows, dummies, tagLayer, summonLayer, puffs, playerSprite, guide, trail, blade, held, beam, lash, shots, tracerLines, tether, thrown)
+  world.addChild(deep, backdropSprite, glows, dummies, tagLayer, summonLayer, puffs, playerSprite, guide, trail, blade, held, beam, lash, shots, tracerLines, tether, thrown, explosivesLayer, sparks, blastLayer)
   // Multiple Dummies: each dummy's number under its feet, in screen space (crisp at any zoom), under the damage numbers.
   const dummyLabels = new Container()
   app.stage.addChildAt(dummyLabels, app.stage.getChildIndex(normalNumbers))
@@ -319,6 +341,8 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   }
   const placeholderTexture = placeholderFor('melee')
   let weaponTexture: Texture = placeholderTexture
+  /** The weapon sprite's fuse end (its topmost opaque pixel) from its centre, for a thrown explosive's spark. */
+  let fuseOffset: { x: number; y: number } = { x: 0, y: -placeholderTexture.height / 2 }
   let loadedWeaponTexture: Texture | null = null
 
   // The reach guide is a modeled value (a Lab choice): drawn in the estimate gold, with a dark
@@ -340,6 +364,12 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const tracerColor = tokenHex('var(--color-night-200)')
   const tagBarColor = tokenHex('var(--color-success)')
   const tagBarBack = tokenHex('var(--color-night-950)')
+  // A blast's ring and flash; a fuse's spark (core and sparks); a debuff's timer bar in its glyph's tint (tokens).
+  const blastRing = tokenHex('var(--color-gold-300)')
+  const blastFlash = tokenHex('var(--color-gold-200)')
+  const sparkCore = tokenHex('var(--color-white)')
+  const sparkGlow = tokenHex('var(--color-gold-300)')
+  const debuffBarColors = Object.fromEntries(Object.entries(DEBUFF_TINT_TOKENS).map(([glyph, token]) => [glyph, tokenHex(`var(--color-${token})`)])) as Record<DebuffGlyph, number>
   const puffColor = tokenHex('var(--color-stone-200)')
   const shotTones: Record<ProjectileStyle, Partial<Record<ProjectileTone, number>> & { trail: number; trailAlpha: number }> = {
     arrow: { tip: tokenHex('var(--color-stone-200)'), shaft: tokenHex('var(--color-earth-400)'), fletch: tokenHex('var(--color-white)'), trail: tokenHex('var(--color-stone-300)'), trailAlpha: 0.35 },
@@ -382,13 +412,18 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     const width = Math.max(1, host.clientWidth)
     const height = Math.max(1, host.clientHeight)
     app.renderer.resize(width, height)
+    const blast = session?.blastFrame() ?? null
     fit = fitCamera(width, height, app.renderer.resolution, {
       insetTop: options.insetTop?.() ?? 0,
       insetBottom: options.insetBottom?.() ?? 0,
       floorPx: options.floorPx?.() ?? 0,
       reachTiles: session?.frameTiles ?? 0,
       framing: options.framing?.() ?? 'scene',
-      action: session ? actionBox(session.frameTiles, session.sim.renderState().dummies) : null,
+      // A thrown explosive: its whole blast circle in the action box, kept whole past the scene's zoom, and
+      // kept whole by the scene framing too (P3-S11 #3).
+      action: session ? actionBox(session.frameTiles, session.sim.renderState().dummies, blast) : null,
+      actionWhole: session?.explosive != null,
+      blast,
       sceneX: sceneXFor(session?.sim.renderState().dummies ?? []),
     })
     world.position.set(fit.originX, fit.originY)
@@ -421,6 +456,20 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   // Summons: one sprite per engine agent (by id); tag markers per dummy; summons' instant-shot tracers.
   const summonSprites = new Map<number, Sprite>()
   const tagViews = new Map<string, { icon: Sprite; bar: Graphics }>()
+  const debuffViews = new Map<string, { icon: Sprite; bar: Graphics }>()
+  // Thrown explosives (by engine projectile id) and the blasts still drawn (world tiles, when they went off).
+  const explosiveSprites = new Map<number, Sprite>()
+  // Explosives resting on one spot, fanned out sideways (steady from frame to frame).
+  const explosiveStack = new ExplosiveStack()
+  let blasts: { x: number; y: number; radiusTiles: number; bornAt: number }[] = []
+  const clearExplosives = () => {
+    for (const sprite of explosiveSprites.values()) sprite.destroy()
+    explosiveSprites.clear()
+    explosiveStack.clear()
+    sparks.clear()
+    blasts = []
+    blastLayer.clear()
+  }
   const tracers = new ShotTracers()
   // Minions sharing a spot, fanned out sideways (steady from frame to frame).
   const spread = new StackSpread()
@@ -461,6 +510,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     thrown.visible = false
     held.visible = false
     heldUntil = -Infinity
+    clearExplosives()
     for (const view of dummyViews.values()) {
       view.hitAt = -Infinity
       view.flash.alpha = 0
@@ -475,6 +525,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     tagLayer.removeChildren().forEach((c) => c.destroy())
     dummyViews.clear()
     tagViews.clear()
+    debuffViews.clear()
     const list = s.sim.renderState().dummies
     builtDummies = dummySignature(list)
     for (const [i, d] of list.entries()) {
@@ -507,7 +558,115 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       const bar = new Graphics()
       tagLayer.addChild(icon, bar)
       tagViews.set(d.id, { icon, bar })
+      // The debuff marker over its head (hidden until a debuff lands on it; its glyph set per frame).
+      const drop = new Sprite(debuffTextures.drop)
+      drop.anchor.set(0.5, 1)
+      drop.scale.set(GAME_PX_PER_ART_PX)
+      drop.visible = false
+      const dropBar = new Graphics()
+      tagLayer.addChild(drop, dropBar)
+      debuffViews.set(d.id, { icon: drop, bar: dropBar })
     }
+  }
+
+  /** A marker's bottom (game px): under the HUD's top row, like the damage numbers; level with its neighbour. */
+  const markerBottom = (y: number) => markerClearOfHud(y, markerHeightTiles, fit, options.insetTop?.() ?? 0) * GAME_PX_PER_TILE
+
+  /**
+   * Debuffs (P3-S11 AC2): over each debuffed dummy's head the glyph of its longest-running debuff (a
+   * flame, a snowflake, else a drop) and, under it, a timer bar in that glyph's tint — the share of that
+   * debuff's time left — on the art-pixel grid, beside any tag marker.
+   */
+  const drawDebuffs = (state: RenderState) => {
+    for (const d of state.dummies) {
+      const view = debuffViews.get(d.id)
+      if (!view) continue
+      const marker = debuffMarker(d)
+      view.bar.clear()
+      view.icon.visible = marker !== null
+      if (!marker) continue
+      view.icon.texture = debuffTextures[marker.glyph]
+      const px = GAME_PX_PER_ART_PX
+      const barW = 8 * px
+      const bottom = markerBottom(marker.y)
+      view.icon.position.set(marker.x * GAME_PX_PER_TILE, bottom - 2 * px)
+      const left = Math.round(marker.x * GAME_PX_PER_TILE - barW / 2)
+      view.bar.rect(left - px, bottom - px, barW + 2 * px, px * 2).fill({ color: tagBarBack, alpha: 0.85 })
+      const filled = Math.max(px, Math.round((barW * marker.left) / px) * px)
+      view.bar.rect(left, bottom - px / 2, filled, px).fill({ color: debuffBarColors[marker.glyph], alpha: 1 })
+    }
+  }
+
+  /**
+   * Thrown explosives (P3-S11): each one the engine has, as the weapon's sprite at native art scale where
+   * the engine has it (interpolated) — tumbling in quarter turns in flight, upright at rest, several at
+   * rest on one spot fanned out sideways (`offsets`, tiles: ../explosiveVisuals.ts `ExplosiveStack`); a
+   * fused one (`fused`) sparks at its fuse end every tick, a static glow under reduced motion (design
+   * review P3-S11 #9).
+   */
+  const drawExplosives = (state: RenderState, alpha: number, offsets: ReadonlyMap<number, number>, fused: boolean, reduced: boolean) => {
+    const live = new Set<number>()
+    const px = GAME_PX_PER_ART_PX
+    const core: [number, number][] = []
+    const glow: [number, number][] = []
+    for (const p of state.projectiles) {
+      live.add(p.id)
+      let sprite = explosiveSprites.get(p.id)
+      if (!sprite) {
+        sprite = new Sprite(weaponTexture)
+        sprite.anchor.set(0.5)
+        explosivesLayer.addChild(sprite)
+        explosiveSprites.set(p.id, sprite)
+      }
+      const at = toGamePx(thrownPosition(p, alpha))
+      at.x += (offsets.get(p.id) ?? 0) * GAME_PX_PER_TILE
+      sprite.position.set(at.x, at.y)
+      sprite.rotation = explosiveRotation(p, state.tick - 1 + alpha, state.facing)
+      if (fused) {
+        const cells = fuseSparkCells(fuseTip(at, fuseOffset, sprite.rotation), state.tick, reduced, px)
+        core.push(...cells.core)
+        glow.push(...cells.glow)
+      }
+    }
+    sparks.clear()
+    if (glow.length > 0) {
+      for (const [x, y] of glow) sparks.rect(x, y, px, px)
+      sparks.fill({ color: sparkGlow, alpha: reduced ? 0.55 : 0.9 })
+    }
+    if (core.length > 0) {
+      for (const [x, y] of core) sparks.rect(x, y, px, px)
+      sparks.fill({ color: sparkCore, alpha: reduced ? 0.8 : 1 })
+    }
+    for (const [id, sprite] of explosiveSprites) {
+      if (live.has(id)) continue
+      sprite.destroy()
+      explosiveSprites.delete(id)
+    }
+  }
+
+  /**
+   * Blasts (P3-S11 AC1): a ring of art-pixel cells at exactly the blast radius (growing from the centre,
+   * then fading) over a flash disc; reduced motion: one static frame of the full ring (../explosiveVisuals.ts).
+   */
+  const drawBlasts = (now: number, reduced: boolean) => {
+    blastLayer.clear()
+    if (blasts.length === 0) return
+    const px = GAME_PX_PER_ART_PX
+    blasts = blasts.filter((b) => {
+      const pose = blastPose(now - b.bornAt, reduced)
+      if (!pose) return false
+      const center = { x: b.x * GAME_PX_PER_TILE, y: b.y * GAME_PX_PER_TILE }
+      const radius = b.radiusTiles * GAME_PX_PER_TILE * pose.radiusFrac
+      if (pose.flashAlpha > 0) {
+        const spans = discSpans(center, radius, px)
+        for (const [x, y, w] of spans) blastLayer.rect(x, y, w, px)
+        if (spans.length > 0) blastLayer.fill({ color: blastFlash, alpha: pose.flashAlpha })
+      }
+      const cells = ringCells(center, radius, px)
+      for (const [x, y] of cells) blastLayer.rect(x, y, px, px)
+      if (cells.length > 0) blastLayer.fill({ color: blastRing, alpha: pose.ringAlpha })
+      return true
+    })
   }
 
   /**
@@ -527,7 +686,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       view.icon.texture = tagMarkerStyle(d.id, focus) === 'filled' ? tagTexture : tagHollowTexture
       const px = GAME_PX_PER_ART_PX
       const barW = 8 * px
-      const bottom = marker.y * GAME_PX_PER_TILE
+      const bottom = markerBottom(marker.y)
       view.icon.position.set(marker.x * GAME_PX_PER_TILE, bottom - 2 * px)
       const left = Math.round(marker.x * GAME_PX_PER_TILE - barW / 2)
       view.bar.rect(left - px, bottom - px, barW + 2 * px, px * 2).fill({ color: tagBarBack, alpha: 0.85 })
@@ -631,9 +790,11 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
 
   const setWeaponTexture = (texture: Texture) => {
     weaponTexture = texture
+    fuseOffset = textureTopPoint(texture) ?? { x: 0, y: -texture.height / 2 }
     blade.texture = texture
     held.texture = texture
     thrown.texture = texture
+    for (const sprite of explosiveSprites.values()) sprite.texture = texture
   }
 
   const setSession = (next: LabSession, sprite: ArenaWeaponSprite) => {
@@ -703,10 +864,12 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   host.addEventListener('contextmenu', onContextMenu)
 
   // ---------------------------------------------------------------------------- frame
-  const spawnNumber = (event: { amount: number; x: number; y: number; dummyId: string; tagBonus?: number }, kind: NumberKind, now: number, reduced: boolean, state: RenderState) => {
+  const spawnNumber = (event: { amount: number; x: number; y: number; dummyId: string; tagBonus?: number; blastKeptPct?: number }, kind: NumberKind, now: number, reduced: boolean, state: RenderState) => {
     // Numbers stay with their dummy (../numberZone.ts); damage over time rises from above its bullseye.
+    // A blast's hits (P3-S11) land on several dummies at once, each at its edge nearest the blast: each
+    // number rises from its own dummy's centre instead, so a row's numbers have room side by side.
     const dummy = state.dummies.find((d) => d.id === event.dummyId)
-    const from = dummy && kind === 'dot' ? dotAnchor(dummy) : event
+    const from = dummy && kind === 'dot' ? dotAnchor(dummy) : dummy && event.blastKeptPct !== undefined ? { x: dummy.x, y: dummy.y } : event
     const n = numbers.acquire()
     // A full pool recycles its oldest number: forget that one's spot.
     layout.remove(n)
@@ -955,6 +1118,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     tracers.clear()
     tracerLines.clear()
     clearDeparting()
+    clearExplosives()
     lastSwingEnd = { at: -Infinity, facing: 1 }
   }
 
@@ -975,6 +1139,8 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     }
     // Minions sharing a spot, fanned out sideways (their shots leave from where they are drawn).
     const offsets = spread.update(state.agents, state.dummies, state.player.x, app.ticker.deltaMS, reduced)
+    // Thrown explosives resting on one spot, fanned out the same way.
+    const restingOffsets = s.explosive ? explosiveStack.update(state.projectiles, state.player.x, app.ticker.deltaMS, reduced) : null
 
     for (const event of events) {
       if (event.type === 'damage') {
@@ -984,7 +1150,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
           continue
         }
         const summonHit = event.source === 'minion' || event.source === 'sentry'
-        if (!s.returning) tracks.impact(event)
+        if (!s.returning && !s.explosive) tracks.impact(event)
         // A summon's instant shot (no projectile of its own): a tracer from the summon to the hit.
         if (summonHit && !event.sourceId.startsWith('proj:')) {
           const agent = state.agents.find((a) => `${a.kind}:${a.id}` === event.sourceId)
@@ -997,10 +1163,12 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
           view.dir = event.x <= state.dummies.find((d) => d.id === event.dummyId)!.x ? 1 : -1
         }
       } else if (event.type === 'projectile-spawn') {
-        // A returning weapon is drawn as itself (drawThrown), not as a shot.
-        if (!s.returning) tracks.spawn(event, state.facing)
+        // A returning weapon or a thrown explosive is drawn as itself (drawThrown / drawExplosives), not as a shot.
+        if (!s.returning && !s.explosive) tracks.spawn(event, state.facing)
       } else if (event.type === 'projectile-despawn') {
-        if (!s.returning) tracks.despawn(event)
+        if (!s.returning && !s.explosive) tracks.despawn(event)
+      } else if (event.type === 'explosion') {
+        blasts.push({ x: event.x, y: event.y, radiusTiles: event.radiusTiles, bornAt: now })
       } else if (event.type === 'use-start') {
         heldUntil = event.tick + event.durationTicks
       } else if (event.type === 'dismiss') {
@@ -1009,7 +1177,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     }
     // A finished test shows the DoT it dealt up to the last tick.
     for (const n of dotNumbers.drain(state.tick, finished)) spawnNumber(n, 'dot', now, reduced, state)
-    if (!s.returning) tracks.sync(state.projectiles, state.tick, state.facing)
+    if (!s.returning && !s.explosive) tracks.sync(state.projectiles, state.tick, state.facing)
 
     for (const view of dummyViews.values()) {
       const age = now - view.hitAt
@@ -1038,6 +1206,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     }
     placeDummyLabels()
     drawTags(state)
+    drawDebuffs(state)
     drawSummons(state, finished ? 1 : alpha, offsets)
     drawDeparting(now, reduced)
 
@@ -1048,12 +1217,14 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       if (s.swing) drawSwing(state.blade, state.facing, alpha, now, s.swing.reachTiles, s.swing.arcDegrees)
       else if (s.whip) drawWhip(state.blade, state.facing, alpha, now, s.whip.rangeTiles, s.whip.arcDegrees)
       else if (s.returning) drawThrown(state, alpha, s.returning.variant)
+      else if (s.explosive) drawExplosives(state, alpha, restingOffsets ?? new Map(), s.explosive.trigger === 'timed', reduced)
       else if (s.firesProjectiles) drawHeld(state)
       else drawThrust(state.blade?.kind === 'thrust' ? state.blade : null, state.facing, alpha, s.reachTiles)
       if (s.beam) drawBeam(state.blade, state.facing)
       // Any projectile the engine runs. Render time trails the sim by one tick, like the blade.
       drawShots(state.tick - 1 + alpha, now)
       drawTracers(now)
+      drawBlasts(now, reduced)
     }
     perf.frames++
     record(perf.frameMs, app.ticker.deltaMS)

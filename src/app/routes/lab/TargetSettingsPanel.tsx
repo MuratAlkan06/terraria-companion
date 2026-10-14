@@ -1,4 +1,4 @@
-import { Check, Keyboard, MousePointerClick, Move, RotateCcw, Star, Tag, Timer, Users } from 'lucide-react'
+import { Bomb, Check, Hourglass, Keyboard, MousePointerClick, Move, RotateCcw, Star, Tag, Timer, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cx } from '../../../components/cx'
 import { PixelArt } from '../../../components/PixelArt'
@@ -9,6 +9,7 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
 import { buildDummy } from '../../../lab/art/arenaArt'
 import { ARENA_PALETTE } from '../../../lab/art/arenaPalette'
+import type { ExplosiveShape } from '../../../lab/labSession'
 import { ammoClassName, DEFAULT_LAB_TARGET, DEFAULT_ROW_COUNT, ROW_COUNTS, type AmmoChoices, type LabTarget } from '../../../lab/labSetup'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS, MAX_MINION_SLOTS, MAX_SENTRY_SLOTS, WHIP_TAG_DURATION_TICKS, type InsufficientManaPolicy, type LabSettings, type MinionAiClass, type RenderState } from '../../../sim'
@@ -25,8 +26,9 @@ export type SteerHint = 'yoyo' | 'beam' | null
  * that apply to the equipped weapon, and how to attack. Nothing here is a disabled placeholder: each
  * section shows only when it applies; further targets arrive with their slices (P3-S12).
  *
- * - Target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1): the Infinite Dummy or Multiple Dummies — a row
- *   of 2–5 (3 to start) whose first dummy is the primary target. Choosing one restarts the stats
+ * - Target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1, P3-S11 AC3): the Infinite Dummy, Multiple
+ *   Dummies — a row of 2–5 (3 to start) whose first dummy is the primary target — or the Debuff Dummy (a
+ *   Lab target: the Infinite Dummy, its active debuffs listed in the HUD). Choosing one restarts the stats
  *   (src/lab/labSession.ts `setTarget`); Reset restores the Infinite Dummy. The card under the picker
  *   describes the engine's own dummies (size, defense, distances).
  * - Ammo (PRD P3-S4 AC2, bows and guns): only the ammo that fits the weapon, as the engine accepts
@@ -114,6 +116,8 @@ export interface TargetSettingsPanelProps {
   ammo?: AmmoPickerProps | null
   /** Summon staves and whips: the slot settings (and a whip's minion loadout). */
   summons?: SummonSettingsProps | null
+  /** A thrown explosive (P3-S11): how it lands and goes off, for the Controls list. */
+  explosive?: ExplosiveShape | null
 }
 
 export function TargetSettingsPanel({
@@ -129,6 +133,7 @@ export function TargetSettingsPanel({
   verb = 'swing',
   ammo = null,
   summons = null,
+  explosive = null,
 }: TargetSettingsPanelProps) {
   const dummyRows = useMemo(() => buildDummy(), [])
   const { width, height, defense } = dummy
@@ -149,7 +154,7 @@ export function TargetSettingsPanel({
           </span>
           <div className="min-w-0 space-y-0.5">
             <p className="font-semibold" data-target-name="">
-              {row ? `${row.length} Infinite Dummies` : 'Infinite Dummy'}
+              {row ? `${row.length} Infinite Dummies` : target.kind === 'debuff' ? 'Debuff Dummy' : 'Infinite Dummy'}
             </p>
             <p className="text-xs text-fg-muted">
               {row ? 'Never die or move' : 'Never dies or moves'} · defense {defense} · {width} × {height} tiles{row ? ' each' : ''}
@@ -169,6 +174,12 @@ export function TargetSettingsPanel({
                 Centre {formatTiles(dummy.x)} tiles in front of you
               </p>
             )}
+            {target.kind === 'debuff' ? (
+              <p className="flex items-start gap-1 text-xs text-fg-muted" data-debuff-dummy-note="">
+                <Hourglass aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-accent" />
+                <span>A Lab target: an Infinite Dummy whose active debuffs — name, damage per second and time left — are listed with the live stats.</span>
+              </p>
+            ) : null}
           </div>
         </div>
         <ProvenanceLink href={TARGET_DUMMY_URL} label="Target Dummy, on the wiki" />
@@ -248,6 +259,16 @@ export function TargetSettingsPanel({
               <span>The beam stays on while you hold and follows the pointer; let go to stop it.</span>
             </li>
           ) : null}
+          {explosive ? (
+            <li className="flex gap-2" data-steer-hint="explosive">
+              <Bomb aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>
+                Each throw lands on the ground below where you aim
+                {explosive.fuseTicks !== null ? ` and goes off ${formatTiles(explosive.fuseTicks / 60)} seconds after the throw` : ' and goes off when it touches a dummy or lands'}: one explosion hits
+                every dummy within its {formatTiles(explosive.blastRadiusTiles)}-tile radius once. Each throw uses up one explosive.
+              </span>
+            </li>
+          ) : null}
           <li className="flex gap-2">
             <Keyboard aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
             <span>
@@ -281,7 +302,7 @@ const RADIO_CARD = cx(
 )
 
 /**
- * The target picker: the Infinite Dummy or Multiple Dummies (radio cards, as the panel's other
+ * The target picker: the Infinite Dummy, Multiple Dummies or the Debuff Dummy (radio cards, as the panel's other
  * choices), and while Multiple Dummies is chosen how many stand in the row (2–5). The row size
  * chosen last is kept for this visit, so switching back and forth doesn't forget it.
  */
@@ -290,7 +311,8 @@ function TargetPicker({ target, onChange, locked }: { target: LabTarget; onChang
   const count = target.kind === 'row' ? target.count : lastCount
   const choices: readonly { kind: LabTarget['kind']; title: string; note: string }[] = [
     { kind: 'single', title: 'Infinite Dummy', note: 'One dummy · default' },
-    { kind: 'row', title: 'Multiple Dummies', note: `A row of ${ROW_COUNTS[0]}–${ROW_COUNTS.at(-1)}: piercing and multi-target tests` },
+    { kind: 'row', title: 'Multiple Dummies', note: `A row of ${ROW_COUNTS[0]}–${ROW_COUNTS.at(-1)}: piercing, multi-target and blast tests` },
+    { kind: 'debuff', title: 'Debuff Dummy', note: 'One dummy that lists its active debuffs and their time left' },
   ]
   const pickRow = (n: number) => {
     setLastCount(n)
@@ -312,7 +334,7 @@ function TargetPicker({ target, onChange, locked }: { target: LabTarget; onChang
                 value={c.kind}
                 checked={checked}
                 disabled={locked}
-                onChange={() => (c.kind === 'single' ? onChange({ kind: 'single' }) : pickRow(count))}
+                onChange={() => (c.kind === 'row' ? pickRow(count) : onChange({ kind: c.kind }))}
                 className="peer sr-only"
               />
               <label htmlFor={id} className={cx(RADIO_CARD, checked ? 'border-gold-500 bg-night-800' : 'border-panel-border bg-panel hover:border-border-strong')}>

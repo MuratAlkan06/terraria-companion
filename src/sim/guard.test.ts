@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { Buff, Item, MODELING_CONVENTIONS, Weapon, type ArchetypeParams } from '../schemas'
+import { Buff, Item, MODELING_CONVENTIONS, simRequiredWeaponFields, Weapon, type ArchetypeParams } from '../schemas'
 import { APPROXIMATIONS, CONVENTION_APPROXIMATIONS } from './approximations'
-import { assessWeapon, createLabSim, type SimRefusal } from './index'
+import { assessWeapon, createLabSim, IMPLEMENTED_ARCHETYPES, type SimRefusal } from './index'
+import { INTERPRETERS } from './interpreters'
 import { modifierEntry, NotImplementedError } from './modifiers'
 import {
   ammoFixture,
   beamFixture,
   bowFixture,
   dotBuffFixture,
+  explosiveFixture,
   fixtureProv,
   fixtureWeapon,
   returningFixture,
@@ -43,6 +45,8 @@ describe('fixtures are schema-conformant (real Zod schemas)', () => {
     ['minion', summonFixture()],
     ['sentry', summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', sentryRangeTiles: 20 })],
     ['whip', whipFixture({ tagCritPct: 10 })],
+    ['timed explosive', explosiveFixture()],
+    ['impact explosive', explosiveFixture({ trigger: 'impact', falloff: 'linear' }, { damageClass: 'ranged', critPct: 0, _prov: fixtureProv() })],
     ['staff+dot+homing', staffFixture({}, {}, { dot: { buffId: 'fixture-burn', durationTicks: { minTicks: 60, maxTicks: 240 } }, homing: { strength: 0.2, acquisitionRangeTiles: 20 } })],
   ])('%s parses as Weapon', (_name, weapon) => {
     expect(Weapon.safeParse(weapon).success).toBe(true)
@@ -81,12 +85,50 @@ describe('honesty guard — NotSimulable, never a guess', () => {
     expect(notSimulable(weapon)).toMatchObject({ reason: 'custom-scenario', scenarioId: 'night-only' })
   })
 
-  it.each<ArchetypeParams>([{ archetype: 'explosive-aoe', blastRadiusTiles: 3, trigger: 'impact', falloff: 'none' }])(
-    'unimplemented archetype $archetype → archetype-not-implemented',
-    (params) => {
-      expect(notSimulable(fixtureWeapon(params))).toMatchObject({ reason: 'archetype-not-implemented', archetype: params.archetype })
-    },
-  )
+  it('every schema archetype has an interpreter (P3-S11 registered explosive-aoe, the last); one without is refused archetype-not-implemented, never guessed', () => {
+    const all: ArchetypeParams['archetype'][] = ['swing-melee', 'thrust', 'returning', 'bow-gun', 'magic-bolt', 'piercing-beam', 'minion-sentry', 'whip', 'explosive-aoe']
+    expect([...IMPLEMENTED_ARCHETYPES].sort()).toEqual([...all].sort())
+    // defense in depth: a registry without the archetype (e.g. a future schema arm) answers with a typed refusal
+    const registry = INTERPRETERS as Record<string, unknown>
+    const saved = registry['explosive-aoe']
+    delete registry['explosive-aoe']
+    try {
+      expect(notSimulable(explosiveFixture())).toMatchObject({ reason: 'archetype-not-implemented', archetype: 'explosive-aoe' })
+    } finally {
+      registry['explosive-aoe'] = saved
+    }
+    expect(assessWeapon(explosiveFixture())).toMatchObject({ simulable: true, archetype: 'explosive-aoe' })
+  })
+
+  it('P3-S11 / B85(b): a classless weapon’s critPct is not applicable (absent, not listed) and not required — the wiki: classless damage "can never deal critical hits"; disclosed', () => {
+    const bomb = explosiveFixture()
+    expect(bomb.critPct).toBeUndefined()
+    expect(bomb._prov.unverifiedFields).toEqual([])
+    expect(Weapon.safeParse(bomb).success).toBe(true)
+    // a record that still lists it (B17's former "Unknown") is not blocked either
+    expect(assessWeapon(explosiveFixture({}, { _prov: fixtureProv(['critPct']) }))).toMatchObject({ simulable: true })
+    const created = createLabSim({ weapon: bomb })
+    if (!created.ok) throw new Error(`refused: ${created.refusal.message}`)
+    expect(created.sim.weapon.critChancePct).toBe(0)
+    const classless = created.sim.approximations.find((a) => a.id === 'classless-crit')
+    expect(classless?.detail).toContain('can never deal critical hits')
+    // B85(b): not applicable, never "Unknown"
+    expect(classless?.detail).not.toMatch(/unknown/i)
+    expect(classless?.sourceUrl).toBe('https://terraria.wiki.gg/wiki/Critical_hit')
+    // only a classless weapon takes the label; melee / ranged / magic still require critPct and block on it listed
+    const sword = createLabSim({ weapon: swordFixture() })
+    expect(sword.ok && sword.sim.approximations.some((a) => a.id === 'classless-crit')).toBe(false)
+    expect(notSimulable(swordFixture({ critPct: undefined, _prov: fixtureProv(['critPct']) }))).toMatchObject({ reason: 'unverified-required-field', fields: ['critPct'] })
+    expect(notSimulable(explosiveFixture({}, { damageClass: 'ranged', _prov: fixtureProv(['critPct']) }))).toMatchObject({ reason: 'unverified-required-field', fields: ['critPct'] })
+    expect(notSimulable(explosiveFixture({}, { damageClass: 'ranged' }))).toMatchObject({ reason: 'missing-required-field', fields: ['critPct'] })
+    // a present classless value is still checked
+    expect(notSimulable(explosiveFixture({}, { critPct: 140 as number, _prov: fixtureProv() }))).toMatchObject({ reason: 'invalid-data', fields: ['critPct'] })
+    // the shared pipeline rule agrees: critPct leaves the sim-required list for classless weapons only
+    expect(simRequiredWeaponFields('explosive-aoe', 'other')).not.toContain('critPct')
+    expect(simRequiredWeaponFields('explosive-aoe', 'ranged')).toContain('critPct')
+    expect(simRequiredWeaponFields('whip', 'summon')).toContain('critPct') // B64: a listed summon value still blocks
+    expect(simRequiredWeaponFields('explosive-aoe')).toEqual(expect.arrayContaining(['critPct', 'shootSpeedTps']))
+  })
 
   it('AMENDMENTS-013 B64: a summon weapon’s critPct is not applicable — absent, it is never required (whips, minions, sentries)', () => {
     for (const weapon of [summonFixture(), summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', sentryRangeTiles: 20 }), whipFixture()]) {

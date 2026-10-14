@@ -13,7 +13,8 @@
  * STATS (Iteminfo = numeric ground truth, ADR D2; cross-checked against the Cargo infobox — a
  * disagreement strips the value, lists it as Unknown and records a source-mismatch gap):
  * - damage (Iteminfo `damage` > 0; ≤ 0 means the item carries no damage of its own — explosives,
- *   ammo-driven launchers — so damage AND knockback are Unknown), knockback (`knockBack`),
+ *   ammo-driven launchers — so damage AND knockback are Unknown, except a thrown explosive whose blast
+ *   damage / knockback two wiki statements agree on: merge/explosives.ts, P3-S11), knockback (`knockBack`),
  *   useTimeTicks (`useTime`) and useAnimationTicks (`useAnimation`; TO-VERIFY #10: the wiki's
  *   "Use time" equals useAnimation for every weapon), reuseDelayTicks (`reuseDelay` > 0: a cooldown
  *   after each use, AMENDMENTS-010 B48(a); no Cargo column to cross-check), autoReuse (`autoReuse` ⇔ Cargo
@@ -23,7 +24,8 @@
  *   projectile's effective velocity), valueCopper (`value`), maxStack (consumables only, B7).
  * - critPct = Iteminfo `crit` (the weapon's bonus; the wiki shows 4% + crit). Not applicable for
  *   summon weapons (Critical hit page: summon damage cannot normally crit; the wiki infobox
- *   shows none); Unknown for classless weapons (the wiki shows none, rule undocumented).
+ *   shows none) and for classless weapons (the same page: damage of no class "can never deal
+ *   critical hits"; the infobox shows none — AMENDMENTS-015 B85(b), superseding B17's Unknown).
  * - damageClass from the Iteminfo class flags, cross-checked with Cargo `damagetype`; no flag
  *   and an empty `damagetype` = classless → "other".
  *
@@ -43,6 +45,7 @@ import type { Iteminfo, IteminfoItem } from '../parse/iteminfo'
 import { slugify, stripMarkup } from '../parse/text'
 import { limitation } from '../validate/labDowngrade'
 import { itemRoutes, type WithheldField } from './acquisition'
+import { checkExplosiveStat, type ExplosiveEvidence } from './explosives'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
 import { GapLog, isoDate, makeProv, moduleSource } from './prov'
@@ -168,6 +171,11 @@ export interface WeaponBuildInput {
   gating: (itemId: number) => GatingResult
   /** Item ID → withheld field (B19); withheld values become Unknown + a source-mismatch gap. */
   withheld?: ReadonlyMap<number, WithheldField>
+  /**
+   * P3-S11: a thrown explosive's second wiki statement of its blast damage / knockback (the Explosives
+   * (class) table row, the own article's damage sentence) — merge/explosives.ts. Absent: none.
+   */
+  explosive?: (itemId: number, page: string) => ExplosiveEvidence | undefined
 }
 
 export interface WeaponBuild {
@@ -279,7 +287,30 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     // damage + knockback
     const damage = n('damage') ?? -1
     const cargoDamage = leadingNumber(str(row.damage))
-    if (damage <= 0) {
+    // P3-S11 (merge/explosives.ts): a thrown explosive's blast damage / knockback, set by its projectile
+    // when it goes off, verify against a second wiki statement (the Explosives (class) table, the own article)
+    const explosive = damage <= 0 ? input.explosive?.(id, page) : undefined
+    if (explosive) {
+      const cargoKb = leadingNumber(str(row.knockback))
+      for (const [field, infobox, set] of [
+        ['damage', cargoDamage, (v: number) => (w.damage = v)],
+        ['knockback', cargoKb, (v: number) => (w.knockback = v)],
+      ] as const) {
+        const check = checkExplosiveStat(field, infobox, explosive)
+        const key = `${field} (thrown explosive: wiki infobox vs the Explosives (class) table${field === 'damage' ? ' and the article' : ''}; Iteminfo carries none)`
+        if (check.ok) {
+          set(check.value)
+          for (const src of check.sources) if (!sources.some((x) => x.url === src.url)) sources.push(src)
+          count(key, 'agree')
+        } else if (check.detail) {
+          count(key, 'mismatch')
+          mismatch(field, check.detail, [wikiUrl, explosive.tableSource.url])
+        } else {
+          count(key, 'noWikiValue')
+          unknown(field, 'Module:Iteminfo/data gives the item no damage of its own, and the wiki states no positive value for it twice')
+        }
+      }
+    } else if (damage <= 0) {
       unknown('damage', 'Module:Iteminfo/data gives the item no damage of its own (set by its projectile or ammo)')
       if (cargoDamage !== undefined) tally(reasons, 'damage: the wiki states a damage the game source does not put on the item', `${name} (wiki ${cargoDamage})`)
       unknown('knockback', 'damage is carried by the projectile/ammo, so the item knockback is not its effective knockback')
@@ -297,8 +328,13 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     if (damageClass === 'summon') {
       count('critPct (summon: wiki shows none)', cargoCrit === undefined ? 'agree' : 'mismatch')
       if (cargoCrit !== undefined) mismatch('critPct', `summon damage cannot crit (Critical hit page) but the wiki infobox shows ${cargoCrit}%`)
-    } else if (damageClass === 'other' || damageClass === undefined) {
-      unknown('critPct', damageClass === 'other' ? 'classless weapon: the wiki shows no critical chance and documents no rule' : 'damage class Unknown')
+    } else if (damageClass === 'other') {
+      // AMENDMENTS-015 B85(b): classless damage "can never deal critical hits" (Critical hit page) — not
+      // applicable (absent, not listed), as for summons; a crit the infobox shows would contradict it
+      count('critPct (classless: wiki shows none)', cargoCrit === undefined ? 'agree' : 'mismatch')
+      if (cargoCrit !== undefined) mismatch('critPct', `classless damage can never crit (Critical hit page) but the wiki infobox shows ${cargoCrit}%`)
+    } else if (damageClass === undefined) {
+      unknown('critPct', 'damage class Unknown')
     } else {
       const crit = n('crit') ?? 0
       if (!agrees('critPct (+4% base)', cargoCrit, crit + 4)) mismatch('critPct', `Module:Iteminfo/data crit bonus ${crit} (= ${crit + 4}% shown), wiki infobox ${cargoCrit}%`)

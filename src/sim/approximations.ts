@@ -12,8 +12,8 @@
  * conventions share is qualified `<path>#<convention id>`) and adds the entry below that carries the
  * same `ruling`. B44 (swing arc/reach) is labeled by the Lab UI's own `swing-reach-arc` assumption
  * (src/lab), so the engine does not add a second copy of it. The B63 whip / summon-rate labels surface
- * with the whip and minion-sentry interpreters (P3-S9 / P3-S10); `square-blast-radius` once the
- * explosive-aoe interpreter ships (until then those weapons are limitations).
+ * with the whip and minion-sentry interpreters (P3-S9 / P3-S10), `square-blast-radius` with the
+ * explosive-aoe interpreter (P3-S11).
  */
 import type { ModelingConvention } from '../schemas'
 
@@ -66,6 +66,13 @@ export type ApproximationId =
   | 'minion-hover-strike'
   | 'minion-ranged-shot'
   | 'sentry-placement'
+  | 'classless-crit'
+  | 'explosive-throw'
+  | 'explosive-fuse'
+  | 'explosive-impact'
+  | 'blast-area'
+  | 'blast-falloff'
+  | 'explosive-consumable'
 
 export interface Approximation {
   id: ApproximationId
@@ -391,6 +398,51 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     detail:
       'A sentry appears exactly where you click (with Space or in a timed test, 2 tiles in front of you) and never moves — in-game most sentries settle on the ground. It attacks only dummies whose centre is within its range. The 10-minute sentry lifetime is not modeled.',
     sourceUrl: `${WIKI}Sentry-summoning_weapons`,
+  },
+  // P3-S11: classless damage (thrown explosives) and the explosive-aoe archetype
+  'classless-crit': {
+    id: 'classless-crit',
+    title: 'Classless damage never crits',
+    detail:
+      'This weapon deals classless damage (not melee, ranged, magic or summon), which can never deal critical hits (wiki: Critical hit), so the Lab rolls no crits for it.',
+    sourceUrl: `${WIKI}Critical_hit`,
+  },
+  'explosive-throw': {
+    id: 'explosive-throw',
+    title: 'Thrown in an arc to where you aim',
+    detail:
+      'The explosive leaves your hand at its throw speed and falls in an arc (the Lab’s generic gravity) that lands on the ground below the aim point — with Space or in a timed test, below the first dummy — where it stays. In-game it flies straight at the cursor, falls, then bounces and rolls — a sticky one sticks to the first block it touches, a bouncy one keeps bouncing — so where it ends up depends on the throw and the terrain. The Lab has no terrain besides the flat ground.',
+  },
+  'explosive-fuse': {
+    id: 'explosive-fuse',
+    title: 'Goes off when its fuse runs out',
+    detail:
+      'It explodes the wiki’s stated number of seconds after it is thrown, wherever it is then. On the way it passes through dummies without hitting them: only the explosion deals damage. In a timed test, explosives thrown during the last seconds of the fuse have not gone off when the test ends, so a short test counts fewer explosions than throws.',
+  },
+  'explosive-impact': {
+    id: 'explosive-impact',
+    title: 'Goes off on impact',
+    detail:
+      'It explodes the moment it touches a dummy, or when it lands on the ground. The touch itself deals no hit: only the explosion deals damage — to the touched dummy too.',
+  },
+  'blast-area': {
+    id: 'blast-area',
+    title: 'One explosion hits every dummy in its radius once',
+    detail:
+      'Each throw explodes once. Every dummy with any part of its hitbox inside the blast radius takes one hit (an explosion never hits the same dummy twice); one entirely outside takes none. Not modeled: knockback, the damage explosives deal to the player who threw them (the wiki: players in the radius take damage too, including the thrower) and any self-knockback — the Lab’s player never takes damage or moves. Blocks, walls and liquids are not modeled either.',
+    sourceUrl: `${WIKI}Explosives_(class)`,
+  },
+  'blast-falloff': {
+    id: 'blast-falloff',
+    title: 'Blast damage falls off with distance (Lab formula)',
+    detail:
+      'Damage drops in a straight line from full at the centre of the blast to none at its edge, measured to the nearest part of each dummy, in whole percent rounded down; a dummy left with no damage is not hit. The wiki states no falloff curve: this is a Lab formula, not game data.',
+  },
+  'explosive-consumable': {
+    id: 'explosive-consumable',
+    title: 'One explosive used per throw',
+    detail:
+      'Each throw uses up one explosive, counted as “Explosives used”. The Lab never runs out: stack size and buying more are not modeled.',
   },
 }
 

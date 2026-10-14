@@ -9,8 +9,10 @@ export { APPROXIMATIONS, type Approximation, type ApproximationId } from './appr
 export {
   BASE_CRIT_PCT,
   DUMMY_ROW_SPACING_TILES,
+  GROUND_Y_TILES,
   MAX_MINION_SLOTS,
   MAX_SENTRY_SLOTS,
+  THROWN_REST_HEIGHT_TILES,
   TICKS_PER_SECOND,
   TIMED_TEST_DURATIONS,
   timedTestTicks,

@@ -12,7 +12,7 @@
     "AMENDMENTS-012 B56 (2026-10-13): a range the thrust weapon's article states ('maximum range of approximately N tiles') is its reach \u2014 extracted by pipeline/merge/labParams.ts and checked verbatim on the cached revision (wiki data with normal provenance, not _prov.modeledFields); the B46 convention applies only where no range is stated. The nine plain spears (Trident, Spear, Mythril Halberd, Adamantite Glaive, Cobalt Naginata, Palladium Pike, Orichalcum Halberd, Titanium Trident, Swordfish) have reviewed entries for their screen flags only \u2014 their reach is never an overlay value.",
     "P3-S0 remaining-archetype slice (2026-10-13): families returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6\u2013S11): complete params are RECORDED (coverage report) and the weapon is emitted as a limitation whose reason names what the Lab does not model; the same build emits the params once the interpreter registers. Values are stated (yoyo infobox Reach, Whips list table, tooltips, verbatim 'maximum range' / fuse sentences, or a reviewed quote here that states the value) or derived (Projectileinfo minionSlots + quoted rules); a value only an unratified convention could supply stays MISSING (Manhattan sentry ranges \u2014 AMENDMENTS-013 B63 P-4 rejected). Limitation entries may record bounceCount / chainTargets / tickRateTicks (quote-checked) for the NotImplemented sim stubs.",
     "AMENDMENTS-013 B63 conventions (2026-10-13), applied by pipeline/merge/labFamilies.ts as labeled modeling conventions (recorded on the decision; _prov.modeledFields once the archetype is simulated): whip arc 180\u00b0 forward (P-1); summon attack rate from an article-stated average / random cooldown or a time that is not whole ticks, rounded half-to-even to ticks (P-2); a contact minion's stated immunity frames as an UPPER-BOUND rate \u2014 maximum rate; actual depends on minion AI pathing (P-3; not applied where the article says the frames do not come into play); a square blast area's inscribed circle, radius = half the side (P-5). The four AI-class definitions are binding (P-6; labFamilies.ts header).",
-    "Category-less weapons (orchestrator ruling, 2026-10-13): a weapon in no Lab family (no wiki weapon-type category, no held-beam signal) keeps the default limitation card unless a reviewed limitation entry here gives its specific reason \u2014 evidence-checked like every entry (verbatim quotes on the cached revision, its own article cited); such a weapon takes no archetype entry and no recorded extras. Reviewed: Grenade, Star Cannon, Blowpipe, Flamethrower, Snowball Cannon (consumable / ammo-driven uniques).",
+    "Category-less weapons (orchestrator ruling, 2026-10-13): a weapon in no Lab family (no wiki weapon-type category, no held-beam signal) keeps the default limitation card unless a reviewed limitation entry here gives its specific reason \u2014 evidence-checked like every entry (verbatim quotes on the cached revision, its own article cited); such a weapon takes no archetype entry and no recorded extras. Reviewed: Grenade, Star Cannon, Blowpipe, Flamethrower, Snowball Cannon (consumable / ammo-driven uniques); Sticky Grenade, Bouncy Grenade, Happy Grenade (AMENDMENTS-015 B85(c): the grenade family's own reasons, P3-S11 design review).",
     "inGameBehavior (design review P3-S6/S7): reviewed \u201cWhat it does in-game\u201d texts for limitation cards whose tooltip carries no behavior line \u2014 Light Disc, Sergeant United Shield, Combat Wrench, Trimarang and Flaming Mace have only their flavor-text quote (e.g. \u2018Greetings, programs!\u2019), which is not behavior (UX_SPEC \u00a78). Each is a verbatim excerpt of the weapon's own article (checked on the cached revision); the build rejects an entry for a simulated weapon or one whose tooltip already describes its behavior. Every other flavor-only card falls back to \u201cNo verified description yet.\u201d \u2014 or, where its limitation reason describes the behavior, \u201cNo separate description verified \u2014 see below.\u201d (the flavor line is never used). A reason never repeats its reviewed inGameBehavior text (Light Disc: design review P5-S1)."
   ],
   "entries": [
@@ -274,7 +274,7 @@
       "itemId": 168,
       "name": "Grenade",
       "decision": "limitation",
-      "reason": "A consumable explosive: thrown, it bounces and rolls, then explodes on hitting an enemy or after 3 seconds, damaging an 8\u00d78-tile square around it \u2014 the Lab doesn't model explosions.",
+      "reason": "A consumable explosive: thrown, it bounces and rolls, then explodes on hitting an enemy or after 3 seconds, whichever comes first, damaging an 8\u00d78-tile square around it. The Lab's thrown explosives go off either on impact or on a fuse, not both, so it isn't simulated.",
       "evidence": [
         {
           "page": "Grenade",
@@ -289,7 +289,7 @@
           "quote": "The Grenade explosion deals damage within a 8\u00d78-tile square area centered on the Grenade."
         }
       ],
-      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: thrown consumable explosive (bounce + roll, impact/3 s fuse, square blast) \u2014 explosive behavior the Lab does not model"
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: thrown consumable explosive (bounce + roll, impact OR a 3 s fuse, square blast). P3-S11: the explosive-aoe params hold one trigger (impact, or timed with fuseTicks \u2014 schema: fuseTicks iff timed), so its impact-or-3-s trigger is not expressible; the family rule (no category) blocks it too"
     },
     {
       "itemId": 186,
@@ -2169,6 +2169,31 @@
       "why": "Ground movement + sword up close. Only an immunity cap is stated: no attack rate."
     },
     {
+      "itemId": 2586,
+      "name": "Sticky Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive: thrown, it sticks to the first block it touches, then explodes on touching an enemy or, if none comes, after a delay. The Lab's thrown explosives go off either on impact or on a fuse, not both, so it isn't simulated.",
+      "evidence": [
+        {
+          "page": "Sticky Grenade",
+          "quote": "The Sticky Grenade is an explosive consumable ranged weapon."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Like the Sticky Bomb, it will not roll, and will instead stick to the first block it touches until it explodes."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Like normal Grenades, they will detonate upon touching an enemy, or the player that threw it."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Since the explosion is delayed, a good strategy is to toss one on the ground and wait for enemies to step on it."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): thrown consumable explosive that sticks to the first block, detonates on touching an enemy, else after a delay its article does not state. The explosive-aoe params hold one trigger (impact, or timed with fuseTicks \u2014 schema: fuseTicks iff timed), so its touch-or-delay trigger is not expressible (the impact-trigger-with-fallback-fuse schema extension is queued under B85(c))"
+    },
+    {
       "itemId": 2608,
       "name": "Falcon Blade",
       "decision": "limitation",
@@ -2562,6 +2587,27 @@
         }
       ],
       "why": "\"Functions like the Bomb\" \u2192 the Bomb's quoted values; bouncing on blocks is movement before the timed blast."
+    },
+    {
+      "itemId": 3116,
+      "name": "Bouncy Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive: thrown, it bounces off blocks, keeping much of its momentum, and explodes on touching an enemy. The Lab's thrown explosives come to rest where they land and go off there (or on a dummy they touch first), so one that bounces on until it meets an enemy isn't simulated.",
+      "evidence": [
+        {
+          "page": "Bouncy Grenade",
+          "quote": "The Bouncy Grenade is an explosive consumable ranged weapon made of Pink Gel and Grenades."
+        },
+        {
+          "page": "Bouncy Grenade",
+          "quote": "Instead of rolling or sticking in place upon contact with tiles, it will bounce and retain much of its momentum."
+        },
+        {
+          "page": "Bouncy Grenade",
+          "quote": "Like normal Grenades, they will detonate upon touching an enemy, or the player that threw it."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): thrown consumable explosive that bounces, keeping its momentum, and detonates on touching an enemy; its article states no fuse. The Lab's impact trigger also goes off on landing (explosive-impact), which a bouncing grenade does not, and a timed one needs a stated fuse \u2014 neither fits (B85(c) schema extension queued)"
     },
     {
       "itemId": 3196,
@@ -3149,6 +3195,19 @@
         }
       ],
       "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage; bouncing is movement. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 3548,
+      "name": "Happy Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive grenade: half the damage of an ordinary Grenade, with a confetti effect. The wiki doesn't state when it detonates.",
+      "evidence": [
+        {
+          "page": "Happy Grenade",
+          "quote": "The Happy Grenade is an explosive consumable ranged weapon that inflicts half the damage of an ordinary Grenade and displays a confetti effect."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): a grenade variant whose article states its damage relative to the Grenade and its confetti effect but not its trigger (no impact or fuse sentence; re-checked on rev 929707: infobox, lead, Notes, Tips and History \u2014 its only explosion line is History's \"Now properly explodes and deals damage in Multiplayer\"; the Explosives (class) page's generic \"explosion upon impact, e.g. Grenades\" names no Happy Grenade) \u2014 never guessed from the Grenade's; even stated, a grenade's impact-or-fuse trigger is not expressible in the explosive-aoe params (B85(c) schema extension queued)"
     },
     {
       "itemId": 3569,

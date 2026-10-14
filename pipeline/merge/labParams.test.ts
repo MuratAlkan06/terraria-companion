@@ -11,7 +11,7 @@ import type { CategoryTree } from '../fetch/categories'
 import { parseItemTable } from '../parse/infobox'
 import type { Iteminfo } from '../parse/iteminfo'
 import type { Projectileinfo } from '../parse/projectileinfo'
-import { downgradeUnverifiedArchetype } from '../validate/labDowngrade'
+import { blockingUnverifiedFields, downgradeUnverifiedArchetype } from '../validate/labDowngrade'
 import { Evidence } from './evidence'
 import {
   ammoExplosiveReason,
@@ -75,6 +75,21 @@ describe('AMENDMENTS-008 B36 — simRequiredWeaponFields', () => {
     })
     expect(blocked(bow, ['useAnimationTicks']).warning?.code).toBe('W_LAB_DOWNGRADE')
     expect(blocked(bow, ['autoReuse']).warning).toBeUndefined() // pipeline rule: melee archetypes only (the merge guard check covers the rest)
+  })
+
+  it('P3-S11: a classless weapon’s listed critPct (Unknown, B17) does not downgrade it — the wiki: classless damage never crits; any other class still does', () => {
+    const bomb = weapon(166, 'Bomb', {
+      damageClass: 'other',
+      critPct: undefined,
+      shootSpeedTps: 18.75,
+      labBehavior: { kind: 'archetype', params: { archetype: 'explosive-aoe', blastRadiusTiles: 4, trigger: 'timed', fuseTicks: 180, falloff: 'none' } },
+    })
+    const blocked = (w: Weapon, fields: string[]) => downgradeUnverifiedArchetype({ ...w, _prov: { ...w._prov, verified: false, unverifiedFields: fields } })
+    expect(blocked(bomb, ['critPct']).warning).toBeUndefined()
+    expect(blocked(bomb, ['critPct', 'damage']).warning?.message).toContain('required simulation parameter unverified: damage')
+    expect(blocked({ ...bomb, damageClass: 'ranged' }, ['critPct']).warning?.code).toBe('W_LAB_DOWNGRADE')
+    expect(blockingUnverifiedFields('explosive-aoe', ['critPct', 'knockback'], 'other')).toEqual(['knockback'])
+    expect(blockingUnverifiedFields('explosive-aoe', ['critPct', 'knockback'])).toEqual(['critPct', 'knockback']) // class unknown: still required
   })
 })
 
@@ -727,8 +742,8 @@ describe('remaining-archetype families: buildLabParams', () => {
   const YOYO_PARAMS = { archetype: 'returning', variant: 'yoyo', throwRangeTiles: 8.125, returnMode: 'tethered', control: 'cursor-follow' }
 
   it('PENDING INTERPRETER: complete params are recorded, the weapon is emitted as a limitation naming what the Lab does not model', () => {
-    // B61 flip: P3-S6/S7 registered returning + piercing-beam, P3-S9/S10 minion-sentry + whip; explosive-aoe stays pending (P3-S11)
-    expect(PENDING_FAMILIES.filter((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toEqual(['returning', 'whip', 'minion-sentry', 'piercing-beam'])
+    // B61 flip: P3-S6/S7 registered returning + piercing-beam, P3-S9/S10 minion-sentry + whip, P3-S11 explosive-aoe — every family now
+    expect(PENDING_FAMILIES.filter((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toEqual(['returning', 'whip', 'minion-sentry', 'explosive-aoe', 'piercing-beam'])
     const out = buildLabParams({ ...fixture([yoyoSpec()], [], YOYO_PROJ), ...pendingWithout('returning') })
     expect(out.decisions[0]).toMatchObject({ family: 'returning', variant: 'yoyo', method: 'derived', pending: true, reasonKey: 'pending-interpreter', params: YOYO_PARAMS })
     expect(out.decisions[0].derivation.join(' ')).toContain('the item infobox "Reach" row')
@@ -936,9 +951,10 @@ describe('remaining-archetype families: buildLabParams', () => {
 
   it('explosive: fuse from the article sentence; radius + uniform damage from reviewed quotes; unverified core fields are named in the reason', () => {
     const spec = { w: BOMB, stats: { useStyle: 1, shoot: 28, consumable: true }, html: page(166, bombLead) }
-    const out = buildLabParams(fixture([spec], [bombEntry()], { 28: { name: 'Bomb' } }))
-    expect(out.decisions[0]).toMatchObject({ pending: true, pipelineBlocked: ['critPct', 'damage', 'knockback'], params: { archetype: 'explosive-aoe', blastRadiusTiles: 4, trigger: 'timed', fuseTicks: 180, falloff: 'none' } })
-    expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model explosions. Its critical strike chance, damage and knockback are unverified in the wiki data." })
+    // the pending path (a registry without the interpreter): a classless explosive's Unknown critPct is not sim-required (P3-S11)
+    const out = buildLabParams({ ...fixture([spec], [bombEntry()], { 28: { name: 'Bomb' } }), ...pendingWithout('explosive-aoe') })
+    expect(out.decisions[0]).toMatchObject({ pending: true, pipelineBlocked: ['damage', 'knockback'], params: { archetype: 'explosive-aoe', blastRadiusTiles: 4, trigger: 'timed', fuseTicks: 180, falloff: 'none' } })
+    expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model explosions. Its damage and knockback are unverified in the wiki data." })
     expect(() => buildLabParams(fixture([spec], [bombEntry({ blastRadiusTiles: 5 })], { 28: { name: 'Bomb' } }))).toThrow(/blast radius of 5 tiles/)
     expect(() => buildLabParams(fixture([spec], [bombEntry({ trigger: 'timed', fuseTicks: 240 })], { 28: { name: 'Bomb' } }))).toThrow(/may not override/)
     expect(out.decisions[0].modeled).toEqual([]) // a stated radius: game data, no B63 P-5
@@ -952,13 +968,30 @@ describe('remaining-archetype families: buildLabParams', () => {
     for (const c of ['rocket-i', 'nail', undefined]) expect(ammoExplosiveReason(c)).not.toMatch(/parameters|ammunition/)
   })
 
+  it('B61 flip (P3-S11): with the real registry and the real guard, a thrown explosive whose damage + knockback verify is emitted and simulates (its Unknown classless critPct is not needed); one with an unverified core field is kept for the validate downgrade', () => {
+    const verified = { ...BOMB, damage: 100, knockback: 8, shootSpeedTps: 18.75, _prov: prov(['critPct']) }
+    const spec = { w: verified, stats: { useStyle: 1, shoot: 28, consumable: true }, html: page(166, bombLead) }
+    const out = buildLabParams(fixture([spec], [bombEntry()], { 28: { name: 'Bomb' } }))
+    expect(out.decisions[0].pending).toBeUndefined()
+    expect(out.decisions[0]).toMatchObject({ method: 'overlay', archetype: 'explosive-aoe' })
+    expect(out.weapons[0].labBehavior).toEqual({ kind: 'archetype', params: { archetype: 'explosive-aoe', blastRadiusTiles: 4, trigger: 'timed', fuseTicks: 180, falloff: 'none' } })
+    expect(out.weapons[0].critPct).toBeUndefined()
+    expect(assessWeapon(out.weapons[0])).toMatchObject({ simulable: true, archetype: 'explosive-aoe' })
+    const created = createLabSim({ weapon: out.weapons[0] })
+    expect(created.ok && created.sim.approximations.map((a) => a.id)).toEqual(expect.arrayContaining(['explosive-fuse', 'blast-area', 'classless-crit']))
+    // damage / knockback still Unknown: params kept, the validate stage downgrades it (visibly) — never emitted as simulable
+    const unverified = buildLabParams(fixture([{ ...spec, w: { ...BOMB, shootSpeedTps: 18.75 } }], [bombEntry()], { 28: { name: 'Bomb' } }))
+    expect(unverified.decisions[0]).toMatchObject({ archetype: 'explosive-aoe', pipelineBlocked: ['damage', 'knockback'] })
+    expect(unverified.decisions[0].pending).toBeUndefined()
+  })
+
   it('B63 P-5: a square damage area → its inscribed circle (radius = half the side), modeled; from the own article or a reviewed quote', () => {
     const DYN = weapon(167, 'Dynamite', { tags: ['explosives'], damageClass: 'other', damage: undefined, critPct: undefined, knockback: undefined, _prov: prov(['critPct', 'damage', 'knockback']) })
     const square = 'The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite.'
     const lead = `Dynamite is an explosive that explodes 5 seconds after being thrown. ${square}`
     const spec = { w: DYN, stats: { useStyle: 1, shoot: 29, consumable: true }, html: page(167, lead) }
     const entry: LabParamsEntry = { itemId: 167, name: 'Dynamite', decision: 'archetype', archetype: 'explosive-aoe', falloff: 'none', evidence: [{ page: 'Dynamite', quote: square }], why: 'test' }
-    const out = buildLabParams(fixture([spec], [entry], { 29: { name: 'Dynamite' } }))
+    const out = buildLabParams({ ...fixture([spec], [entry], { 29: { name: 'Dynamite' } }), ...pendingWithout('explosive-aoe') })
     expect(out.decisions[0]).toMatchObject({ pending: true, params: { archetype: 'explosive-aoe', blastRadiusTiles: 7.8, trigger: 'timed', fuseTicks: 300, falloff: 'none' }, modeled: ['labBehavior.params.blastRadiusTiles'] })
     expect(out.decisions[0].derivation.join(' ')).toMatch(/blast radius 7\.8 tiles = half the side of the stated square damage area \(7\.8 tiles each way → a 15\.6-tile square; its inscribed circle — modeling convention AMENDMENTS-013 B63 P-5/)
     expect(modelingConventionFor('explosive-aoe', 'labBehavior.params.blastRadiusTiles')).toMatchObject({ id: 'square-blast-radius', ruling: 'AMENDMENTS-013 B63 P-5' })
@@ -967,7 +1000,7 @@ describe('remaining-archetype families: buildLabParams', () => {
     const like = 'Sticky Dynamite functions like Dynamite, but sticks to surfaces.'
     const stickySpec = { w: STICKY, stats: { useStyle: 1, shoot: 470, consumable: true }, html: page(2896, like) }
     const stickyEntry: LabParamsEntry = { itemId: 2896, name: 'Sticky Dynamite', decision: 'archetype', archetype: 'explosive-aoe', trigger: 'timed', fuseTicks: 300, falloff: 'none', evidence: [{ page: 'Sticky Dynamite', quote: like }, { page: 'Dynamite', quote: 'Dynamite is an explosive that explodes 5 seconds after being thrown.' }, { page: 'Dynamite', quote: square }], why: 'test' }
-    const sticky = buildLabParams(fixture([spec, stickySpec], [entry, stickyEntry], { 29: { name: 'Dynamite' }, 470: { name: 'Sticky Dynamite' } }))
+    const sticky = buildLabParams({ ...fixture([spec, stickySpec], [entry, stickyEntry], { 29: { name: 'Dynamite' }, 470: { name: 'Sticky Dynamite' } }), ...pendingWithout('explosive-aoe') })
     expect(sticky.decisions[1]).toMatchObject({ pending: true, params: { blastRadiusTiles: 7.8 }, modeled: ['labBehavior.params.blastRadiusTiles'] })
     expect(sticky.decisions[1].derivation.join(' ')).toContain('(reviewed overlay quote)')
   })
@@ -1037,7 +1070,7 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
     }
   })
 
-  it('B49: every modeled param resolves to a ratified convention; swing and whip always list their own, thrust its B46 reach unless stated (B56), a summon at most its rate (B63 P-2 / P-3); nothing else is modeled', () => {
+  it('B49: every modeled param resolves to a ratified convention; swing and whip always list their own, thrust its B46 reach unless stated (B56), a summon at most its rate (B63 P-2 / P-3), an explosive at most its radius (B63 P-5); nothing else is modeled', () => {
     for (const w of weapons) {
       const modeled = w._prov.modeledFields ?? []
       if (w.labBehavior.kind !== 'archetype') {
@@ -1045,12 +1078,13 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
         continue
       }
       const archetype = w.labBehavior.params.archetype
-      for (const path of modeled) expect(modelingConventionFor(archetype, path)?.ruling, `${w.name} ${path}`).toMatch(/^AMENDMENTS-010 B4[467]$|^AMENDMENTS-013 B63 P-[123]$/)
+      for (const path of modeled) expect(modelingConventionFor(archetype, path)?.ruling, `${w.name} ${path}`).toMatch(/^AMENDMENTS-010 B4[467]$|^AMENDMENTS-013 B63 P-[1235]$/)
       if (archetype === 'swing-melee') expect(modeled).toEqual(['labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles'])
       if (archetype === 'whip') expect(modeled, w.name).toEqual(['labBehavior.params.arcDegrees']) // B63 P-1, every whip
       if (archetype === 'minion-sentry') expect([[], ['labBehavior.params.attackRateTicks#summon-average-rate'], ['labBehavior.params.attackRateTicks#summon-hit-cap']], w.name).toContainEqual(modeled)
       if (archetype === 'thrust') expect([[], ['labBehavior.params.reachTiles']], w.name).toContainEqual(modeled) // [] = the article-stated range (B56)
       if (archetype === 'bow-gun' && modeled.length > 0) expect(w.labBehavior.params.spreadDegrees, w.name).toBe(10)
+      if (archetype === 'explosive-aoe') expect([[], ['labBehavior.params.blastRadiusTiles']], w.name).toContainEqual(modeled) // [] = an article-stated radius
     }
   })
 
@@ -1066,7 +1100,7 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
       launchers: 'explosive-aoe',
     }
     const members = weapons.filter((w) => w.tags.some((t) => t in familyOfTag))
-    if (!members.some((w) => w.labBehavior.kind === 'limitation' && w.labBehavior.reason.startsWith("The Lab doesn't model"))) return // dataset predates the slice
+    if (!members.some((w) => w.labBehavior.kind === 'archetype')) return // dataset predates the remaining-family interpreters
     let emitted = 0
     for (const w of members) {
       const lab = w.labBehavior
@@ -1079,8 +1113,8 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
       }
       if (lab.kind === 'limitation') expect(lab.reason, w.name).not.toMatch(/\byet\b|\bsoon\b|will be|coming|parameters have not been assigned/i)
     }
-    // the B61 flip: registering an interpreter emitted that family's recorded params (returning P3-S7; minion-sentry + whip P3-S9/S10)
-    for (const archetype of ['returning', 'minion-sentry', 'whip'] as const) {
+    // the B61 flip: registering an interpreter emitted that family's recorded params (returning P3-S7; minion-sentry + whip P3-S9/S10; explosive-aoe P3-S11)
+    for (const archetype of ['returning', 'minion-sentry', 'whip', 'explosive-aoe'] as const) {
       expect(members.some((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === archetype), archetype).toBe(true)
     }
     expect(emitted).toBe(members.filter((w) => w.labBehavior.kind === 'archetype').length)

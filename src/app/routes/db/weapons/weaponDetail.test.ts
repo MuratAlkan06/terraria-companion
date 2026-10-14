@@ -18,6 +18,10 @@ import {
   formatRate,
   groupDropSources,
   humanizeSlug,
+  labBlurb,
+  SOURCE_KIND_LABELS,
+  sourcePageName,
+  sourceTitle,
   UNKNOWN_CAPABLE_PATHS,
   weaponStatRows,
 } from './weaponDisplay'
@@ -128,15 +132,12 @@ describe('partially-verified badge covers every Unknown on the page (design revi
     expect(html).toContain('show which 3 values are unknown')
   })
 
-  it('Bomb: 9 weapon-level + 3 Black Slime rates = 12, labelled like the page sections', () => {
+  it('Bomb: 6 weapon-level + 3 Black Slime rates = 9, labelled like the page sections (P3-S11: its damage and knockback verify; B85(b): no crit row)', () => {
     const bomb = byName('Bomb')
     const entries = weaponPageUnknowns(bomb, data.drops)
-    expect(unknownCount(entries)).toBe(12)
+    expect(unknownCount(entries)).toBe(9)
     expect(entries.map((e) => e.label)).toEqual([
       'Game stage',
-      'Damage',
-      'Critical chance',
-      'Knockback',
       'Black Slime (bonus drop) — drop chance (Classic, Expert, Master)',
       'Sold by Demolitionist — price',
       'Sold by Demolitionist — conditions',
@@ -144,11 +145,22 @@ describe('partially-verified badge covers every Unknown on the page (design revi
       'Sold by Skeleton Merchant — conditions',
       'Required progress',
     ])
-    expect(renderDetail(bomb)).toContain('show which 12 values are unknown')
+    expect(renderDetail(bomb)).toContain('show which 9 values are unknown')
+  })
+
+  it('B85(b): classless crit is not applicable — no Unknown "Critical chance" on any classless page (the 15 thrown explosives each count one Unknown fewer)', () => {
+    const classless = WEAPONS.filter((w) => w.damageClass === 'other')
+    expect(classless.length).toBeGreaterThanOrEqual(15)
+    for (const w of classless) {
+      expect(w._prov.unverifiedFields, w.name).not.toContain('critPct')
+      expect(weaponPageUnknowns(w, data.drops).some((e) => e.key === 'critPct'), w.name).toBe(false)
+    }
+    const explosives = classless.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'explosive-aoe')
+    expect(explosives).toHaveLength(15)
   })
 
   it('while the drop index is not loaded only the weapon-level Unknowns (all that is on screen) count', () => {
-    expect(unknownCount(weaponPageUnknowns(byName('Bomb'), undefined))).toBe(9)
+    expect(unknownCount(weaponPageUnknowns(byName('Bomb'), undefined))).toBe(6)
     expect(unknownCount(weaponPageUnknowns(byName('Terraprisma'), undefined))).toBe(0)
   })
 })
@@ -224,22 +236,64 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
     expect(html.match(/<td class="bg-hatch-unknown[^"]*"><button[^>]*data-unknown-field="drop:/g)).toHaveLength(3)
   })
 
-  it('Bomb (classless): damage/crit/knockback Unknown, two vendors with Unknown price + conditions', () => {
+  it('Bomb (classless): no crit row (B85(b): classless damage never crits), damage + knockback verified (P3-S11), two vendors with Unknown price + conditions', () => {
     const bomb = byName('Bomb')
     const html = renderDetail(bomb)
-    expect(critView(bomb).status).toBe('unverified')
+    expect(critView(bomb).status).toBe('not-applicable')
+    expect(weaponStatRows(bomb).map((r) => r.key)).toEqual(['damage', 'useTime', 'knockback', 'autoReuse'])
+    expect(html).not.toContain('Critical chance')
+    expect(bomb).toMatchObject({ damage: 100, knockback: 8 })
     const markers = unknownMarkers(html)
-    for (const f of ['damage', 'critPct', 'knockback', 'acquisition.1.priceCopper', 'acquisition.2.conditions']) {
+    for (const f of ['acquisition.1.priceCopper', 'acquisition.2.conditions']) {
       expect(markers).toContain(f)
     }
+    for (const f of ['damage', 'knockback', 'critPct']) expect(markers).not.toContain(f)
     expect(html).toContain('Sold by Demolitionist')
     expect(html).toContain('Sold by Skeleton Merchant')
   })
 
-  it('B17: summon weapons have no crit row at all', () => {
-    for (const w of WEAPONS.filter((x) => x.damageClass === 'summon')) {
+  it('B17 / B64 / B85(b): summon and classless weapons have no crit row at all; melee / ranged / magic keep theirs', () => {
+    for (const w of WEAPONS.filter((x) => x.damageClass === 'summon' || x.damageClass === 'other')) {
       expect(weaponStatRows(w).some((r) => r.key === 'crit'), w.name).toBe(false)
     }
+    expect(weaponStatRows(byName('Zenith')).some((r) => r.key === 'crit')).toBe(true)
+  })
+
+  it('the Lab note varies by archetype family: a thrown explosive names its blast and per-dummy damage, no crits (design review P3-S11 #6)', () => {
+    const bomb = renderDetail(byName('Bomb'))
+    expect(bomb).toContain('Simulated in the Weapon Lab')
+    expect(bomb).toContain('Throw it at the dummies to see its blast radius and per-dummy damage')
+    expect(bomb).not.toMatch(/data-lab-blurb=""[^<]*crits/)
+    // a sword keeps its swing wording and its crits; a summon weapon never mentions crits
+    expect(labBlurb(byName('Wooden Sword'))).toMatch(/^Swing it at the Infinite Dummy to see per-hit damage, crits and an estimated DPS/)
+    for (const w of WEAPONS.filter((x) => x.labBehavior.kind === 'archetype')) {
+      const text = labBlurb(w) ?? ''
+      expect(text, w.name).toContain('a browser simulation')
+      if (w.damageClass === 'summon' || w.damageClass === 'other') expect(text, w.name).not.toContain('crits')
+    }
+    const archetypes = new Set(WEAPONS.flatMap((w) => (w.labBehavior.kind === 'archetype' ? [w.labBehavior.params.archetype] : [])))
+    const leads = new Set(WEAPONS.flatMap((w) => (w.labBehavior.kind === 'archetype' ? [(labBlurb(w) ?? '').split(' ')[0]] : [])))
+    expect(leads.size).toBeGreaterThanOrEqual(Math.min(archetypes.size, 7))
+  })
+
+  it('sources name their page: the Bomb’s triple evidence reads as three distinct sources (design review P3-S11 #7)', () => {
+    const bomb = byName('Bomb')
+    const titles = bomb._prov.sources.map((s) => sourceTitle(s))
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        { label: 'Wiki Items table', page: 'Bomb' },
+        { label: 'Wiki article', page: 'Explosives (class)' },
+        { label: 'Wiki article', page: 'Bomb' },
+        { label: 'Module:Iteminfo (game item data)' },
+      ]),
+    )
+    // every kind in the dataset has a label (never the raw kind)
+    for (const w of WEAPONS) for (const s of w._prov.sources) expect(SOURCE_KIND_LABELS[s.kind], s.kind).toBeDefined()
+    const html = renderDetail(bomb)
+    expect(html).not.toContain('>wiki-article<')
+    expect(html.match(/data-source-page="">Explosives \(class\)</g)).toHaveLength(1)
+    expect(sourcePageName('https://terraria.wiki.gg/wiki/Module:Projectileinfo/data')).toBe('Module:Projectileinfo/data')
+    expect(sourcePageName('not a url')).toBeUndefined()
   })
 
   it('weapons with unverified acquisition render the honest "Acquisition unknown" state', () => {

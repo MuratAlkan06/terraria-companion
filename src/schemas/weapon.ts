@@ -185,6 +185,11 @@ export type CustomScenario = z.infer<typeof CustomScenario>
  * `autoReuse` changes the cadence of melee-class weapons (autoswing melee attacks one tick
  * sooner — src/sim/README.md "Cadence"), so it is required for the melee archetypes.
  * AMENDMENTS-010 B48(a): `reuseDelayTicks` is part of the cadence too (a cooldown after each use).
+ * P3-S11 / AMENDMENTS-015 B85(b): a CLASSLESS weapon's `critPct` is not required when `damageClass` is
+ * given — the wiki Critical hit page: "Damage not classified as any of the four damage types above can
+ * never deal critical hits", so it is not applicable (the pipeline emits it absent, not listed — B17's
+ * "Unknown" is superseded) and could change no simulated hit anyway (the sim rolls no crits for it and
+ * labels that, `classless-crit`). Every other class still requires it.
  */
 const SIM_FIELDS_ALL_ARCHETYPES = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks', 'reuseDelayTicks', 'knockback', 'manaCost'] as const
 const SIM_FIELDS_BY_ARCHETYPE: Partial<Record<Archetype, readonly string[]>> = {
@@ -192,9 +197,11 @@ const SIM_FIELDS_BY_ARCHETYPE: Partial<Record<Archetype, readonly string[]>> = {
   thrust: ['autoReuse'],
   returning: ['autoReuse'],
   'bow-gun': ['ammoClass', 'shootSpeedTps'],
+  'explosive-aoe': ['shootSpeedTps'],
 }
-export function simRequiredWeaponFields(archetype: Archetype): readonly string[] {
-  return [...SIM_FIELDS_ALL_ARCHETYPES, ...(SIM_FIELDS_BY_ARCHETYPE[archetype] ?? [])]
+export function simRequiredWeaponFields(archetype: Archetype, damageClass?: DamageClass): readonly string[] {
+  const fields = [...SIM_FIELDS_ALL_ARCHETYPES, ...(SIM_FIELDS_BY_ARCHETYPE[archetype] ?? [])]
+  return damageClass === 'other' ? fields.filter((f) => f !== 'critPct') : fields
 }
 
 /**

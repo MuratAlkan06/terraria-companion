@@ -160,9 +160,17 @@ export type SimEvent =
   | (EventBase & {
       type: 'projectile-despawn'
       projectileId: number
-      /** `returned`: a returning weapon (boomerang, flail, yoyo) is back in hand — the next attack may start. */
-      reason: 'pierce-exhausted' | 'lifetime' | 'out-of-bounds' | 'returned'
+      /**
+       * `returned`: a returning weapon (boomerang, flail, yoyo) is back in hand — the next attack may start.
+       * `detonated`: a thrown explosive went off (its `explosion` event comes first, then its blast's hits).
+       */
+      reason: 'pierce-exhausted' | 'lifetime' | 'out-of-bounds' | 'returned' | 'detonated'
     })
+  /**
+   * A thrown explosive goes off (P3-S11): centre (tiles) and blast radius; one per throw. Its hits follow
+   * as `damage` events of the same `proj:<id>` source (each with `blastKeptPct`), then the despawn.
+   */
+  | (EventBase & { type: 'explosion'; projectileId: number; x: number; y: number; radiusTiles: number })
   | (EventBase & {
       type: 'damage'
       source: DamageSourceKind
@@ -181,6 +189,11 @@ export type SimEvent =
        * the same roll deals untagged (tag damage, and a crit only the tag's crit chance allows).
        */
       tagBonus?: number
+      /**
+       * A blast's hit only (explosive-aoe): the whole percent of the blast's damage this dummy took at its
+       * distance from the centre — 100 without falloff (README "Param semantics", explosive-aoe).
+       */
+      blastKeptPct?: number
     })
   | (EventBase & { type: 'debuff-applied'; dummyId: string; buffId: string; durationTicks: number; refreshed: boolean })
   | (EventBase & { type: 'debuff-expired'; dummyId: string; buffId: string })
@@ -241,6 +254,13 @@ export interface StatsSnapshot {
   activations: number
   projectilesSpawned: number
   ammoConsumed: number
+  /** Consumable weapon items used up: a thrown explosive is the item itself, one per throw (P3-S11). */
+  consumablesUsed: number
+  /**
+   * Explosions so far (a thrown explosive goes off once: `explosion` events). Fewer than
+   * `consumablesUsed` while thrown ones are still on their fuses.
+   */
+  explosions: number
   manaConsumed: number
   debuffsApplied: number
   /** Most recent direct hit — the HUD's "per-hit damage". */
@@ -287,6 +307,11 @@ export interface WeaponSummary {
    * attack can't start sooner.
    */
   returnsToHand: boolean
+  /**
+   * Each attack throws the weapon itself and uses it up (a thrown explosive, P3-S11): one item per throw,
+   * counted in `stats.consumablesUsed` — not ammo.
+   */
+  consumable: boolean
 }
 
 export interface TimedTestResult {
@@ -302,6 +327,13 @@ export interface TimedTestResult {
   uses: number
   attacksPerSec: number
   ammoConsumed: number
+  /** Consumable weapon items used up over the run (thrown explosives: one per throw). */
+  consumablesUsed: number
+  /**
+   * Explosions over the run. `consumablesUsed − explosions` thrown explosives had not gone off when the
+   * run ended (still on their fuses: the results say so beside "Explosives used").
+   */
+  explosions: number
   manaConsumed: number
   debuffsApplied: number
   dpsSeries: number[]
@@ -389,7 +421,11 @@ export interface RenderState {
     width: number
     height: number
     defense: number
-    debuffs: Array<{ buffId: string; remainingTicks: number }>
+    /**
+     * Active debuffs (sorted by buffId): ticks left, and the duration they were last (re)applied with —
+     * the full length of the remaining-time bar (Debuff Dummy, PRD P3-S11 AC3).
+     */
+    debuffs: Array<{ buffId: string; remainingTicks: number; durationTicks: number }>
     /** A whip's tag on it (P3-S10 AC1), else null. */
     tag: { remainingTicks: number; durationTicks: number; damageFlat: number; critPct: number | null } | null
   }>

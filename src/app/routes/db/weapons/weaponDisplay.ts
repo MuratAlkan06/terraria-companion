@@ -5,10 +5,12 @@
  *
  * Binding rulings encoded here:
  * - B14: "Use time" displays `useAnimationTicks` (wiki parity); `useTimeTicks` is sim-only.
- * - B17: summon crit is not applicable (row omitted); classless ("other") crit is Unknown;
- *   shown crit = universal 4% base + the weapon's bonus (`critPct`).
+ * - B17 / B64 / B85(b): crit is not applicable — row omitted — for summon damage (it cannot normally
+ *   crit) and for classless ("other") damage (the wiki's Critical hit page: it "can never deal critical
+ *   hits"; AMENDMENTS-015 B85(b) supersedes B17's classless Unknown); otherwise shown crit = universal
+ *   4% base + the weapon's bonus (`critPct`).
  */
-import type { Acquisition, DamageClass, DropSource, Weapon } from '../../../../schemas'
+import type { Acquisition, DamageClass, DropSource, ProvSource, Weapon } from '../../../../schemas'
 import { getField, type FieldView } from '../../../../schemas/getField'
 import { getStageInfo, isStage } from '../../../stages'
 
@@ -38,12 +40,10 @@ export function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)))
 }
 
-/** Crit view per B17. */
+/** Crit view (B17 / B64 / B85(b)): summon and classless damage never crit by the weapon's own chance — no row. */
 export function critView(w: Weapon): FieldView {
-  if (w.damageClass === 'summon') return { status: 'not-applicable' }
-  const view = getField(w, 'critPct')
-  if (w.damageClass === 'other' && view.status === 'not-applicable') return { status: 'unverified' }
-  return view
+  if (w.damageClass === 'summon' || w.damageClass === 'other') return { status: 'not-applicable' }
+  return getField(w, 'critPct')
 }
 
 /** Lowercase kebab slug → "Title Case" (fallback label when no name index is loaded). */
@@ -113,6 +113,79 @@ export function weaponStatRows(w: Weapon): StatRow[] {
   add('ammo', 'Ammo', 'ammoClass', getField(w, 'ammoClass'), (v) => ammoTypeLabel(v as string))
   add('autoReuse', 'Auto-reuse', 'autoReuse', getField(w, 'autoReuse'), (v) => (v ? 'Yes' : 'No'))
   return rows
+}
+
+/**
+ * "Simulated in the Weapon Lab": what trying it there shows, by archetype family (design review P3-S11
+ * #6) — the attack in its own verb, and crits only for a class that can crit (summon and classless
+ * damage never do by the weapon's own chance: B64 / B85(b)). Undefined without Lab params.
+ */
+export function labBlurb(w: Pick<Weapon, 'labBehavior' | 'damageClass'>): string | undefined {
+  const lab = w.labBehavior
+  if (lab.kind !== 'archetype') return undefined
+  const p = lab.params
+  const crits = w.damageClass === 'melee' || w.damageClass === 'ranged' || w.damageClass === 'magic' ? ', crits' : ''
+  const sees = `per-hit damage${crits} and an estimated DPS`
+  const lead = (() => {
+    switch (p.archetype) {
+      case 'swing-melee':
+        return `Swing it at the Infinite Dummy to see ${sees}`
+      case 'thrust':
+        return `Thrust it at the Infinite Dummy to see ${sees}`
+      case 'bow-gun':
+        return `Shoot at the Infinite Dummy to see ${sees}`
+      case 'magic-bolt':
+        return `Cast it at the Infinite Dummy to see ${sees} and its mana use`
+      case 'returning':
+        return `Throw it at the Infinite Dummy to see ${sees}`
+      case 'piercing-beam':
+        return `Fire it at the dummies to see ${sees}`
+      case 'minion-sentry':
+        return p.variant === 'sentry'
+          ? 'Place a sentry by the Infinite Dummy to see its hits and an estimated DPS'
+          : 'Summon minions at the Infinite Dummy to see their hits and an estimated DPS'
+      case 'whip':
+        return `Whip the Infinite Dummy to see ${sees} and the tag it puts on the dummy for your summons`
+      case 'explosive-aoe':
+        return 'Throw it at the dummies to see its blast radius and per-dummy damage'
+    }
+  })()
+  return `${lead} — a browser simulation, so the values are approximations, not Terraria engine output.`
+}
+
+/** What each kind of source is, in the SourcesPanel ("Where this data comes from"). */
+export const SOURCE_KIND_LABELS: Readonly<Record<string, string>> = {
+  iteminfo: 'Module:Iteminfo (game item data)',
+  'wiki-module': 'Wiki data module',
+  'wiki-article': 'Wiki article',
+  'cargo:Items': 'Wiki Items table',
+  'cargo:Recipes': 'Wiki Recipes table',
+  'cargo:Drops': 'Wiki Drops table',
+  'cargo:NPCs': 'Wiki NPCs table',
+  'cargo:Weapon_source': 'Wiki weapon sources table',
+  'cargo:Imageinfo': 'Wiki image info',
+  curated: 'Curated overlay',
+}
+
+/** The wiki page a source URL names ("…/wiki/Explosives_(class)" → "Explosives (class)"); undefined off the wiki path. */
+export function sourcePageName(url: string): string | undefined {
+  try {
+    const m = /^\/wiki\/(.+)$/.exec(new URL(url).pathname)
+    return m ? decodeURIComponent(m[1]).replaceAll('_', ' ') : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A source's kind and the page it was read from (design review P3-S11 #7): two articles — an explosive's
+ * class table and its own page — read as two sources, not "wiki-article" twice. The page is left out
+ * where the kind's label already names it (Module:Iteminfo).
+ */
+export function sourceTitle(source: Pick<ProvSource, 'kind' | 'url'>): { label: string; page?: string } {
+  const label = SOURCE_KIND_LABELS[source.kind] ?? source.kind
+  const page = source.kind === 'iteminfo' ? undefined : sourcePageName(source.url)
+  return page ? { label, page } : { label }
 }
 
 const FIELD_LABELS: Record<string, string> = {

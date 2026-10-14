@@ -45,9 +45,9 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | `assessWeapon(weapon)` → `{ simulable: true, archetype, requiresAmmoClass, requiresBuffIds } \| { simulable: false, refusal }` | Weapon-only verdict (no ammo/buffs needed). Use it for the in-Lab browser's "simulated vs limitation" badge (P3-S2) and the coverage report (P3-S13). |
 | `cadenceTicksFor(weapon, useAnimationTicks)` | The effective ticks per attack, incl. the weapon's reuse delay (see "Cadence"). |
 | `APPROXIMATIONS`, `sim.approximations` | Plain-language assumptions; `sim.approximations` is the subset for the equipped weapon — render it verbatim in the AssumptionsTip paired with every EstimateLabel. Modeling-convention entries carry a `ruling` (see "Modeling conventions"). |
-| `IMPLEMENTED_ARCHETYPES` | `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`, `minion-sentry`, `whip`. |
+| `IMPLEMENTED_ARCHETYPES` | Every schema archetype since P3-S11: `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`, `minion-sentry`, `whip`, `explosive-aoe`. |
 | `dummyRow(count, firstX?, spacingTiles?)`, `DUMMY_ROW_SPACING_TILES` | Multiple Dummies: a row of standard dummies (see "Units and coordinates"). |
-| `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `MAX_MINION_SLOTS`, `MAX_SENTRY_SLOTS`, `WHIP_TAG_DURATION_TICKS`, `mulberry32` | Constants / utilities. |
+| `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `MAX_MINION_SLOTS`, `MAX_SENTRY_SLOTS`, `WHIP_TAG_DURATION_TICKS`, `GROUND_Y_TILES`, `mulberry32` | Constants / utilities (`GROUND_Y_TILES`: the flat ground the player and the default dummies stand on — a thrown explosive lands on it; the Lab arena draws its ground line there). |
 | `type *` from `./types` | All public types (`LabSim`, `SimSnapshot`, `SimEvent`, `RenderState`, `SimRefusal`, …). |
 
 ### `LabSimOptions`
@@ -91,7 +91,7 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | `snapshot()` | Plain-data `SimSnapshot` (safe to keep; deep copies). |
 | `renderState()` | Positions for the renderer (`alpha` included). |
 | `drainEvents()` | Pending events, oldest first; clears the queue. |
-| `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, `returnsToHand` (a returning weapon: an attack lasts until it is back), … for the EquippedBar. |
+| `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, `returnsToHand` (a returning weapon: an attack lasts until it is back), `consumable` (a thrown explosive: each throw uses the item itself up), … for the EquippedBar. |
 | `loadout` | The minion loadout's `WeaponSummary`, else `null`. `approximations` lists the weapon's, then the loadout's (deduplicated). |
 
 ### HUD mapping (UX_SPEC §3.4)
@@ -106,6 +106,9 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | DoT breakdown | `stats.dotDamage`, `stats.directDamage`, `stats.debuffsApplied`, `renderState().dummies[].debuffs` |
 | ManaBar | `snapshot().mana` (`null` for weapons without a mana cost) |
 | AmmoCounter | `stats.ammoConsumed` |
+| Consumables counter (P3-S11: "Explosives used") | `stats.consumablesUsed` (`weapon.consumable`); a finished test's `result.consumablesUsed` — and `result.explosions` (the rest were still on their fuses at the end) |
+| Blast readout (P3-S11 AC1) | event `explosion` (centre, `radiusTiles`) + its `damage` events (same `sourceId`, each with `blastKeptPct`) |
+| Debuff Dummy (P3-S11 AC3) | `renderState().dummies[].debuffs` (`buffId`, `remainingTicks`, `durationTicks`); `stats.debuffsApplied` |
 | TimedTestControl | `snapshot().timedTest` (`status`, `remainingSec`, `result`) — announce `finished` via `aria-live` |
 | Multiple dummies (primary = first dummy vs all) | `stats.perDummy[id]`; a finished test's `result.perDummy` |
 | Summons vs slots (P3-S9) | `snapshot().summons` (`minions`, `minionSlotsUsed`, `minionSlots`, `sentries`, …); positions `renderState().agents` |
@@ -116,10 +119,12 @@ stands on is its target dummy's foot line (the sim has no terrain).
 
 `use-start`, `use-blocked` (`block` setting only; once per out-of-mana streak), `projectile-spawn`,
 `projectile-despawn` (`pierce-exhausted` / `lifetime` / `out-of-bounds` / `returned` — a returning
-weapon caught: the next attack may start on the following tick), `damage`
+weapon caught: the next attack may start on the following tick — / `detonated` — a thrown explosive went
+off), `explosion` (P3-S11: `projectileId`, centre `x` / `y`, `radiusTiles`; emitted before its hits), `damage`
 (`source: 'melee' | 'projectile' | 'dot' | 'minion' | 'sentry'`, `sourceId` `use:<n>` / `proj:<id>` /
 `beam` / `buff:<id>` / `minion:<agentId>` / `sentry:<agentId>`, `amount`, `crit`, `x`, `y` = impact
-point, and on a summon's hit on a whip-tagged dummy `tagBonus` — see "Summons and whips"; crits render
+point, and on a summon's hit on a whip-tagged dummy `tagBonus` — see "Summons and whips"; on a blast's
+hit `blastKeptPct` — the whole percent of the blast's damage it took, 100 without falloff; crits render
 larger, DoT smaller), `debuff-applied` (`refreshed`), `debuff-expired`, `summon` (`agentId`, `kind`,
 `x`, `y`, `loadout`), `dismiss` (`replaced` / `slots`), `tag-applied` (`refreshed`), `tag-expired`.
 Every event has `tick` and `seq`. `snapshot().eventDigest` is an FNV-1a fingerprint of the whole
@@ -127,8 +132,8 @@ stream since the last reset.
 
 ### Render state
 
-`renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, size, defense, active
-debuffs), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`; a returning
+`renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, size, defense, active debuffs —
+`buffId`, `remainingTicks` and the `durationTicks` they were last (re)applied with), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`; a returning
 weapon in flight is its one projectile), `blade` (`swing` | `thrust` | `beam` | `whip`: `prevAngle →
 angle`, `prevLength → length`, radians, 0 = +x, π/2 = down; a `beam` runs from the player along
 `angle` for `length` tiles while the attack is held; a `whip`'s `length` is its range), each dummy's
@@ -143,8 +148,8 @@ whip `tag`, and `agents` (minions and sentries, oldest first: `kind`, `aiClass`,
 |---|---|
 | `limitation` | LimitationCard from `refusal.limitation` (`inGameBehavior`, `reason`, `sourceUrl`). |
 | `custom-scenario` | Custom-scenario banner (`scenarioId`). |
-| `archetype-not-implemented` | Not-simulated card (explosive-aoe). |
-| `modifier-not-implemented` | bounce / chain (the registry stubs throw `NotImplementedError`; the guard turns that into this result); homing on a returning weapon, a held beam, a whip or a summon (their flight / line / sweep / attack ignores steering — refused, never ignored). |
+| `archetype-not-implemented` | Not-simulated card. Unreachable with schema data since P3-S11 (every archetype is registered); kept as defense in depth. |
+| `modifier-not-implemented` | bounce / chain (the registry stubs throw `NotImplementedError`; the guard turns that into this result); homing on a returning weapon, a held beam, a whip, a summon or a thrown explosive (their flight / line / sweep / attack / arc ignores steering — refused, never ignored); multiHit on a thrown explosive (one explosion hits each dummy once). |
 | `missing-required-field` / `unverified-required-field` | `fields` lists dot-paths. Normally unreachable: the pipeline downgrades such weapons to limitations (§2.1 rule 3); this is defense in depth. |
 | `invalid-data` | Contradictory or malformed values. |
 | `dependency-data-unavailable` | The chosen ammo or referenced buff lacks verified data (e.g. ammo with no damage value). |
@@ -155,8 +160,13 @@ whip `tag`, and `agents` (minions and sentries, oldest first: `kind`, `aiClass`,
 Required weapon fields for every archetype: `damageClass`, `damage`, `critPct` (NOT for summon-class
 weapons — AMENDMENTS-013 B64: summon damage cannot crit, B17, so the pipeline emits no `critPct` for
 any whip, minion or sentry weapon; a present value is still checked, a listed-unverified one still
-blocks), `useTimeTicks`, `useAnimationTicks`; plus `shootSpeedTps` (bow-gun, returning, and piercing-beam
-`pierce-projectile` params without a projectile spec) and `manaCost` (magic-bolt). `autoReuse`/`manaCost`/`reuseDelayTicks` may be absent (defaults: false / no cost /
+blocks; NOR for classless weapons — P3-S11 / AMENDMENTS-015 B85(b): the wiki Critical hit page says
+damage of no class "can never deal critical hits", so their `critPct` is not applicable — the pipeline
+emits it absent and not listed (B17's "Unknown" superseded), and a record that still lists it is not
+blocked either (`simRequiredWeaponFields(archetype, damageClass)`) — labeled `classless-crit`; a present
+value is still checked), `useTimeTicks`, `useAnimationTicks`;
+plus `shootSpeedTps` (bow-gun, returning, explosive-aoe, and piercing-beam `pierce-projectile` params
+without a projectile spec) and `manaCost` (magic-bolt). `autoReuse`/`manaCost`/`reuseDelayTicks` may be absent (defaults: false / no cost /
 no cooldown) but block if listed unverified. Any `labBehavior.*` path or
 `simRequiredWeaponFields(archetype)` path listed unverified blocks (mirrors the pipeline rule). A
 `_prov.modeledFields` path that no ratified modeling convention governs is `invalid-data` (B49:
@@ -218,7 +228,7 @@ Order (wiki Damage): **variance → defense → crit**.
 
 ## Extending
 
-- **New archetype** (explosive-aoe): add `interpreters/<name>.ts` implementing
+- **New archetype** (every schema archetype is registered since P3-S11): add `interpreters/<name>.ts` implementing
   `ArchetypeInterpreter` (`prepare` → `Behavior` with `activate` / optional `tickUse` / `ready` /
   `blade` / `fillSlots`), register it in `interpreters/index.ts` — which also flips the pipeline's
   recorded "params complete, pending interpreter" weapons on the next `npm run pipeline:build`
@@ -228,7 +238,9 @@ Order (wiki Damage): **variance → defense → crit**.
   `activeProjectiles` / `autoAim` / `freshPress` on `KernelApi`, and (P3-S9/S10) persistent AGENTS
   (`summon` / `dismiss` / `agents`, each stepped by its own `AgentBrain` after the use cycle), a
   per-hit damage override (`strike(…, damage)`), hit OWNERS (`HitSource.owner`: another weapon's crit
-  and modifiers — the minion loadout's) and whip TAGS (`tagDummy`, `focusIndex`). A `Behavior` is
+  and modifiers — the minion loadout's), whip TAGS (`tagDummy`, `focusIndex`) and (P3-S11) area hits:
+  `explode` (one hit per dummy in a circle, with falloff), a guide's `touch` (a contact that is no hit)
+  and `detonated` (removal after an explosion), `consumeItem` (a consumable weapon used up). A `Behavior` is
   shared by every world a sim builds (reset makes a new world): it keeps no per-world state of its own
   (per-agent state lives in its brain, per-use state may be keyed by the `ActiveUse`).
 - **New modifier** (bounce, chain): replace the throwing stub in `modifiers.ts` with a
@@ -280,6 +292,13 @@ See `approximations.ts` for the user-facing copy. Summary (✓ = rule verified o
 | summon-target | ✓/◇ | The last whipped dummy ✓ (a sentry: if in range), else the nearest to the player (a sentry: to itself, within range) ◇. |
 | minion-melee-contact / -ground-melee / -hover-strike / -ranged-shot | ◇ | The B63 P-6 classes' Lab models (minionSentry.ts header); a ranged shot without a data speed lands the tick it is fired. |
 | sentry-placement | ◇ | Exactly at the aim point (auto-aim: 2 tiles ahead), never moves; attacks dummies whose centre is within `sentryRangeTiles`; the 10-minute lifetime is not modeled. |
+| classless-crit | ✓ | A classless weapon never crits ([Critical hit](https://terraria.wiki.gg/wiki/Critical_hit): "can never deal critical hits") — not applicable, never Unknown (AMENDMENTS-015 B85(b)). Shown for damage class "other". |
+| explosive-throw | ◇ | Thrown at the throw speed in an arc (generic gravity) that lands on the ground below the aim point, where it rests — no bounce, roll or stick; flat ground only. |
+| explosive-fuse | ✓/◇ | Goes off `fuseTicks` after the throw ✓ (wiki: "explodes N seconds after being thrown"), wherever it is; passes through dummies without a hit ◇; a short timed test ends before the last throws go off. |
+| explosive-impact | ◇ | Goes off at its first dummy touch (no hit of its own) or when it lands. |
+| blast-area | ✓/◇ | One explosion per throw ✓; every dummy whose hitbox reaches into the radius takes one hit ◇; knockback, self-damage, self-knockback, blocks and liquids not modeled. |
+| blast-falloff | ◇ | `linear` only: 100 % at the centre → 0 % at the edge by the distance to the nearest hitbox point, whole percent rounded down — a Lab formula (no wiki curve). |
+| explosive-consumable | ◇ | One item used per throw (`consumablesUsed`); never runs out. |
 
 ## Modeling conventions (AMENDMENTS-010 B44 / B46 / B47, AMENDMENTS-013 B63, record marker B49)
 
@@ -306,8 +325,7 @@ to no convention and is refused — it can never pick up the wrong label (`model
 | square-blast-radius | B63 P-5 | explosive-aoe `blastRadiusTiles` (inscribed circle of a stated square area) | `square-blast-radius` |
 
 The whip and summon-rate B63 labels surface with the whip / minion-sentry interpreters (P3-S9 / P3-S10,
-2026-10-14); `square-blast-radius` once the explosive-aoe interpreter ships (P3-S11) — until then those
-weapons are emitted as limitations (B61).
+2026-10-14), `square-blast-radius` with the explosive-aoe interpreter (P3-S11, 2026-10-14).
 
 The pipeline applies B46 only where the weapon's article states no range. Where it states one, that
 range is the thrust `reachTiles` (AMENDMENTS-012 B56): extracted wiki data, not listed in
@@ -363,6 +381,20 @@ the player — `swingAngle`) once per use; each dummy at most once per swing; th
 (wiki: 4 s; the params carry no duration, so Constellation's 8 s would need a schema field — it is a
 reviewed limitation) with `tagDamageFlat` / `tagCritPct`, and makes it the summons' focus.
 
+**explosive-aoe** (P3-S11) — a THROWN explosive: the weapon item itself, used up by each throw
+(`consumeItem`, `stats.consumablesUsed`; never ammo — a weapon with `ammoClass` is `invalid-data`: a
+launcher's blast is its ammo's). Each activation throws one from the player's centre toward the aim at
+`weapon.shootSpeedTps` (required) horizontally, in an arc under the generic gravity solved to land on the
+ground (`GROUND_Y_TILES`) below the aim point (`THROWN_REST_HEIGHT_TILES` above it), where it rests
+(`throwArc` / `arcPoint` / `landingPoint`). `trigger` `timed`: it goes off `fuseTicks` after the throw
+(its age), wherever it is, flying through dummies without a hit; `impact`: at its first dummy touch
+(`touch`, at the touch point — no hit of its own) or when it lands. The explosion (`explode`) hits every
+dummy whose hitbox reaches into the circle of `blastRadiusTiles` ONCE, at the hitbox point nearest the
+centre: `falloff` `none` = full damage; `linear` = ⌊(R − d) × 100 ÷ R⌋ % of it by that distance d
+(`blastKeptPct`, a Lab formula), a dummy kept 0 % not hit — then variance, defense and crit as any hit
+(classless: no crit). `selfKnockback` and the thrower's self-damage are not modeled (stationary player).
+Homing and multiHit are refused (`modifier-not-implemented`).
+
 ## Resolved questions
 
 1. **`simRequiredWeaponFields` predated B14** (omitted `useAnimationTicks` and melee `autoReuse`).
@@ -376,6 +408,28 @@ reviewed limitation) with `tagDamageFlat` / `tagCritPct`, and makes it the summo
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
 `determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+
+- **2026-10-14: explosions counted (P3-S11 design review #8).** `stats.explosions` / `result.explosions`
+  count `explosion` events, so the results can say how many thrown explosives were still on their fuses
+  at the end (`consumablesUsed − explosions`). A stat only — no event, digest or hit changes: every
+  fingerprint is unchanged. Public constant `THROWN_REST_HEIGHT_TILES` (the Lab camera frames a blast
+  where a throw comes to rest).
+
+- **2026-10-14: explosive-aoe interpreter, classless crit, Debuff Dummy state (PRD P3-S11).** New
+  interpreter `explosive-aoe`, registered — every schema archetype now is (the B61 flip: `pipeline:build`
+  emits the recorded thrown explosives whose core fields verify). Guard: `critPct` is not required for
+  classless weapons (wiki Critical hit: such damage "can never deal critical hits"; label
+  `classless-crit`; `simRequiredWeaponFields(archetype, damageClass)`). Kernel hooks, inert for every
+  earlier archetype: `explode` (+ event `explosion`, `blastKeptPct` on its hits), a guide's `touch` and
+  `detonated` (despawn reason), `consumeItem` (`stats.consumablesUsed`, `result.consumablesUsed`,
+  `WeaponSummary.consumable`). `renderState().dummies[].debuffs[].durationTicks` (the Debuff Dummy's
+  bar; the refresh rule itself is unchanged). New approximations `classless-crit`, `explosive-throw`,
+  `explosive-fuse`, `explosive-impact`, `blast-area`, `blast-falloff`, `explosive-consumable`; constant
+  `GROUND_Y_TILES`. Fingerprints: the fourteen earlier scenarios are **unchanged** (proved by the
+  unchanged pins). New scenarios pinned: bomb (timed fuse 180, radius 4, armored row of 3 — reaches two)
+  `{ total: 12768, dot: 0, hits: 130, crits: 0, uses: 72, digest: 'f5b11d7b' }` — 65 of the 72 throws go
+  off inside 30 s; grenade (impact, linear falloff radius 6, ranged crits, DoT chance)
+  `{ 4046, 183, 80, 6, 40, '63bd07b6' }`.
 
 - **2026-10-14: minion-sentry + whip interpreters, summons, whip tags, minion loadout, B64 (PRD P3-S9 /
   P3-S10).** New interpreters `minion-sentry` and `whip`, registered (the B61 flip: `pipeline:build`

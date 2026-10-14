@@ -16,9 +16,13 @@ export const LOW_MANA_POLICY_TITLE: Record<InsufficientManaPolicy, string> = {
 
 const RESTARTED = 'the stats start again from zero.'
 
-/** "3 Infinite Dummies in a row — the stats start again from zero." (a new target, P3-S6) */
+/** "3 Infinite Dummies in a row — the stats start again from zero." (a new target, P3-S6; the Debuff Dummy, P3-S11) */
 export const targetAnnouncement = (target: LabTarget): string =>
-  `${target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : 'One Infinite Dummy'} — ${RESTARTED}`
+  `${target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : target.kind === 'debuff' ? 'Debuff Dummy, listing its active debuffs' : 'One Infinite Dummy'} — ${RESTARTED}`
+
+/** The target in words for running text ("the Infinite Dummy", "3 Infinite Dummies in a row", "the Debuff Dummy"). */
+export const targetPhrase = (target: LabTarget): string =>
+  target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : target.kind === 'debuff' ? 'the Debuff Dummy' : 'the Infinite Dummy'
 
 /** "Wooden Arrow loaded — the stats start again from zero." */
 export const ammoLoadedAnnouncement = (ammoName: string): string => `${ammoName} loaded — ${RESTARTED}`

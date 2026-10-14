@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import manifest from '../../public/sprites/manifest.json'
 import type { Weapon } from '../data-access/types'
 import weaponsJson from '../data/weapons.detail.json'
-import { ARENA_CORE_X, ARENA_LAYOUT, ARENA_SET_PIECES, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
+import { ARENA_CORE_X, ARENA_LAYOUT, ARENA_SET_PIECES, buildDebuffIcon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE } from './art/arenaArt'
 import {
   bladeSpriteTransform,
   DEG,
@@ -23,7 +23,8 @@ import {
   thrustVisual,
   trailSpan,
 } from './blade'
-import { actionBox, DEFAULT_CAMERA, fitCamera, PLAYER_TOP_Y, screenToWorld, visibleWorldX, worldToScreen, type CameraFit, type CameraOptions } from './camera'
+import { actionBox, DEFAULT_CAMERA, fitCamera, PLAYER_TOP_Y, sceneXFor, screenToWorld, visibleWorldX, worldToScreen, type CameraFit, type CameraOptions } from './camera'
+import { debuffMarker, markerClearOfHud } from './debuffVisuals'
 import {
   DotNumberTicker,
   FLOAT_GAP_X,
@@ -931,5 +932,265 @@ describe('camera: the fight clear of the HUD rows (design review P3-S2/S3)', () 
     const box = actionBox(3, [{ x: 2, y: 0, width: 2, height: 3 }])
     const fit = fitCamera(360, 447, 2, { framing: 'action', action: box, insetTop: 138, insetBottom: 52 })
     expect(fit.originY).toBe(Math.round((138 + (447 - 138 - 52) / 2 - ((box.y0 + box.y1) / 2) * fit.tilePx) * 2) / 2)
+  })
+})
+
+describe('camera: a thrown explosive’s whole blast ring on phones (design review P3-S11 #3)', () => {
+  const explosives = labWeapons(weaponsJson as Weapon[], LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'explosive-aoe')
+  /**
+   * The phone Lab's HUD rows for a thrown explosive, measured live (CSS px, + the 8 px pad): the top row
+   * (EquippedBar with its blast / fuse facts + the "Explosives used" counter, beside the stats box), the
+   * bottom one (the reserved latest-blast strip + the controls), the first-use hint's room.
+   */
+  const layouts = [
+    { name: '360', w: 360, h: 429, top: 179.5, bottom: 122, floor: 32 },
+    { name: '375', w: 375, h: 446.59, top: 147.5, bottom: 106, floor: 32 },
+    { name: '375 (3-line strip)', w: 375, h: 446.59, top: 147.5, bottom: 122, floor: 32 },
+    { name: '390', w: 390, h: 464.19, top: 147.5, bottom: 106, floor: 32 },
+    { name: '414', w: 414, h: 492.8, top: 144, bottom: 106, floor: 32 },
+  ] as const
+
+  it('every explosive: the ring sits across the canvas, its lower arc above the bottom row, the fight below the top row — whole between the rows wherever one device pixel per game pixel allows', () => {
+    expect(explosives).toHaveLength(15)
+    let whole = 0
+    let checked = 0
+    for (const weapon of explosives) {
+      const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
+      if (!created.ok) throw new Error('refused')
+      const s = created.session
+      const blast = s.blastFrame()
+      expect(blast, weapon.name).toMatchObject({ x: s.sim.renderState().dummies[0].x, radiusTiles: s.explosive!.blastRadiusTiles })
+      const box = actionBox(s.frameTiles, s.sim.renderState().dummies, blast)
+      for (const l of layouts) {
+        for (const dpr of [1, 2, 3]) {
+          const fit = fitCamera(l.w, l.h, dpr, { framing: 'action', action: box, actionWhole: true, insetTop: l.top, insetBottom: l.bottom, floorPx: l.floor, reachTiles: s.frameTiles })
+          const at = `${weapon.name} ${l.name}@${dpr}`
+          const px = 1 / dpr
+          checked++
+          expect(fit.framing, at).toBe('action')
+          const left = worldToScreen(fit, blast!.x - blast!.radiusTiles, blast!.y)
+          const right = worldToScreen(fit, blast!.x + blast!.radiusTiles, blast!.y)
+          const top = worldToScreen(fit, blast!.x, blast!.y - blast!.radiusTiles)
+          const bottom = worldToScreen(fit, blast!.x, blast!.y + blast!.radiusTiles)
+          expect(left.x, at).toBeGreaterThanOrEqual(-px)
+          expect(right.x, at).toBeLessThanOrEqual(l.w + px)
+          // the player's head stays below the top row, always
+          const head = worldToScreen(fit, 0, PLAYER_TOP_Y).y
+          expect(head, at).toBeGreaterThanOrEqual(l.top - px)
+          if ((box.y1 - box.y0) * fit.tilePx <= l.h - l.top - l.bottom + px) {
+            // a box that fits at the zoom chosen: the whole ring between the rows
+            expect(top.y, at).toBeGreaterThanOrEqual(l.top - px)
+            expect(bottom.y, at).toBeLessThanOrEqual(l.h - l.bottom + px)
+            whole++
+          } else {
+            // only the 1-device-px floor stops it (a 1× screen): the box keeps its bottom — the lower arc — above
+            // the bottom row unless the head, which wins on a canvas too short for both, sits right at the top row
+            expect(fit.devicePxPerGamePx, at).toBe(1)
+            if (bottom.y > l.h - l.bottom + px) expect(head, at).toBeLessThanOrEqual(l.top + px)
+          }
+        }
+      }
+    }
+    // at 2× and 3× (every phone of the last years) each ring is whole between the rows
+    expect(whole).toBeGreaterThanOrEqual((checked * 2) / 3)
+  })
+
+  it('375@2 (the review’s capture): the Dynamite and Power Bomb rings are whole between the HUD rows; the Bomb’s keeps a closer zoom', () => {
+    const l = layouts[1]
+    const fitFor = (name: string) => {
+      const created = createLabSession(explosives.find((w) => w.name === name)!, { setup: LAB_SETUP, seed: () => 1 })
+      if (!created.ok) throw new Error('refused')
+      const s = created.session
+      const blast = s.blastFrame()!
+      const box = actionBox(s.frameTiles, s.sim.renderState().dummies, blast)
+      return { blast, fit: fitCamera(l.w, l.h, 2, { framing: 'action', action: box, actionWhole: true, insetTop: l.top, insetBottom: l.bottom, floorPx: l.floor, reachTiles: s.frameTiles }) }
+    }
+    for (const name of ['Dynamite', 'Power Bomb']) {
+      const { blast, fit } = fitFor(name)
+      expect(worldToScreen(fit, blast.x, blast.y - blast.radiusTiles).y, name).toBeGreaterThanOrEqual(l.top)
+      expect(worldToScreen(fit, blast.x, blast.y + blast.radiusTiles).y, name).toBeLessThanOrEqual(l.h - l.bottom)
+      expect(worldToScreen(fit, blast.x - blast.radiusTiles, 0).x, name).toBeGreaterThanOrEqual(0)
+      expect(worldToScreen(fit, blast.x + blast.radiusTiles, 0).x, name).toBeLessThanOrEqual(l.w)
+      // the scene framing (the old rule's fallback, more zoomed in) would cut it
+      const scene = fitCamera(l.w, l.h, 2, { insetTop: l.top, insetBottom: l.bottom, floorPx: l.floor })
+      expect(scene.tilePx, name).toBeGreaterThan(fit.tilePx)
+      const cut =
+        worldToScreen(scene, blast.x + blast.radiusTiles, 0).x > l.w ||
+        worldToScreen(scene, blast.x - blast.radiusTiles, 0).x < 0 ||
+        worldToScreen(scene, 0, blast.y - blast.radiusTiles).y < l.top ||
+        worldToScreen(scene, 0, blast.y + blast.radiusTiles).y > l.h - l.bottom
+      expect(cut, name).toBe(true)
+    }
+    expect(fitFor('Bomb').fit.tilePx).toBe(20)
+  })
+
+  it('without a blast nothing changes: the box, and the scene fallback for a box the scene shows better', () => {
+    const sword = createLabSession(byName('Wooden Sword'), { setup: LAB_SETUP, seed: () => 1 })
+    if (!sword.ok) throw new Error('refused')
+    expect(sword.session.blastFrame()).toBeNull()
+    const dummy = { x: 6, y: 0, width: 2, height: 3 }
+    expect(actionBox(2, [dummy], null)).toEqual(actionBox(2, [dummy]))
+    const box = actionBox(2, [dummy])
+    // `actionWhole` off (every other weapon): the scene fallback rule as before
+    const tight = { framing: 'action' as const, action: box, insetTop: 300, insetBottom: 120 }
+    expect(fitCamera(375, 447, 2, tight)).toEqual(fitCamera(375, 447, 2, { ...tight, actionWhole: false }))
+    // nor a scene without a blast
+    expect(fitCamera(864, 801, 2, { insetTop: 210, insetBottom: 148, blast: null })).toEqual(fitCamera(864, 801, 2, { insetTop: 210, insetBottom: 148 }))
+  })
+})
+
+describe('camera: a thrown explosive’s whole blast ring at tablet and desktop (scene framing, design review P3-S11 #3)', () => {
+  const explosives = labWeapons(weaponsJson as Weapon[], LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'explosive-aoe')
+  /**
+   * The Lab's HUD rows for a thrown explosive, measured live (CSS px, + the HUD pad): the top row (the
+   * EquippedBar, the "Explosives used" counter and the latest-blast readout under it, beside the stats box),
+   * the bottom one (graph strip + controls; at 1024 the compact HUD's latest-blast strip too), the hint's room.
+   */
+  const layouts = [
+    { name: '1440', w: 864, h: 800.75, top: 210, bottom: 148, floor: 38 },
+    { name: '1024', w: 448, h: 668.75, top: 144, bottom: 168, floor: 36 },
+    { name: '768', w: 768, h: 614.39, top: 210, bottom: 148, floor: 38 },
+  ] as const
+  const fitFor = (weapon: Weapon, l: (typeof layouts)[number], dpr: number, withBlast = true) => {
+    const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
+    if (!created.ok) throw new Error('refused')
+    const s = created.session
+    const ring = s.blastFrame()!
+    const dummies = s.sim.renderState().dummies
+    const options: Partial<CameraOptions> = { insetTop: l.top, insetBottom: l.bottom, floorPx: l.floor, reachTiles: s.frameTiles, sceneX: sceneXFor(dummies), blast: withBlast ? ring : null }
+    return { ring, fit: fitCamera(l.w, l.h, dpr, options) }
+  }
+  /** The ring's screen box. */
+  const ringOn = (fit: CameraFit, ring: { x: number; y: number; radiusTiles: number }) => ({
+    left: worldToScreen(fit, ring.x - ring.radiusTiles, 0).x,
+    right: worldToScreen(fit, ring.x + ring.radiusTiles, 0).x,
+    top: worldToScreen(fit, 0, ring.y - ring.radiusTiles).y,
+    bottom: worldToScreen(fit, 0, ring.y + ring.radiusTiles).y,
+  })
+
+  it('every explosive: the ring whole across the canvas and between the HUD rows (wherever one device pixel per game pixel allows), the platforms whole, the head below the top row', () => {
+    expect(explosives).toHaveLength(15)
+    let whole = 0
+    let checked = 0
+    for (const weapon of explosives) {
+      for (const l of layouts) {
+        for (const dpr of [1, 2]) {
+          const { ring, fit } = fitFor(weapon, l, dpr)
+          const at = `${weapon.name} ${l.name}@${dpr}`
+          const px = 1 / dpr
+          const r = ringOn(fit, ring)
+          checked++
+          expect(fit.framing, at).toBe('scene')
+          expect(r.left, at).toBeGreaterThanOrEqual(-px)
+          expect(r.right, at).toBeLessThanOrEqual(l.w + px)
+          const [x0, x1] = visibleWorldX(fit)
+          expect(x0, at).toBeLessThanOrEqual(ARENA_CORE_X[0] + 1e-9)
+          expect(x1, at).toBeGreaterThanOrEqual(ARENA_CORE_X[1] - 1e-9)
+          expect(worldToScreen(fit, 0, PLAYER_TOP_Y).y, at).toBeGreaterThanOrEqual(l.top - px)
+          if (2 * ring.radiusTiles * fit.tilePx <= l.h - l.top - l.bottom) {
+            expect(r.top, at).toBeGreaterThanOrEqual(l.top - px)
+            expect(r.bottom, at).toBeLessThanOrEqual(l.h - l.bottom + px)
+            whole++
+          } else {
+            // only the 1-device-px floor stops it (the Power Bombs at 768@1): the lower arc stays above the bottom row
+            expect(fit.devicePxPerGamePx, at).toBe(1)
+            expect(r.bottom, at).toBeLessThanOrEqual(l.h - l.bottom + px)
+          }
+        }
+      }
+    }
+    expect(whole).toBeGreaterThanOrEqual(checked - 2)
+  })
+
+  it('only a ring the scene would cut changes the view: one the scene shows whole (its 1½ art px stroke too) keeps its zoom and placement exactly; the zoom never steps in', () => {
+    const air = (1.5 * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
+    let kept = 0
+    let zoomed = 0
+    for (const weapon of explosives) {
+      for (const l of layouts) {
+        for (const dpr of [1, 2]) {
+          const { ring, fit } = fitFor(weapon, l, dpr)
+          const base = fitFor(weapon, l, dpr, false).fit
+          const at = `${weapon.name} ${l.name}@${dpr}`
+          const b = ringOn(base, { ...ring, radiusTiles: ring.radiusTiles + air })
+          const shownWhole = b.left >= 0 && b.right <= l.w && b.top >= l.top && b.bottom <= l.h - l.bottom
+          expect(fit.tilePx, at).toBeLessThanOrEqual(base.tilePx)
+          if (shownWhole) {
+            expect(fit, at).toEqual(base)
+            kept++
+          }
+          if (fit.tilePx < base.tilePx) {
+            expect(shownWhole, at).toBe(false)
+            zoomed++
+          }
+        }
+      }
+    }
+    expect(kept).toBeGreaterThan(0)
+    expect(zoomed).toBeGreaterThan(0)
+  })
+
+  it('1440 (the review’s capture): the Dynamite and Power Bomb rings, cut at 48 px per tile, are whole at 24 — the largest crisp zoom that holds them (32 would not); the Bomb keeps 48, only lifted', () => {
+    const l = layouts[0]
+    for (const name of ['Dynamite', 'Power Bomb']) {
+      const weapon = explosives.find((w) => w.name === name)!
+      const { ring, fit } = fitFor(weapon, l, 1)
+      const base = fitFor(weapon, l, 1, false).fit
+      expect(base.tilePx, name).toBe(48)
+      const cut = ringOn(base, ring)
+      expect(cut.right > l.w || cut.bottom > l.h - l.bottom, name).toBe(true)
+      expect(fit.tilePx, name).toBe(24)
+      expect(2 * ring.radiusTiles * 32, name).toBeGreaterThan(l.h - l.top - l.bottom)
+      const r = ringOn(fit, ring)
+      expect(r.top, name).toBeGreaterThanOrEqual(l.top)
+      expect(r.bottom, name).toBeLessThanOrEqual(l.h - l.bottom)
+      expect(r.right, name).toBeLessThanOrEqual(l.w)
+      // the composition otherwise as before: the player at the scene's anchor
+      expect(fit.originX / l.w, name).toBeCloseTo(DEFAULT_CAMERA.anchorX, 2)
+    }
+    const bomb = explosives.find((w) => w.name === 'Bomb')!
+    const { ring, fit } = fitFor(bomb, l, 1)
+    const base = fitFor(bomb, l, 1, false).fit
+    expect(fit.tilePx).toBe(base.tilePx)
+    expect(fit.originX).toBe(base.originX)
+    expect(fit.originY).toBeLessThan(base.originY)
+    expect(ringOn(fit, ring).bottom).toBeLessThanOrEqual(l.h - l.bottom)
+  })
+})
+
+describe('markers over a dummy keep clear of the HUD’s top row, like the damage numbers (design review P3-S11: the Imp Staff’s flame at 375)', () => {
+  /** The taller marker (a debuff glyph) and its 2 art px over the bar's line, in tiles — what the arena keeps clear. */
+  const height = ((Math.max(buildTagIcon().length, ...(['flame', 'frost', 'drop'] as const).map((g) => buildDebuffIcon(g).length)) + 2) * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
+  const impStaff = labWeapons(weaponsJson as Weapon[], LAB_SETUP).find((w) => w.name === 'Imp Staff')!
+
+  it('the Imp Staff on the Debuff Dummy at 375 (the phone HUD with its reserved debuff strip): the flame moves down under the top row — no further — never up, and stays put where it is clear', () => {
+    const created = createLabSession(impStaff, { setup: LAB_SETUP, seed: () => 1, target: { kind: 'debuff' } })
+    if (!created.ok) throw new Error('refused')
+    const s = created.session
+    const [dummy] = s.sim.renderState().dummies
+    const marker = debuffMarker({ ...dummy, debuffs: [{ buffId: 'on-fire', remainingTicks: 60, durationTicks: 300 }] })!
+    expect(marker.glyph).toBe('flame')
+    // measured live: the top row (EquippedBar beside the stats box), the bottom (minions + debuff strips + controls)
+    const l = { w: 375, h: 446.59, top: 144, bottom: 180, floor: 48 }
+    let under = 0
+    for (const dpr of [1, 2, 3]) {
+      const fit = fitCamera(l.w, l.h, dpr, { framing: 'action', insetTop: l.top, insetBottom: l.bottom, floorPx: l.floor, reachTiles: s.frameTiles, action: actionBox(s.frameTiles, [dummy]) })
+      const at = `375@${dpr}`
+      const top = (y: number) => worldToScreen(fit, 0, y - height).y
+      if (top(marker.y) < l.top) under++
+      const y = markerClearOfHud(marker.y, height, fit, l.top)
+      expect(y, at).toBeGreaterThanOrEqual(marker.y)
+      expect(top(y), at).toBeGreaterThanOrEqual(l.top - 1e-9)
+      if (y > marker.y) {
+        // moved: onto the art-pixel grid, at most one art pixel lower than the row needs
+        expect(Number.isInteger(Math.round(((y * GAME_PX_PER_TILE) / GAME_PX_PER_ART_PX) * 1e6) / 1e6), at).toBe(true)
+        expect(top(y) - l.top, at).toBeLessThan(GAME_PX_PER_ART_PX * fit.scale + 1e-9)
+      } else expect(y, at).toBe(marker.y)
+    }
+    // the review's bug: without the clamp it sat under the stats box at every density
+    expect(under).toBe(3)
+    // desktop (scene framing, the full HUD): already clear — unchanged
+    const desk = fitCamera(864, 800.75, 1, { insetTop: 226, insetBottom: 148, floorPx: 38, reachTiles: s.frameTiles })
+    expect(markerClearOfHud(marker.y, height, desk, 226)).toBe(marker.y)
   })
 })

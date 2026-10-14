@@ -30,7 +30,7 @@ import { useDocumentTitle } from '../../useDocumentTitle'
 import { ArenaCanvas } from './ArenaCanvas'
 import { DpsGraph } from './DpsGraph'
 import { graphOpenByDefault } from './dpsGraphModel'
-import { AmmoCounter, AttackHint, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts, SummonsPanel, TargetStrip } from './Hud'
+import { AmmoCounter, AttackHint, BlastReadout, ConsumableCounter, DebuffPanel, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts, SummonsPanel, TargetStrip } from './Hud'
 import { slotNumber } from './hudStyles'
 import { INITIAL_BROWSER_STATE, type LabBrowserState } from './browserModel'
 import { LabBrowser } from './LabBrowser'
@@ -42,6 +42,7 @@ import {
   resetAnnouncement,
   slotsAnnouncement,
   targetAnnouncement,
+  targetPhrase,
 } from './settingsCopy'
 import { arenaSpriteUrl, loadLabData, peekLabData, type LabData } from './labData'
 import { DPS_GRAPH_ID, lockNoticeId, PANEL_SETTINGS, PANEL_WEAPONS, panelToggleId } from './labIds'
@@ -72,6 +73,11 @@ import { useLabHud } from './useLabHud'
  * equipped, the settings panel's MINION LOADOUT puts a minion staff's minions out beside it (kept for
  * the visit like the ammo, carried to the next whip; a new session, as an ammo switch — the stats
  * restart). Reset clears the loadout along with the settings (PRD P3-S9 AC4: every summon gone).
+ *
+ * Thrown explosives (P3-S11): the "Explosives used" counter beside the EquippedBar, and the latest
+ * blast's per-dummy damage (`BlastReadout`, its room laid out from the start — "No blast yet" — so the
+ * first blast never moves the camera); the Debuff Dummy target adds its active-debuffs panel
+ * (`DebuffPanel`). Full HUD: both under the EquippedBar; compact: in the bottom HUD area as strips.
  *
  * Desktop (≥ lg): weapon browser | arena (canvas + HTML HUD) | target & settings panel, both panels
  * collapsible. Tablet (md–lg): the arena in the centre and ONE side panel at a time, opened from a
@@ -527,6 +533,7 @@ function LabView({
               ? { kind: null, loadout: { choices: loadouts, selectedId: session.loadout?.id ?? null, onSelect: onLoadoutSelect, sprites: data.sprites } }
               : null
         }
+        explosive={session.explosive}
       />,
     ),
   }
@@ -539,6 +546,12 @@ function LabView({
   const testAssumptions = assumptionsForEstimate(assumptions, 'timed-test-dps')
   const graphAssumptions = assumptionsForEstimate(assumptions, 'dps-graph')
   const appliesDot = weapon.labBehavior.kind === 'archetype' && weapon.labBehavior.modifiers?.dot !== undefined
+  // A thrown explosive's blast readout lists every dummy (the single one is number 1).
+  const blastDummies = hud.targets ? hud.targets.dummies.map((d) => d.number) : [1]
+  const blastReadout = (strip: boolean) =>
+    session.explosive ? (
+      <BlastReadout blast={hud.lastBlast} explosive={session.explosive} dummyNumbers={blastDummies} critPossible={hud.weapon.critChancePct > 0} compact={compact} strip={strip} />
+    ) : null
   // The camera frames the scene below the HUD's top row (EquippedBar + StatReadouts); on phones it
   // zooms onto the fight between that row and the bottom controls (design review H3). Both framings
   // place the fight above the bottom controls + graph strip, the feet clear of the first-use hint
@@ -591,8 +604,8 @@ function LabView({
         >
           <p id="lab-arena-help" className="sr-only">
             {session.summonKind
-              ? `Click the arena or press Space to ${session.summonKind === 'sentry' ? 'place a sentry' : 'summon a minion'}; it attacks the ${hud.targets ? 'dummies' : 'Infinite Dummy'} on its own.`
-              : `Hold Space to ${verb} at the ${hud.targets ? 'first of the dummies' : 'Infinite Dummy'}.`}{' '}
+              ? `Click the arena or press Space to ${session.summonKind === 'sentry' ? 'place a sentry' : 'summon a minion'}; it attacks the ${hud.targets ? 'dummies' : targetPhrase(hud.target).replace(/^the /, '')} on its own.`
+              : `Hold Space to ${verb} at the ${hud.targets ? 'first of the dummies' : targetPhrase(hud.target).replace(/^the /, '')}.`}{' '}
             Damage appears in the live stats
             {hud.targets ? ', with the hits on each dummy' : ''}.
           </p>
@@ -605,6 +618,11 @@ function LabView({
                 {/* Contextual resources (UX_SPEC §3.4): the ManaBar for mana weapons, the AmmoCounter for bows and guns. */}
                 {hud.mana ? <ManaBar mana={hud.mana} manaConsumed={hud.manaConsumed} compact={compact} inlineNotice={manaNotice === 'inline'} /> : null}
                 {session.ammo ? <AmmoCounter ammo={session.ammo} sprites={data.sprites} used={hud.ammoConsumed} compact={compact} /> : null}
+                {/* A thrown explosive: one used per throw (P3-S11). */}
+                {hud.weapon.consumable ? <ConsumableCounter used={hud.consumablesUsed} compact={compact} /> : null}
+                {/* The latest blast's per-dummy damage and the Debuff Dummy's debuffs (P3-S11); compact: strips at the bottom. */}
+                {compact ? null : blastReadout(false)}
+                {!compact && hud.debuffDummy ? <DebuffPanel panel={hud.debuffDummy} applied={hud.debuffsApplied} compact={compact} /> : null}
                 {/* Summons vs slots, the whip's tags and damage by source (P3-S9 / P3-S10); compact: a strip at the bottom. */}
                 {compact ? null : (
                   <SummonsPanel summons={hud.summons} tags={hud.tags} breakdown={hud.breakdown} whip={session.whip !== null} multipleDummies={hud.targets !== null} compact={compact} />
@@ -624,6 +642,8 @@ function LabView({
               {compact ? (
                 <SummonsPanel summons={hud.summons} tags={hud.tags} breakdown={hud.breakdown} whip={session.whip !== null} multipleDummies={hud.targets !== null} compact strip />
               ) : null}
+              {compact && hud.debuffDummy ? <DebuffPanel panel={hud.debuffDummy} applied={hud.debuffsApplied} compact strip /> : null}
+              {compact ? blastReadout(true) : null}
               {graphOpen && hasAssumptions(graphAssumptions) ? (
                 <div id={DPS_GRAPH_ID}>
                   <DpsGraph graph={hud.graph} assumptions={graphAssumptions} compact={compact} />
@@ -666,6 +686,8 @@ function LabView({
                   appliesDot={appliesDot}
                   usesAmmo={session.ammo !== null}
                   usesMana={hud.weapon.manaCostPerUse > 0}
+                  usesItems={hud.weapon.consumable}
+                  targetName={targetPhrase(hud.target)}
                   dummyIds={hud.targets ? hud.targets.dummies.map((d) => d.id) : null}
                   sources={hud.summons ? { weapon: session.whip ? 'Whip' : session.summonKind ? null : 'Weapon', summons: hud.summons.kind === 'sentry' ? 'Sentry' : 'Minion' } : null}
                   assumptions={testAssumptions}

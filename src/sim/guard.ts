@@ -24,11 +24,20 @@ export const COMMON_REQUIRED_FIELDS = ['damageClass', 'damage', 'critPct', 'useT
  * AMENDMENTS-013 B64: `critPct` is NOT APPLICABLE to summon weapons — summon damage cannot crit (wiki
  * Critical hit; AMENDMENTS-004 B17), so the pipeline emits it absent (not Unknown) for every whip,
  * minion and sentry weapon. Requiring it would refuse all of them as missing; their crit chance is 0
- * (`critChancePct`) whatever the record says. Every other class still requires it.
+ * (`critChancePct`) whatever the record says.
+ * P3-S11: nor for CLASSLESS weapons (damageClass "other" — thrown explosives) — the wiki Critical hit
+ * page: "Damage not classified as any of the four damage types above can never deal critical hits"; the
+ * crit factor is 1 whatever the bonus, disclosed by `classless-crit`. AMENDMENTS-015 B85(b): not
+ * applicable, so the pipeline emits it absent and NOT listed, like a summon's; a record that still lists
+ * it (B17's former "Unknown") is not blocked either (`simRequiredWeaponFields(archetype, damageClass)`).
+ * Melee / ranged / magic still require it.
  */
 export function requiredFieldsFor(weapon: Pick<Weapon, 'damageClass'>): readonly string[] {
-  return weapon.damageClass === 'summon' ? COMMON_REQUIRED_FIELDS.filter((f) => f !== 'critPct') : COMMON_REQUIRED_FIELDS
+  return critNotRequired(weapon) ? COMMON_REQUIRED_FIELDS.filter((f) => f !== 'critPct') : COMMON_REQUIRED_FIELDS
 }
+
+/** A summon or classless weapon: its hits never crit by its own chance, so its critPct is not required. */
+const critNotRequired = (weapon: Pick<Weapon, 'damageClass'>): boolean => weapon.damageClass === 'summon' || weapon.damageClass === 'other'
 /** Absent ⇒ documented default (autoReuse false, no mana cost, no reuse delay); listed unverified ⇒ refuse. */
 export const OPTIONAL_SIM_FIELDS = ['autoReuse', 'manaCost', 'reuseDelayTicks'] as const
 
@@ -114,7 +123,7 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
   for (const path of unverified) {
     if (path === 'labBehavior' || path.startsWith('labBehavior.')) blocking.add(path)
   }
-  for (const field of new Set([...simRequiredWeaponFields(archetype), ...required, ...OPTIONAL_SIM_FIELDS])) {
+  for (const field of new Set([...simRequiredWeaponFields(archetype, weapon.damageClass), ...required, ...OPTIONAL_SIM_FIELDS])) {
     // Listed path is the field, an ancestor of it, or (pipeline rule) a descendant of it.
     const listed = isCoveredBy(unverified, field) || unverified.some((path) => isCoveredBy([field], path))
     if (listed || getField(weapon, field).status === 'unverified') blocking.add(field)
@@ -136,7 +145,7 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
 
   const invalid: string[] = []
   if (!isInt(weapon.damage, 0)) invalid.push('damage')
-  if ((weapon.damageClass !== 'summon' || weapon.critPct !== undefined) && !isInt(weapon.critPct, 0, 100)) invalid.push('critPct')
+  if ((!critNotRequired(weapon) || weapon.critPct !== undefined) && !isInt(weapon.critPct, 0, 100)) invalid.push('critPct')
   if (!isInt(weapon.useTimeTicks, 1)) invalid.push('useTimeTicks')
   if (!isInt(weapon.useAnimationTicks, 1)) invalid.push('useAnimationTicks')
   if (weapon.reuseDelayTicks !== undefined && !isInt(weapon.reuseDelayTicks, 1)) invalid.push('reuseDelayTicks')
@@ -217,6 +226,7 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
     ...behavior.approximations,
     ...conventions,
     ...modifiers.runtimes.flatMap((m) => m.approximations),
+    ...(damageClass === 'other' ? (['classless-crit'] as const) : []),
     ...(manaCost > 0 ? MANA_APPROXIMATIONS : []),
     ...(manaCost > 0 && reuseDelayTicks > 0 ? COOLDOWN_MANA_APPROXIMATIONS : []),
   ]
@@ -237,6 +247,7 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
     usesAmmo: behavior.usesAmmo,
     baseHitDamage: behavior.baseHitDamage,
     returnsToHand: behavior.returnsToHand === true,
+    consumable: behavior.consumable === true,
   }
 
   return {

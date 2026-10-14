@@ -38,6 +38,24 @@ export function applyDefense(damage: number, defense: number): number {
   return Math.max(MIN_DAMAGE, Math.floor((2 * damage - defense) / 2))
 }
 
+/**
+ * The whole percent of a blast's damage a dummy takes `distance` tiles (from the centre to its nearest
+ * hitbox point) into a blast of `radius` tiles (P3-S11; README "Param semantics", explosive-aoe). `none` (every stated
+ * explosive: "deals N damage to all … in the radius"): 100 anywhere inside. `linear` — a LAB FORMULA,
+ * the wiki states no falloff curve for any explosive (approximation `blast-falloff`): 100 at the centre
+ * down to 0 at the edge, in whole percent rounded down. Outside the radius: 0.
+ */
+export function blastKeptPct(distance: number, radius: number, falloff: 'none' | 'linear'): number {
+  if (!(distance <= radius)) return 0
+  if (falloff === 'none') return 100
+  // (R − d) × 100 ÷ R, rounded down; the 1e-9 keeps an exact whole percent from being lost to binary
+  // floating point (8 of 10 tiles must keep 20 %, not 19.999… → 19).
+  return Math.max(0, Math.min(100, Math.floor(((radius - distance) * 100) / radius + 1e-9)))
+}
+
+/** A blast hit's base damage: `damage` × `keptPct` %, rounded down (integer math; 100 % keeps it whole). */
+export const blastDamage = (damage: number, keptPct: number): number => Math.floor((damage * keptPct) / 100)
+
 export interface HitRoll {
   amount: number
   crit: boolean

@@ -15,7 +15,7 @@ import { offersLab } from '../../../../lab/labLinks'
 import type { DamageClass } from '../../../../schemas'
 import { getField, type FieldView } from '../../../../schemas/getField'
 import { ClassBadge } from './WeaponBits'
-import { BASE_CRIT_PCT, stageLabel, weaponStatRows } from './weaponDisplay'
+import { BASE_CRIT_PCT, labBlurb, sourceTitle, stageLabel, weaponStatRows } from './weaponDisplay'
 import { weaponPageUnknowns } from './weaponUnknowns'
 
 /**
@@ -180,6 +180,8 @@ function BehaviorPanel({ weapon }: { weapon: Weapon }) {
   const labSource = lab.kind === 'limitation' ? lab.sourceUrl : weapon.wikiUrl
   // Equippable in the Lab now (the header's "Test in Weapon Lab" opens it); otherwise still coming.
   const inLab = offersLab(weapon)
+  // What trying it in the Lab shows, by archetype family (thrown explosives: blast radius, per-dummy damage).
+  const blurb = inLab ? labBlurb(weapon) : undefined
 
   return (
     <PixelPanel as="section" aria-labelledby="behavior-title" className="space-y-4">
@@ -199,10 +201,9 @@ function BehaviorPanel({ weapon }: { weapon: Weapon }) {
           {/* No forward promise: the Lab doesn't simulate it, and that's all this says (design review P3-S1). */}
           {inLab ? 'Simulated in the Weapon Lab' : labText ? 'Not simulated in the Weapon Lab — here’s what it does in-game' : 'Not simulated in the Weapon Lab'}
         </p>
-        {inLab ? (
-          <p className="text-sm text-fg-muted">
-            Swing it at the Infinite Dummy to see per-hit damage, crits and an estimated DPS — a browser simulation, so the
-            values are approximations, not Terraria engine output.
+        {blurb ? (
+          <p className="text-sm text-fg-muted" data-lab-blurb="">
+            {blurb}
           </p>
         ) : labText ? (
           <p className="text-sm whitespace-pre-line text-fg-muted">{labText}</p>
@@ -215,18 +216,6 @@ function BehaviorPanel({ weapon }: { weapon: Weapon }) {
       </div>
     </PixelPanel>
   )
-}
-
-const SOURCE_KIND_LABELS: Record<string, string> = {
-  iteminfo: 'Module:Iteminfo (game item data)',
-  'wiki-module': 'Wiki data module',
-  'cargo:Items': 'Wiki Items table',
-  'cargo:Recipes': 'Wiki Recipes table',
-  'cargo:Drops': 'Wiki Drops table',
-  'cargo:NPCs': 'Wiki NPCs table',
-  'cargo:Weapon_source': 'Wiki weapon sources table',
-  'cargo:Imageinfo': 'Wiki image info',
-  curated: 'Curated overlay',
 }
 
 function SourcesPanel({ weapon, sprites }: { weapon: Weapon; sprites: SpriteIndex | null }) {
@@ -242,14 +231,25 @@ function SourcesPanel({ weapon, sprites }: { weapon: Weapon; sprites: SpriteInde
         />
       </summary>
       <ul className="space-y-2 pt-2 pb-2">
-        {weapon._prov.sources.map((source, i) => (
-          <li key={i} className="flex flex-wrap items-center gap-x-2">
-            <span>{SOURCE_KIND_LABELS[source.kind] ?? source.kind}</span>
-            {source.rev ? <span className="text-fg-muted tabular-nums">rev {source.rev}</span> : null}
-            <span className="text-fg-muted tabular-nums">fetched {source.fetchedAt}</span>
-            <ProvenanceLink href={source.url} />
-          </li>
-        ))}
+        {weapon._prov.sources.map((source, i) => {
+          // The kind and the page it was read from: an explosive's class table and its own article are two sources.
+          const { label, page } = sourceTitle(source)
+          return (
+            <li key={i} className="flex flex-wrap items-center gap-x-2" data-source-kind={source.kind}>
+              <span>
+                {label}
+                {page ? (
+                  <>
+                    : <span className="font-semibold" data-source-page="">{page}</span>
+                  </>
+                ) : null}
+              </span>
+              {source.rev ? <span className="text-fg-muted tabular-nums">rev {source.rev}</span> : null}
+              <span className="text-fg-muted tabular-nums">fetched {source.fetchedAt}</span>
+              <ProvenanceLink href={source.url} srContext={page ? `(${label}: ${page})` : `(${label})`} />
+            </li>
+          )
+        })}
         {sprite && !sprites?.fallbackMode ? (
           <li className="flex flex-wrap items-center gap-x-2">
             <span>Sprite © Re-Logic</span>

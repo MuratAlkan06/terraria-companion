@@ -1,13 +1,14 @@
 /**
- * Archetype interpreter registry. The remaining schema archetype (explosive-aoe) slots in by adding
- * a module + an entry here — the kernel (`../world.ts`) never switches on archetype. Absent entries
- * make the guard answer `not-simulable / archetype-not-implemented` (never a guess). Registering an
- * archetype is also what flips the pipeline's recorded "params complete, pending interpreter"
- * weapons to simulable on the next `npm run pipeline:build` (AMENDMENTS-013 B61).
+ * Archetype interpreter registry: one module + one entry per archetype — the kernel (`../world.ts`)
+ * never switches on archetype. Every schema archetype is registered since P3-S11 (explosive-aoe); an
+ * absent entry would make the guard answer `not-simulable / archetype-not-implemented` (never a guess).
+ * Registering an archetype is also what flips the pipeline's recorded "params complete, pending
+ * interpreter" weapons to simulable on the next `npm run pipeline:build` (AMENDMENTS-013 B61).
  */
 import type { Archetype } from '../../schemas'
 import type { ArchetypeInterpreter } from '../contracts'
 import { bowGun } from './bowGun'
+import { explosiveAoe } from './explosiveAoe'
 import { magicBolt } from './magicBolt'
 import { minionSentry } from './minionSentry'
 import { piercingBeam } from './piercingBeam'
@@ -27,6 +28,7 @@ export const INTERPRETERS: InterpreterRegistry = {
   'piercing-beam': piercingBeam,
   'minion-sentry': minionSentry,
   whip,
+  'explosive-aoe': explosiveAoe,
 }
 
 export function interpreterFor<A extends Archetype>(archetype: A): ArchetypeInterpreter<A> | undefined {

@@ -6,6 +6,7 @@ import type { CategoryTree } from '../fetch/categories'
 import type { ImageInfoFetch } from '../fetch/images'
 import type { Iteminfo } from '../parse/iteminfo'
 import type { GatingResult } from './gating'
+import type { ExplosiveEvidence } from './explosives'
 import { reconcileCategories, reconcileWeaponLists } from './reconcile'
 import { buildSearchDocs } from './search'
 import { ammoClassSlug, buildWeapons, cargoRarity, coinPrice, identifyWeapons, leadingNumber, rarityOf, tooltipText, type WithheldField } from './weapons'
@@ -73,7 +74,7 @@ const images: ImageInfoFetch = {
 }
 const NOT_DERIVABLE: GatingResult = { ok: false, blockers: ['no-known-route'] }
 
-function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE, withheld?: ReadonlyMap<number, WithheldField>) {
+function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE, withheld?: ReadonlyMap<number, WithheldField>, explosive?: (id: number, page: string) => ExplosiveEvidence | undefined) {
   return buildWeapons({
     itemRows: ROWS,
     itemsFetchedAt: '2026-10-13T04:21:00.000Z',
@@ -84,6 +85,7 @@ function build(gating: (id: number) => GatingResult = () => NOT_DERIVABLE, withh
     images,
     gating,
     ...(withheld ? { withheld } : {}),
+    ...(explosive ? { explosive } : {}),
   })
 }
 const byName = (out: ReturnType<typeof build>, name: string) => out.weapons.find((w) => w.name === name) as Weapon
@@ -122,7 +124,7 @@ describe('buildWeapons', () => {
     expect(mini.labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: '33% chance to save ammo' })
   })
 
-  it('summon weapons: crit not applicable (absent and NOT listed); classless: damage/knockback/crit Unknown', () => {
+  it('summon and classless weapons: crit not applicable (absent and NOT listed, B64 / B85(b)); classless without a second statement: damage/knockback Unknown', () => {
     const prism = byName(out, 'Terraprisma')
     expect(prism.critPct).toBeUndefined()
     expect(prism._prov.unverifiedFields).not.toContain('critPct')
@@ -130,8 +132,48 @@ describe('buildWeapons', () => {
     const bomb = byName(out, 'Bomb')
     expect(bomb).toMatchObject({ damageClass: 'other', maxStack: 9999 })
     expect(bomb.damage).toBeUndefined()
-    expect(bomb._prov.unverifiedFields).toEqual(expect.arrayContaining(['damage', 'knockback', 'critPct', 'acquisition.0.priceCopper', 'acquisition.1.priceCopper']))
+    expect(bomb.critPct).toBeUndefined()
+    expect(bomb._prov.unverifiedFields).not.toContain('critPct')
+    expect(bomb._prov.unverifiedFields).toEqual(expect.arrayContaining(['damage', 'knockback', 'acquisition.0.priceCopper', 'acquisition.1.priceCopper']))
+    expect(out.crossCheck.get('critPct (classless: wiki shows none)')).toEqual({ agree: 1, mismatch: 0, noWikiValue: 0 })
     expect(bomb.acquisition.map((a) => (a.method === 'purchase' ? a.npcName : a.method))).toEqual(['Demolitionist', 'Skeleton Merchant'])
+  })
+
+  it('P3-S11: a thrown explosive’s blast damage / knockback (Iteminfo: none on the item) verify against the Explosives (class) table and its article; any disagreement withholds', () => {
+    const CLASS = { kind: 'wiki-article' as const, url: 'https://terraria.wiki.gg/wiki/Explosives_(class)', rev: 1031784, fetchedAt: '2026-10-13' }
+    const OWN = { kind: 'wiki-article' as const, url: 'https://terraria.wiki.gg/wiki/Bomb', rev: 1031782, fetchedAt: '2026-10-13' }
+    const quote = 'The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs.'
+    const evidence = (damage: number | undefined, knockback: number | undefined, stated?: number) => (id: number, page: string): ExplosiveEvidence | undefined =>
+      id === 166 && page === 'Bomb' ? { table: { ...(damage !== undefined ? { damage } : {}), ...(knockback !== undefined ? { knockback } : {}), cells: {} }, tableSource: CLASS, ...(stated !== undefined ? { stated: { value: stated, quote, source: OWN } } : {}) } : undefined
+    // infobox 100 / 8 = table 100 / 8 = the article's 100: verified; critPct not applicable (classless, B85(b))
+    const agreed = build(undefined, undefined, evidence(100, 8, 100))
+    const bomb = byName(agreed, 'Bomb')
+    expect(bomb).toMatchObject({ damage: 100, knockback: 8, damageClass: 'other' })
+    expect(bomb.critPct).toBeUndefined()
+    expect(bomb._prov.unverifiedFields).not.toContain('critPct')
+    expect(bomb._prov.unverifiedFields).not.toContain('damage')
+    expect(bomb._prov.unverifiedFields).not.toContain('knockback')
+    expect(bomb._prov.sources.map((x) => x.url)).toEqual(expect.arrayContaining([CLASS.url, OWN.url]))
+    expect(() => Weapon.parse(bomb)).not.toThrow()
+    expect(agreed.crossCheck.get('damage (thrown explosive: wiki infobox vs the Explosives (class) table and the article; Iteminfo carries none)')).toEqual({ agree: 1, mismatch: 0, noWikiValue: 0 })
+    expect(agreed.crossCheck.get('knockback (thrown explosive: wiki infobox vs the Explosives (class) table; Iteminfo carries none)')).toEqual({ agree: 1, mismatch: 0, noWikiValue: 0 })
+    // no article sentence: the infobox + the table suffice
+    expect(byName(build(undefined, undefined, evidence(100, 8)), 'Bomb')).toMatchObject({ damage: 100, knockback: 8 })
+    // the table disagrees on knockback: withheld (source-mismatch gap), damage still verified
+    const kb = build(undefined, undefined, evidence(100, 12, 100))
+    expect(byName(kb, 'Bomb')).toMatchObject({ damage: 100 })
+    expect(byName(kb, 'Bomb').knockback).toBeUndefined()
+    expect(kb.gaps).toContainEqual(expect.objectContaining({ ref: 'i:166', field: 'knockback', kind: 'source-mismatch', detail: expect.stringContaining('the wiki infobox states 8, the Explosives (class) table 12') }))
+    // the article states another damage: withheld, never picked
+    const art = build(undefined, undefined, evidence(100, 8, 250))
+    expect(byName(art, 'Bomb').damage).toBeUndefined()
+    expect(art.gaps).toContainEqual(expect.objectContaining({ ref: 'i:166', field: 'damage', kind: 'source-mismatch', detail: expect.stringContaining("the weapon's article 250") }))
+    // no positive value in the table (Freeze Bomb's "0 (to enemies)"): Unknown, as without the rule
+    const zero = build(undefined, undefined, evidence(0, 8))
+    expect(byName(zero, 'Bomb').damage).toBeUndefined()
+    expect(byName(zero, 'Bomb')._prov.unverifiedFields).toContain('damage')
+    // a weapon whose Iteminfo damage is positive never consults it (Zenith: Iteminfo + infobox as always)
+    expect(byName(agreed, 'Zenith')).toMatchObject({ damage: 190, knockback: 6.5 })
   })
 
   it('a Cargo/Iteminfo disagreement withholds the value (Unknown) with a source-mismatch gap — never picks one', () => {

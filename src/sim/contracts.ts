@@ -53,9 +53,14 @@ export interface DebuffState {
   buffId: string
   dps: number
   remainingTicks: number
+  /** The duration it was last (re)applied with: `remainingTicks` was set to it then (refresh-not-stack keeps the longer). */
+  durationTicks: number
   /** Accrued dps·ticks not yet emitted as whole HP (units: HP × 60). */
   acc: number
 }
+
+/** How a blast's damage spreads over its radius (DATA_SCHEMA_SPEC §2.4 explosive-aoe `falloff`). */
+export type BlastFalloff = 'none' | 'linear'
 
 export interface DummyState {
   readonly index: number
@@ -159,18 +164,25 @@ export interface ProjectileState {
 }
 
 /**
- * Per-flight control of a guided projectile (the returning archetype: out, back, held at the aim).
- * Created per launch, so it may keep that flight's state; the kernel calls it in the fixed
- * projectile step (world.ts header), so guided flight stays deterministic.
+ * Per-flight control of a guided projectile (the returning archetype: out, back, held at the aim; a
+ * thrown explosive's arc, rest and fuse). Created per launch, so it may keep that flight's state; the
+ * kernel calls it in the fixed projectile step (world.ts header), so guided flight stays deterministic.
  */
 export interface ProjectileGuide {
   /**
    * Before movement each tick: set `p.vx` / `p.vy` (tiles/tick). `caught` = back in hand: the
-   * projectile is removed without moving (`projectile-despawn` reason `returned`).
+   * projectile is removed without moving (`projectile-despawn` reason `returned`). `detonated` = it
+   * went off where it is (the guide called `KernelApi.explode` first): removed (reason `detonated`).
    */
-  steer(k: KernelApi, p: ProjectileState): 'caught' | void
+  steer(k: KernelApi, p: ProjectileState): 'caught' | 'detonated' | void
   /** After each hit it lands: `stop` ends this tick's move at the impact point (it turns back there). */
   afterHit?(k: KernelApi, p: ProjectileState, dummy: DummyState): 'stop' | void
+  /**
+   * A projectile with no contact hit of its own (a thrown explosive): each dummy it touches during a move
+   * calls this INSTEAD of a hit. `detonated` = it went off at the touch point `at` (the guide called
+   * `KernelApi.explode` there): removed there, the rest of the move dropped (reason `detonated`).
+   */
+  touch?(k: KernelApi, p: ProjectileState, dummy: DummyState, at: Vec2): 'detonated' | void
 }
 
 export interface ActiveUse {
@@ -224,6 +236,15 @@ export interface KernelApi {
    */
   persistentSource(key: string, kind: HitSource['kind'], baseDamage: number, cooldownTicks: number | null): HitSource
   consumeAmmo(count: number): void
+  /** A consumable weapon item used up (a thrown explosive: one per throw) — `stats.consumablesUsed`. */
+  consumeItem(count: number): void
+  /**
+   * An explosion (P3-S11): event `explosion`, then ONE hit from `p`'s source on every dummy whose hitbox
+   * reaches into the circle of `radiusTiles` around `at` (dummy order), at the hitbox point nearest the
+   * centre, with the base damage `falloff` keeps at that distance (`blastKeptPct`; a dummy kept 0 is not
+   * hit). Returns the number of dummies hit. The caller removes the projectile (`detonated`).
+   */
+  explode(p: ProjectileState, at: Vec2, radiusTiles: number, falloff: BlastFalloff): number
   applyDebuff(dummy: DummyState, buffId: string, dps: number, durationTicks: number): void
   /** A new minion / sentry (event `summon`); its brain steps from the next agent step on. */
   summon(spawn: AgentSpawn): AgentState
@@ -245,6 +266,8 @@ export interface Behavior {
   readonly approximations: readonly ApproximationId[]
   /** The weapon itself is thrown and comes back; the next attack waits for it (WeaponSummary.returnsToHand). */
   readonly returnsToHand?: boolean
+  /** Each throw uses the weapon item itself up (a thrown explosive; WeaponSummary.consumable). */
+  readonly consumable?: boolean
   /** Called on each activation: at use start, then every activationTicks inside the use. */
   activate(k: KernelApi, use: ActiveUse): void
   /** Called every tick of a use, after any activation (melee hit detection, a held beam). */

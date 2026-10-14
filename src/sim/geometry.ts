@@ -85,6 +85,11 @@ export function rayExitDistance(from: Vec2, angle: number, box: Aabb): number {
   return Number.isFinite(t) ? Math.max(0, t) : 0
 }
 
+/** The point of `box` nearest to (x, y) — the point itself when it is inside (blast reach, P3-S11). */
+export function nearestPointInAabb(x: number, y: number, box: Aabb): Vec2 {
+  return { x: Math.min(box.maxX, Math.max(box.minX, x)), y: Math.min(box.maxY, Math.max(box.minY, y)) }
+}
+
 /** Squared distance from point to the AABB center (nearest-target ordering). */
 export function distSqToCenter(x: number, y: number, box: Aabb): number {
   const c = aabbCenter(box)

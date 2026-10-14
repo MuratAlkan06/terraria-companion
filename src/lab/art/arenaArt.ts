@@ -13,6 +13,7 @@
  * (the sim has no terrain).
  */
 import { PixelCanvas } from '../../components/art/pixelCanvas'
+import type { DebuffGlyph } from '../debuffVisuals'
 import {
   dither,
   hash2,
@@ -356,6 +357,46 @@ export function buildSummon(art: SummonArt): string[] {
       c.rect(2, 3, 7, 6, A.s500).rect(2, 3, 7, 1, A.s300).rect(2, 8, 7, 1, A.s700).rect(3, 4, 2, 2, A.s400)
       c.rect(9, 5, 3, 2, A.g500).rect(9, 5, 3, 1, A.g300).set(12, 5, A.g200)
       c.rect(5, 9, 1, 2, A.e600).line(5, 11, 2, 13, A.e600).line(5, 11, 8, 13, A.e600).rect(4, 13, 3, 1, A.e700)
+      return c.outline(A.n950).rows()
+    }
+  }
+}
+
+/**
+ * A debuff's marker (PRD P3-S11 AC2/AC3; design review P3-S11 #4): ORIGINAL art, one glyph per kind of
+ * debuff (../debuffVisuals.ts `debuffGlyph`) — the wiki's buff icons are not in the Lab's sprite set, and
+ * the HUD names every debuff in words. Dark outline, drawn over a dummy with a debuff on it and beside
+ * each debuff in the Debuff Dummy panel:
+ * - `flame` (On Fire!, Hellfire, …): a tongue of fire, red edge, gold body, pale core;
+ * - `frost` (Frostbite, Frostburn): a six-armed snowflake in the pale night blue with white tips;
+ * - `drop` (anything else — bleeding, poison, venom): a red drop with a pale glint.
+ */
+export function buildDebuffIcon(glyph: DebuffGlyph = 'drop'): string[] {
+  switch (glyph) {
+    case 'flame': {
+      // a 6 × 8 flame leaning a pixel right at its tip, with a one-pixel margin for its outline
+      const c = new PixelCanvas(8, 10)
+      c.set(4, 1, A.red).rect(3, 2, 2, 1, A.red).set(3, 3, A.red).set(4, 3, A.g400).set(5, 3, A.red)
+      c.set(2, 4, A.red).rect(3, 4, 2, 1, A.g400).set(5, 4, A.red)
+      c.set(2, 5, A.red).set(3, 5, A.g400).set(4, 5, A.g200).set(5, 5, A.g400).set(6, 5, A.red)
+      c.rect(1, 6, 1, 2, A.red).rect(2, 6, 1, 2, A.g400).rect(3, 6, 2, 2, A.g200).rect(5, 6, 1, 2, A.g400).rect(6, 6, 1, 2, A.red)
+      c.set(2, 8, A.red).rect(3, 8, 2, 1, A.g400).set(5, 8, A.red)
+      return c.outline(A.n950).rows()
+    }
+    case 'frost': {
+      // a 7 × 7 snowflake (odd, so it has a centre pixel) with a one-pixel margin for its outline
+      const c = new PixelCanvas(9, 10)
+      c.rect(4, 2, 1, 7, A.n200).rect(1, 5, 7, 1, A.n200)
+      c.set(2, 3, A.n200).set(3, 4, A.n200).set(5, 6, A.n200).set(6, 7, A.n200)
+      c.set(6, 3, A.n200).set(5, 4, A.n200).set(3, 6, A.n200).set(2, 7, A.n200)
+      c.set(4, 5, A.white).set(4, 2, A.white).set(4, 8, A.white).set(1, 5, A.white).set(7, 5, A.white)
+      return c.outline(A.n950).rows()
+    }
+    case 'drop': {
+      // a 6 × 8 drop with a one-pixel margin all round for its outline
+      const c = new PixelCanvas(8, 10)
+      c.rect(3, 1, 2, 2, A.red).rect(2, 3, 4, 2, A.red).rect(1, 5, 6, 2, A.red).rect(2, 7, 4, 1, A.red).rect(3, 8, 2, 1, A.red)
+      c.set(2, 5, A.s200).set(3, 4, A.s200)
       return c.outline(A.n950).rows()
     }
   }

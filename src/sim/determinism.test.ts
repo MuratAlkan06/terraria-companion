@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createLabSim, dummyRow, mulberry32, type LabSim, type LabSimOptions, type SimSnapshot, type TimedTestDuration, type TimedTestResult } from './index'
-import { ammoFixture, beamFixture, bowFixture, dotBuffFixture, returningFixture, staffFixture, summonFixture, swordFixture, whipFixture } from './testing/fixtures'
+import { ammoFixture, beamFixture, bowFixture, dotBuffFixture, explosiveFixture, fixtureProv, returningFixture, staffFixture, summonFixture, swordFixture, whipFixture } from './testing/fixtures'
 
 const SCENARIOS: Record<string, () => LabSimOptions> = {
   'sword (variance + crits)': () => ({ weapon: swordFixture({ autoReuse: true, critPct: 6 }), seed: 11 }),
@@ -97,6 +97,20 @@ const SCENARIOS: Record<string, () => LabSimOptions> = {
     settings: { minionSlots: 3 },
     dummies: dummyRow(3, 5),
     seed: 68,
+  }),
+  // P3-S11 (pinned 2026-10-14): thrown explosives — a classless timed bomb, and an impact grenade with linear falloff, crits and DoT.
+  'bomb (timed fuse, blast radius, armored row, classless)': () => ({
+    weapon: explosiveFixture(),
+    dummies: dummyRow(3, 6).map((d, i) => (i === 1 ? { ...d, defense: 10 } : d)),
+    seed: 70,
+  }),
+  'grenade (impact, linear falloff, crits, DoT)': () => ({
+    weapon: explosiveFixture({ trigger: 'impact', falloff: 'linear', blastRadiusTiles: 6 }, { damageClass: 'ranged', critPct: 6, damage: 60, useTimeTicks: 45, useAnimationTicks: 45, shootSpeedTps: 20.625, _prov: fixtureProv() }, {
+      dot: { buffId: 'fixture-burn', chancePct: 50, durationTicks: { minTicks: 60, maxTicks: 180 } },
+    }),
+    buffs: [dotBuffFixture(5)],
+    dummies: dummyRow(4, 5),
+    seed: 71,
   }),
 }
 
@@ -238,6 +252,11 @@ describe('seeded reproducibility', () => {
     }
     expect(Object.values(per('pierce bolt (pierce 2 vs an armored row of 4, slow-cast)').perDummy).map((d) => d.hits > 0)).toEqual([true, true, true, false]) // 1 + pierce 2
     expect(Object.values(per('launched flail (turns on strike, DoT chance)').perDummy).map((d) => d.hits > 0)).toEqual([true, false, false])
+    // a bomb landing at the first dummy reaches the second (2 tiles from the blast), never the third (5 tiles; radius 4)
+    const bomb = per('bomb (timed fuse, blast radius, armored row, classless)')
+    expect(Object.values(bomb.perDummy).map((d) => d.hits)).toEqual([65, 65, 0])
+    expect(Object.values(bomb.perDummy).reduce((a, d) => a + d.damage, 0)).toBe(bomb.totalDamage)
+    expect(bomb.consumablesUsed).toBe(72)
   })
 
   it('the reuse-delay scenario attacks once per useAnimation + reuseDelay (12 + 14 = 26 ticks)', () => {
@@ -263,6 +282,9 @@ describe('seeded reproducibility', () => {
  * - The four P3-S9 / P3-S10 scenarios (minion, sentry, ranged minion with a projectile, whip + minion
  *   loadout): pinned 2026-10-14 as new scenarios; the kernel's summon, tag and loadout hooks left all
  *   ten earlier fingerprints unchanged — README changelog.
+ * - The two P3-S11 scenarios (timed bomb, impact grenade): pinned 2026-10-14 as new scenarios; the
+ *   kernel's explode / touch / detonated / consumeItem hooks and the debuff duration field left all
+ *   fourteen earlier fingerprints unchanged — README changelog.
  */
 const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
   'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
@@ -279,6 +301,8 @@ const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; cri
   'sentry (ranged-shot, range, armored row)': { total: 3967, dot: 0, hits: 177, crits: 0, uses: 2, digest: '4fbff848' },
   'ranged minion (projectile, pierce)': { total: 4173, dot: 0, hits: 280, crits: 0, uses: 2, digest: '3830f899' },
   'whip + minion loadout (tags, tag crit, falloff, minion DoT)': { total: 9644, dot: 89, hits: 537, crits: 33, uses: 60, digest: '12a71806' },
+  'bomb (timed fuse, blast radius, armored row, classless)': { total: 12768, dot: 0, hits: 130, crits: 0, uses: 72, digest: 'f5b11d7b' },
+  'grenade (impact, linear falloff, crits, DoT)': { total: 4046, dot: 183, hits: 80, crits: 6, uses: 40, digest: '63bd07b6' },
 }
 
 describe('timed-test controller (P3-S3 AC3)', () => {

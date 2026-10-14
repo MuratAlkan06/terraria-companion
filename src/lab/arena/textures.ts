@@ -5,6 +5,7 @@
  */
 import { Texture } from 'pixi.js'
 import { tokenProperty } from '../art/arenaPalette'
+import { topmostOpaque } from '../explosiveVisuals'
 
 export type Rgba = readonly [number, number, number, number]
 
@@ -97,6 +98,31 @@ export function glowTexture(size = 64): Texture {
   const texture = Texture.from(canvas, true)
   texture.source.scaleMode = 'linear'
   return texture
+}
+
+/**
+ * A texture's topmost opaque pixel as an offset from its centre (../explosiveVisuals.ts `topmostOpaque`):
+ * where a thrown explosive's fuse ends. Read from its image or canvas; null when it can't be read.
+ */
+export function textureTopPoint(texture: Texture): { x: number; y: number } | null {
+  const resource = texture.source.resource as CanvasImageSource | undefined
+  const { width, height } = texture.source
+  if (!resource || !(width > 0) || !(height > 0)) return null
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) return null
+    context.drawImage(resource, 0, 0, width, height)
+    const data = context.getImageData(0, 0, width, height).data
+    const alpha = new Uint8Array(width * height)
+    for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3]
+    return topmostOpaque(alpha, width, height)
+  } catch {
+    // an unreadable image (never expected: sprites are same-origin) — the caller falls back to the top centre
+    return null
+  }
 }
 
 /** Loads an image file as a texture (the weapon sprite); rejects on a load error. */

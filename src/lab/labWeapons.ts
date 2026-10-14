@@ -150,6 +150,7 @@ const ARCHETYPE_NOUNS: Partial<Record<Archetype, string>> = {
   'piercing-beam': 'piercing shots and held beams',
   'minion-sentry': 'minion and sentry staves',
   whip: 'whips',
+  'explosive-aoe': 'thrown explosives',
 }
 
 /**
@@ -168,6 +169,7 @@ const ATTACK_VERBS: Partial<Record<Archetype, string>> = {
   'piercing-beam': 'fire',
   'minion-sentry': 'summon',
   whip: 'whip',
+  'explosive-aoe': 'throw',
 }
 
 /** The verb the Lab's instructions use for the equipped weapon's attack ("Hold Space to swing"). */
@@ -203,13 +205,16 @@ export function notSimulatedReason(status: Exclude<LabStatus, { kind: 'equippabl
 
 /** One behavior stat the EquippedBar shows beside damage, use time and crit (from the archetype params). */
 export interface BehaviorFact {
-  key: 'range' | 'flight' | 'hit-rate' | 'pierce' | 'slots' | 'tag'
+  key: 'range' | 'flight' | 'hit-rate' | 'pierce' | 'slots' | 'tag' | 'blast' | 'trigger'
   label: string
   /** Compact HUD label. */
   short: string
+  /** The full value — also what screen readers hear in the compact HUD ("13.64 tiles", never "13.64t"). */
   value: string
   /** Compact HUD value (default `value`). */
   shortValue?: string
+  /** What screen readers hear when `value` itself abbreviates a unit ("3 s" → "3 seconds"). */
+  spoken?: string
 }
 
 /** Tiles with at most two decimals (13.64, 8.13, 12). */
@@ -225,7 +230,8 @@ const FLIGHT: Record<'boomerang' | 'flail' | 'yoyo', { value: string; shortValue
  * The equipped weapon's behavior stats from its params (PRD P3-S7 AC2 "projectile count/behavior";
  * P3-S6 pierce count and beam tick rate): a returning weapon's throw range and flight, a held beam's
  * hit interval, a projectile's pierce (extra dummies after the first, B37); a summon's slot cost,
- * attack interval and (sentry) range (P3-S9); a whip's range and tag (P3-S10). Nothing per weapon.
+ * attack interval and (sentry) range (P3-S9); a whip's range and tag (P3-S10); a thrown explosive's
+ * blast radius and falloff, and when it goes off (P3-S11). Nothing per weapon.
  */
 export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact[] {
   const lab = weapon.labBehavior
@@ -263,6 +269,27 @@ export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact
           value: `+${p.tagDamageFlat} damage${p.tagCritPct ? `, ${p.tagCritPct}% crit` : ''}`,
           shortValue: `+${p.tagDamageFlat}${p.tagCritPct ? ` ${p.tagCritPct}%` : ''}`,
         },
+      ]
+    case 'explosive-aoe':
+      return [
+        {
+          key: 'blast',
+          label: 'Blast',
+          short: 'Blast',
+          value: `${tiles(p.blastRadiusTiles)}-tile radius, ${p.falloff === 'none' ? 'no falloff' : 'falls off with distance'}`,
+          // Tiles spelled out (design review P3-S11 #5): beside "Use 25t" (ticks) a "4t" radius read as ticks too.
+          shortValue: `${tiles(p.blastRadiusTiles)} tiles`,
+        },
+        p.trigger === 'timed' && p.fuseTicks !== undefined
+          ? {
+              key: 'trigger',
+              label: 'Fuse',
+              short: 'Fuse',
+              value: `${tiles(p.fuseTicks / 60)} s`,
+              shortValue: `${tiles(p.fuseTicks / 60)}s`,
+              spoken: `${tiles(p.fuseTicks / 60)} second${p.fuseTicks === 60 ? '' : 's'}`,
+            }
+          : { key: 'trigger', label: 'Goes off', short: 'Fuse', value: 'on impact', shortValue: 'impact' },
       ]
     default:
       return []

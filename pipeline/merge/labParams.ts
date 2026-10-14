@@ -929,7 +929,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
 
     // ---- PENDING INTERPRETER: complete params are recorded; the weapon is emitted as a limitation ----
     if (pendingFamily && !archImplemented) {
-      const blocked = blockingUnverifiedFields(archetype, w._prov.unverifiedFields)
+      const blocked = blockingUnverifiedFields(archetype, w._prov.unverifiedFields, w.damageClass)
       if (blocked.length > 0) decision.pipelineBlocked = blocked // the validate downgrade would follow once modeled
       const reason = pendingReason(variant as FamilyVariant, false, blocked.length > 0 ? unverifiedSentence(blocked) : undefined)
       decision.pending = true
@@ -940,7 +940,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     const candidate = withLab(w, lab, sources, editorial, modeled)
 
     // ---- guard contract ----
-    const pipelineBlocked = blockingUnverifiedFields(archetype, candidate._prov.unverifiedFields)
+    const pipelineBlocked = blockingUnverifiedFields(archetype, candidate._prov.unverifiedFields, candidate.damageClass)
     if (pipelineBlocked.length > 0) {
       decision.pipelineBlocked = pipelineBlocked
       return candidate // validate's §2.1-3 downgrade (B36 incl.) turns it into a limitation, visibly

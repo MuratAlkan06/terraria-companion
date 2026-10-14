@@ -18,6 +18,8 @@ export class StatsAccumulator {
   private activations = 0
   private projectilesSpawned = 0
   private ammoConsumed = 0
+  private consumablesUsed = 0
+  private explosions = 0
   private manaConsumed = 0
   private debuffsApplied = 0
   private lastHit: StatsSnapshot['lastHit'] = null
@@ -47,6 +49,8 @@ export class StatsAccumulator {
     this.activations = 0
     this.projectilesSpawned = 0
     this.ammoConsumed = 0
+    this.consumablesUsed = 0
+    this.explosions = 0
     this.manaConsumed = 0
     this.debuffsApplied = 0
     this.lastHit = null
@@ -106,6 +110,12 @@ export class StatsAccumulator {
   ammo(count: number): void {
     this.ammoConsumed += count
   }
+  consumable(count: number): void {
+    this.consumablesUsed += count
+  }
+  explosion(): void {
+    this.explosions++
+  }
   mana(amount: number): void {
     this.manaConsumed += amount
   }
@@ -153,6 +163,8 @@ export class StatsAccumulator {
       activations: this.activations,
       projectilesSpawned: this.projectilesSpawned,
       ammoConsumed: this.ammoConsumed,
+      consumablesUsed: this.consumablesUsed,
+      explosions: this.explosions,
       manaConsumed: this.manaConsumed,
       debuffsApplied: this.debuffsApplied,
       lastHit: this.lastHit ? { ...this.lastHit } : null,

@@ -85,6 +85,16 @@ export const WHIP_TAG_DURATION_TICKS = 4 * 60
 /** A guided (returning) projectile counts as back at the target point within this distance (tiles). */
 export const ARRIVE_EPSILON_TILES = 1e-9
 
+/**
+ * The flat ground the Lab player and the default dummies stand on (tiles; y down): the feet of the
+ * player and of a standard dummy centred at y = 0, 3 tiles tall (the Lab arena draws its ground line
+ * here too — src/lab ARENA_LAYOUT.groundY). Lab geometry, not a game value; the sim has no terrain
+ * beyond it. A thrown explosive lands on it (P3-S11, approximation `explosive-throw`).
+ */
+export const GROUND_Y_TILES = DEFAULT_DUMMY_Y_TILES + DEFAULT_DUMMY_HEIGHT_TILES / 2
+/** A thrown explosive at rest: its centre this far above the ground (Lab choice; a small item lying there). */
+export const THROWN_REST_HEIGHT_TILES = 0.5
+
 /** Arena bounds (tiles, relative to the player at the origin; y grows downward). Lab choice. */
 export const DEFAULT_ARENA = { minX: -60, maxX: 60, minY: -40, maxY: 40 } as const
 
