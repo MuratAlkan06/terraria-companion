@@ -125,9 +125,11 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
     expect(resolveTarget(zenith)).toEqual({ kind: 'internal', to: '/weapons/4956' })
   })
 
-  it('bosses without a page open their own wiki article from the doc', () => {
-    const plantera = { id: 'boss:plantera', type: 'boss', name: 'Plantera', wikiUrl: 'https://terraria.wiki.gg/wiki/Plantera' } as const
-    expect(resolveTarget(plantera)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Plantera' })
+  it('a boss ref without a page opens its own wiki article from the doc', () => {
+    // P5-S3: every registry boss has a page; a boss ref outside the list (e.g. an event boss, were one
+    // ever indexed) still opens its own article, never a dead local link.
+    const pumpking = { id: 'boss:pumpking', type: 'boss', name: 'Pumpking', wikiUrl: 'https://terraria.wiki.gg/wiki/Pumpking' } as const
+    expect(resolveTarget(pumpking)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Pumpking' })
   })
 
   it('P5-S2: bosses with a page (src/schemas/bossPages.ts) navigate in-app to it', () => {
