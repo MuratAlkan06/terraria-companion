@@ -58,9 +58,10 @@ export const Prov = z
     verified: z.boolean(),
     unverifiedFields: z.array(z.string()), // dot-paths, e.g. "rates.expert"
     editorialFields: z.array(z.string()), // dot-paths sourced ONLY from curated overlays
-    // AMENDMENTS-010 B49: dot-paths of values derived from a Lab MODELING CONVENTION (B44 / B46 / B47 —
-    // registry `MODELING_CONVENTIONS` in weapon.ts, which names each path's ruling), so any consumer can
-    // tell modeled geometry from extracted game data. Each path must be present (validate stage).
+    // AMENDMENTS-010 B49: dot-paths of values derived from a Lab MODELING CONVENTION (B44 / B46 / B47,
+    // AMENDMENTS-013 B63 — registry `MODELING_CONVENTIONS` in weapon.ts, which names each path's ruling),
+    // so any consumer can tell modeled geometry from extracted game data. Each path must be present
+    // (validate stage). A path several conventions govern is qualified `<path>#<convention id>`.
     modeledFields: z.array(z.string()).optional(),
   })
   // §2.1 rule 1: verified ⇒ no unverified fields (verified:false may also come from a
@@ -70,7 +71,7 @@ export const Prov = z
     path: ['verified'],
   })
   // B49: a modeled value is present by definition, so it can never also be Unknown.
-  .refine((p) => !(p.modeledFields ?? []).some((m) => p.unverifiedFields.some((u) => m === u || m.startsWith(`${u}.`))), {
+  .refine((p) => !(p.modeledFields ?? []).map((m) => m.split('#', 1)[0]).some((m) => p.unverifiedFields.some((u) => m === u || m.startsWith(`${u}.`))), {
     message: 'a modeledFields path must not be listed (or covered) in unverifiedFields (B49)',
     path: ['modeledFields'],
   })

@@ -80,8 +80,10 @@
  * REMAINING-ARCHETYPE FAMILIES (P3-S0 extension): returning, whip, minion-sentry, explosive-aoe and
  * piercing-beam are derived by merge/labFamilies.ts (its header = their rules: stated values from
  * infobox rows, overview list tables, tooltips and verbatim sentences; derived values from data modules
- * + quoted family rules; reviewed overlay residuals; a param only an unratified convention could supply
- * stays MISSING). While an archetype is not in src/sim IMPLEMENTED_ARCHETYPES, complete params are
+ * + quoted family rules; reviewed overlay residuals; the AMENDMENTS-013 B63 modeling conventions — whip
+ * arc P-1, summon attack rate P-2 / P-3, square blast area P-5 — recorded in `modeled` like B44/B46/B47;
+ * a param no stated value or ratified convention supplies stays MISSING; the B63 P-6 AI-class taxonomy
+ * is defined there). While an archetype is not in src/sim IMPLEMENTED_ARCHETYPES, complete params are
  * recorded on the decision (coverage report) and the weapon is emitted as a limitation whose reason
  * names what the Lab does not model (no forward promise); reviewed / flagged / incomplete reasons lead
  * with the same family sentence. The original four families are unchanged.
@@ -524,7 +526,10 @@ export interface LabDecision {
   params?: ArchetypeParams
   /** Emitted modifiers (B48(c): damage over time from the infobox). */
   modifiers?: LabModifiers
-  /** Param paths taken from a modeling convention (emitted as `_prov.modeledFields`, B49). */
+  /**
+   * `_prov.modeledFields` entries of params taken from a modeling convention (emitted with the params,
+   * B49); on a limitation decision, the recorded partial values a convention supplied (report only).
+   */
   modeled?: string[]
   /** Screen + data flags (why a weapon needed curation). */
   flags: ScreenFlag[]
@@ -720,6 +725,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         const out = deriveFamily(familyCtx())
         if (out.kind === 'member') {
           Object.assign(decision, { variant: out.variant, partial: out.partial, missing: out.missing, derivation: out.derivation })
+          if (out.modeled.length > 0) decision.modeled = [...out.modeled].sort() // which partial values a B63 convention supplied (report)
           if (Object.keys(out.candidates).length > 0) decision.candidates = out.candidates
           reason = pendingReason(out.variant, archImplemented, entry.reason)
         }
@@ -835,6 +841,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         if (out.conflicts.length > 0) decision.conflicts = out.conflicts
         derivation.push(...out.derivation)
         sources.push(...out.sources)
+        modeled.push(...out.modeled) // AMENDMENTS-013 B63 conventions (whip arc, summon rate, square blast)
         if (out.params) params = out.params
         else missing = out.missing
         break
@@ -872,7 +879,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         return asLimitation(
           'flagged',
           !variant
-            ? `Not simulated yet: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${labels}) that has not been reviewed for the Lab.`
+            ? `Not simulated: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${labels}) that has not been reviewed for the Lab.`
             : archImplemented
               ? `Not simulated: the wiki describes behavior beyond a plain ${VARIANT_NOUN[variant]} (${labels}) that has not been reviewed for the Lab.`
               : familyFirst(`The wiki also describes behavior beyond a plain ${VARIANT_NOUN[variant]} (${labels}) that has not been reviewed.`),
@@ -897,6 +904,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     if (!params) {
       const v = variant as FamilyVariant
       decision.missing = missing
+      if (modeled.length > 0) decision.modeled = [...modeled].sort() // which partial values a B63 convention supplied (report)
       const why = missingSentence(missing, decision.conflicts)
       return asLimitation('incomplete', archImplemented ? `Not simulated: ${lowerFirst(why)}` : pendingReason(v, false, why), sources, editorial)
     }

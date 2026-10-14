@@ -18,8 +18,12 @@ export interface EvidencePage {
   fetchedAt: string
 }
 
+/** Rendered footnote markers ("[6]", "[note 1]") — citation links, not part of the article's prose. */
+const CITATION_MARKER = /\[(?:\d+|note \d+)\]/g
+
 export class Evidence {
   private readonly pages = new Map<string, EvidencePage & { text: string }>()
+  private readonly prose = new Map<string, string>()
 
   constructor(articles: ReadonlyMap<string, Article>) {
     for (const a of articles.values()) {
@@ -38,6 +42,23 @@ export class Evidence {
     const p = this.page(title, where)
     const text = this.pages.get(title)?.text ?? ''
     if (!text.includes(normalizeQuote(quote))) throw new OverlayError(`[E_SCHEMA] ${where}: quote not found verbatim on "${title}" rev ${p.rev}: "${quote}"`)
+    return p
+  }
+
+  /**
+   * A sentence the pipeline EXTRACTED from the article's own prose (labParams.behaviorText drops the
+   * rendered footnote markers): it must occur verbatim in the article once those markers ("[6]") are
+   * removed — "18 ticks[6] of local invincibility frames" reads "18 ticks of local invincibility frames".
+   * Curated overlay quotes keep the strict `quote` check.
+   */
+  sentence(title: string, sentence: string, where: string): EvidencePage {
+    const p = this.page(title, where)
+    let prose = this.prose.get(title)
+    if (prose === undefined) {
+      prose = normalizeQuote((this.pages.get(title)?.text ?? '').replace(CITATION_MARKER, ''))
+      this.prose.set(title, prose)
+    }
+    if (!prose.includes(normalizeQuote(sentence))) throw new OverlayError(`[E_SCHEMA] ${where}: sentence not found verbatim (footnote markers aside) on "${title}" rev ${p.rev}: "${sentence}"`)
     return p
   }
 

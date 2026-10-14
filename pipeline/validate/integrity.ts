@@ -15,6 +15,7 @@
 import {
   isCoveredBy,
   MODELING_CONVENTIONS,
+  modeledPathOf,
   modelingConventionFor,
   resolvePath,
   type Accessory,
@@ -497,8 +498,9 @@ export function checkUnverifiedValues(ds: Dataset): PipelineError[] {
 /**
  * AMENDMENTS-010 B49 `_prov.modeledFields`: every listed path must be PRESENT in the record and be
  * governed by a ratified modeling convention for the weapon's archetype (MODELING_CONVENTIONS: B44 /
- * B46 / B47 — the convention names its ruling); conversely, an archetype whose params can only come from
- * a convention (`always`) must list them, so a modeled value is never silent. Only Lab archetype params
+ * B46 / B47, AMENDMENTS-013 B63 — the convention names its ruling; a path several conventions govern is
+ * listed `<path>#<convention id>`); conversely, an archetype whose params can only come from a
+ * convention (`always`) must list them, so a modeled value is never silent. Only Lab archetype params
  * can be modeled.
  */
 export function checkModeledFields(ds: Dataset): PipelineError[] {
@@ -511,19 +513,20 @@ export function checkModeledFields(ds: Dataset): PipelineError[] {
       if (modeled.length === 0) continue
       const lab = key === 'weapons' ? (record as unknown as Weapon).labBehavior : undefined
       for (const path of modeled) {
-        if (resolvePath(record, path) === undefined) fail(ref, `_prov.modeledFields ${path}: the path is not present in the record (B49)`)
+        if (resolvePath(record, modeledPathOf(path)) === undefined) fail(ref, `_prov.modeledFields ${path}: the path is not present in the record (B49)`)
         if (lab?.kind !== 'archetype') fail(ref, `_prov.modeledFields ${path}: only Lab archetype params can be modeled (B49)`)
-        else if (!modelingConventionFor(lab.params.archetype, path)) fail(ref, `_prov.modeledFields ${path}: no ratified modeling convention (AMENDMENTS-010 B44/B46/B47) governs this path for ${lab.params.archetype}`)
+        else if (!modelingConventionFor(lab.params.archetype, path)) fail(ref, `_prov.modeledFields ${path}: no ratified modeling convention governs this entry for ${lab.params.archetype} (MODELING_CONVENTIONS; a path several conventions govern must name one: <path>#<convention id>)`)
       }
     }
   }
   for (const w of ds.weapons) {
     if (w.labBehavior.kind !== 'archetype') continue
     const archetype = w.labBehavior.params.archetype
+    const listed = (w._prov.modeledFields ?? []).map(modeledPathOf)
     for (const c of MODELING_CONVENTIONS) {
       if (!c.always || c.archetype !== archetype) continue
       for (const path of c.paths) {
-        if (!(w._prov.modeledFields ?? []).includes(path)) fail(`i:${w.id}`, `_prov.modeledFields: ${path} can only come from the ${c.id} convention (${c.ruling}) and must be listed (B49)`)
+        if (!listed.includes(path)) fail(`i:${w.id}`, `_prov.modeledFields: ${path} can only come from the ${c.id} convention (${c.ruling}) and must be listed (B49)`)
       }
     }
   }

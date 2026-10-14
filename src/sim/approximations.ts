@@ -6,11 +6,13 @@
  * so the HUD can render it verbatim next to each EstimateLabel. `sourceUrl` points at the wiki page
  * the underlying rule came from when there is one; its absence means the value is a Lab choice.
  *
- * Modeling conventions (AMENDMENTS-010 B46 / B47, record marker B49): a weapon whose params came from a
- * convention lists those paths in `_prov.modeledFields`; the guard maps each listed path to its
- * convention (src/schemas MODELING_CONVENTIONS) and adds the entry below that carries the same `ruling`.
- * B44 (swing arc/reach) is labeled by the Lab UI's own `swing-reach-arc` assumption (src/lab), so the
- * engine does not add a second copy of it.
+ * Modeling conventions (AMENDMENTS-010 B46 / B47, AMENDMENTS-013 B63 P-1 / P-2 / P-3 / P-5; record
+ * marker B49): a weapon whose params came from a convention lists those paths in `_prov.modeledFields`;
+ * the guard maps each listed entry to its convention (src/schemas MODELING_CONVENTIONS — a path two
+ * conventions share is qualified `<path>#<convention id>`) and adds the entry below that carries the
+ * same `ruling`. B44 (swing arc/reach) is labeled by the Lab UI's own `swing-reach-arc` assumption
+ * (src/lab), so the engine does not add a second copy of it. The B63 labels surface once the whip /
+ * minion-sentry / explosive-aoe interpreters ship (until then those weapons are limitations).
  */
 import type { ModelingConvention } from '../schemas'
 
@@ -45,6 +47,10 @@ export type ApproximationId =
   | 'multi-hit'
   | 'knockback'
   | 'dummy-hitbox'
+  | 'whip-arc'
+  | 'summon-average-rate'
+  | 'summon-hit-cap'
+  | 'square-blast-radius'
 
 export interface Approximation {
   id: ApproximationId
@@ -246,6 +252,36 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
       "The standard dummy's hitbox uses the Target Dummy's placed size (2×3 tiles); its exact in-game hitbox is not documented.",
     sourceUrl: `${WIKI}Target_Dummy`,
   },
+  // AMENDMENTS-013 B63: the remaining-archetype modeling conventions (labels for the P3-S7+ interpreters)
+  'whip-arc': {
+    id: 'whip-arc',
+    title: 'Whip arc is modeled',
+    detail:
+      "The wiki says whips swing in an arcing motion but gives no angle. The Lab's whip sweeps 180° in front of the player, the same basis as a broadsword swung over the head. This is a Lab modeling choice, not game data.",
+    sourceUrl: `${WIKI}Whips`,
+    ruling: 'AMENDMENTS-013 B63 P-1',
+  },
+  'summon-average-rate': {
+    id: 'summon-average-rate',
+    title: 'Average attack rate used as a fixed rate',
+    detail:
+      'The wiki states how often this summon attacks only as an average, a random cooldown, or a time that is not a whole number of ticks. The Lab attacks at that one fixed interval, rounded to the nearest tick (exact halves to the even tick); in-game the timing varies. This is a Lab modeling choice, not game data.',
+    ruling: 'AMENDMENTS-013 B63 P-2',
+  },
+  'summon-hit-cap': {
+    id: 'summon-hit-cap',
+    title: 'Attack rate is an upper bound',
+    detail:
+      'The wiki states only how often this minion can hit an enemy (its immunity frames), not how often it attacks. The Lab attacks at that cap: maximum rate; actual depends on minion AI pathing. This is a Lab modeling choice, not game data.',
+    ruling: 'AMENDMENTS-013 B63 P-3',
+  },
+  'square-blast-radius': {
+    id: 'square-blast-radius',
+    title: 'Square blast area modeled as a circle',
+    detail:
+      'The wiki states this explosive damages a square area (the same distance horizontally and vertically). The Lab uses the circle that fits inside that square (radius = half the side), so it never overstates the area: enemies in the corners of the square are not hit. This is a Lab modeling choice, not game data.',
+    ruling: 'AMENDMENTS-013 B63 P-5',
+  },
 }
 
 /** Approximations that apply to every simulation regardless of archetype. */
@@ -269,6 +305,10 @@ export const COMMON_APPROXIMATIONS: readonly ApproximationId[] = [
 export const CONVENTION_APPROXIMATIONS: Readonly<Partial<Record<ModelingConvention['id'], ApproximationId>>> = {
   'thrust-reach': 'thrust-reach',
   'slight-spread': 'slight-spread',
+  'whip-arc': 'whip-arc',
+  'summon-average-rate': 'summon-average-rate',
+  'summon-hit-cap': 'summon-hit-cap',
+  'square-blast-radius': 'square-blast-radius',
 }
 
 export const PROJECTILE_APPROXIMATIONS: readonly ApproximationId[] = [

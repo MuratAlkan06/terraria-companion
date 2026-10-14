@@ -93,7 +93,12 @@ export function tooltipText(cell: string): string | undefined {
   return lines.length > 0 ? lines.join('\n') : undefined
 }
 
-export const LAB_DEFAULT_REASON = 'Not simulated yet: Weapon Lab behavior parameters have not been assigned to this weapon.'
+/**
+ * The limitation reason of a weapon no Lab family parameterizes (no weapon-type category, no reviewed
+ * entry). AMENDMENTS-013 B67: plain present tense, no forward promise — the Lab card's own
+ * design-reviewed copy (src/lab UNASSIGNED_LIMITATION_PLAIN, design review M4), so the card shows it as is.
+ */
+export const LAB_DEFAULT_REASON = 'This weapon’s unique behavior isn’t modeled in the Lab.'
 
 export interface WeaponCandidate {
   row: CargoRow

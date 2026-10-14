@@ -97,14 +97,25 @@ describe('honesty guard — NotSimulable, never a guess', () => {
   })
 
   it('every modeling convention names its ruling, and its engine label carries the same ruling (B49)', () => {
-    expect(MODELING_CONVENTIONS.map((c) => c.ruling)).toEqual(['AMENDMENTS-010 B44', 'AMENDMENTS-010 B46', 'AMENDMENTS-010 B47'])
+    expect(MODELING_CONVENTIONS.map((c) => c.ruling)).toEqual([
+      'AMENDMENTS-010 B44',
+      'AMENDMENTS-010 B46',
+      'AMENDMENTS-010 B47',
+      'AMENDMENTS-013 B63 P-1',
+      'AMENDMENTS-013 B63 P-2',
+      'AMENDMENTS-013 B63 P-3',
+      'AMENDMENTS-013 B63 P-5',
+    ])
     for (const c of MODELING_CONVENTIONS) {
       const id = CONVENTION_APPROXIMATIONS[c.id]
       if (id) expect(APPROXIMATIONS[id].ruling, c.id).toBe(c.ruling)
       else expect(c.id).toBe('swing-geometry') // B44: labeled by the Lab UI (approximations.ts header)
     }
     // only convention labels carry a ruling
-    expect(Object.values(APPROXIMATIONS).filter((a) => a.ruling).map((a) => a.id).sort()).toEqual(['slight-spread', 'thrust-reach'])
+    expect(Object.values(APPROXIMATIONS).filter((a) => a.ruling).map((a) => a.id).sort()).toEqual(['slight-spread', 'square-blast-radius', 'summon-average-rate', 'summon-hit-cap', 'thrust-reach', 'whip-arc'])
+    // B63 P-3: the AssumptionsTip states the caveat verbatim; every B63 label says it is a Lab choice
+    expect(APPROXIMATIONS['summon-hit-cap'].detail).toContain('maximum rate; actual depends on minion AI pathing')
+    for (const id of ['whip-arc', 'summon-average-rate', 'summon-hit-cap', 'square-blast-radius'] as const) expect(APPROXIMATIONS[id].detail).toMatch(/This is a Lab modeling choice, not game data\.$/)
   })
 
   it('absent required fields (not listed) are missing-required-field', () => {

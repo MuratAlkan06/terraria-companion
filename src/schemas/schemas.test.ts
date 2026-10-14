@@ -17,6 +17,8 @@ import {
   LabModifiers,
   LoadoutSlots,
   MODELING_CONVENTIONS,
+  modeledEntry,
+  modeledPathOf,
   modelingConventionFor,
   NpcId,
   RecipeStation,
@@ -290,15 +292,39 @@ describe('AMENDMENTS-010 B48 / B49 schema deltas', () => {
     expect(Prov.safeParse({ ...open, modeledFields: ['labBehavior.params.reachTiles'], unverifiedFields: ['gatedBy'] }).success).toBe(true)
   })
 
-  it('every modeling convention names its B44/B46/B47 ruling and resolves by archetype + path', () => {
+  it('every modeling convention names its B44/B46/B47 or B63 ruling and resolves by archetype + path', () => {
     expect(MODELING_CONVENTIONS.map((c) => [c.id, c.ruling, c.archetype, c.always])).toEqual([
       ['swing-geometry', 'AMENDMENTS-010 B44', 'swing-melee', true],
       ['thrust-reach', 'AMENDMENTS-010 B46', 'thrust', false], // AMENDMENTS-012 B56: a stated range is the reach (not modeled)
       ['slight-spread', 'AMENDMENTS-010 B47', 'bow-gun', false],
+      ['whip-arc', 'AMENDMENTS-013 B63 P-1', 'whip', true], // the wiki states no whip angle anywhere
+      ['summon-average-rate', 'AMENDMENTS-013 B63 P-2', 'minion-sentry', false],
+      ['summon-hit-cap', 'AMENDMENTS-013 B63 P-3', 'minion-sentry', false],
+      ['square-blast-radius', 'AMENDMENTS-013 B63 P-5', 'explosive-aoe', false],
     ])
     expect(modelingConventionFor('thrust', 'labBehavior.params.reachTiles')?.id).toBe('thrust-reach')
     expect(modelingConventionFor('bow-gun', 'labBehavior.params.reachTiles')).toBeUndefined()
+    expect(MODELING_CONVENTIONS.find((c) => c.id === 'summon-hit-cap')?.rule).toContain('maximum rate; actual depends on minion AI pathing')
     expect(simRequiredWeaponFields('bow-gun')).toContain('reuseDelayTicks')
+  })
+
+  it('a path two conventions govern is listed qualified (<path>#<convention id>); unqualified it resolves to none, never to the wrong label', () => {
+    const rate = 'labBehavior.params.attackRateTicks'
+    expect(modelingConventionFor('minion-sentry', rate)).toBeUndefined() // B63 P-2 and P-3 share it
+    expect(modelingConventionFor('minion-sentry', `${rate}#summon-average-rate`)?.ruling).toBe('AMENDMENTS-013 B63 P-2')
+    expect(modelingConventionFor('minion-sentry', `${rate}#summon-hit-cap`)?.ruling).toBe('AMENDMENTS-013 B63 P-3')
+    expect(modelingConventionFor('minion-sentry', `${rate}#whip-arc`)).toBeUndefined() // names a convention that does not govern the path
+    expect(modelingConventionFor('minion-sentry', `${rate}#summon-hit-cap#x`)).toBeUndefined()
+    expect(modelingConventionFor('whip', 'labBehavior.params.arcDegrees#whip-arc')?.id).toBe('whip-arc') // qualifying an unshared path is allowed
+    const byId = (id: string) => MODELING_CONVENTIONS.find((c) => c.id === id)!
+    expect(modeledEntry(byId('summon-hit-cap'), rate)).toBe(`${rate}#summon-hit-cap`)
+    expect(modeledEntry(byId('whip-arc'), 'labBehavior.params.arcDegrees')).toBe('labBehavior.params.arcDegrees') // unshared: the plain path
+    expect(modeledPathOf(`${rate}#summon-hit-cap`)).toBe(rate)
+    expect(modeledPathOf(rate)).toBe(rate)
+    // B49 refine: a qualified entry is still never also unverified
+    const open = { ...prov, verified: false, unverifiedFields: [rate] }
+    expect(Prov.safeParse({ ...open, modeledFields: [`${rate}#summon-hit-cap`] }).success).toBe(false)
+    expect(Prov.safeParse({ ...prov, modeledFields: [`${rate}#summon-hit-cap`] }).success).toBe(true)
   })
 })
 

@@ -183,19 +183,30 @@ export function simRequiredWeaponFields(archetype: Archetype): readonly string[]
 }
 
 /**
- * Lab MODELING CONVENTIONS (AMENDMENTS-010 B44 / B46 / B47; record marker B49). Archetype params the
- * wiki does not state, derived by a ratified rule and always labeled as modeled — never presented as
- * game data. A weapon lists every param it took from a convention in `_prov.modeledFields`; each listed
- * path resolves here (archetype + path) to exactly one convention and its ruling. `always`: the
- * archetype has no other source for these paths, so every record of that archetype lists them
- * (not thrust since AMENDMENTS-012 B56: a range the article states is used as the reach).
- * The derivations live in pipeline/merge/labParams.ts; the user-facing labels in the sim's
- * approximations registry (src/sim/approximations.ts) and the Lab UI.
+ * Lab MODELING CONVENTIONS (AMENDMENTS-010 B44 / B46 / B47, AMENDMENTS-013 B63 P-1 / P-2 / P-3 / P-5;
+ * record marker B49). Archetype params the wiki does not state, derived by a ratified rule and always
+ * labeled as modeled — never presented as game data. A weapon lists every param it took from a
+ * convention in `_prov.modeledFields`; each listed entry resolves here (archetype + entry) to exactly
+ * one convention and its ruling. An entry is the param's dot-path, qualified as `<path>#<convention id>`
+ * when more than one convention governs that path for the archetype (B63 P-2 and P-3 both supply
+ * minion-sentry `attackRateTicks`, with different labels) — an unqualified ambiguous entry resolves to
+ * none, so it can never pick up the wrong label. `always`: the archetype has no other source for these
+ * paths, so every record of that archetype lists them (not thrust since AMENDMENTS-012 B56: a range the
+ * article states is used as the reach). The derivations live in pipeline/merge/labParams.ts and
+ * labFamilies.ts; the user-facing labels in the sim's approximations registry
+ * (src/sim/approximations.ts) and the Lab UI.
  */
 export interface ModelingConvention {
-  id: 'swing-geometry' | 'thrust-reach' | 'slight-spread'
+  id: 'swing-geometry' | 'thrust-reach' | 'slight-spread' | 'whip-arc' | 'summon-average-rate' | 'summon-hit-cap' | 'square-blast-radius'
   /** The binding ruling that ratified the convention. */
-  ruling: 'AMENDMENTS-010 B44' | 'AMENDMENTS-010 B46' | 'AMENDMENTS-010 B47'
+  ruling:
+    | 'AMENDMENTS-010 B44'
+    | 'AMENDMENTS-010 B46'
+    | 'AMENDMENTS-010 B47'
+    | 'AMENDMENTS-013 B63 P-1'
+    | 'AMENDMENTS-013 B63 P-2'
+    | 'AMENDMENTS-013 B63 P-3'
+    | 'AMENDMENTS-013 B63 P-5'
   archetype: Archetype
   paths: readonly string[]
   always: boolean
@@ -229,9 +240,62 @@ export const MODELING_CONVENTIONS: readonly ModelingConvention[] = [
     always: false,
     rule: 'a gun whose article says it fires at a "slight" / "small" spread without an angle uses a 10° spread',
   },
+  {
+    id: 'whip-arc',
+    ruling: 'AMENDMENTS-013 B63 P-1',
+    archetype: 'whip',
+    paths: ['labBehavior.params.arcDegrees'],
+    // the wiki states no whip angle anywhere ("swing in an arcing motion"): every whip record lists it
+    always: true,
+    rule: 'whip arc 180° forward (the B44 "swung overhead" basis; the Whips article states no angle)',
+  },
+  {
+    id: 'summon-average-rate',
+    ruling: 'AMENDMENTS-013 B63 P-2',
+    archetype: 'minion-sentry',
+    paths: ['labBehavior.params.attackRateTicks'],
+    always: false,
+    rule: "attack interval = the rate the summon's article states as an average / random cooldown, or in seconds that are not whole ticks, × 60 rounded half-to-even to whole ticks",
+  },
+  {
+    id: 'summon-hit-cap',
+    ruling: 'AMENDMENTS-013 B63 P-3',
+    archetype: 'minion-sentry',
+    paths: ['labBehavior.params.attackRateTicks'],
+    always: false,
+    rule: 'a contact minion whose article states only its immunity frames attacks once per that many ticks — an UPPER BOUND (maximum rate; actual depends on minion AI pathing)',
+  },
+  {
+    id: 'square-blast-radius',
+    ruling: 'AMENDMENTS-013 B63 P-5',
+    archetype: 'explosive-aoe',
+    paths: ['labBehavior.params.blastRadiusTiles'],
+    always: false,
+    rule: 'a square damage area ("within N tiles horizontally and vertically") → the inscribed circle, radius = half the side = N tiles (conservative: never overstates the area)',
+  },
 ]
 
-/** The convention governing `path` for an archetype, if any (B49 modeledFields resolution). */
-export function modelingConventionFor(archetype: Archetype, path: string): ModelingConvention | undefined {
-  return MODELING_CONVENTIONS.find((c) => c.archetype === archetype && c.paths.includes(path))
+/** Qualifier between a modeled param path and the convention that governs it (`<path>#<convention id>`). */
+export const MODELED_CONVENTION_QUALIFIER = '#'
+
+/** The param dot-path of a `_prov.modeledFields` entry (its convention qualifier, if any, removed). */
+export const modeledPathOf = (entry: string): string => entry.split(MODELED_CONVENTION_QUALIFIER, 1)[0]
+
+/** The `_prov.modeledFields` entry for a param modeled by `convention` (qualified only where the path is shared). */
+export function modeledEntry(convention: ModelingConvention, path: string): string {
+  const shared = MODELING_CONVENTIONS.filter((c) => c.archetype === convention.archetype && c.paths.includes(path)).length > 1
+  return shared ? `${path}${MODELED_CONVENTION_QUALIFIER}${convention.id}` : path
+}
+
+/**
+ * The convention governing a `_prov.modeledFields` entry for an archetype, if any (B49 resolution). A
+ * qualified entry names its convention; an unqualified one resolves only when exactly one convention
+ * governs the path (ambiguous → none: the guard then refuses it as unlabeled, never mislabels it).
+ */
+export function modelingConventionFor(archetype: Archetype, entry: string): ModelingConvention | undefined {
+  const [path, id, ...rest] = entry.split(MODELED_CONVENTION_QUALIFIER)
+  if (rest.length > 0) return undefined
+  const governing = MODELING_CONVENTIONS.filter((c) => c.archetype === archetype && c.paths.includes(path))
+  if (id !== undefined) return governing.find((c) => c.id === id)
+  return governing.length === 1 ? governing[0] : undefined
 }

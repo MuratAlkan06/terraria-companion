@@ -10,7 +10,8 @@
     "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
     "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
     "AMENDMENTS-012 B56 (2026-10-13): a range the thrust weapon's article states ('maximum range of approximately N tiles') is its reach \u2014 extracted by pipeline/merge/labParams.ts and checked verbatim on the cached revision (wiki data with normal provenance, not _prov.modeledFields); the B46 convention applies only where no range is stated. The nine plain spears (Trident, Spear, Mythril Halberd, Adamantite Glaive, Cobalt Naginata, Palladium Pike, Orichalcum Halberd, Titanium Trident, Swordfish) have reviewed entries for their screen flags only \u2014 their reach is never an overlay value.",
-    "P3-S0 remaining-archetype slice (2026-10-13): families returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6\u2013S11): complete params are RECORDED (coverage report) and the weapon is emitted as a limitation whose reason names what the Lab does not model; the same build emits the params once the interpreter registers. Values are stated (yoyo infobox Reach, Whips list table, tooltips, verbatim 'maximum range' / fuse sentences, or a reviewed quote here that states the value) or derived (Projectileinfo minionSlots + quoted rules); a value only a new convention could supply (whip arc, average minion rates, Manhattan sentry ranges, square explosion areas) stays MISSING \u2014 proposals in the gap report, never applied. Limitation entries may record bounceCount / chainTargets / tickRateTicks (quote-checked) for the NotImplemented sim stubs.",
+    "P3-S0 remaining-archetype slice (2026-10-13): families returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6\u2013S11): complete params are RECORDED (coverage report) and the weapon is emitted as a limitation whose reason names what the Lab does not model; the same build emits the params once the interpreter registers. Values are stated (yoyo infobox Reach, Whips list table, tooltips, verbatim 'maximum range' / fuse sentences, or a reviewed quote here that states the value) or derived (Projectileinfo minionSlots + quoted rules); a value only an unratified convention could supply stays MISSING (Manhattan sentry ranges \u2014 AMENDMENTS-013 B63 P-4 rejected). Limitation entries may record bounceCount / chainTargets / tickRateTicks (quote-checked) for the NotImplemented sim stubs.",
+    "AMENDMENTS-013 B63 conventions (2026-10-13), applied by pipeline/merge/labFamilies.ts as labeled modeling conventions (recorded on the decision; _prov.modeledFields once the archetype is simulated): whip arc 180\u00b0 forward (P-1); summon attack rate from an article-stated average / random cooldown or a time that is not whole ticks, rounded half-to-even to ticks (P-2); a contact minion's stated immunity frames as an UPPER-BOUND rate \u2014 maximum rate; actual depends on minion AI pathing (P-3; not applied where the article says the frames do not come into play); a square blast area's inscribed circle, radius = half the side (P-5). The four AI-class definitions are binding (P-6; labFamilies.ts header).",
     "Category-less weapons (orchestrator ruling, 2026-10-13): a weapon in no Lab family (no wiki weapon-type category, no held-beam signal) keeps the default limitation card unless a reviewed limitation entry here gives its specific reason \u2014 evidence-checked like every entry (verbatim quotes on the cached revision, its own article cited); such a weapon takes no archetype entry and no recorded extras. Reviewed: Grenade, Star Cannon, Blowpipe, Flamethrower, Snowball Cannon (consumable / ammo-driven uniques)."
   ],
   "entries": [
@@ -266,7 +267,7 @@
           "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
         }
       ],
-      "why": "\"explosive\" is the archetype; every enemy in the area takes 250 damage (falloff none). The damage area is a square around the explosive (\"N tiles horizontally and vertically\"), not a radius: blastRadiusTiles stays missing (convention proposal)."
+      "why": "\"explosive\" is the archetype; every enemy in the area takes 250 damage (falloff none). The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
     },
     {
       "itemId": 168,
@@ -1584,7 +1585,7 @@
           "quote": "It bounces towards enemies, dealing contact damage."
         }
       ],
-      "why": "Baby Slime: ground movement + contact damage. No exact attack rate is stated (only the 12-tick immunity cap), so attackRateTicks stays missing."
+      "why": "Baby Slime: ground movement + contact damage. No exact attack rate is stated (only the 12-tick immunity cap): the cap is its upper-bound rate (AMENDMENTS-013 B63 P-3, modeled)."
     },
     {
       "itemId": 1313,
@@ -2094,7 +2095,7 @@
           "quote": "It hovers near enemies, shooting fireballs that inflict the On Fire! debuff for 3\u20136 seconds and can pierce up to 4 times"
         }
       ],
-      "why": "Shoots fireballs. Its rate is stated only as an average (once every 1.13 s): needs a ruling."
+      "why": "Shoots fireballs. Its rate is stated only as an average (once every 1.13 s): the average, rounded half-to-even to ticks, is its rate (AMENDMENTS-013 B63 P-2, modeled)."
     },
     {
       "itemId": 2366,
@@ -2259,7 +2260,7 @@
           "quote": "It hovers above enemies, firing blue lasers that hit the target instantaneously."
         }
       ],
-      "why": "Fires lasers. Its rate is stated only as an average (0.45 s): needs a ruling."
+      "why": "Fires lasers. Its rate is stated only as an average (0.45 s): the average is its rate (AMENDMENTS-013 B63 P-2, modeled)."
     },
     {
       "itemId": 2750,
@@ -2361,7 +2362,7 @@
           "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
         }
       ],
-      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"), not a radius: blastRadiusTiles stays missing (convention proposal)."
+      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
     },
     {
       "itemId": 3006,
@@ -3146,7 +3147,7 @@
           "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
         }
       ],
-      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage; bouncing is movement. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"), not a radius: blastRadiusTiles stays missing (convention proposal)."
+      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage; bouncing is movement. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
     },
     {
       "itemId": 3569,
@@ -4064,7 +4065,7 @@
           "quote": "It flies towards enemies, performing a quick stab before repeatedly attacking with a swinging or stabbing motion."
         }
       ],
-      "why": "Close-range repeated stabs/swings. Its stated rate (\"once every 0.67 seconds\") is not a whole number of ticks: attackRateTicks stays missing."
+      "why": "Close-range repeated stabs/swings. Its stated rate (\"once every 0.67 seconds\") is not a whole number of ticks: rounded half-to-even to ticks (AMENDMENTS-013 B63 P-2, modeled)."
     },
     {
       "itemId": 5065,
@@ -4196,7 +4197,7 @@
           "quote": "It shoots fireballs towards enemies, which dissipate upon contact with enemies or blocks."
         }
       ],
-      "why": "Sentry shooting fireballs. No attack rate stated; its range is a Manhattan distance (62.5 tiles): needs a ruling."
+      "why": "Sentry shooting fireballs. No attack rate stated; its range is a Manhattan distance (62.5 tiles), not a radius (AMENDMENTS-013 B63 P-4 rejected): both stay missing."
     },
     {
       "itemId": 5129,
@@ -4457,7 +4458,7 @@
           "quote": "The explosion also deals 200 classless damage to all enemies, critters, and players (but not NPCs) within 8.75 tiles horizontally and vertically of the Power Bomb."
         }
       ],
-      "why": "The fuse is stated in the article (extracted); every enemy in the area takes 200 damage (falloff none); \"less damage\" compares it with other explosives. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"), not a radius: blastRadiusTiles stays missing (convention proposal)."
+      "why": "The fuse is stated in the article (extracted); every enemy in the area takes 200 damage (falloff none); \"less damage\" compares it with other explosives. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
     },
     {
       "itemId": 5595,
@@ -4481,7 +4482,7 @@
           "quote": "The explosion also deals 200 classless damage to all enemies, critters, and players (but not NPCs) within 8.75 tiles horizontally and vertically of the Power Bomb."
         }
       ],
-      "why": "\"Functions like the Power Bomb\" \u2192 its quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"), not a radius: blastRadiusTiles stays missing (convention proposal)."
+      "why": "\"Functions like the Power Bomb\" \u2192 its quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
     },
     {
       "itemId": 5663,
@@ -4646,7 +4647,7 @@
           "quote": "while firing high-velocity Forbidden Bolt projectiles towards it which gradually slow down"
         }
       ],
-      "why": "Fires bolts. Its rate is a random 1.75\u20131.92 s cooldown (average 1.83 s): needs a ruling."
+      "why": "Fires bolts. Its rate is a random 1.75\u20131.92 s cooldown (average 1.83 s): the stated average, rounded half-to-even to ticks, is its rate (AMENDMENTS-013 B63 P-2, modeled)."
     }
   ]
 }

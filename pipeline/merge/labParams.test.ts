@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ArchetypeParams, Buff, modelingConventionFor, simRequiredWeaponFields, Weapon, type Archetype, type Item, type SpriteManifestFile } from '../../src/schemas'
+import { ArchetypeParams, Buff, modelingConventionFor, Prov, simRequiredWeaponFields, Weapon, type Archetype, type Item, type SpriteManifestFile } from '../../src/schemas'
 import { assessWeapon, createLabSim, IMPLEMENTED_ARCHETYPES, type WeaponAssessment } from '../../src/sim'
 import type { Article } from '../fetch/articles'
 import type { CargoRow } from '../fetch/cargo'
@@ -13,7 +13,22 @@ import type { Iteminfo } from '../parse/iteminfo'
 import type { Projectileinfo } from '../parse/projectileinfo'
 import { downgradeUnverifiedArchetype } from '../validate/labDowngrade'
 import { Evidence } from './evidence'
-import { ammoExplosiveReason, FAMILY_REASON, missingSentence, PENDING_FAMILIES, statedFuse, statedIntervalTicks, statesTickRate, statesTiles, THROWN_FLAIL_REASON } from './labFamilies'
+import {
+  ammoExplosiveReason,
+  CONTACT_AI_CLASSES,
+  FAMILY_REASON,
+  missingSentence,
+  PENDING_FAMILIES,
+  roundHalfEvenTicks,
+  statedFuse,
+  statedHitCap,
+  statedIntervalTicks,
+  statedSummonRate,
+  statesTickRate,
+  statesTiles,
+  THROWN_FLAIL_REASON,
+  WHIP_ARC_DEGREES,
+} from './labFamilies'
 import {
   behaviorText,
   buildLabParams,
@@ -37,6 +52,7 @@ import {
   type LabBuildInput,
 } from './labParams'
 import { LabParamsOverlay, type LabParamsEntry } from './overlays'
+import { LAB_DEFAULT_REASON } from './weapons'
 
 describe('AMENDMENTS-008 B36 — simRequiredWeaponFields', () => {
   it('requires useAnimationTicks for every archetype and autoReuse for the melee archetypes only', () => {
@@ -283,6 +299,8 @@ describe('buildLabParams', () => {
     const out = buildLabParams(fixture([swordSpec(tooltip)]))
     expect(out.weapons[0].labBehavior).toMatchObject({ kind: 'limitation', reason: expect.stringContaining('extra effects on hit') })
     expect(out.decisions[0]).toMatchObject({ method: 'limitation', reasonKey: 'flagged', flags: [{ id: 'on-hit', evidence: 'tooltip "Hitting"' }] })
+    // AMENDMENTS-013 B67: plain present tense, no forward promise
+    expect(out.decisions[0].reason).toBe('Not simulated: the wiki describes behavior beyond a plain broadsword swing (extra effects on hit) that has not been reviewed for the Lab.')
     // a flavor-text tooltip is screened like the article text, not flagged for existing
     const flavor = weapon(4, 'Iron Broadsword', { tags: ['broadswords'], behaviorText: "'A trusty blade for a new adventurer.'" })
     expect(buildLabParams(fixture([swordSpec(flavor)])).decisions[0].method).toBe('derived')
@@ -608,9 +626,38 @@ describe('remaining-archetype families: quote / table helpers', () => {
     expect(statedFuse('The Bomb is an explosive that explodes 3 seconds after being thrown. The explosion breaks…')).toEqual({ ticks: 180, quote: 'The Bomb is an explosive that explodes 3 seconds after being thrown' })
     expect(statedFuse('It has a fuse timer of 3 seconds')).toBeUndefined()
   })
+  it('AMENDMENTS-013 B63 P-2 rounding: decimal seconds × 60, half-to-even, on the stated digits (no float error decides)', () => {
+    expect(roundHalfEvenTicks('1.13')).toEqual({ ticks: 68, exact: false }) // 67.8 (Imp Staff)
+    expect(roundHalfEvenTicks('0.67')).toEqual({ ticks: 40, exact: false }) // 40.2 (Terraprisma)
+    expect(roundHalfEvenTicks('2.67')).toEqual({ ticks: 160, exact: false }) // 160.2 (Ballista)
+    expect(roundHalfEvenTicks('0.45')).toEqual({ ticks: 27, exact: true })
+    expect(roundHalfEvenTicks('0.125')).toEqual({ ticks: 8, exact: false }) // 7.5 → the even tick
+    expect(roundHalfEvenTicks('0.375')).toEqual({ ticks: 22, exact: false }) // 22.5 → the even tick
+    expect(roundHalfEvenTicks('1')).toEqual({ ticks: 60, exact: true })
+  })
+  it('statedSummonRate: the one base-rate sentence; exact = whole ticks and not an average; caps, conditions and several values are no rate', () => {
+    expect(statedSummonRate('The Imp attacks with an average rate of fire of once every 1.13 seconds.')).toMatchObject({ seconds: '1.13', ticks: 68, exact: false })
+    expect(statedSummonRate("The UFO's lasers are fired instantaneously at a rate of once every 0.45 seconds on average.")).toMatchObject({ ticks: 27, exact: false }) // whole ticks, but an average
+    expect(statedSummonRate('The Forbidden Ruin has a random cooldown ranging from 1.75 seconds to 1.92 seconds between firing Forbidden Bolts, meaning it fires once every 1.83 seconds on average.')).toMatchObject({ seconds: '1.83', ticks: 110, exact: false })
+    expect(statedSummonRate('The Frost Hydra fires Frost Blasts at a rate of once per second.')).toMatchObject({ ticks: 60, exact: true })
+    expect(statedSummonRate('The Explosive Trap has a cooldown of 1.5 seconds after attacking.')).toMatchObject({ ticks: 90, exact: true })
+    expect(statedSummonRate('The Foxparks minion shoots fireballs at enemies once every 0.7 seconds, while the Trusty Foxparks minion shoots fireballs once every 0.5 seconds.')).toBe('ambiguous')
+    expect(statedSummonRate('It attacks once every 0.5 seconds. Its other form attacks once every 0.75 seconds.')).toBe('ambiguous')
+    expect(statedSummonRate('Each spider minion has an internal hit cooldown of 0.33 seconds, meaning it can hit an enemy up to 3 times per second.')).toBeUndefined()
+    expect(statedSummonRate('If the player is wearing the set, it attacks once every 0.5 seconds.')).toBeUndefined()
+    expect(statedSummonRate('Once every three attacks, it briefly stops in place.')).toBeUndefined()
+  })
+  it('statedHitCap: the immunity-frame count (never a "-1 tick"); not binding where the article says so', () => {
+    expect(statedHitCap('The Baby Slime minion applies 12 ticks of static invincibility frames upon hitting an enemy, meaning it can hit up to five times per second.')).toMatchObject({ ticks: 12 })
+    expect(statedHitCap('The Vampire Frog minion applies 10 ticks of static immunity frames upon hitting an enemy.')).toMatchObject({ ticks: 10 })
+    expect(statedHitCap('The Terraprisma applies -1 tick of local immunity frames upon hitting an enemy.')).toBeUndefined()
+    expect(statedHitCap('Whips apply −1 ticks of local invincibility frames on hit.')).toBeUndefined()
+    expect(statedHitCap('The Raven minion applies 10 ticks of local invincibility frames upon hitting an enemy, although in practice this does not come into play due to the internal hit cooldown mentioned above.')).toEqual({
+      notBinding: expect.stringContaining('does not come into play'),
+    })
+  })
   it('missing params read as plain sentences; source disagreements are named as such', () => {
     expect(missingSentence(['attackRateTicks', 'sentryRangeTiles'])).toBe('The wiki states no exact attack rate or targeting radius for it.')
-    expect(missingSentence(['arcDegrees'])).toBe('The wiki states no swing arc for whips.')
     expect(missingSentence(['throwRangeTiles'], ['throwRangeTiles'])).toBe('The wiki sources disagree on its throw range.')
     expect(missingSentence(['aiClass', 'attackRateTicks'])).toBe('The wiki states no exact attack rate for it; its attack style is not classified from the wiki.')
   })
@@ -712,14 +759,28 @@ describe('remaining-archetype families: buildLabParams', () => {
   const whipEntry: LabParamsEntry = { itemId: 4672, name: 'Leather Whip', decision: 'archetype', archetype: 'whip', evidence: [{ page: 'Leather Whip', quote: 'The Leather Whip is a whip.' }], why: 'tag damage is the whip archetype' }
   const whipInput = (range = '11', tag = '4') => withArticles(fixture([{ w: WHIP, stats: { useStyle: 1, shoot: 841, noMelee: true }, html: page(4672, 'The Leather Whip is a whip.') }], [whipEntry], { 841: { name: 'Leather Whip' } }), [whipsPage(range, tag)])
 
-  it('whip: range / tag damage / tag crit / multihit penalty are stated (list table + tooltip); the arc is stated nowhere → missing', () => {
+  it('whip: range / tag damage / tag crit / multihit penalty are stated (list table + tooltip); the arc is the B63 P-1 convention (180° forward, modeled)', () => {
     const out = buildLabParams(whipInput())
     expect(buildLabParams({ ...whipInput(), overlay: LabParamsOverlay.parse({ overlay: 'lab-params', authoredAt: '2026-10-13', notes: [], entries: [] }) }).decisions[0]).toMatchObject({ reasonKey: 'flagged', reason: expect.stringContaining('creates other projectiles or entities') })
-    expect(out.decisions[0]).toMatchObject({ family: 'whip', method: 'limitation', reasonKey: 'incomplete', missing: ['arcDegrees'], partial: { rangeTiles: 11, tagDamageFlat: 4, tagCritPct: 10, falloffPerTarget: 0.5 } })
-    expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model whip swings or the tag bonus they give to minion damage. The wiki states no swing arc for whips." })
-    // tooltip vs table disagreement: withheld, named as such
+    expect(out.decisions[0]).toMatchObject({
+      family: 'whip',
+      method: 'overlay',
+      pending: true,
+      params: { archetype: 'whip', arcDegrees: WHIP_ARC_DEGREES, rangeTiles: 11, tagDamageFlat: 4, tagCritPct: 10, falloffPerTarget: 0.5 },
+      modeled: ['labBehavior.params.arcDegrees'],
+    })
+    expect(WHIP_ARC_DEGREES).toBe(180)
+    expect(modelingConventionFor('whip', 'labBehavior.params.arcDegrees')).toMatchObject({ id: 'whip-arc', ruling: 'AMENDMENTS-013 B63 P-1', always: true })
+    expect(out.decisions[0].derivation.join(' ')).toContain('modeling convention AMENDMENTS-013 B63 P-1')
+    expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model whip swings or the tag bonus they give to minion damage." })
+    expect(out.weapons[0]._prov.modeledFields).toBeUndefined() // a limitation until the whip interpreter ships
+    // once it ships, the same build emits the arc as a labeled modeled value (B49)
+    const shipped = buildLabParams({ ...whipInput(), implemented: [...IMPLEMENTED_ARCHETYPES, 'whip'], assess: accept('whip') })
+    expect(shipped.weapons[0].labBehavior).toMatchObject({ kind: 'archetype', params: { arcDegrees: 180 } })
+    expect(shipped.weapons[0]._prov.modeledFields).toEqual(['labBehavior.params.arcDegrees'])
+    // tooltip vs table disagreement: withheld, named as such (the arc stays modeled)
     const clash = buildLabParams(whipInput('11', '5'))
-    expect(clash.decisions[0]).toMatchObject({ missing: expect.arrayContaining(['tagDamageFlat', 'arcDegrees']), conflicts: ['tagDamageFlat'] })
+    expect(clash.decisions[0]).toMatchObject({ reasonKey: 'incomplete', missing: ['tagDamageFlat'], conflicts: ['tagDamageFlat'], modeled: ['labBehavior.params.arcDegrees'] })
   })
 
   const minionW = (over: Partial<Weapon> = {}) => weapon(1309, 'Slime Staff', { tags: ['minion-summon-items'], damageClass: 'summon', critPct: undefined, ...over })
@@ -727,20 +788,59 @@ describe('remaining-archetype families: buildLabParams', () => {
   const SLIME_PROJ = { 266: { name: 'Baby Slime', minion: true, minionSlots: 1 } }
   const minionEntry = (over: Partial<Extract<LabParamsEntry, { decision: 'archetype' }>>, quote: string): LabParamsEntry => ({ itemId: 1309, name: 'Slime Staff', decision: 'archetype', archetype: 'minion-sentry', evidence: [{ page: 'Slime Staff', quote }], why: 'test', ...over })
 
-  it('minion: slotCost = Projectileinfo minionSlots; aiClass + attack rate only from quotes that state them exactly', () => {
+  it('minion: slotCost = Projectileinfo minionSlots; aiClass from a reviewed quote; an exact rate the article states is stated (not modeled)', () => {
     const lead = 'It bounces towards enemies, dealing contact damage. The Baby Slime attacks once every 0.5 seconds.'
     const spec = { w: minionW(), stats: { useStyle: 1, shoot: 266 }, html: minionHtml(lead) }
     const bare = buildLabParams(fixture([spec], [], SLIME_PROJ))
-    expect(bare.decisions[0]).toMatchObject({ variant: 'minion', reasonKey: 'incomplete', partial: { slotCost: 1 }, missing: ['aiClass', 'attackRateTicks'] })
+    expect(bare.decisions[0]).toMatchObject({ variant: 'minion', reasonKey: 'incomplete', partial: { slotCost: 1, attackRateTicks: 30 }, missing: ['aiClass'] })
+    expect(bare.decisions[0].modeled).toBeUndefined() // 0.5 s = 30 whole ticks, not an average: game data
     const out = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, lead)], SLIME_PROJ))
     expect(out.decisions[0]).toMatchObject({ method: 'overlay', pending: true, params: { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'ground-melee', attackRateTicks: 30 } })
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model summoned minions." })
     expect(() => buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ranged-shot' }, lead)], SLIME_PROJ))).toThrow(/ranged-shot behavior/)
     const avg = 'It bounces towards enemies, dealing contact damage. It attacks once every 0.5 seconds on average.'
-    expect(() => buildLabParams(fixture([{ ...spec, html: minionHtml(avg) }], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, avg)], SLIME_PROJ))).toThrow(/average — a fixed cadence from an average needs a ruling/)
+    expect(() => buildLabParams(fixture([{ ...spec, html: minionHtml(avg) }], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, avg)], SLIME_PROJ))).toThrow(
+      /is an average — an average is modeled \(AMENDMENTS-013 B63 P-2\) only from the article's own rate sentence/,
+    )
   })
 
-  it('sentry: one sentry slot (rule quote); a Manhattan-distance range is not a radius (needs a ruling)', () => {
+  it('B63 P-2: an average / non-whole-tick rate the article states → rounded half-to-even, modeled (a qualified modeledFields entry)', () => {
+    const lead = 'It bounces towards enemies, dealing contact damage. The Baby Slime attacks with an average rate of fire of once every 1.13 seconds.'
+    const spec = { w: minionW(), stats: { useStyle: 1, shoot: 266 }, html: minionHtml(lead) }
+    const input = () => fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, lead)], SLIME_PROJ)
+    const out = buildLabParams(input())
+    expect(out.decisions[0]).toMatchObject({ pending: true, params: { aiClass: 'ground-melee', attackRateTicks: 68 }, modeled: ['labBehavior.params.attackRateTicks#summon-average-rate'] })
+    expect(out.decisions[0].derivation.join(' ')).toContain('1.13 s × 60 rounded half-to-even (modeling convention AMENDMENTS-013 B63 P-2')
+    // P-2 and P-3 share the path: the entry names its convention; an unqualified entry never resolves (no wrong label)
+    expect(modelingConventionFor('minion-sentry', 'labBehavior.params.attackRateTicks#summon-average-rate')).toMatchObject({ ruling: 'AMENDMENTS-013 B63 P-2' })
+    expect(modelingConventionFor('minion-sentry', 'labBehavior.params.attackRateTicks')).toBeUndefined()
+    const shipped = buildLabParams({ ...input(), implemented: [...IMPLEMENTED_ARCHETYPES, 'minion-sentry'], assess: accept('minion-sentry') })
+    expect(shipped.weapons[0]._prov.modeledFields).toEqual(['labBehavior.params.attackRateTicks#summon-average-rate'])
+    expect(Prov.safeParse(shipped.weapons[0]._prov).success).toBe(true)
+  })
+
+  it('B63 P-3: a contact minion stating only its immunity frames → that cap, an UPPER BOUND (modeled); never a ranged minion, nor frames the article says do not apply', () => {
+    // the rendered footnote marker ("12 ticks[6] of") is not prose: the extracted sentence is checked without it
+    const capHtml = 'The Baby Slime minion applies 12 ticks<sup class="reference"><a href="#cite_note-6">[6]</a></sup> of static invincibility frames upon hitting an enemy.'
+    const quote = 'It bounces towards enemies, dealing contact damage.'
+    const spec = { w: minionW(), stats: { useStyle: 1, shoot: 266 }, html: minionHtml(`${quote} ${capHtml}`) }
+    const out = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, quote)], SLIME_PROJ))
+    expect(out.decisions[0]).toMatchObject({ pending: true, params: { aiClass: 'ground-melee', attackRateTicks: 12 }, modeled: ['labBehavior.params.attackRateTicks#summon-hit-cap'] })
+    expect(out.decisions[0].derivation.join(' ')).toContain('an UPPER BOUND — maximum rate; actual depends on minion AI pathing')
+    expect(modelingConventionFor('minion-sentry', 'labBehavior.params.attackRateTicks#summon-hit-cap')).toMatchObject({ ruling: 'AMENDMENTS-013 B63 P-3' })
+    expect(CONTACT_AI_CLASSES).toEqual(['melee-contact', 'ground-melee', 'hover-strike'])
+    // a ranged minion's immunity frames bound its projectiles, not how often it attacks
+    const shoots = 'It shoots fireballs at enemies.'
+    const ranged = buildLabParams(fixture([{ ...spec, html: minionHtml(`${shoots} ${capHtml}`) }], [minionEntry({ aiClass: 'ranged-shot' }, shoots)], SLIME_PROJ))
+    expect(ranged.decisions[0]).toMatchObject({ reasonKey: 'incomplete', missing: ['attackRateTicks'], candidates: { attackRateTicks: expect.stringContaining('contact minions only') } })
+    // the article says the frames are not the limit (Raven Staff): not applied, stays missing
+    const notBinding = 'The Baby Slime minion applies 10 ticks of local invincibility frames upon hitting an enemy, although in practice this does not come into play due to the internal hit cooldown mentioned above.'
+    const raven = buildLabParams(fixture([{ ...spec, html: minionHtml(`${quote} ${notBinding}`) }], [minionEntry({ aiClass: 'ground-melee' }, quote)], SLIME_PROJ))
+    expect(raven.decisions[0]).toMatchObject({ reasonKey: 'incomplete', missing: ['attackRateTicks'], candidates: { attackRateTicks: expect.stringContaining('B63 P-3 not applied') } })
+    expect(raven.decisions[0].modeled).toBeUndefined()
+  })
+
+  it('sentry: one sentry slot (rule quote); a Manhattan-distance range is not a radius (B63 P-4 rejected: stays missing)', () => {
     const w = weapon(1572, 'Staff of the Frost Hydra', { tags: ['sentry-summon-items'], damageClass: 'summon', critPct: undefined })
     const lead = 'It fires Frost Blasts towards enemies. The Frost Hydra can target enemies within a Manhattan distance of 62.5 tiles. The Frost Hydra fires Frost Blasts at a rate of once per second.'
     const spec = { w, stats: { useStyle: 1, shoot: 308, sentry: true }, html: page(1572, lead) }
@@ -772,6 +872,7 @@ describe('remaining-archetype families: buildLabParams', () => {
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model explosions. Its critical strike chance, damage and knockback are unverified in the wiki data." })
     expect(() => buildLabParams(fixture([spec], [bombEntry({ blastRadiusTiles: 5 })], { 28: { name: 'Bomb' } }))).toThrow(/blast radius of 5 tiles/)
     expect(() => buildLabParams(fixture([spec], [bombEntry({ trigger: 'timed', fuseTicks: 240 })], { 28: { name: 'Bomb' } }))).toThrow(/may not override/)
+    expect(out.decisions[0].modeled).toEqual([]) // a stated radius: game data, no B63 P-5
     // a launcher fires ammunition: the blast comes from the ammo
     const launcher = weapon(759, 'Rocket Launcher', { tags: ['launchers'], damageClass: 'ranged', ammoClass: 'rocket-i', shootSpeedTps: 18.75 })
     const fired = buildLabParams(fixture([{ w: launcher, stats: { useStyle: 5, shoot: 134, useAmmo: 771 }, html: page(759, 'The Rocket Launcher is a launcher.') }], [], { 134: { name: 'Rocket I' } }))
@@ -780,6 +881,26 @@ describe('remaining-archetype families: buildLabParams', () => {
     // Plain words (design review P3-S4/S5 M5): no pipeline terms; a non-rocket launcher names its own ammo generically.
     expect(ammoExplosiveReason('nail')).toBe("This launcher gets its explosion from the ammo it fires, which the Lab doesn't model.")
     for (const c of ['rocket-i', 'nail', undefined]) expect(ammoExplosiveReason(c)).not.toMatch(/parameters|ammunition/)
+  })
+
+  it('B63 P-5: a square damage area → its inscribed circle (radius = half the side), modeled; from the own article or a reviewed quote', () => {
+    const DYN = weapon(167, 'Dynamite', { tags: ['explosives'], damageClass: 'other', damage: undefined, critPct: undefined, knockback: undefined, _prov: prov(['critPct', 'damage', 'knockback']) })
+    const square = 'The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite.'
+    const lead = `Dynamite is an explosive that explodes 5 seconds after being thrown. ${square}`
+    const spec = { w: DYN, stats: { useStyle: 1, shoot: 29, consumable: true }, html: page(167, lead) }
+    const entry: LabParamsEntry = { itemId: 167, name: 'Dynamite', decision: 'archetype', archetype: 'explosive-aoe', falloff: 'none', evidence: [{ page: 'Dynamite', quote: square }], why: 'test' }
+    const out = buildLabParams(fixture([spec], [entry], { 29: { name: 'Dynamite' } }))
+    expect(out.decisions[0]).toMatchObject({ pending: true, params: { archetype: 'explosive-aoe', blastRadiusTiles: 7.8, trigger: 'timed', fuseTicks: 300, falloff: 'none' }, modeled: ['labBehavior.params.blastRadiusTiles'] })
+    expect(out.decisions[0].derivation.join(' ')).toMatch(/blast radius 7\.8 tiles = half the side of the stated square damage area \(7\.8 tiles each way → a 15\.6-tile square; its inscribed circle — modeling convention AMENDMENTS-013 B63 P-5/)
+    expect(modelingConventionFor('explosive-aoe', 'labBehavior.params.blastRadiusTiles')).toMatchObject({ id: 'square-blast-radius', ruling: 'AMENDMENTS-013 B63 P-5' })
+    // a variant whose own article only says it "functions like Dynamite": the reviewed quote supplies the square
+    const STICKY = weapon(2896, 'Sticky Dynamite', { tags: ['explosives'], damageClass: 'other', damage: undefined, critPct: undefined, knockback: undefined, _prov: prov(['critPct', 'damage', 'knockback']) })
+    const like = 'Sticky Dynamite functions like Dynamite, but sticks to surfaces.'
+    const stickySpec = { w: STICKY, stats: { useStyle: 1, shoot: 470, consumable: true }, html: page(2896, like) }
+    const stickyEntry: LabParamsEntry = { itemId: 2896, name: 'Sticky Dynamite', decision: 'archetype', archetype: 'explosive-aoe', trigger: 'timed', fuseTicks: 300, falloff: 'none', evidence: [{ page: 'Sticky Dynamite', quote: like }, { page: 'Dynamite', quote: 'Dynamite is an explosive that explodes 5 seconds after being thrown.' }, { page: 'Dynamite', quote: square }], why: 'test' }
+    const sticky = buildLabParams(fixture([spec, stickySpec], [entry, stickyEntry], { 29: { name: 'Dynamite' }, 470: { name: 'Sticky Dynamite' } }))
+    expect(sticky.decisions[1]).toMatchObject({ pending: true, params: { blastRadiusTiles: 7.8 }, modeled: ['labBehavior.params.blastRadiusTiles'] })
+    expect(sticky.decisions[1].derivation.join(' ')).toContain('(reviewed overlay quote)')
   })
 
   it('piercing-beam (signal family): channel beam with a quoted hit rate; a held weapon whose projectile is not itself is not a beam', () => {
@@ -871,6 +992,16 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
       expect(lab.kind, w.name).toBe('limitation')
       if (lab.kind === 'limitation') expect(lab.reason, w.name).not.toMatch(/\byet\b|\bsoon\b|will be|coming|parameters have not been assigned/i)
     }
+  })
+
+  it('AMENDMENTS-013 B67: no emitted limitation reason makes a forward promise — family, reviewed, specific and the default card alike', () => {
+    const promise = /\byet\b|\bsoon\b|will be|coming|parameters have not been assigned/i
+    expect(LAB_DEFAULT_REASON).not.toMatch(promise)
+    const reasons = weapons.flatMap((w) => (w.labBehavior.kind === 'limitation' ? [[w.name, w.labBehavior.reason] as const] : []))
+    expect(reasons.length).toBeGreaterThan(0)
+    for (const [name, reason] of reasons) expect(reason, name).not.toMatch(promise)
+    // the default card (weapons in no Lab family) is among them
+    expect(weapons.filter((w) => familyOf(w.tags) === undefined && w.labBehavior.kind === 'limitation' && w.labBehavior.reason === LAB_DEFAULT_REASON).length).toBeGreaterThan(0)
   })
 
   it('weapons in no family: a reviewed limitation entry is emitted with its own reason (editorial); the rest keep the default card', () => {
