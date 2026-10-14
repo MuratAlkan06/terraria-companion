@@ -11,7 +11,7 @@
  *    datasets) the AMENDMENTS-001 A1 demotion applies: a WARNING and the labBehavior is downgraded
  *    with reason "compatible ammo data unverified".
  */
-import { isCoveredBy, simRequiredWeaponFields, type Archetype, type Item, type LabBehavior, type Weapon } from '../../src/schemas'
+import { isCoveredBy, simRequiredWeaponFields, tooltipBehavior, type Archetype, type Item, type LabBehavior, type Weapon } from '../../src/schemas'
 import { danglingRef, type PipelineError, type PipelineWarning } from './errors'
 
 const ARCHETYPES: readonly string[] = [
@@ -30,13 +30,17 @@ export const AMMO_UNVERIFIED_REASON = 'compatible ammo data unverified'
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Limitation card: verified in-game text (behaviorText) when known, else a pointer to the wiki page. */
-export function limitation(record: { name?: unknown; behaviorText?: unknown; wikiUrl?: unknown }, reason: string): LabBehavior {
+/**
+ * Limitation card. "What it does in-game" must be verified BEHAVIOR text (UX_SPEC §8): a reviewed,
+ * quote-checked sentence of the weapon's article when the caller has one (lab-params overlay
+ * `inGameBehavior`), else the tooltip's behavior lines — never its flavor-text line ("'Greetings,
+ * programs!'", src/schemas tooltipBehavior) — else a pointer to the wiki page (the card then says
+ * "No verified description yet.").
+ */
+export function limitation(record: { name?: unknown; behaviorText?: unknown; wikiUrl?: unknown }, reason: string, behavior?: string): LabBehavior {
   const name = typeof record.name === 'string' ? record.name : 'this weapon'
-  const inGameBehavior =
-    typeof record.behaviorText === 'string' && record.behaviorText.length > 0
-      ? record.behaviorText
-      : `See the ${name} wiki page for its in-game behavior.`
+  const tooltip = typeof record.behaviorText === 'string' ? tooltipBehavior(record.behaviorText) : undefined
+  const inGameBehavior = behavior ?? tooltip ?? `See the ${name} wiki page for its in-game behavior.`
   return { kind: 'limitation', inGameBehavior, reason, sourceUrl: String(record.wikiUrl) }
 }
 

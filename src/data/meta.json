@@ -25,14 +25,14 @@
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 4476,
+    "total": 4454,
     "byKind": {
       "source-mismatch": 31,
       "count-reconciliation": 57,
       "missing-field": 2507,
       "gating-underived": 1097,
       "unverified-drop-rate": 392,
-      "lab-limitation-default": 392
+      "lab-limitation-default": 370
     }
   }
 }

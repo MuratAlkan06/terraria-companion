@@ -341,6 +341,34 @@ describe('buildLabParams', () => {
     expect(out.weapons[0]._prov.editorialFields).toEqual(['labBehavior'])
   })
 
+  it('a limitation card’s "What it does in-game" is behavior: never the tooltip’s flavor quote; a reviewed article sentence fills a flavor-only card', () => {
+    const entry: LabParamsEntry = { itemId: 4, name: 'Iron Broadsword', decision: 'limitation', reason: 'Its swing creates a slash projectile.', evidence: [{ page: 'Iron Broadsword', quote: 'The Iron Broadsword is a pre-Hardmode broadsword.' }], why: 'x' }
+    const lead = 'The Iron Broadsword is a pre-Hardmode broadsword. It fires a beam of light at the cursor.'
+    const build = (w: Weapon, sentences: unknown[] = [], spec = swordSpec(w, lead), entries: LabParamsEntry[] = [entry]) => {
+      const input = fixture([spec], entries)
+      return buildLabParams({ ...input, overlay: LabParamsOverlay.parse({ ...input.overlay, inGameBehavior: sentences }) })
+    }
+    const flavorOnly = weapon(4, 'Iron Broadsword', { tags: ['broadswords'], behaviorText: "'Greetings, programs!'" })
+    const mixed = weapon(4, 'Iron Broadsword', { tags: ['broadswords'], behaviorText: "Fires a beam\n'Greetings, programs!'" })
+    // the flavor line is dropped: behavior lines stay; flavor alone leaves the wiki pointer (the card: "No verified description yet.")
+    expect(build(mixed).weapons[0].labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: 'Fires a beam' })
+    expect(build(flavorOnly).weapons[0].labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: 'See the Iron Broadsword wiki page for its in-game behavior.' })
+    // a reviewed, quote-checked sentence of the weapon's own article fills the flavor-only card (curated provenance)
+    const sentence = { itemId: 4, name: 'Iron Broadsword', page: 'Iron Broadsword', quote: 'It fires a beam of light at the cursor.' }
+    const filled = build(flavorOnly, [sentence]).weapons[0]
+    expect(filled.labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: 'It fires a beam of light at the cursor.', reason: 'Its swing creates a slash projectile.' })
+    expect(filled._prov.editorialFields).toEqual(['labBehavior'])
+    expect(filled._prov.sources.some((s) => s.kind === 'curated' && s.overlay === 'lab-params')).toBe(true)
+    // …checked like every quote, and only where it is needed
+    expect(() => build(flavorOnly, [{ ...sentence, quote: 'It shoots rainbows at everything.' }])).toThrow(/quote not found verbatim/)
+    expect(() => build(flavorOnly, [{ ...sentence, page: 'Broadswords' }])).toThrow(/own article/)
+    expect(() => build(flavorOnly, [{ ...sentence, name: 'Gold Broadsword' }])).toThrow(/name/)
+    expect(() => build(mixed, [sentence])).toThrow(/not needed — its tooltip describes its behavior/)
+    // a simulated weapon (a plain broadsword: derived params) has no limitation card to fill
+    expect(() => build(SWORD, [{ ...sentence, quote: 'The Iron Broadsword is a pre-Hardmode broadsword.' }], swordSpec(SWORD), [])).toThrow(/not needed — the weapon has no limitation card/)
+    expect(() => build(flavorOnly, [{ ...sentence, itemId: 9999 }])).toThrow(/no emitted weapon/)
+  })
+
   describe('thrust (AMENDMENTS-010 B46)', () => {
     const SHORT = weapon(3507, 'Copper Shortsword', { tags: ['shortswords'] })
     const stab = { 938: { name: 'Copper Shortsword', extraUpdates: 1, penetrate: -1 } }
@@ -690,6 +718,8 @@ describe('remaining-archetype families: buildLabParams', () => {
   }
   const infoboxRows = (html: string, rows: [string, string][]) => html.replace('<div class="section ids">', `<table>${rows.map(([l, v]) => `<tr><th>${l}</th><td>${v}</td></tr>`).join('')}</table><div class="section ids">`)
   const accept = (archetype: Archetype) => (): WeaponAssessment => ({ simulable: true, archetype, requiresAmmoClass: null, requiresBuffIds: [] })
+  /** The registry minus `archetype`: the PENDING path for a family the sim now implements (P3-S6/S7 shipped returning + piercing-beam). */
+  const pendingWithout = (archetype: Archetype) => ({ implemented: IMPLEMENTED_ARCHETYPES.filter((a) => a !== archetype) })
 
   const YOYO = weapon(3278, 'Wooden Yoyo', { tags: ['yoyos'], damage: 9 })
   const yoyoSpec = (reach = '8.125 tiles') => ({ w: YOYO, stats: { useStyle: 5, shoot: 541, shootSpeed: 16, noMelee: true, channel: true }, html: infoboxRows(page(3278, 'The Wooden Yoyo is a pre-Hardmode yoyo.', {}, ['Internal Projectile ID: 541']), [['Reach', reach]]) })
@@ -697,8 +727,9 @@ describe('remaining-archetype families: buildLabParams', () => {
   const YOYO_PARAMS = { archetype: 'returning', variant: 'yoyo', throwRangeTiles: 8.125, returnMode: 'tethered', control: 'cursor-follow' }
 
   it('PENDING INTERPRETER: complete params are recorded, the weapon is emitted as a limitation naming what the Lab does not model', () => {
-    expect(PENDING_FAMILIES.some((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toBe(false) // the Lab ships these in P3-S6–S11
-    const out = buildLabParams(fixture([yoyoSpec()], [], YOYO_PROJ))
+    // B61 flip: P3-S6/S7 registered returning + piercing-beam; whip, minion-sentry and explosive-aoe stay pending (P3-S9–S11)
+    expect(PENDING_FAMILIES.filter((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toEqual(['returning', 'piercing-beam'])
+    const out = buildLabParams({ ...fixture([yoyoSpec()], [], YOYO_PROJ), ...pendingWithout('returning') })
     expect(out.decisions[0]).toMatchObject({ family: 'returning', variant: 'yoyo', method: 'derived', pending: true, reasonKey: 'pending-interpreter', params: YOYO_PARAMS })
     expect(out.decisions[0].derivation.join(' ')).toContain('the item infobox "Reach" row')
     expect(out.weapons[0].labBehavior).toMatchObject({ kind: 'limitation', reason: "The Lab doesn't model tethered yoyo control." })
@@ -714,12 +745,24 @@ describe('remaining-archetype families: buildLabParams', () => {
     expect(out.decisions[0].pending).toBeUndefined()
   })
 
+  it('B61 flip (P3-S6/S7): with the real registry and the real guard, the recorded returning params are emitted and simulate', () => {
+    const yoyo = { ...yoyoSpec(), w: { ...YOYO, shootSpeedTps: 60 } }
+    const out = buildLabParams(fixture([yoyo], [], YOYO_PROJ))
+    expect(out.weapons[0].labBehavior).toEqual({ kind: 'archetype', params: YOYO_PARAMS })
+    expect(out.decisions[0]).toMatchObject({ method: 'derived', archetype: 'returning' })
+    expect(assessWeapon(out.weapons[0])).toMatchObject({ simulable: true, archetype: 'returning' })
+    expect(createLabSim({ weapon: out.weapons[0] }).ok).toBe(true)
+    // a reviewed / incomplete limitation of an implemented family drops the family sentence: it names only what is not modeled
+    const missing = buildLabParams(fixture([boomSpec('The Wooden Boomerang is a boomerang with a range of 50 tiles.')], [], BOOM_PROJ))
+    expect(missing.weapons[0].labBehavior).toMatchObject({ kind: 'limitation', reason: 'Not simulated: the wiki states no throw range for it.' })
+  })
+
   it('yoyo: an infobox reach the Yoyos list table contradicts is withheld (named as a disagreement, never picked)', () => {
     const table = article('Yoyos', `<div class="mw-parser-output"><p>${RULE_QUOTES.yoyoThrown.quote} ${RULE_QUOTES.yoyoString.quote}</p><table class="terraria"><tr><th colspan="2">Name</th><th>Reach (tiles)[2]</th></tr><tr><td></td><td>Wooden Yoyo Internal Item ID: 3278</td><td>9</td></tr></table></div>`)
-    const out = buildLabParams(withArticles(fixture([yoyoSpec()], [], YOYO_PROJ), [table]))
+    const out = buildLabParams({ ...withArticles(fixture([yoyoSpec()], [], YOYO_PROJ), [table]), ...pendingWithout('returning') })
     expect(out.decisions[0]).toMatchObject({ method: 'limitation', reasonKey: 'incomplete', missing: ['throwRangeTiles'], conflicts: ['throwRangeTiles'] })
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model tethered yoyo control. The wiki sources disagree on its throw range." })
-    const agrees = buildLabParams(withArticles(fixture([yoyoSpec('9 tiles')], [], YOYO_PROJ), [table]))
+    const agrees = buildLabParams({ ...withArticles(fixture([yoyoSpec('9 tiles')], [], YOYO_PROJ), [table]), ...pendingWithout('returning') })
     expect(agrees.decisions[0]).toMatchObject({ pending: true, params: { throwRangeTiles: 9 } })
   })
 
@@ -728,11 +771,11 @@ describe('remaining-archetype families: buildLabParams', () => {
   const BOOM_PROJ = { 52: { name: 'Wooden Boomerang', penetrate: -1 } }
 
   it('boomerang: the "maximum range" sentence is the throw range (B56 extraction, verbatim-checked); none stated → missing, never guessed', () => {
-    const out = buildLabParams(fixture([boomSpec('The Wooden Boomerang is a boomerang. This results in having a maximum range of roughly 13.64 tiles.')], [], BOOM_PROJ))
+    const out = buildLabParams({ ...fixture([boomSpec('The Wooden Boomerang is a boomerang. This results in having a maximum range of roughly 13.64 tiles.')], [], BOOM_PROJ), ...pendingWithout('returning') })
     expect(out.decisions[0]).toMatchObject({ pending: true, params: { archetype: 'returning', variant: 'boomerang', throwRangeTiles: 13.64, returnMode: 'auto-return', control: 'fire-and-forget' } })
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model thrown weapons that fly out and return to the player." })
     // another range (homing radius, despawn distance) is not the throw range
-    const other = buildLabParams(fixture([boomSpec('The Wooden Boomerang is a boomerang with a range of 50 tiles.')], [], BOOM_PROJ))
+    const other = buildLabParams({ ...fixture([boomSpec('The Wooden Boomerang is a boomerang with a range of 50 tiles.')], [], BOOM_PROJ), ...pendingWithout('returning') })
     expect(other.decisions[0]).toMatchObject({ reasonKey: 'incomplete', missing: ['throwRangeTiles'] })
     expect(other.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model thrown weapons that fly out and return to the player. The wiki states no throw range for it." })
   })
@@ -746,7 +789,7 @@ describe('remaining-archetype families: buildLabParams', () => {
     const lead = 'When used, it fires a knife attached to a chain that can extend up to 9.4 tiles.'
     const spec = { w: knife, stats: { useStyle: 5, shoot: 273, noMelee: true }, html: page(1325, lead) }
     const entry = (n: number): LabParamsEntry => ({ itemId: 1325, name: 'Chain Knife', decision: 'archetype', archetype: 'returning', throwRangeTiles: n, evidence: [{ page: 'Chain Knife', quote: lead }], why: 'test' })
-    const launched = buildLabParams(fixture([spec], [entry(9.4)], { 273: { name: 'Chain Knife' } }))
+    const launched = buildLabParams({ ...fixture([spec], [entry(9.4)], { 273: { name: 'Chain Knife' } }), ...pendingWithout('returning') })
     expect(launched.decisions[0]).toMatchObject({ method: 'overlay', pending: true, params: { variant: 'flail', throwRangeTiles: 9.4, returnMode: 'auto-return' } })
     expect(launched.weapons[0]._prov.editorialFields).toEqual(['labBehavior'])
     expect(() => buildLabParams(fixture([spec], [entry(12)], { 273: { name: 'Chain Knife' } }))).toThrow(/range of 12 tiles/)
@@ -908,7 +951,7 @@ describe('remaining-archetype families: buildLabParams', () => {
     const lead = 'The beams inflict 5 ticks of global invincibility frames on hit.'
     const spec = { w: prism, stats: { useStyle: 5, shoot: 633, channel: true, magic: true }, html: page(3541, lead) }
     const entry: LabParamsEntry = { itemId: 3541, name: 'Last Prism', decision: 'archetype', archetype: 'piercing-beam', tickRateTicks: 5, evidence: [{ page: 'Last Prism', quote: lead }], why: 'test' }
-    const out = buildLabParams(fixture([spec], [entry], { 633: { name: 'Last Prism' } }))
+    const out = buildLabParams({ ...fixture([spec], [entry], { 633: { name: 'Last Prism' } }), ...pendingWithout('piercing-beam') })
     expect(out.decisions[0]).toMatchObject({ family: 'piercing-beam', variant: 'beam', pending: true, params: { archetype: 'piercing-beam', mode: 'channel-beam', tickRateTicks: 5 } })
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: FAMILY_REASON.beam })
     const medusa = buildLabParams(fixture([{ ...spec, stats: { ...spec.stats, shoot: 535 } }], [], { 535: { name: 'Medusa Ray' } }))
@@ -983,15 +1026,34 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
     }
   })
 
-  it('remaining-archetype families: every member is a limitation while its archetype has no interpreter; no forward promise', () => {
-    const tags = ['boomerangs', 'flails', 'yoyos', 'whips', 'minion-summon-items', 'sentry-summon-items', 'explosives', 'launchers']
-    const members = weapons.filter((w) => w.tags.some((t) => tags.includes(t)))
+  it('remaining-archetype families: a member is a limitation while its archetype has no interpreter, else params the guard accepts or a limitation (B61); no forward promise', () => {
+    const familyOfTag: Record<string, Archetype> = {
+      boomerangs: 'returning',
+      flails: 'returning',
+      yoyos: 'returning',
+      whips: 'whip',
+      'minion-summon-items': 'minion-sentry',
+      'sentry-summon-items': 'minion-sentry',
+      explosives: 'explosive-aoe',
+      launchers: 'explosive-aoe',
+    }
+    const members = weapons.filter((w) => w.tags.some((t) => t in familyOfTag))
     if (!members.some((w) => w.labBehavior.kind === 'limitation' && w.labBehavior.reason.startsWith("The Lab doesn't model"))) return // dataset predates the slice
+    let emitted = 0
     for (const w of members) {
       const lab = w.labBehavior
-      expect(lab.kind, w.name).toBe('limitation')
+      const archetype = familyOfTag[w.tags.find((t) => t in familyOfTag) as string]
+      if (!IMPLEMENTED_ARCHETYPES.includes(archetype)) expect(lab.kind, w.name).toBe('limitation')
+      if (lab.kind === 'archetype') {
+        emitted++
+        expect(lab.params.archetype, w.name).toBe(archetype)
+        expect(assessWeapon(w).simulable, w.name).toBe(true)
+      }
       if (lab.kind === 'limitation') expect(lab.reason, w.name).not.toMatch(/\byet\b|\bsoon\b|will be|coming|parameters have not been assigned/i)
     }
+    // the B61 flip: registering the returning interpreter emitted its recorded params (P3-S7)
+    expect(emitted).toBe(members.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'returning').length)
+    expect(emitted).toBeGreaterThan(0)
   })
 
   it('AMENDMENTS-013 B67: no emitted limitation reason makes a forward promise — family, reviewed, specific and the default card alike', () => {

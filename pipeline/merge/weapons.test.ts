@@ -117,8 +117,9 @@ describe('buildWeapons', () => {
     const mini = byName(out, 'Minishark')
     expect(mini).toMatchObject({ ammoClass: 'musket-ball', acquisition: [{ method: 'purchase', npcName: 'Arms Dealer', priceCopper: 350000, conditions: [] }] })
     expect(mini._prov.unverifiedFields).toContain('acquisition.0.conditions')
+    // the tooltip is kept whole; the limitation card's "What it does in-game" keeps its behavior lines only (no flavor quote)
     expect(mini.behaviorText).toBe("33% chance to save ammo\n'Half shark, half gun, completely awesome.'")
-    expect(mini.labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: mini.behaviorText })
+    expect(mini.labBehavior).toMatchObject({ kind: 'limitation', inGameBehavior: '33% chance to save ammo' })
   })
 
   it('summon weapons: crit not applicable (absent and NOT listed); classless: damage/knockback/crit Unknown', () => {

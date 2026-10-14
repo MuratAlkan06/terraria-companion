@@ -95,6 +95,12 @@
  * Such a weapon takes no `archetype` entry (no family to parameterize) and no recorded extras (they
  * live on a family decision); it adds no coverage decision (the report counts it outside the families).
  *
+ * LIMITATION CARD TEXT ("What it does in-game", UX_SPEC §8: verified BEHAVIOR text): the tooltip's
+ * behavior lines — never its flavor-text quote line (src/schemas `tooltipBehavior`; validate
+ * labDowngrade `limitation`) — else, for a card whose tooltip is flavor only, a reviewed overlay
+ * `inGameBehavior` sentence of the weapon's own article (quote-checked, `withBehaviorSentences`), else
+ * the wiki pointer (the card says "No verified description yet.").
+ *
  * GUARD CONTRACT: every candidate is run through the sim's own `assessWeapon` (src/sim, pure TS). A
  * candidate blocked by an unverified field the pipeline rule covers (`simRequiredWeaponFields`,
  * AMENDMENTS-008 B36) keeps its params here so the validate stage's §2.1-3 downgrade applies (visible
@@ -102,7 +108,7 @@
  * Lab as a generic refusal.
  */
 import { assessWeapon, IMPLEMENTED_ARCHETYPES, type WeaponAssessment } from '../../src/sim'
-import { ArchetypeParams, getField, modelingConventionFor, type Archetype, type Buff, type LabBehavior, type LabModifiers, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
+import { ArchetypeParams, getField, modelingConventionFor, tooltipBehavior, type Archetype, type Buff, type LabBehavior, type LabModifiers, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
 import { articleText, normalizeQuote, type Article } from '../fetch/articles'
 import { itemTypeIncludes, type CargoRow } from '../fetch/cargo'
 import type { CategoryTree } from '../fetch/categories'
@@ -949,7 +955,33 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     }
     return candidate
   })
-  return { weapons, decisions }
+  return { weapons: withBehaviorSentences(weapons, input), decisions }
+}
+
+/**
+ * Reviewed "What it does in-game" texts (overlay `inGameBehavior`): for a limitation card whose tooltip
+ * has no behavior line — only its flavor-text quote, or nothing — a verbatim sentence of the weapon's
+ * own article, quote-checked on the cached revision, replaces the wiki pointer. An entry the build
+ * doesn't need (a simulated weapon, a tooltip that describes the behavior) is an error, like any
+ * unneeded overlay entry.
+ */
+function withBehaviorSentences(weapons: Weapon[], input: LabBuildInput): Weapon[] {
+  const sentences = new Map((input.overlay.inGameBehavior ?? []).map((e) => [e.itemId, e]))
+  if (sentences.size === 0) return weapons
+  const emitted = new Set(weapons.map((w) => w.id))
+  for (const id of sentences.keys()) if (!emitted.has(id)) throw new OverlayError(`[E_SCHEMA] overlay lab-params inGameBehavior/i:${id}: no emitted weapon has this item ID`)
+  return weapons.map((w) => {
+    const e = sentences.get(w.id)
+    if (!e) return w
+    const where = `overlay lab-params inGameBehavior/i:${w.id} (${w.name})`
+    if (e.name !== w.name) throw new OverlayError(`[E_SCHEMA] ${where}: name "${e.name}" ≠ weapon name "${w.name}"`)
+    const own = input.pageOf.get(w.id) ?? ''
+    if (e.page !== own) throw new OverlayError(`[E_SCHEMA] ${where}: the sentence must come from the weapon's own article "${own}", not "${e.page}"`)
+    if (w.labBehavior.kind !== 'limitation') throw new OverlayError(`[E_SCHEMA] ${where}: not needed — the weapon has no limitation card (${w.labBehavior.kind})`)
+    if (tooltipBehavior(w.behaviorText) !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: not needed — its tooltip describes its behavior`)
+    const page = input.evidence.quote(e.page, e.quote, where)
+    return withLab(w, limitation(w, w.labBehavior.reason, e.quote), [Evidence.source('lab-params', page)], true)
+  })
 }
 
 const FAMILY_NOUN: Record<LabFamily, string> = {

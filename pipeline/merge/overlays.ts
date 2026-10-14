@@ -268,13 +268,31 @@ const LabLimitationEntry = z.strictObject({ ...LabEntryBase, decision: z.literal
 export const LabParamsEntry = z.discriminatedUnion('decision', [LabArchetypeEntry, LabLimitationEntry])
 export type LabParamsEntry = z.infer<typeof LabParamsEntry>
 
+/**
+ * A reviewed "What it does in-game" text for a Lab limitation card whose tooltip has no behavior line
+ * (only its flavor-text quote, or nothing — UX_SPEC §8 wants verified BEHAVIOR text): a verbatim
+ * excerpt (whole sentences) of the weapon's own article, checked against the cached revision like
+ * every quote. Display text only — never a param, never the limitation's reason. The build rejects an
+ * entry that is not needed (a simulated weapon, or a tooltip that already describes the behavior).
+ */
+const LabBehaviorSentence = z.strictObject({ itemId: ItemId, name: PlainText1, page: Page, quote: Quote })
+export type LabBehaviorSentence = z.infer<typeof LabBehaviorSentence>
+
 export const LabParamsOverlay = z
-  .strictObject({ overlay: z.literal('lab-params'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(LabParamsEntry) })
+  .strictObject({
+    overlay: z.literal('lab-params'),
+    authoredAt: IsoDate,
+    notes: z.array(z.string()),
+    entries: z.array(LabParamsEntry),
+    inGameBehavior: z.array(LabBehaviorSentence).optional(),
+  })
   .superRefine((o, ctx) => {
-    const seen = new Set<number>()
-    for (const e of o.entries) {
-      if (seen.has(e.itemId)) ctx.addIssue({ code: 'custom', message: `duplicate lab-params entry for item ${e.itemId}` })
-      seen.add(e.itemId)
+    for (const list of [o.entries, o.inGameBehavior ?? []]) {
+      const seen = new Set<number>()
+      for (const e of list) {
+        if (seen.has(e.itemId)) ctx.addIssue({ code: 'custom', message: `duplicate lab-params entry for item ${e.itemId}` })
+        seen.add(e.itemId)
+      }
     }
   })
 export type LabParamsOverlay = z.infer<typeof LabParamsOverlay>
@@ -282,7 +300,7 @@ export type LabParamsOverlay = z.infer<typeof LabParamsOverlay>
 export const loadLabParamsOverlay = (dir = OVERLAY_DIR): LabParamsOverlay => LabParamsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'lab-params.json'), 'utf8')))
 
 /** Every article the lab-params overlay cites (fetched by the sync plan, quote-checked by the build). */
-export const labEvidencePages = (o: LabParamsOverlay): string[] => o.entries.flatMap((e) => e.evidence.map((x) => x.page))
+export const labEvidencePages = (o: LabParamsOverlay): string[] => [...o.entries.flatMap((e) => e.evidence.map((x) => x.page)), ...(o.inGameBehavior ?? []).map((e) => e.page)]
 
 /**
  * P2-S8 armor-sets overlay (overlays/armor-sets.json): the RESIDUAL decisions the set derivation
