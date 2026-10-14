@@ -46,6 +46,7 @@ import {
   loadWithheldOverlay,
 } from '../merge/overlays'
 import { parseBuffIdTable } from '../parse/infobox'
+import { parseIteminfo } from '../parse/iteminfo'
 import { type Article, fetchArticles } from './articles'
 import { cargoFields, cargoQueryAll, itemTypeIncludes, type CargoTableFetch } from './cargo'
 import { type CategoryTree, fetchCategoryTree } from './categories'
@@ -157,7 +158,7 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
 
   // P3-S0
   log?.('articles: Weapon Lab family weapons, mechanics rule pages, lab-params overlay evidence')
-  const labTitles = [...labFamilyPages(weaponCategories, tables.Items.rows), ...LAB_RULE_PAGES, ...labEvidencePages(loadLabParamsOverlay())]
+  const labTitles = [...labFamilyPages(weaponCategories, tables.Items.rows, parseIteminfo(iteminfo)), ...LAB_RULE_PAGES, ...labEvidencePages(loadLabParamsOverlay())]
   for (const [title, article] of await fetchArticles(client, labTitles, 'articles')) articles.set(title, article)
 
   // P2-S8

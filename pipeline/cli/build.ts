@@ -34,6 +34,7 @@ import { buildDrops, indexNpcs } from '../merge/drops'
 import { buildEnemies } from '../merge/enemies'
 import { Evidence } from '../merge/evidence'
 import { createGatingDeriver, GATING_BLOCKERS, type GatingBlocker } from '../merge/gating'
+import { AI_CLASS_EVIDENCE } from '../merge/labFamilies'
 import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } from '../merge/labParams'
 import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
 import { makeProv } from '../merge/prov'
@@ -314,6 +315,7 @@ async function main(): Promise<number> {
       'useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki\'s displayed "Use time" (TO-VERIFY #10); reuseDelayTicks = Iteminfo reuseDelay (cooldown after each use; absent = none). critPct = the weapon\'s crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.',
       'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).',
       'Weapon labBehavior (P3-S0, pipeline/merge/labParams.ts + pipeline/overlays/lab-params.json): weapons in the wiki categories Broadswords / Shortswords + Spears / Bows + Repeaters + Guns / Wands + Magic guns + Spell books are classified into the swing-melee / thrust / bow-gun / magic-bolt archetypes from Iteminfo useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo and mana; params are derived from Module:Iteminfo/data, Module:Projectileinfo/data and the wiki sprite metadata where a formula exists, and single-projectile / no-spread / ammo-unchanged defaults only when the article screen finds no statement of other behavior — flagged weapons need a reviewed overlay entry with verbatim, revision-checked quotes. Semantics follow src/sim/README.md (AMENDMENTS-008 B37). Everything else keeps a limitation card (tooltip text where the wiki has one) with the specific reason; every emitted archetype weapon passes the sim guard (assessWeapon).',
+      'Remaining-archetype families (P3-S0 extension, pipeline/merge/labFamilies.ts): returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their params are stated (yoyo infobox Reach, the Whips list table, whip tooltips, verbatim "maximum range" / fuse sentences, reviewed overlay quotes) or derived (Projectileinfo minionSlots, quoted family rules); a param only an unratified convention could supply stays missing. Until the sim implements the archetype (IMPLEMENTED_ARCHETYPES), a weapon with complete params is recorded in the gap report and emitted as a limitation whose reason names what the Lab does not model — every emitted archetype weapon still passes assessWeapon.',
       'Lab coverage expansion (AMENDMENTS-010 B48): Weapon.reuseDelayTicks = Iteminfo reuseDelay (a cooldown after each use, part of the sim cadence); modeling conventions — swing arc/reach (B44), thrust reach = sprite diagonal × scale ÷ 16 + 1 tile where the article states no range (B46; a range the article states is the reach as extracted wiki data, AMENDMENTS-012 B56), 10° for a gun whose article says slight/small spread without an angle (B47) — are listed per record in _prov.modeledFields (B49) and labeled in the Lab; labBehavior.modifiers.dot comes from the weapon infobox debuff rows (buff registry, verified damage per second); ProjectileSpec.damageMultiplierPct only from a quoted percentage.',
       'Recipes: desktop rows only (legacy=0 and version empty or containing "desktop"); result = Cargo resultid checked against the Iteminfo name; ingredients from `ings`; "Any X" → Module:Recipes groups; stations split on " and " → registered environment condition, else Module:Recipes/l10n station category group (B3), else item; "By Hand" = no stations.',
       'Recipe result notes (#note_post_moon_lord, #note_moon_N, …) are availability conditions in Recipe.conditions (AMENDMENTS-003 B9); environment stations are only genuine crafting environments.',
@@ -484,7 +486,8 @@ async function main(): Promise<number> {
   const labWithParams = lab.decisions.filter((d) => d.method !== 'limitation').length
   const B36_MELEE = ['swing-melee', 'thrust', 'returning']
   const b36Fields = (archetype: string) => ['useAnimationTicks', ...(B36_MELEE.includes(archetype) ? ['autoReuse'] : [])]
-  const labB36 = lab.decisions.flatMap((d) => (d.pipelineBlocked && d.archetype ? [{ name: d.name, archetype: d.archetype, fields: d.pipelineBlocked }] : []))
+  // pending-interpreter decisions record pipelineBlocked too, but emit no params the validate stage could downgrade
+  const labB36 = lab.decisions.flatMap((d) => (d.pipelineBlocked && d.archetype && !d.pending ? [{ name: d.name, archetype: d.archetype, fields: d.pipelineBlocked }] : []))
   const labB36Only = labB36.filter((x) => x.fields.every((p) => isCoveredBy(b36Fields(x.archetype), p) || b36Fields(x.archetype).some((f) => isCoveredBy([p], f))))
   const labB36Sensitive = weaponDetails.flatMap((w) => {
     const fields = w._prov.unverifiedFields.filter((f) => f === 'useAnimationTicks' || f === 'autoReuse')
@@ -517,7 +520,41 @@ async function main(): Promise<number> {
     'dot-underivable': 'inflicts a debuff whose damage over time cannot be derived from the infobox',
     'velocity-mismatch': 'wiki infobox velocity disagrees with Iteminfo × Projectileinfo',
     ...Object.fromEntries(['unverified-required-field', 'missing-required-field', 'invalid-data', 'modifier-not-implemented'].map((r) => [`guard:${r}`, `sim guard refusal (${r})`])),
+    // remaining-archetype families (merge/labFamilies.ts)
+    incomplete: 'a required param is stated nowhere on the wiki (or needs a convention ruling) — missing, never guessed',
+    'thrown-flail': 'thrown flail (held use spins it around the player) — the returning params cannot express the spin',
+    'not-returning': 'game data is not a plain boomerang / launched flail / yoyo',
+    'not-whip': 'game data is not a plain whip',
+    'not-minion-sentry': 'game data is neither a minion nor a sentry',
+    'ammo-explosive': 'fires ammunition (launcher): the blast comes from the ammo, which explosive params do not carry',
+    'not-explosive': 'game data gives no thrown explosive projectile',
+    'not-beam': 'game data is not a held beam',
   }
+  // ---- P3-S0 remaining-archetype slice report inputs (merge/labFamilies.ts) ----
+  const REMAINING = ['returning', 'whip', 'minion-sentry', 'explosive-aoe', 'piercing-beam']
+  const remaining = lab.decisions.filter((d) => REMAINING.includes(d.family)).sort((a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name))
+  const variantOf = (d: (typeof remaining)[number]) => d.variant ?? (d.reasonKey === 'ammo-explosive' ? 'launcher' : d.reasonKey === 'thrown-flail' ? 'flail' : d.family === 'piercing-beam' ? 'not a beam (signal only)' : '—')
+  const remainingState = (d: (typeof remaining)[number]) =>
+    d.pending ? ((d.pipelineBlocked?.length ?? 0) > 0 ? 'complete (core field unverified)' : 'complete') : d.reasonKey === 'incomplete' ? 'incomplete' : d.reasonKey === 'overlay' ? 'reviewed limitation' : d.reasonKey === 'flagged' ? 'flagged, not reviewed' : d.reasonKey === 'dot-underivable' ? 'DoT underivable' : 'not a member (data)'
+  const REMAINING_STATES = ['complete', 'complete (core field unverified)', 'incomplete', 'reviewed limitation', 'flagged, not reviewed', 'DoT underivable', 'not a member (data)']
+  const variantRows = [...new Set(remaining.map((d) => `${d.family}|${variantOf(d)}`))].sort()
+  const paramFmt = (o: Record<string, unknown> | undefined) => (o ? Object.entries(o).filter(([k]) => k !== 'archetype').map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(', ') : '')
+  const onlyMissing = (d: (typeof remaining)[number], params: readonly string[]) => d.reasonKey === 'incomplete' && (d.missing ?? []).length > 0 && (d.missing ?? []).every((m) => params.includes(m))
+  // incomplete weapons whose article states a value only the proposal could use
+  const withCandidate = (param: string, re: RegExp) => remaining.filter((d) => d.reasonKey === 'incomplete' && d.candidates?.[param] && re.test(d.candidates[param]))
+  const labProposals = [
+    { id: 'P-1', param: 'arcDegrees', title: 'Whip swing arc', text: 'The Whips article says whips "swing in an arcing motion" and states no angle anywhere; every whip lacks arcDegrees. A ratified modeling convention (an arc, like B44 for broadswords) would be needed.', hits: remaining.filter((d) => d.reasonKey === 'incomplete' && (d.missing ?? []).includes('arcDegrees')), unlock: remaining.filter((d) => onlyMissing(d, ['arcDegrees'])) },
+    { id: 'P-2', param: 'attackRateTicks', title: 'Summon attack rate from a stated AVERAGE / random-range rate', text: 'Ranged minions and sentries state their fire rate as an average ("once every 0.75 seconds on average") or a random cooldown range; attackRateTicks is a fixed cadence. Ruling needed: may a stated average be the fixed rate (a labeled approximation)? Rates that are not whole ticks (0.67 s, 0.83 s, 0.48 s) would also need a rounding rule.', hits: withCandidate('attackRateTicks', /^rate stated only/), unlock: withCandidate('attackRateTicks', /^rate stated only/).filter((d) => onlyMissing(d, ['attackRateTicks'])) },
+    { id: 'P-3', param: 'attackRateTicks', title: 'Contact-summon attack rate = the stated immunity-frame hit cap', text: 'Contact minions state only their invincibility frames ("12 ticks … can hit up to five times per second") — a maximum, not a rate. Ruling needed: may the cap be the cadence (a labeled approximation)?', hits: withCandidate('attackRateTicks', /^only the hit cap/), unlock: withCandidate('attackRateTicks', /^only the hit cap/).filter((d) => onlyMissing(d, ['attackRateTicks'])) },
+    { id: 'P-4', param: 'sentryRangeTiles', title: 'Sentry targeting range from a Manhattan distance', text: 'Sentry articles state "a Manhattan distance of 62.5 tiles" (a diamond); sentryRangeTiles is a radius. Ruling needed: which radius represents it (e.g. the inscribed 62.5/√2 or the circumscribed 62.5)?', hits: withCandidate('sentryRangeTiles', /Manhattan/), unlock: withCandidate('sentryRangeTiles', /Manhattan/).filter((d) => onlyMissing(d, ['sentryRangeTiles'])) },
+    { id: 'P-5', param: 'blastRadiusTiles', title: 'Square explosion area → blast radius', text: 'Dynamite / Power Bomb (and their variants) damage a square ("within 7.8 tiles horizontally and vertically"); blastRadiusTiles is a circle. Ruling needed: half-width as radius, or a schema extension for square areas.', hits: withCandidate('blastRadiusTiles', /square/), unlock: withCandidate('blastRadiusTiles', /square/).filter((d) => onlyMissing(d, ['blastRadiusTiles'])) },
+  ]
+  const allProposalParams = ['arcDegrees', 'attackRateTicks', 'sentryRangeTiles', 'blastRadiusTiles']
+  const unlockedByAll = remaining.filter((d) => d.reasonKey === 'incomplete' && (d.missing ?? []).every((m) => allProposalParams.includes(m) && (m === 'arcDegrees' || d.candidates?.[m])))
+  const recordedRows = lab.decisions.filter((d) => d.recorded && Object.keys(d.recorded).length > 0).sort((a, b) => a.name.localeCompare(b.name))
+  const summonFamily = lab.decisions.filter((d) => d.family === 'minion-sentry' || d.family === 'whip')
+  const summonCritNa = summonFamily.filter((d) => { const w = labFinal(d.id); return w && w.critPct === undefined && !w._prov.unverifiedFields.includes('critPct') })
+  const reasonSamples = [...new Map(remaining.filter((d) => d.reason).map((d) => [`${d.family}|${variantOf(d)}|${remainingState(d)}`, d])).values()].slice(0, 40)
 
   // ---- P2-S7 report inputs ----
   const xcA = (field: string) => ammo.crossCheck.get(field) ?? { agree: 0, mismatch: 0, noWikiValue: 0 }
@@ -823,13 +860,16 @@ async function main(): Promise<number> {
     {
       title: 'Weapon Lab — archetype params and coverage (P3-S0)',
       lines: [
-        `Rules: pipeline/merge/labParams.ts (header = the tooling doc). Param semantics are binding as documented in src/sim/README.md ("Cadence" and "Param semantics"; AMENDMENTS-008 B37): pierce = extra dummies after the first; projectilesPerUse = projectiles per activation (bursts come from useTime < useAnimation); ammo speed only from the ammo's velocityBonusTps / velocityMultiplier; magic-bolt speed = params.projectile.velocityTps. Family = the wiki category of the weapon's article (${Object.entries(FAMILY_CATEGORIES).map(([f, cats]) => `${f}: ${cats.map((c) => c.replace('Category:', '')).join(' + ')}`).join('; ')}). "Derived" = every param computed from the data modules / sprite metadata and the article screen found nothing the params cannot express; "overlay" = the screen flagged the weapon and a reviewed entry in pipeline/overlays/lab-params.json (verbatim quotes, checked against the cached article revision) decided it; "downgraded" = params were assigned but a core field the sim needs is unverified, so the validate stage's §2.1-3 rule (incl. AMENDMENTS-008 B36) emits a limitation. Every emitted archetype weapon passed src/sim assessWeapon (build-time guard contract).`,
+        `Rules: pipeline/merge/labParams.ts (header = the tooling doc). Param semantics are binding as documented in src/sim/README.md ("Cadence" and "Param semantics"; AMENDMENTS-008 B37): pierce = extra dummies after the first; projectilesPerUse = projectiles per activation (bursts come from useTime < useAnimation); ammo speed only from the ammo's velocityBonusTps / velocityMultiplier; magic-bolt speed = params.projectile.velocityTps. Family = the wiki category of the weapon's article (${Object.entries(FAMILY_CATEGORIES).map(([f, cats]) => `${f}: ${cats.length ? cats.map((c) => c.replace('Category:', '')).join(' + ') : 'no wiki category — the held-beam data signal'}`).join('; ')}). "Derived" = every param computed from the data modules / sprite metadata and the article screen found nothing the params cannot express; "overlay" = the screen flagged the weapon and a reviewed entry in pipeline/overlays/lab-params.json (verbatim quotes, checked against the cached article revision) decided it; "downgraded" = params were assigned but a core field the sim needs is unverified, so the validate stage's §2.1-3 rule (incl. AMENDMENTS-008 B36) emits a limitation. Every emitted archetype weapon passed src/sim assessWeapon (build-time guard contract).`,
         '',
-        '| Family (archetype) | Weapons | Derived | Overlay (reviewed) | Downgraded at validate | Limitation | **Simulable** | Simulable % |',
-        '|---|---:|---:|---:|---:|---:|---:|---:|',
-        ...labCoverage.map((c) => `| ${c.family} | ${c.total} | ${c.derived} | ${c.overlay} | ${c.downgraded} | ${c.limitation} | **${c.simulable}** | ${pct(c.simulable, c.total)} |`),
-        `| **all four families** | ${sum(labCoverage.map((c) => c.total))} | ${sum(labCoverage.map((c) => c.derived))} | ${sum(labCoverage.map((c) => c.overlay))} | ${sum(labCoverage.map((c) => c.downgraded))} | ${sum(labCoverage.map((c) => c.limitation))} | **${sum(labCoverage.map((c) => c.simulable))}** | ${pct(sum(labCoverage.map((c) => c.simulable)), sum(labCoverage.map((c) => c.total)))} |`,
-        `| all weapons (A3 MVP target ≥ 60% at P3-S13) | ${weaponDetails.length} | | | | | **${labArchetypeTotal}** | ${pct(labArchetypeTotal, weaponDetails.length)} |`,
+        `Families since the remaining-archetype slice: returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category — the held-beam data signal: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6–S11): "params complete, pending interpreter" weapons have every param recorded below but are emitted as limitations naming what the Lab does not model (the guard contract above holds; the same build emits their params once \`IMPLEMENTED_ARCHETYPES\` includes the archetype).`,
+        '',
+        '| Family (archetype) | Weapons | Derived | Overlay (reviewed) | Params complete, pending interpreter (core field unverified) | Downgraded at validate | Limitation (of which: a param missing) | **Simulable** | Simulable % |',
+        '|---|---:|---:|---:|---:|---:|---:|---:|---:|',
+        ...labCoverage.map((c) => `| ${c.family} | ${c.total} | ${c.derived} | ${c.overlay} | ${c.pending} (${c.pendingBlocked}) | ${c.downgraded} | ${c.limitation} (${c.incomplete}) | **${c.simulable}** | ${pct(c.simulable, c.total)} |`),
+        `| **all ${labCoverage.length} families** | ${sum(labCoverage.map((c) => c.total))} | ${sum(labCoverage.map((c) => c.derived))} | ${sum(labCoverage.map((c) => c.overlay))} | ${sum(labCoverage.map((c) => c.pending))} (${sum(labCoverage.map((c) => c.pendingBlocked))}) | ${sum(labCoverage.map((c) => c.downgraded))} | ${sum(labCoverage.map((c) => c.limitation))} (${sum(labCoverage.map((c) => c.incomplete))}) | **${sum(labCoverage.map((c) => c.simulable))}** | ${pct(sum(labCoverage.map((c) => c.simulable)), sum(labCoverage.map((c) => c.total)))} |`,
+        `| all weapons (A3 MVP target ≥ 60% at P3-S13) | ${weaponDetails.length} | | | | | | **${labArchetypeTotal}** | ${pct(labArchetypeTotal, weaponDetails.length)} |`,
+        `| weapons in no family (default limitation card) | ${weaponDetails.length - sum(labCoverage.map((c) => c.total))} | | | | | | | |`,
         '',
         '| Family | Limitation reason | Weapons |',
         '|---|---|---:|',
@@ -837,7 +877,7 @@ async function main(): Promise<number> {
         '',
         `**AMENDMENTS-008 B36** (simRequiredWeaponFields += useAnimationTicks for every archetype, + autoReuse for swing-melee / thrust / returning): of ${labWithParams} weapons given params, ${labB36.length} are downgraded by the validate rule${labB36.length ? ` (${labB36.map((x) => `${x.name} — ${x.fields.join(', ')}`).join('; ')})` : ''}; ${labB36Only.length} of them only because of the B36 fields (${labB36Only.map((x) => x.name).join(', ') || 'none'}). Weapons in the whole dataset with an unverified B36 field: ${labB36Sensitive.map((w) => `${w.name} (${w.fields.join(', ')}; ${w.family ?? 'no family'} → ${w.lab})`).join('; ') || 'none'} — none of them had params to lose (a thrust limitation and a reviewed magic limitation), so B36 changes no emitted record in this build; it now guarantees that any future params on them are downgraded with a proper limitation card. B36 adds requirements only, so it upgrades nothing; the slice's upgrades are the ${labArchetypeTotal} weapons whose labBehavior went from the P2 default limitation to a simulable archetype. Guard-only refusals turned into limitations at merge time: ${lab.decisions.filter((d) => d.reasonKey?.startsWith('guard:')).map((d) => `${d.name} (${d.reason})`).join('; ') || 'none'}.`,
         '',
-        `**Coverage expansion (AMENDMENTS-010 B48; AMENDMENTS-012 B56 stated thrust ranges: thrust +${statedThrust.length})** — simulable vs the P3-S0 baseline (${Object.entries(P3S0_BASELINE).map(([f, n]) => `${f} ${n}`).join(' · ')} = ${sum(Object.values(P3S0_BASELINE))}): ${labCoverage.map((c) => `${c.family} **${c.simulable}** (${signed(c.simulable - (P3S0_BASELINE[c.family] ?? 0))})`).join(' · ')} = **${sum(labCoverage.map((c) => c.simulable))}** (${signed(sum(labCoverage.map((c) => c.simulable)) - sum(Object.values(P3S0_BASELINE)))}). Every P3-S0 archetype weapon kept its params; B49 adds \`_prov.modeledFields\` to the convention-derived ones.`,
+        `**Coverage expansion (AMENDMENTS-010 B48; AMENDMENTS-012 B56 stated thrust ranges: thrust +${statedThrust.length})** — simulable vs the P3-S0 baseline (${Object.entries(P3S0_BASELINE).map(([f, n]) => `${f} ${n}`).join(' · ')} = ${sum(Object.values(P3S0_BASELINE))}): ${labCoverage.filter((c) => c.family in P3S0_BASELINE).map((c) => `${c.family} **${c.simulable}** (${signed(c.simulable - (P3S0_BASELINE[c.family] ?? 0))})`).join(' · ')} = **${sum(labCoverage.filter((c) => c.family in P3S0_BASELINE).map((c) => c.simulable))}** (${signed(sum(labCoverage.filter((c) => c.family in P3S0_BASELINE).map((c) => c.simulable)) - sum(Object.values(P3S0_BASELINE)))}). Every P3-S0 archetype weapon kept its params; B49 adds \`_prov.modeledFields\` to the convention-derived ones.`,
         '',
         '| Modeling convention (src/schemas MODELING_CONVENTIONS) | Ruling | Archetype | Modeled param paths (`_prov.modeledFields`) | Emitted weapons listing them |',
         '|---|---|---|---|---:|',
@@ -862,6 +902,50 @@ async function main(): Promise<number> {
         '',
         `**Article screen** (high recall; a flag only routes a weapon to review, it never sets a value): ${SCREEN_RULES.map((r) => `${r.id} — ${r.label} (${r.families.join(', ')})`).join('; ')}; the tooltip is screened with the same rules; plus data flags: shoots-projectile (Iteminfo shoot > 0, melee), infobox-projectile, inflicts-debuff (Cargo debuffs / infobox buff), burst (useTime < useAnimation). Hard (non-overridable) data rules: use style / class / ammo / mana / channel signals per archetype; thrust: the Iteminfo projectile must be the stab itself (Projectileinfo name = weapon name); the reach is the range the article states (AMENDMENTS-012 B56) or, where none is stated, the B46 convention; a debuff with damage over time must be derivable from the infobox debuff rows (B48(c)). Since B48(a) Iteminfo reuseDelay is part of the sim cadence (no longer a limitation). Flag counts among family weapons: ${[...labFlagCounts].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}.`,
         '',
+        `**Remaining-archetype families (P3-S0 extension; rules: pipeline/merge/labFamilies.ts header)** — ${remaining.length} weapons. No archetype of these families has a sim interpreter yet, so none is simulable in this build (no target this slice — P3-S13 is the gate); "complete" = every required param is stated or derived and recorded below, ready for the interpreter. Per family / variant:`,
+        '',
+        `| Family | Variant | Weapons | ${REMAINING_STATES.join(' | ')} |`,
+        `|---|---|---:|${REMAINING_STATES.map(() => '---:').join('|')}|`,
+        ...variantRows.map((k) => {
+          const [fam, v] = k.split('|')
+          const ds = remaining.filter((d) => d.family === fam && variantOf(d) === v)
+          return `| ${fam} | ${v} | ${ds.length} | ${REMAINING_STATES.map((st) => ds.filter((d) => remainingState(d) === st).length).join(' | ')} |`
+        }),
+        `| **all** | | **${remaining.length}** | ${REMAINING_STATES.map((st) => `**${remaining.filter((d) => remainingState(d) === st).length}**`).join(' | ')} |`,
+        '',
+        '**Param provenance (remaining families)** — stated: the yoyo infobox "Reach" row (cross-checked against the Yoyos list table "Reach (tiles)"), the Whips list table "Range (tiles)" / "Tag damage" / "Multihit penalty", the whip tooltip (game text) "N summon tag damage" / "N% summon tag critical strike chance", the verbatim article sentences "maximum range of … N tiles" (boomerangs, launched flails; AMENDMENTS-012 B56 extraction) and "explodes N seconds after being thrown" (fuse), and reviewed overlay quotes that state the value (launched-flail ranges in other wordings, blast radius, uniform damage = falloff none, minion AI class, beam hit rate); derived: returnMode / control from the Yoyos / Boomerangs / Flails rule quotes + Iteminfo `channel` (thrown vs launched flail), minion slotCost = Projectileinfo `minionSlots`, sentry slotCost 1 (rule quote). Values per param among family members:',
+        '',
+        '| Family | Param | Weapons with a value | Missing (never guessed) |',
+        '|---|---|---:|---:|',
+        ...(
+          [
+            ['returning', ['throwRangeTiles', 'returnMode', 'control']],
+            ['whip', ['rangeTiles', 'tagDamageFlat', 'tagCritPct', 'falloffPerTarget', 'arcDegrees']],
+            ['minion-sentry', ['slotCost', 'aiClass', 'attackRateTicks', 'sentryRangeTiles']],
+            ['explosive-aoe', ['trigger', 'fuseTicks', 'blastRadiusTiles', 'falloff']],
+            ['piercing-beam', ['mode', 'tickRateTicks']],
+          ] as const
+        ).flatMap(([fam, params]) => params.map((p) => `| ${fam} | ${p} | ${remaining.filter((d) => d.family === fam && d.partial?.[p] !== undefined).length} | ${remaining.filter((d) => d.family === fam && (d.missing ?? []).includes(p)).length} |`)),
+        '',
+        `**Convention proposals NEEDING RULINGS (not applied — "propose, don't invent")**: a param that only a modeling convention could supply stays missing. "Concerns" = incomplete family members missing the param whose article gives a value only the proposal could use (every whip for P-1); "would complete alone" = those whose only missing param is this one. Reviewed limitations are not counted — they stay limitations either way. All five ruled together would complete ${unlockedByAll.length} weapon(s) (${unlockedByAll.map((d) => d.name).join(', ') || 'none'}); every one would still need its interpreter.`,
+        '',
+        '| ID | Proposal | Param | Incomplete weapons it concerns (article states a usable value) | Would complete alone | Examples |',
+        '|---|---|---|---:|---:|---|',
+        ...labProposals.map((p) => `| ${p.id} | **${p.title}** — ${p.text} | ${p.param} | ${p.hits.length} | ${p.unlock.length} | ${p.hits.slice(0, 4).map((d) => `${d.name}${d.candidates?.[p.param] ? `: ${d.candidates[p.param]}` : ''}`).join('; ').replaceAll('|', '\\|') || '—'} |`),
+        `| P-6 | **aiClass taxonomy definitions** — DATA_SCHEMA_SPEC §2.4 names melee-contact / ranged-shot / hover-strike / ground-melee without defining them; the evidence rules applied (labFamilies AI_CLASS_EVIDENCE) are: ${(Object.entries(AI_CLASS_EVIDENCE) as [string, { rule: string }][]).map(([k, v]) => `${k} = ${v.rule}`).join('; ')}. Ratify (or amend) before P3-S9. | aiClass | ${remaining.filter((d) => d.partial?.aiClass !== undefined).length} classified | — | ${remaining.filter((d) => d.partial?.aiClass !== undefined).slice(0, 4).map((d) => `${d.name} ${String(d.partial?.aiClass)}`).join('; ')} |`,
+        '',
+        '**Schema deltas surfaced (not applied; for the schema owner)**: (S-1) returning params carry no count of projectiles that may be out at once — Bananarang (10), Trimarang (3), Light Disc (6) and Possessed Hatchet (unlimited) are reviewed limitations for it, while the Boomerangs article states "Most boomerangs cannot be fired again before returning to the player" (the interpreter\'s default); (S-2) yoyo spin duration (infobox "Spin duration", Yoyos table) has no returning param — it bounds how long a yoyo stays out; (S-3) explosive-aoe carries no ammo class — all launchers are limitations for it; (S-4) whips: Possession "swings four times per use" (no swings-per-use param).',
+        '',
+        `**Sim-side follow-ups (the Lab owns src/sim; not changed here)**: (a) summon weapons have \`critPct\` not applicable (wiki: summon damage cannot normally crit — absent, not listed: ${summonCritNa.length} whip / minion / sentry weapons), but the guard's COMMON_REQUIRED_FIELDS requires critPct, so P3-S9 / P3-S10 must treat summon crit as not applicable or every summon weapon is refused as missing-required-field; (b) every thrown explosive has damage / critPct / knockback Unknown (Iteminfo damage 0 vs the infobox — a withheld source mismatch), so the ${remaining.filter((d) => d.family === 'explosive-aoe' && d.pending).length} complete explosives would be downgraded at validate until that is resolved; (c) boomerang / launched-flail cadence: most cannot be re-thrown before returning (Boomerangs article; KO Cannon: "its fire rate is dependent only on the distance to its impact").`,
+        '',
+        `**Recorded for later (quote-checked, never emitted; the bounce / chain sim stubs throw NotImplemented, so these weapons stay limitations with their specific reason)**: ${recordedRows.map((d) => `${d.name} ${Object.entries(d.recorded ?? {}).map(([k, v]) => `${k} ${v}`).join(', ')}`).join('; ') || 'none'}. Chain targets: none quotable among the family articles (no "chains to N enemies" statement).`,
+        '',
+        '**Family-specific limitation reasons (emitted on the Lab limitation card; one sample per family / variant / state)**:',
+        '',
+        '| Family | Variant | State | Weapon | Reason (emitted) |',
+        '|---|---|---|---|---|',
+        ...reasonSamples.map((d) => `| ${d.family} | ${variantOf(d)} | ${remainingState(d)} | ${d.name} | ${(d.reason ?? '').replaceAll('|', '\\|')} |`),
+        '',
         '| Family | Weapon | Result | Params | How (derivation / overlay rationale / flags) |',
         '|---|---|---|---|---|',
         ...lab.decisions
@@ -869,7 +953,7 @@ async function main(): Promise<number> {
           .sort((a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name))
           .map((d) => {
             const final = weaponDetails.find((w) => w.id === d.id)
-            const result = final?.labBehavior.kind === 'archetype' ? `simulated (${d.method})` : d.method === 'limitation' ? `limitation: ${LAB_REASON_LABEL[d.reasonKey ?? ''] ?? d.reasonKey}` : 'limitation (downgraded at validate)'
+            const result = final?.labBehavior.kind === 'archetype' ? `simulated (${d.method})` : d.pending ? `params complete, pending interpreter (${d.method}; emitted as a limitation)` : d.method === 'limitation' ? `limitation: ${LAB_REASON_LABEL[d.reasonKey ?? ''] ?? d.reasonKey}` : 'limitation (downgraded at validate)'
             const modeled = new Set((d.modeled ?? []).map((m) => m.replace('labBehavior.params.', '')))
             const params =
               d.params && final?.labBehavior.kind === 'archetype'
@@ -879,9 +963,14 @@ async function main(): Promise<number> {
                       .map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}${modeled.has(k) ? ' (modeled)' : ''}`),
                     ...(d.modifiers?.dot ? [`dot ${JSON.stringify(d.modifiers.dot)}`] : []),
                   ].join(', ')
-                : '—'
+                : d.pending && d.params
+                  ? `recorded: ${paramFmt(d.params)}${d.modifiers?.dot ? `, dot ${JSON.stringify(d.modifiers.dot)}` : ''}`
+                  : d.partial
+                    ? `recorded so far: ${paramFmt(d.partial) || '—'}${(d.missing ?? []).length ? ` · missing: ${(d.missing ?? []).join(', ')}` : ''}${d.candidates ? ` · needs a ruling: ${Object.entries(d.candidates).map(([k, v]) => `${k} — ${v}`).join('; ')}` : ''}`
+                    : '—'
+            const recorded = d.recorded && Object.keys(d.recorded).length > 0 ? ` · recorded for later: ${paramFmt(d.recorded as Record<string, unknown>)}` : ''
             const how = [...d.derivation, ...(d.reason ? [`reason: ${d.reason}`] : []), ...(d.flags.length ? [`flags: ${d.flags.map((f) => `${f.id} ${f.evidence}`).join('; ')}`] : [])].join(' · ')
-            return `| ${d.family} | ${d.name} (${d.id}) | ${result} | ${params} | ${how.replaceAll('|', '\\|')} |`
+            return `| ${d.family} | ${d.name} (${d.id}) | ${result} | ${params}${recorded} | ${how.replaceAll('|', '\\|')} |`
           }),
       ],
     },

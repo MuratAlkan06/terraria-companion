@@ -202,6 +202,13 @@ export const loadBuffsOverlay = (dir = OVERLAY_DIR): BuffsOverlay => BuffsOverla
  *   entry's quotes (checked).
  * - `limitation`: the article documents behavior the archetype params cannot express; `reason` is the
  *   emitted (user-facing) limitation reason, backed by the quotes.
+ * Remaining-archetype families (merge/labFamilies.ts): an `archetype` entry may carry the residuals a
+ * reviewed quote states — returning throwRangeTiles; minion-sentry aiClass / attackRateTicks /
+ * sentryRangeTiles; explosive-aoe blastRadiusTiles / trigger / fuseTicks / falloff; piercing-beam
+ * tickRateTicks — and is needed whenever it supplies one (even on a clean screen). Any entry may record
+ * bounceCount / chainTargets (limitation entries only) / tickRateTicks for later (quote-checked, never
+ * emitted). For these families a limitation `reason` describes only the weapon-specific blocker; the
+ * build prefixes the family sentence while the archetype has no sim interpreter.
  * Every quote is checked verbatim against the cached article revision (merge/evidence.ts).
  */
 const LabQuote = z.strictObject({ page: Page, quote: Quote })
@@ -212,11 +219,36 @@ const LabEntryBase = {
   evidence: z.array(LabQuote).min(1),
   /** Pipeline-only reviewer rationale (not emitted). */
   why: z.string().min(1),
+  /**
+   * RECORDED for later (P3-S0 remaining-archetype slice): cross-cutting modifier values whose sim
+   * stubs throw NotImplemented (bounce, chain) — quote-checked, reported, never emitted. A weapon that
+   * needs them stays a limitation with that specific reason.
+   */
+  bounceCount: z.int().positive().optional(),
+  chainTargets: z.int().min(2).optional(),
+  /**
+   * piercing-beam: the beam's hit interval (ticks) a quote states. On an archetype entry it is the
+   * channel-beam residual; on a limitation entry it is recorded for later.
+   */
+  tickRateTicks: z.int().positive().optional(),
 }
 const LabArchetypeEntry = z.strictObject({
   ...LabEntryBase,
   decision: z.literal('archetype'),
-  archetype: z.enum(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt']),
+  archetype: z.enum(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'whip', 'minion-sentry', 'explosive-aoe', 'piercing-beam']),
+  /** returning (boomerang / launched flail): the range a quote states in tiles (a yoyo's comes from its infobox). */
+  throwRangeTiles: z.number().positive().optional(),
+  /** minion-sentry: the curated AI class — the quote must show the class's evidence (labFamilies AI_CLASS_EVIDENCE). */
+  aiClass: z.enum(['melee-contact', 'ranged-shot', 'hover-strike', 'ground-melee']).optional(),
+  /** minion-sentry: the attack interval a quote states exactly (an average needs a ruling). */
+  attackRateTicks: z.int().positive().optional(),
+  /** minion-sentry (sentries): the targeting radius a quote states (a Manhattan distance needs a ruling). */
+  sentryRangeTiles: z.number().positive().optional(),
+  /** explosive-aoe: values a quote states (radius in tiles; "explodes N seconds after"; uniform damage = falloff none). */
+  blastRadiusTiles: z.number().positive().optional(),
+  trigger: z.enum(['impact', 'timed']).optional(),
+  fuseTicks: z.int().positive().optional(),
+  falloff: z.enum(['none', 'linear']).optional(),
   projectilesPerUse: z.int().positive().optional(),
   spreadDegrees: z.number().min(0).optional(),
   inheritsAmmoProjectile: z.boolean().optional(),

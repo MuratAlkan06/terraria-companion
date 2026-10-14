@@ -116,6 +116,50 @@ export interface BuffIdRow {
   article?: string
 }
 
+export interface ItemTableRow {
+  /** "Internal Item ID(s): N" of the row's name cell. */
+  itemIds: number[]
+  /** Column header (plain text, footnote markers dropped: "Range (tiles)") → the row's cell text. */
+  cells: Record<string, string>
+}
+
+/**
+ * A family list table of an overview article (shape 4, P3-S0 remaining-archetype slice): the first
+ * `table.terraria` whose header row has a column named `header` (e.g. the Whips article's "Range
+ * (tiles)", the Yoyos article's "Reach (tiles)"). Header `colspan`s are expanded so cells line up
+ * (the "Name" header spans the icon + name cells); a row is kept only when its cell count equals the
+ * header width and it names its item ID(s). Rows whose cells span rows (rowspan) are skipped — their
+ * columns cannot be attributed safely.
+ */
+export function parseItemTable(html: string, header: string): ItemTableRow[] {
+  const headerText = (n: HNode) => text(kids(n)).replace(/\s*\[\d+\]/g, '').trim()
+  for (const table of findAll(parseHtml(html), (n) => n.type === 'el' && n.tag === 'table' && hasClass(n, 'terraria'))) {
+    const rows = findAll(kids(table), (n) => n.type === 'el' && n.tag === 'tr')
+    const head = rows.find((tr) => kids(tr).some((c) => c.type === 'el' && c.tag === 'th'))
+    if (!head) continue
+    const columns = kids(head)
+      .filter((c) => c.type === 'el' && c.tag === 'th')
+      .flatMap((th) => Array<string>(Math.max(1, Number(th.type === 'el' ? (th.attrs.colspan ?? 1) : 1))).fill(headerText(th)))
+    if (!columns.includes(header)) continue
+    const out: ItemTableRow[] = []
+    for (const tr of rows) {
+      const cells = kids(tr).filter((c) => c.type === 'el' && c.tag === 'td')
+      if (cells.length !== columns.length || cells.some((c) => c.type === 'el' && Number(c.attrs.rowspan ?? 1) > 1)) continue
+      // per cell: adjacent cells' text must not run into the ID list ("4672" + "11")
+      const m = cells.map((c) => /Internal Item IDs?\s*:\s*(\d+(?:\s*[,–-]\s*\d+)*)/.exec(text(kids(c)))).find(Boolean)
+      const itemIds = m ? parseIdList(m[1]) : undefined
+      if (!itemIds) continue
+      const byHeader: Record<string, string> = {}
+      cells.forEach((c, i) => {
+        if (!(columns[i] in byHeader)) byHeader[columns[i]] = text(kids(c))
+      })
+      out.push({ itemIds, cells: byHeader })
+    }
+    return out
+  }
+  return []
+}
+
 /** The "Buff IDs" article's ID list. Rows without a name (unused legacy IDs) are skipped. */
 export function parseBuffIdTable(html: string): BuffIdRow[] {
   const out: BuffIdRow[] = []

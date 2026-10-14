@@ -77,14 +77,30 @@
  *   time: "reuseDelay is applied after the itemAnimation counter turns to zero"); before, it forced a
  *   limitation because the simulated attack rate would have been overstated.
  *
+ * REMAINING-ARCHETYPE FAMILIES (P3-S0 extension): returning, whip, minion-sentry, explosive-aoe and
+ * piercing-beam are derived by merge/labFamilies.ts (its header = their rules: stated values from
+ * infobox rows, overview list tables, tooltips and verbatim sentences; derived values from data modules
+ * + quoted family rules; reviewed overlay residuals; a param only an unratified convention could supply
+ * stays MISSING). While an archetype is not in src/sim IMPLEMENTED_ARCHETYPES, complete params are
+ * recorded on the decision (coverage report) and the weapon is emitted as a limitation whose reason
+ * names what the Lab does not model (no forward promise); reviewed / flagged / incomplete reasons lead
+ * with the same family sentence. The original four families are unchanged.
+ *
+ * NO FAMILY (no weapon-type category and no held-beam signal — e.g. consumable or ammo-driven uniques):
+ * the weapon keeps the P2 default limitation card, unless the overlay records a reviewed `limitation`
+ * entry for it — evidence-checked to the same standard as every entry (verbatim quotes on the cached
+ * revision, the weapon's own article among them) — whose plain reason is then emitted (editorial).
+ * Such a weapon takes no `archetype` entry (no family to parameterize) and no recorded extras (they
+ * live on a family decision); it adds no coverage decision (the report counts it outside the families).
+ *
  * GUARD CONTRACT: every candidate is run through the sim's own `assessWeapon` (src/sim, pure TS). A
  * candidate blocked by an unverified field the pipeline rule covers (`simRequiredWeaponFields`,
  * AMENDMENTS-008 B36) keeps its params here so the validate stage's §2.1-3 downgrade applies (visible
  * as W_LAB_DOWNGRADE); any other refusal becomes a limitation now, so no emitted weapon reaches the
  * Lab as a generic refusal.
  */
-import { assessWeapon } from '../../src/sim'
-import { ArchetypeParams, getField, modelingConventionFor, type Buff, type LabBehavior, type LabModifiers, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
+import { assessWeapon, IMPLEMENTED_ARCHETYPES, type WeaponAssessment } from '../../src/sim'
+import { ArchetypeParams, getField, modelingConventionFor, type Archetype, type Buff, type LabBehavior, type LabModifiers, type ProvSource, type SpriteManifestFile, type Weapon } from '../../src/schemas'
 import { articleText, normalizeQuote, type Article } from '../fetch/articles'
 import { itemTypeIncludes, type CargoRow } from '../fetch/cargo'
 import type { CategoryTree } from '../fetch/categories'
@@ -96,33 +112,77 @@ import type { Projectileinfo } from '../parse/projectileinfo'
 import { slugify, stripMarkup } from '../parse/text'
 import { blockingUnverifiedFields, limitation } from '../validate/labDowngrade'
 import { Evidence } from './evidence'
+import {
+  deriveFamily,
+  familyTables,
+  isPendingFamily,
+  missingSentence,
+  pendingReason,
+  recordedExtras,
+  returningVariantOf,
+  VARIANT_NOUN,
+  type FamilyContext,
+  type FamilyVariant,
+  type PendingFamily,
+  type RecordedExtras,
+} from './labFamilies'
 import type { LabParamsEntry, LabParamsOverlay } from './overlays'
 import { isoDate, moduleSource } from './prov'
 import { OverlayError } from './registry'
 
-/** Archetypes the sim implements (src/sim IMPLEMENTED_ARCHETYPES) that P3-S0 parameterizes. */
-export const LAB_FAMILIES = ['swing-melee', 'thrust', 'bow-gun', 'magic-bolt'] as const
+/**
+ * Families P3-S0 parameterizes: every archetype of DATA_SCHEMA_SPEC §2.4. The first four are
+ * implemented by the sim; the remaining-archetype slice (P3-S0 extension) adds returning, whip,
+ * minion-sentry, explosive-aoe and piercing-beam, whose interpreters ship with the Lab (P3-S6–S11) —
+ * see "PENDING INTERPRETERS" in the header. Order matters only for weapons in several family
+ * categories (the first family wins; the four original families keep their weapons).
+ */
+export const LAB_FAMILIES = ['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'whip', 'minion-sentry', 'explosive-aoe', 'piercing-beam'] as const
 export type LabFamily = (typeof LAB_FAMILIES)[number]
 
 /**
  * Family = the wiki's own weapon-type categories (independent of what the Lab can simulate, so the
  * coverage percentage is not circular). Verified 2026-10-13 (prop=categorymembers): Broadswords 75,
- * Shortswords 12, Spears 20, Bows 34, Repeaters 10, Guns 26, Wands 42, Magic guns 13, Spell books 10.
+ * Shortswords 12, Spears 20, Bows 34, Repeaters 10, Guns 26, Wands 42, Magic guns 13, Spell books 10;
+ * Boomerangs 16, Flails 16, Yoyos 22, Whips 19, Minion summon items 27, Sentry summon items 11,
+ * Explosives 19, Launchers 11 (article counts incl. each category's overview article).
+ * piercing-beam has NO wiki category (the weapon-type tree has no beam / laser category): its family is
+ * the data signal `isHeldBeamSignal` on weapons outside every category family (see there).
  */
 export const FAMILY_CATEGORIES: Record<LabFamily, readonly string[]> = {
   'swing-melee': ['Category:Broadswords'],
   thrust: ['Category:Shortswords', 'Category:Spears'],
   'bow-gun': ['Category:Bows', 'Category:Repeaters', 'Category:Guns'],
   'magic-bolt': ['Category:Wands', 'Category:Magic guns', 'Category:Spell books'],
+  returning: ['Category:Boomerangs', 'Category:Flails', 'Category:Yoyos'],
+  whip: ['Category:Whips'],
+  'minion-sentry': ['Category:Minion summon items', 'Category:Sentry summon items'],
+  'explosive-aoe': ['Category:Explosives', 'Category:Launchers'],
+  'piercing-beam': [],
 }
 
-/** Family of a weapon from its category tags (Weapon.tags = slugs of its article's categories). */
-export function familyOf(tags: readonly string[]): LabFamily | undefined {
-  for (const family of LAB_FAMILIES) {
-    if (FAMILY_CATEGORIES[family].some((c) => tags.includes(slugify(c.replace(/^Category:/, ''))))) return family
-  }
-  return undefined
+/**
+ * piercing-beam family signal (no wiki category exists): a magic or ranged weapon whose Iteminfo use
+ * is held (`channel`) and that no weapon-type category places in another family — the channel-beam
+ * identification signal. Membership is not simulability: each member still passes the beam checks
+ * (held projectile + quoted beam behavior) or gets a specific limitation.
+ */
+export const isHeldBeamSignal = (stats: Readonly<Record<string, unknown>> | undefined): boolean =>
+  stats !== undefined && stats.channel === true && (stats.magic === true || stats.ranged === true)
+
+const categoryFamily = (tags: readonly string[]): LabFamily | undefined =>
+  LAB_FAMILIES.find((family) => FAMILY_CATEGORIES[family].some((c) => tags.includes(slugify(c.replace(/^Category:/, '')))))
+
+/**
+ * Family of a weapon: its category tags (Weapon.tags = slugs of its article's categories); else the
+ * piercing-beam data signal when the weapon's Iteminfo stats are given.
+ */
+export function familyOf(tags: readonly string[], stats?: Readonly<Record<string, unknown>>): LabFamily | undefined {
+  return categoryFamily(tags) ?? (isHeldBeamSignal(stats) ? 'piercing-beam' : undefined)
 }
+
+/** Family overview articles (one per family category): the family rules quote them. */
+export const LAB_FAMILY_PAGES = ['Boomerangs', 'Flails', 'Yoyos', 'Whips', 'Minion-summoning weapons', 'Sentry-summoning weapons', 'Explosives (class)', 'Launchers'] as const
 
 /**
  * Rule quotes: verbatim excerpts of mechanics articles, checked against the cached revision on every
@@ -136,18 +196,37 @@ export const RULE_QUOTES = {
   extraUpdates: { page: 'Velocity', quote: 'It determines how many times the projectile moves by its listed velocity in each tick.' },
   tilesPerSecond: { page: 'Velocity', quote: 'this is equivalent to a speed of 3.75 tiles/second' },
   reuseDelay: { page: 'Use time', quote: 'reuseDelay is applied after the itemAnimation counter turns to zero.' },
-} as const
+  // remaining-archetype families (merge/labFamilies.ts header)
+  yoyoThrown: { page: 'Yoyos', quote: "Yoyos are melee weapons that are thrown when used, seeking the player's cursor for a certain amount of time." },
+  yoyoString: { page: 'Yoyos', quote: 'Yoyos normally have a limited range, being visually attached to the player via string.' },
+  boomerangReturn: { page: 'Boomerangs', quote: 'Boomerangs are melee weapons that are thrown when used, returning to the player after a short amount of time.' },
+  flailThrown: { page: 'Flails', quote: 'Launched flails lack the physics of thrown flails and cannot be swung around by holding the attack button.' },
+  flailLaunched: { page: 'Flails', quote: 'a launched flail will extend at a fixed speed until it strikes a block or enemy or reaches its maximum length, and then retract at a slightly faster, fixed speed' },
+  whipArc: { page: 'Whips', quote: 'Whips are summon weapons that swing in an arcing motion instead of summoning a secondary character.' },
+  whipMultihit: { page: 'Whips', quote: 'The damage dealt will be reduced by a fixed percentage on each consecutive hit' },
+  whipTag: { page: 'Whips', quote: "Tag damage: When minions or sentries attack tagged enemies, the whip's tag damage is added to the damage dealt." },
+  minionSlot: { page: 'Minion-summoning weapons', quote: 'By default, a player can only have a single minion summoned at once.' },
+  sentrySlot: { page: 'Sentry-summoning weapons', quote: 'By default, a player can only have a single sentry summoned at once.' },
+  sentryStationary: { page: 'Sentry-summoning weapons', quote: 'Sentries are stationary and have a close-range or projectile attack.' },
+  explosiveDelay: { page: 'Explosives (class)', quote: 'When used, they are thrown a short distance away from the player and explode after a delay.' },
+  launcherAmmo: { page: 'Launchers', quote: 'Launchers are Hardmode, post-Plantera ranged weapons that either use rockets as ammunition, or their projectiles explode on impact' },
+} as const satisfies Record<string, { page: string; quote: string }>
 
 /** Mechanics articles the derivation rules quote (fetched with the family articles). */
-export const LAB_RULE_PAGES = [...new Set(Object.values(RULE_QUOTES).map((q) => q.page))]
+export const LAB_RULE_PAGES = [...new Set([...Object.values(RULE_QUOTES).map((q) => q.page), ...LAB_FAMILY_PAGES])]
 
 const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
 
-/** Articles of every Cargo weapon row whose page is in a family category (evidence for the screen + overlay). */
-export function labFamilyPages(tree: CategoryTree, itemRows: readonly CargoRow[]): string[] {
+/**
+ * Articles of every Cargo weapon row whose page is in a family category, plus (given Iteminfo) the
+ * pages of weapon rows in the piercing-beam signal family (evidence for the screen + overlay).
+ */
+export function labFamilyPages(tree: CategoryTree, itemRows: readonly CargoRow[], iteminfo?: Pick<Iteminfo, 'items'>): string[] {
   const familyPages = new Set(Object.values(FAMILY_CATEGORIES).flatMap((cats) => cats.flatMap((c) => tree.categories.get(c)?.pages ?? [])))
-  const weaponPages = new Set(itemRows.filter((r) => itemTypeIncludes(r, 'weapon')).map((r) => str(r._page)))
-  return [...familyPages].filter((p) => weaponPages.has(p)).sort()
+  const weaponRows = itemRows.filter((r) => itemTypeIncludes(r, 'weapon'))
+  const weaponPages = new Set(weaponRows.map((r) => str(r._page)))
+  const signalPages = iteminfo ? weaponRows.filter((r) => !familyPages.has(str(r._page)) && isHeldBeamSignal(iteminfo.items.get(Number(str(r.itemid)))?.stats)).map((r) => str(r._page)) : []
+  return [...new Set([...[...familyPages].filter((p) => weaponPages.has(p)), ...signalPages])].filter(Boolean).sort()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -197,10 +276,13 @@ export interface ScreenRule {
 
 const ALL: readonly LabFamily[] = LAB_FAMILIES
 const PROJECTILE_FAMILIES: readonly LabFamily[] = ['bow-gun', 'magic-bolt']
+/** Every family except those whose own archetype is the matched behavior (e.g. minions are summoned). */
+const ALL_BUT = (...except: LabFamily[]): readonly LabFamily[] => LAB_FAMILIES.filter((f) => !except.includes(f))
 
 /**
  * High-recall screen: a match only routes the weapon to curation; it never assigns a value. Terms are
- * matched on the behavior text + tooltip (case-insensitive).
+ * matched on the behavior text + tooltip (case-insensitive). A rule skips the families whose archetype
+ * IS that behavior (a yoyo is held and follows the cursor, a minion is summoned, a beam is held).
  */
 export const SCREEN_RULES: readonly ScreenRule[] = [
   {
@@ -210,23 +292,32 @@ export const SCREEN_RULES: readonly ScreenRule[] = [
     families: ['swing-melee', 'thrust'],
   },
   {
+    // returning / whip / explosive: thrown or launched by nature, so only extra projectiles count
+    id: 'extra-projectile',
+    label: 'fires or creates projectiles',
+    re: /\b(?:projectiles?|beams?|bolts?|shoots?|shooting)\b/i,
+    families: ['returning', 'whip', 'explosive-aoe'],
+  },
+  {
     id: 'multi-projectile',
     label: 'several projectiles per shot',
     re: /\b(?:two|three|four|five|six|seven|eight|nine|ten|twelve|multiple|several|burst|volleys?|at once|at a time|split\w*|clones?|copies)\b|\b\d+\s+(?:\w+\s+)?(?:arrows|bullets|projectiles|bolts|shots|stars|beams|lasers|darts|bees|bats|leaves|needles|bubbles|feathers|skulls|flames|blasts)\b/i,
-    families: PROJECTILE_FAMILIES,
+    families: [...PROJECTILE_FAMILIES, 'returning'],
   },
   { id: 'spread', label: 'spread or randomized aim', re: /\b(?:spread\w*|inaccura\w*|accura\w*|random\w*|deviat\w*|scatter\w*|cone)\b/i, families: PROJECTILE_FAMILIES },
   { id: 'conversion', label: 'converts or replaces its ammunition', re: /\b(?:convert\w*|transform\w*|replac\w*|instead of|turns? \w+ (?:\w+ )?into)\b/i, families: PROJECTILE_FAMILIES },
-  { id: 'homing', label: 'homing', re: /\bhom(?:e|es|ing)\b|\bseek\w*|\btrack\w*/i, families: PROJECTILE_FAMILIES },
-  { id: 'bounce', label: 'bouncing', re: /\b(?:bounc\w*|ricochet\w*|rebound\w*)\b/i, families: PROJECTILE_FAMILIES },
+  { id: 'homing', label: 'homing', re: /\bhom(?:e|es|ing)\b|\bseek\w*|\btrack\w*/i, families: [...PROJECTILE_FAMILIES, 'returning', 'whip', 'explosive-aoe', 'piercing-beam'] },
+  { id: 'bounce', label: 'bouncing', re: /\b(?:bounc\w*|ricochet\w*|rebound\w*)\b/i, families: [...PROJECTILE_FAMILIES, 'returning', 'explosive-aoe'] },
   { id: 'pierce', label: 'piercing', re: /\b(?:pierc\w*|penetrat\w*|pass(?:es)? through)\b/i, families: PROJECTILE_FAMILIES },
+  // returning: steering after the throw (a yoyo follows the cursor by nature: not flagged for yoyos)
+  { id: 'cursor', label: 'steered toward the cursor', re: /\bcursor\b/i, families: ['returning'] },
   {
     id: 'on-hit',
     label: 'extra effects on hit',
     re: /\b(?:explo\w*|inflict\w*|debuffs?|heal(?:s|ed|ing)?|life ?steal\w*|restor\w*|stick\w*|stack\w*|chain\w*|on hit|upon hit|on contact|hitting|struck)\b/i,
     families: ALL,
   },
-  { id: 'spawns', label: 'creates other projectiles or entities', re: /\b(?:spawn\w*|summon\w*|releas\w*|creat\w*|emit\w*|trails?|fragment\w*|shards?|sparks?)\b/i, families: ALL },
+  { id: 'spawns', label: 'creates other projectiles or entities', re: /\b(?:spawn\w*|summon\w*|releas\w*|creat\w*|emit\w*|trails?|fragment\w*|shards?|sparks?)\b/i, families: ALL_BUT('minion-sentry') },
   {
     id: 'conditional-damage',
     label: 'damage that depends on conditions',
@@ -244,7 +335,7 @@ export const SCREEN_RULES: readonly ScreenRule[] = [
     id: 'special-use',
     label: 'charged, held or alternate use',
     re: /\b(?:charg\w*|channel\w*|hold\w*|held|right[- ]click\w*|(?:alternat\w*|secondary) (?:attack|fire|firing|use|function|mode|ability)|stealth)\b/i,
-    families: ALL,
+    families: ALL_BUT('returning', 'piercing-beam'),
   },
 ]
 
@@ -447,6 +538,23 @@ export interface LabDecision {
   pipelineBlocked?: string[]
   /** thrust: the B46 convention reach vs the range the article states, if any (report: B56 calibration record). */
   thrustReach?: { conventionTiles: number; statedTiles?: number; quote?: string }
+  /** Remaining-archetype families (merge/labFamilies.ts): yoyo, boomerang, flail, whip, minion, sentry, explosive, beam. */
+  variant?: FamilyVariant
+  /**
+   * Params complete, but the sim has no interpreter for the archetype (src/sim IMPLEMENTED_ARCHETYPES):
+   * the params are RECORDED here and the weapon is emitted as a limitation (labFamilies header).
+   */
+  pending?: boolean
+  /** Required params still missing (labFamilies MISSING_PHRASE keys): the weapon stays a limitation. */
+  missing?: string[]
+  /** Params obtained so far, recorded for the report even when incomplete or a reviewed limitation. */
+  partial?: Record<string, unknown>
+  /** Quote-checked values recorded for later (bounce / chain counts, a beam's hit rate). */
+  recorded?: RecordedExtras
+  /** Article statements only a convention ruling could turn into a missing param (report: proposals). */
+  candidates?: Record<string, string>
+  /** Params withheld because two wiki sources disagree (also in `missing`). */
+  conflicts?: string[]
 }
 
 export interface LabBuildInput {
@@ -466,14 +574,16 @@ export interface LabBuildInput {
   /** The wiki's Buff IDs table (id → name, Buff/Debuff): tells inflicted debuffs from granted buffs in an infobox. */
   buffTable: readonly Pick<BuffIdRow, 'id' | 'name' | 'isDebuff'>[]
   overlay: LabParamsOverlay
+  /** Archetypes the sim simulates (default src/sim IMPLEMENTED_ARCHETYPES); others are recorded, not emitted. */
+  implemented?: readonly Archetype[]
+  /** The sim guard (default src/sim assessWeapon). */
+  assess?: (weapon: Weapon) => WeaponAssessment
 }
 
 export interface LabBuild {
   weapons: Weapon[]
   decisions: LabDecision[]
 }
-
-const isLabFamily = (a: string): a is LabFamily => (LAB_FAMILIES as readonly string[]).includes(a)
 
 /** Number words a quote may use for a projectile count. */
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
@@ -491,22 +601,38 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
   const rulePage = (key: keyof typeof RULE_QUOTES) => evidence.quote(RULE_QUOTES[key].page, RULE_QUOTES[key].quote, `lab-params rule ${key}`)
   const rules = Object.fromEntries((Object.keys(RULE_QUOTES) as (keyof typeof RULE_QUOTES)[]).map((k) => [k, rulePage(k)])) as Record<keyof typeof RULE_QUOTES, ReturnType<Evidence['page']>>
   const ruleSource = (p: ReturnType<Evidence['page']>): ProvSource => ({ kind: 'wiki-article', url: p.url, rev: p.rev, fetchedAt: isoDate(p.fetchedAt) })
+  const implemented = input.implemented ?? IMPLEMENTED_ARCHETYPES
+  const assess = input.assess ?? assessWeapon
+  // remaining-archetype families: the stated per-item values of the Whips / Yoyos list tables
+  const tables = familyTables(input.articles)
 
   const decisions: LabDecision[] = []
   const weapons = input.weapons.map((w): Weapon => {
-    const family = familyOf(w.tags)
-    if (!family) return w
     const item = info.items.get(w.id)
-    const s = (item?.stats ?? {}) as Record<string, unknown>
-    const num = (k: string) => (typeof s[k] === 'number' ? (s[k] as number) : undefined)
-    const page = input.pageOf.get(w.id) ?? ''
-    const article = input.articles.get(page)
-    if (!article) throw new OverlayError(`[E_SCHEMA] lab-params: article "${page}" of ${w.name} was not fetched by the sync plan (run npm run pipeline:fetch)`)
-    const articleSrc: ProvSource = { kind: 'wiki-article', url: wikiPageUrl(article.resolvedTitle), rev: article.revid, fetchedAt: isoDate(article.fetchedAt) }
-    const decision: LabDecision = { id: w.id, name: w.name, family, method: 'limitation', flags: [], derivation: [] }
-    decisions.push(decision)
+    const family = familyOf(w.tags, item?.stats)
     const entry = overlayById.get(w.id)
     if (entry && entry.name !== w.name) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: name "${entry.name}" ≠ weapon name "${w.name}"`)
+    const page = input.pageOf.get(w.id) ?? ''
+    const articleOf = (): { article: Article; articleSrc: ProvSource } => {
+      const a = input.articles.get(page)
+      if (!a) throw new OverlayError(`[E_SCHEMA] lab-params: article "${page}" of ${w.name} was not fetched by the sync plan (run npm run pipeline:fetch)`)
+      return { article: a, articleSrc: { kind: 'wiki-article', url: wikiPageUrl(a.resolvedTitle), rev: a.revid, fetchedAt: isoDate(a.fetchedAt) } }
+    }
+    // ---- no family (no weapon-type category, no beam signal): the default card, or a reviewed limitation ----
+    if (!family) {
+      if (!entry) return w
+      if (entry.decision !== 'limitation') throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id} (${w.name}): a weapon in no Lab family takes only a limitation entry`)
+      const extras = (['bounceCount', 'chainTargets', 'tickRateTicks'] as const).filter((k) => entry[k] !== undefined)
+      if (extras.length > 0) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id} (${w.name}): ${extras.join(', ')} are recorded on a family decision — a weapon in no Lab family has none`)
+      const { articleSrc } = articleOf()
+      const pages = checkEntryEvidence(entry, evidence, page)
+      return withLab(w, limitation(w, entry.reason), [articleSrc, ...pages.map((p) => Evidence.source('lab-params', p))], true)
+    }
+    const s = (item?.stats ?? {}) as Record<string, unknown>
+    const num = (k: string) => (typeof s[k] === 'number' ? (s[k] as number) : undefined)
+    const { article, articleSrc } = articleOf()
+    const decision: LabDecision = { id: w.id, name: w.name, family, method: 'limitation', flags: [], derivation: [] }
+    decisions.push(decision)
 
     const asLimitation = (reasonKey: string, reason: string, extraSources: ProvSource[] = [], editorial = false): Weapon => {
       decision.method = 'limitation'
@@ -523,21 +649,29 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     // thrust: the stab is the weapon's own projectile (Projectileinfo names it after the weapon), not an extra one
     const shootProjectile = shoot > 0 ? proj.projectiles.get(shoot) : undefined
     const stabId = family === 'thrust' && shootProjectile?.name === w.name ? shoot : undefined
-    const flags: ScreenFlag[] = []
+    const rawFlags: ScreenFlag[] = []
     if (family === 'swing-melee' || family === 'thrust') {
-      if (shoot > 0 && shoot !== stabId) flags.push({ id: 'shoots-projectile', evidence: `Iteminfo shoot ${shoot}` })
+      if (shoot > 0 && shoot !== stabId) rawFlags.push({ id: 'shoots-projectile', evidence: `Iteminfo shoot ${shoot}` })
       const extra = (box?.projectileIds ?? []).filter((id) => id !== stabId)
-      if (extra.length > 0) flags.push({ id: 'infobox-projectile', evidence: `infobox projectile ${extra.join(', ')}` })
+      if (extra.length > 0) rawFlags.push({ id: 'infobox-projectile', evidence: `infobox projectile ${extra.join(', ')}` })
+    }
+    // returning / whip / explosive: the thrown or swung projectile is the weapon; any other infobox projectile is extra
+    if (family === 'returning' || family === 'whip' || family === 'explosive-aoe') {
+      const extra = (box?.projectileIds ?? []).filter((id) => id !== shoot)
+      if (extra.length > 0) rawFlags.push({ id: 'infobox-projectile', evidence: `infobox projectile ${extra.join(', ')}` })
     }
     const cargoDebuffs = str(input.rows.get(w.id)?.debuffs).split('^').map((d) => stripMarkup(d).trim()).filter(Boolean)
-    if (cargoDebuffs.length > 0) flags.push({ id: 'inflicts-debuff', evidence: `Cargo debuffs "${cargoDebuffs.join('^')}"` })
-    else if (box && box.buffIds.length > 0) flags.push({ id: 'inflicts-debuff', evidence: `infobox buff ${box.buffIds.join(', ')}` })
-    if (family !== 'swing-melee' && w.useTimeTicks !== undefined && w.useAnimationTicks !== undefined && w.useTimeTicks < w.useAnimationTicks) {
-      flags.push({ id: 'burst', evidence: `useTime ${w.useTimeTicks} < useAnimation ${w.useAnimationTicks}` })
+    if (cargoDebuffs.length > 0) rawFlags.push({ id: 'inflicts-debuff', evidence: `Cargo debuffs "${cargoDebuffs.join('^')}"` })
+    else if (box && box.buffIds.length > 0) rawFlags.push({ id: 'inflicts-debuff', evidence: `infobox buff ${box.buffIds.join(', ')}` })
+    if (!NO_BURST_FLAG.includes(family) && w.useTimeTicks !== undefined && w.useAnimationTicks !== undefined && w.useTimeTicks < w.useAnimationTicks) {
+      rawFlags.push({ id: 'burst', evidence: `useTime ${w.useTimeTicks} < useAnimation ${w.useAnimationTicks}` })
     }
     const text = behaviorText(article.html)
-    flags.push(...screenText(family, text))
-    if (w.behaviorText) for (const f of screenText(family, w.behaviorText.replace(/\n/g, ' '))) if (!flags.some((x) => x.id === f.id)) flags.push({ id: f.id, evidence: `tooltip ${f.evidence}` })
+    rawFlags.push(...screenText(family, text))
+    if (w.behaviorText) for (const f of screenText(family, w.behaviorText.replace(/\n/g, ' '))) if (!rawFlags.some((x) => x.id === f.id)) rawFlags.push({ id: f.id, evidence: `tooltip ${f.evidence}` })
+    // a yoyo follows the cursor by nature (its archetype control), so the steering flag does not apply
+    const returningVariant = family === 'returning' ? returningVariantOf(w.tags) : undefined
+    const flags = returningVariant === 'yoyo' ? rawFlags.filter((f) => f.id !== 'cursor') : rawFlags
     decision.flags = flags
     const spriteOf = () => {
       const sprite = input.sprites.get(w.id)
@@ -546,25 +680,63 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     }
     // thrust family: the B46 reach vs any range the article states (report: calibration record, every thrust weapon)
     const thrustGeo = family === 'thrust' ? spriteOf() : undefined
-    const statedRange = family === 'thrust' ? statedRangeTiles(text) : undefined
+    // returning (boomerang / launched flail): only a "maximum range" statement is the throw range (other ranges: homing, despawn…)
+    const anyRange = family === 'thrust' || family === 'returning' ? statedRangeTiles(text) : undefined
+    const statedRange = family === 'returning' && anyRange && !/\bmaximum range\b/i.test(anyRange.quote) ? undefined : anyRange
     if (thrustGeo) {
       const conventionTiles = thrustReachTiles(thrustGeo.sprite.width, thrustGeo.sprite.height, thrustGeo.scale)
       decision.thrustReach = { conventionTiles, ...(statedRange ? { statedTiles: statedRange.tiles, quote: statedRange.quote } : {}) }
     }
 
+    // ---- remaining-archetype families (merge/labFamilies.ts) ----
+    const pendingFamily = isPendingFamily(family) ? family : undefined
+    const archImplemented = implemented.includes(family)
+    const familyCtx = (archEntry?: Extract<LabParamsEntry, { decision: 'archetype' }>): FamilyContext => ({
+      w,
+      family: pendingFamily as PendingFamily,
+      stats: s,
+      shoot,
+      ...(shootProjectile ? { shootProjectile } : {}),
+      ...(box ? { box } : {}),
+      page,
+      text,
+      ...(statedRange ? { statedRange } : {}),
+      tables,
+      ...(archEntry ? { entry: archEntry } : {}),
+      evidence,
+      projSrc,
+      rule: (k) => ruleSource(rules[k]),
+      ruleQuote: (k) => RULE_QUOTES[k].quote,
+    })
+
     // ---- overlay limitation decisions win (reviewed) ----
     if (entry?.decision === 'limitation') {
       const pages = checkEntryEvidence(entry, evidence, page)
-      return asLimitation('overlay', entry.reason, pages.map((p) => Evidence.source('lab-params', p)), true)
+      const recorded = recordedExtras(entry, w, statesNumber)
+      if (Object.keys(recorded).length > 0) decision.recorded = recorded
+      let reason = entry.reason
+      if (pendingFamily) {
+        // the params the data + rules still give are recorded (report); the family reason leads while unmodeled
+        const out = deriveFamily(familyCtx())
+        if (out.kind === 'member') {
+          Object.assign(decision, { variant: out.variant, partial: out.partial, missing: out.missing, derivation: out.derivation })
+          if (Object.keys(out.candidates).length > 0) decision.candidates = out.candidates
+          reason = pendingReason(out.variant, archImplemented, entry.reason)
+        }
+      }
+      return asLimitation('overlay', reason, pages.map((p) => Evidence.source('lab-params', p)), true)
     }
 
     // ---- hard requirements per family (never overridable: the data must carry them) ----
     const archetype: LabFamily = entry?.decision === 'archetype' ? entry.archetype : family
-    if (archetype !== family && !isLabFamily(archetype)) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: unknown archetype`)
+    if (archetype !== family && (isPendingFamily(archetype) || pendingFamily)) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: a ${family}-family weapon cannot be assigned the ${archetype} archetype`)
     const fail = (key: string, reason: string) => asLimitation(key, reason)
     const derivation: string[] = []
     const modeled: string[] = []
-    let params: ArchetypeParams
+    let params: ArchetypeParams | undefined
+    let missing: string[] = []
+    let residuals: string[] = []
+    let variant: FamilyVariant | undefined
     const sources: ProvSource[] = [articleSrc]
     switch (archetype) {
       case 'swing-melee': {
@@ -640,15 +812,47 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
         sources.push(projSrc, ruleSource(rules.useStyleShoot), ruleSource(rules.extraUpdates), ruleSource(rules.tilesPerSecond))
         break
       }
+      case 'returning':
+      case 'whip':
+      case 'minion-sentry':
+      case 'explosive-aoe':
+      case 'piercing-beam': {
+        const archEntry = entry?.decision === 'archetype' ? entry : undefined
+        if (archEntry) {
+          checkEntryEvidence(archEntry, evidence, page) // residual quotes are trusted only once verbatim on the revision
+          if (archEntry.bounceCount !== undefined || archEntry.chainTargets !== undefined) {
+            throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: a weapon that needs bounce / chain (sim stubs) is a limitation entry that records them`)
+          }
+        }
+        const out = deriveFamily(familyCtx(archEntry))
+        if (out.kind === 'not-member') return fail(out.key, out.reason)
+        variant = out.variant
+        residuals = out.residuals
+        decision.variant = out.variant
+        decision.partial = out.partial
+        decision.derivation = derivation // recorded even when the weapon ends as a limitation (report)
+        if (Object.keys(out.candidates).length > 0) decision.candidates = out.candidates
+        if (out.conflicts.length > 0) decision.conflicts = out.conflicts
+        derivation.push(...out.derivation)
+        sources.push(...out.sources)
+        if (out.params) params = out.params
+        else missing = out.missing
+        break
+      }
     }
-    if (w.reuseDelayTicks !== undefined) {
+    // (a summon weapon's use is the summoning cast, not its attack cadence: no cadence note for minions / sentries)
+    if (w.reuseDelayTicks !== undefined && family !== 'minion-sentry') {
       derivation.push(`cadence includes the reuse delay: ${w.useAnimationTicks ?? '?'} + ${w.reuseDelayTicks} ticks (Iteminfo reuseDelay; rule: "${RULE_QUOTES.reuseDelay.quote}")`)
       sources.push(ruleSource(rules.reuseDelay))
     }
 
     // ---- damage over time from the infobox debuff rows (B48(c)) ----
+    // a remaining-archetype member keeps its family reason first while the Lab has no interpreter for it
+    const familyFirst = (specific: string) => (variant ? pendingReason(variant, archImplemented, specific) : specific)
     const dot = deriveDot(box, cargoDebuffs, input.buffs, input.buffTable)
-    if (dot.kind === 'fail') return fail('dot-underivable', `Not simulated: this weapon inflicts a debuff, but ${dot.reason}, so its damage over time cannot be modeled.`)
+    if (dot.kind === 'fail') {
+      return fail('dot-underivable', variant && !archImplemented ? familyFirst(`It inflicts a debuff, but ${dot.reason}, so its damage over time cannot be modeled.`) : `Not simulated: this weapon inflicts a debuff, but ${dot.reason}, so its damage over time cannot be modeled.`)
+    }
     const modifiers: LabModifiers | undefined = dot.kind === 'dot' ? { dot: dot.dot } : undefined
     if (dot.kind === 'dot') derivation.push(dot.text)
     // a derived DoT modifier expresses the data flag; text flags still need a reviewer (B45: a human read)
@@ -656,22 +860,45 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
 
     // ---- flagged → overlay decision required ----
     let editorial = false
-    if (open.length > 0) {
-      if (entry?.decision !== 'archetype') {
-        return asLimitation(
-          'flagged',
-          `Not simulated yet: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${[...new Set(open.map((f) => SCREEN_LABEL[f.id]))].join('; ')}) that has not been reviewed for the Lab.`,
-        )
-      }
-      const pages = checkEntryEvidence(entry, evidence, page)
-      const residual = applyResidual(params, entry, w)
-      params = residual.params
-      modeled.push(...residual.modeled)
-      derivation.push(...residual.derivation, `overlay: ${entry.why}`)
+    const reviewed = (e: LabParamsEntry) => {
+      const pages = checkEntryEvidence(e, evidence, page)
+      derivation.push(`overlay: ${e.why}`)
       sources.push(...pages.map((pg) => Evidence.source('lab-params', pg)))
       editorial = true
+    }
+    if (open.length > 0) {
+      if (entry?.decision !== 'archetype') {
+        const labels = [...new Set(open.map((f) => SCREEN_LABEL[f.id]))].join('; ')
+        return asLimitation(
+          'flagged',
+          !variant
+            ? `Not simulated yet: the wiki describes behavior beyond a plain ${FAMILY_NOUN[family]} (${labels}) that has not been reviewed for the Lab.`
+            : archImplemented
+              ? `Not simulated: the wiki describes behavior beyond a plain ${VARIANT_NOUN[variant]} (${labels}) that has not been reviewed for the Lab.`
+              : familyFirst(`The wiki also describes behavior beyond a plain ${VARIANT_NOUN[variant]} (${labels}) that has not been reviewed.`),
+          variant ? sources : [],
+        )
+      }
+      if (!pendingFamily) {
+        rejectForeignResiduals(entry, w)
+        const residual = applyResidual(params as ArchetypeParams, entry, w)
+        params = residual.params
+        modeled.push(...residual.modeled)
+        derivation.push(...residual.derivation)
+      }
+      reviewed(entry)
+    } else if (entry && pendingFamily && residuals.length > 0) {
+      reviewed(entry) // the entry supplies values only a reviewed quote states (e.g. a minion's AI class)
     } else if (entry) {
       throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id} (${w.name}): the article screen is clean — the entry is not needed (residuals only)`)
+    }
+
+    // ---- remaining-archetype member with params still missing: recorded, limitation ----
+    if (!params) {
+      const v = variant as FamilyVariant
+      decision.missing = missing
+      const why = missingSentence(missing, decision.conflicts)
+      return asLimitation('incomplete', archImplemented ? `Not simulated: ${lowerFirst(why)}` : pendingReason(v, false, why), sources, editorial)
     }
     const checked = ArchetypeParams.safeParse(params)
     if (!checked.success) throw new OverlayError(`[E_SCHEMA] lab-params ${w.name}: params fail the archetype schema: ${checked.error.issues.map((i) => i.message).join('; ')}`)
@@ -685,6 +912,17 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
     decision.archetype = archetype
     decision.derivation = derivation
     decision.method = editorial ? 'overlay' : 'derived'
+
+    // ---- PENDING INTERPRETER: complete params are recorded; the weapon is emitted as a limitation ----
+    if (pendingFamily && !archImplemented) {
+      const blocked = blockingUnverifiedFields(archetype, w._prov.unverifiedFields)
+      if (blocked.length > 0) decision.pipelineBlocked = blocked // the validate downgrade would follow once modeled
+      const reason = pendingReason(variant as FamilyVariant, false, blocked.length > 0 ? unverifiedSentence(blocked) : undefined)
+      decision.pending = true
+      decision.reason = reason
+      decision.reasonKey = 'pending-interpreter'
+      return withLab(w, limitation(w, reason), sources, editorial)
+    }
     const candidate = withLab(w, lab, sources, editorial, modeled)
 
     // ---- guard contract ----
@@ -693,7 +931,7 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
       decision.pipelineBlocked = pipelineBlocked
       return candidate // validate's §2.1-3 downgrade (B36 incl.) turns it into a limitation, visibly
     }
-    const verdict = assessWeapon(candidate)
+    const verdict = assess(candidate)
     if (!verdict.simulable) {
       decision.params = undefined
       decision.modifiers = undefined
@@ -706,7 +944,50 @@ export function buildLabParams(input: LabBuildInput): LabBuild {
   return { weapons, decisions }
 }
 
-const FAMILY_NOUN: Record<LabFamily, string> = { 'swing-melee': 'broadsword swing', thrust: 'stab', 'bow-gun': 'bow or gun shot', 'magic-bolt': 'magic bolt' }
+const FAMILY_NOUN: Record<LabFamily, string> = {
+  'swing-melee': 'broadsword swing',
+  thrust: 'stab',
+  'bow-gun': 'bow or gun shot',
+  'magic-bolt': 'magic bolt',
+  returning: 'returning weapon',
+  whip: 'whip',
+  'minion-sentry': 'minion or sentry',
+  'explosive-aoe': 'explosive',
+  'piercing-beam': 'held beam',
+}
+
+/** Families whose cadence is not a burst signal (a swing; a summon's attack rate; a thrown explosive). */
+const NO_BURST_FLAG: readonly LabFamily[] = ['swing-melee', 'minion-sentry', 'explosive-aoe']
+
+const lowerFirst = (s: string) => `${s.charAt(0).toLowerCase()}${s.slice(1)}`
+
+/** Plain words for the weapon fields a limitation reason may name. */
+const FIELD_WORD: Record<string, string> = {
+  damageClass: 'damage class',
+  damage: 'damage',
+  critPct: 'critical strike chance',
+  useTimeTicks: 'use time',
+  useAnimationTicks: 'use time',
+  reuseDelayTicks: 'reuse delay',
+  knockback: 'knockback',
+  manaCost: 'mana cost',
+  autoReuse: 'auto-reuse',
+  ammoClass: 'ammunition',
+  shootSpeedTps: 'velocity',
+}
+
+/** "Its damage, critical strike chance and knockback are unverified in the wiki data." */
+export function unverifiedSentence(fields: readonly string[]): string {
+  const words = [...new Set(fields.map((f) => FIELD_WORD[f.split('.')[0]] ?? f))]
+  const list = words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
+  return `Its ${list} ${words.length > 1 ? 'are' : 'is'} unverified in the wiki data.`
+}
+
+/** Residual fields of the remaining-archetype families / recorded extras never apply to the original four. */
+function rejectForeignResiduals(entry: Extract<LabParamsEntry, { decision: 'archetype' }>, w: Weapon): void {
+  const foreign = (['throwRangeTiles', 'aiClass', 'attackRateTicks', 'sentryRangeTiles', 'blastRadiusTiles', 'trigger', 'fuseTicks', 'falloff', 'tickRateTicks', 'bounceCount', 'chainTargets'] as const).filter((k) => entry[k] !== undefined)
+  if (foreign.length > 0) throw new OverlayError(`[E_SCHEMA] overlay lab-params/i:${w.id}: ${entry.archetype} takes no ${foreign.join(', ')}`)
+}
 
 /** Overlay quotes: verbatim on their page; the weapon's own article must be among them. */
 function checkEntryEvidence(entry: LabParamsEntry, evidence: Evidence, ownPage: string) {
@@ -809,11 +1090,18 @@ function withLab(w: Weapon, lab: LabBehavior, sources: readonly ProvSource[], ed
 export interface FamilyCoverage {
   family: LabFamily
   total: number
+  /** Params complete from the data + rules alone / with a reviewed overlay entry. */
   derived: number
   overlay: number
+  /** Params complete, the archetype has no sim interpreter yet: recorded, emitted as a limitation. */
+  pending: number
+  /** …of which a core weapon field the sim needs is unverified (the validate downgrade would follow). */
+  pendingBlocked: number
   /** Kept params but the validate stage downgrades them (unverified core field; B36 incl.). */
   downgraded: number
   limitation: number
+  /** Limitations whose only blocker is a missing (unstated) param. */
+  incomplete: number
   simulable: number
   byReason: Map<string, number>
 }
@@ -826,7 +1114,7 @@ export function coverageByFamily(decisions: readonly LabDecision[], emitted: Rea
     let downgraded = 0
     for (const d of ds) {
       const final = emitted.get(d.id)
-      if (d.method !== 'limitation' && final?.labBehavior.kind !== 'archetype') downgraded += 1
+      if (d.method !== 'limitation' && !d.pending && final?.labBehavior.kind !== 'archetype') downgraded += 1
       if (d.method === 'limitation') byReason.set(d.reasonKey ?? '?', (byReason.get(d.reasonKey ?? '?') ?? 0) + 1)
     }
     const simulable = ds.filter((d) => emitted.get(d.id)?.labBehavior.kind === 'archetype').length
@@ -835,8 +1123,11 @@ export function coverageByFamily(decisions: readonly LabDecision[], emitted: Rea
       total: ds.length,
       derived: ds.filter((d) => d.method === 'derived').length,
       overlay: ds.filter((d) => d.method === 'overlay').length,
+      pending: ds.filter((d) => d.pending).length,
+      pendingBlocked: ds.filter((d) => d.pending && (d.pipelineBlocked?.length ?? 0) > 0).length,
       downgraded,
       limitation: ds.filter((d) => d.method === 'limitation').length,
+      incomplete: ds.filter((d) => d.reasonKey === 'incomplete').length,
       simulable,
       byReason,
     }
