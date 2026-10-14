@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import bosses from '../data/bosses.json'
+import buffs from '../data/buffs.json'
 import conditions from '../data/conditions.json'
 import drops from '../data/drops.json'
 import enemies from '../data/enemies.json'
 import itemUniverse from '../data/item-universe.json'
+import itemsDetail from '../data/items.detail.json'
 import meta from '../data/meta.json'
 import progression from '../data/progression.json'
 import recipeGroups from '../data/recipe-groups.json'
@@ -221,6 +223,8 @@ describe('dev validation accepts the current emitted data (app ⇄ pipeline cont
   const cases: Array<[Parameters<typeof validateDataFile>[0], unknown]> = [
     ['weapons.list', weaponsList],
     ['weapons.detail', weaponsDetail],
+    ['items.detail', itemsDetail],
+    ['buffs', buffs],
     ['recipes', recipes],
     ['recipe-groups', recipeGroups],
     ['drops', drops],

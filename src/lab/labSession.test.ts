@@ -11,15 +11,16 @@ import { APPROXIMATIONS, cadenceTicksFor, TICKS_PER_SECOND, type SimEvent } from
 import { floatPose } from './floatingNumbers'
 import { createLabSession, type LabSession } from './labSession'
 import { defaultLabWeapon, labWeapons } from './labWeapons'
+import { LAB_SETUP } from './testing/labData'
 
-const weapons = labWeapons(weaponsJson as Weapon[])
+const weapons = labWeapons(weaponsJson as Weapon[], LAB_SETUP)
 /** The swung weapons among them (thrust weapons light up as their data lands — they have no arc). */
 const swords = weapons.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
 const FRAME_MS = 1000 / 60
 
 function session(weapon: Weapon, seed = 7): LabSession {
   let s = seed
-  const created = createLabSession(weapon, { seed: () => s++ })
+  const created = createLabSession(weapon, { seed: () => s++, setup: LAB_SETUP })
   if (!created.ok) throw new Error(`${weapon.name} refused: ${created.refusal.message}`)
   return created.session
 }
@@ -75,7 +76,8 @@ describe('AC2 + AC3: swings hit the dummy; the HUD updates live', () => {
     const events = hold(s, 2)
     const hud = s.getHud()
     expect(hud.attacksPerSec).toBeCloseTo(TICKS_PER_SECOND / cadenceTicksFor(sword, sword.useAnimationTicks!), 9)
-    const busy = uses(events).reduce((sum, e) => sum + (e.type === 'use-start' ? e.durationTicks : 0), 0) / TICKS_PER_SECOND
+    // Whole attack cycles: each use time + the weapon's cooldown (none for this sword).
+    const busy = uses(events).reduce((sum, e) => sum + (e.type === 'use-start' ? e.durationTicks + s.summary.reuseDelayTicks : 0), 0) / TICKS_PER_SECOND
     expect(hud.attackSeconds).toBeCloseTo(busy, 9)
     expect(hud.estimatedDps).toBeCloseTo(hud.totalDamage / busy, 9)
   })
@@ -168,8 +170,9 @@ describe('AC4: two broadswords differ in arc, speed and damage — from data par
     expect(swingParams(long).reachTiles).toBeGreaterThan(swingParams(short).reachTiles + 1)
     const a = session(short)
     const b = session(long)
-    const hitsA = damages(hold(a, 6))
-    const hitsB = damages(hold(b, 6))
+    // Direct hits only: a sword that inflicts a debuff also deals damage-over-time ticks, which are not hits.
+    const hitsA = damages(hold(a, 6)).filter((e) => e.source !== 'dot')
+    const hitsB = damages(hold(b, 6)).filter((e) => e.source !== 'dot')
     // Speed: one hit per swing, swings at each weapon's own cadence (±1 partial swing at the end).
     expect(a.summary.cadenceTicks).not.toBe(b.summary.cadenceTicks)
     for (const [s, hits] of [[a, hitsA], [b, hitsB]] as const) {
@@ -194,7 +197,8 @@ describe('AC5: crits roll at the weapon’s crit chance and look distinct', () =
     ['highest crit chance', byCrit.at(-1)!],
   ])('%s: observed crit rate ≈ 4% base + the weapon’s crit', (_label, weapon) => {
     const s = session(weapon, 1234)
-    const hits = damages(hold(s, 900, 250)) // big frames: the engine runs whole ticks, results unchanged
+    // Direct hits only: damage-over-time ticks never crit and are not hits.
+    const hits = damages(hold(s, 900, 250)).filter((e) => e.source !== 'dot') // big frames: the engine runs whole ticks, results unchanged
     const expected = (4 + (weapon.critPct ?? 0)) / 100
     expect(s.summary.critChancePct / 100).toBeCloseTo(expected, 9)
     expect(hits.length).toBeGreaterThan(2000)

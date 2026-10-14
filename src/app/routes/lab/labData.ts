@@ -1,11 +1,12 @@
 /**
  * Data for /lab: the weapon detail records (the sim needs `labBehavior` params and verified
- * stats; the browser filters every weapon by class, stage, rarity, source and damage) and the
- * sprite manifest. Both are the shared lazy data chunks the database pages use (ADR D7) — the Lab
- * adds no data of its own.
+ * stats; the browser filters every weapon by class, stage, rarity, source and damage), the item
+ * records (ammo for bows and guns, P3-S4), the buff registry (damage-over-time weapons) and the
+ * sprite manifest. All are the shared lazy data chunks (ADR D7) — the Lab adds no data of its own.
  */
-import { loadDetailIndex, loadSpriteIndex, peekDetailIndex, peekSpriteIndex } from '../../../data-access'
-import type { SpriteIndex, Weapon } from '../../../data-access/types'
+import { loadBuffs, loadDetailIndex, loadItems, loadSpriteIndex, peekBuffs, peekDetailIndex, peekItems, peekSpriteIndex } from '../../../data-access'
+import type { Buff, Item, SpriteIndex, Weapon } from '../../../data-access/types'
+import { labSetup, type LabSetup } from '../../../lab/labSetup'
 import { labWeapons } from '../../../lab/labWeapons'
 import { browserRows, type LabBrowserRow } from './browserModel'
 
@@ -15,34 +16,48 @@ export interface LabData {
   /** Every weapon in the dataset, for the in-Lab browser (browse order, with simulation status). */
   rows: readonly LabBrowserRow[]
   byId: ReadonlyMap<number, Weapon>
+  /** Ammo and buffs handed to the engine (src/lab/labSetup.ts). */
+  setup: LabSetup
   sprites: SpriteIndex | null
 }
 
-const derived = new WeakMap<ReadonlyMap<number, Weapon>, Pick<LabData, 'list' | 'rows'>>()
+type Derived = Pick<LabData, 'list' | 'rows' | 'setup'>
 
-function derive(byId: ReadonlyMap<number, Weapon>): Pick<LabData, 'list' | 'rows'> {
-  let data = derived.get(byId)
+// One derivation per loaded dataset (the loaders are session singletons, so these keys are stable).
+const derived = new WeakMap<ReadonlyMap<number, Weapon>, WeakMap<readonly Item[], WeakMap<readonly Buff[], Derived>>>()
+
+function derive(byId: ReadonlyMap<number, Weapon>, items: readonly Item[], buffs: readonly Buff[]): Derived {
+  let byItems = derived.get(byId)
+  if (!byItems) derived.set(byId, (byItems = new WeakMap()))
+  let byBuffs = byItems.get(items)
+  if (!byBuffs) byItems.set(items, (byBuffs = new WeakMap()))
+  let data = byBuffs.get(buffs)
   if (!data) {
-    data = { list: labWeapons(byId.values()), rows: browserRows(byId.values()) }
-    derived.set(byId, data)
+    const setup = labSetup(items, buffs)
+    data = { setup, list: labWeapons(byId.values(), setup), rows: browserRows(byId.values(), setup) }
+    byBuffs.set(buffs, data)
   }
   return data
 }
 
 export async function loadLabData(): Promise<LabData> {
-  const [byId, sprites] = await Promise.all([
+  const [byId, items, buffs, sprites] = await Promise.all([
     loadDetailIndex('weapons'),
+    loadItems(),
+    loadBuffs(),
     loadSpriteIndex().catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
   ])
-  return { ...derive(byId), byId, sprites }
+  return { ...derive(byId, items, buffs), byId, sprites }
 }
 
 export function peekLabData(): LabData | undefined {
   const byId = peekDetailIndex('weapons')
-  return byId ? { ...derive(byId), byId, sprites: peekSpriteIndex() ?? null } : undefined
+  const items = peekItems()
+  const buffs = peekBuffs()
+  return byId && items && buffs ? { ...derive(byId, items, buffs), byId, sprites: peekSpriteIndex() ?? null } : undefined
 }
 
 /**

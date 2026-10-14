@@ -16,3 +16,6 @@ Remove the redundant cadence override; migrate B44's label to the engine registr
 
 ## B59 — B56 application ratified
 The 9 reviewer-judgment overlay entries clearing article-screen flags (modifier advice, knockback "hold", Trident water-movement/light) are RATIFIED under the B45 evidentiary standard. The schema `always:false` change for the thrust convention is approved (merge stage + emitted-data test retain enforcement). The "approximately N tiles" measurement-semantics caveat is accepted as a labeled source citation (the stated value IS the wiki's claim; the Lab never promises engine parity).
+
+## B60 — P3-S4/S5 Lab choices: RATIFIED
+(a) Ranged/magic target distance 6 tiles (melee point-blank) — labeled Lab choice in panel + assumptions; the Quad-Barrel ~25% DPS consequence is the honest cost of "projectiles travel" and is disclosed. (b) Default ammo = class-defining basic tier (Wooden Arrow / Musket Ball). (c) Reset preserves loaded ammo; ammo switch restarts the session/stats. (d) Default Lab weapon rule = weakest by base damage (currently Wooden Bow). (e) Mana regeneration on/off setting (PRD P3-S5 AC2 "configurable regen behavior"). Follow-up for the sim owner queue: migrate the B44 swing-geometry label into the engine registry (third mention — bundle with the next src/sim touch).

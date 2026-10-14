@@ -66,6 +66,14 @@ export function floatPose(ageMs: number, crit: boolean, reducedMotion: boolean):
 // impact point whose box never meets any live number's box while both are visible. Only if no
 // offset is free (a burst far faster than any weapon in the data) does it retire the live numbers
 // in its way — normal hits before crits, so a crit is never covered by, or dropped for, a normal hit.
+//
+// Numbers stay with their target (design review P3-S4/S5 M4): a `band` caps how far sideways a
+// number may move (its anchor stays within the band, e.g. the dummy and a little air) — so a fast
+// gun's numbers never drift back into the flight lane — and the layout stacks them above and below
+// the target instead. The band is a hard cap: if a burst fills it (only under a zoomed-out phone
+// camera with the fastest casters), the usual last resort applies — a live normal hit retires early
+// — rather than a number jumping back along the flight lane. An `avoid` box (e.g. the dummy's
+// bullseye) is kept clear for the number's whole rise whenever a free spot elsewhere exists.
 
 export interface FloatSize {
   /** Measured size at scale 1 (CSS px). */
@@ -108,9 +116,22 @@ export interface FloatPlacement<T> {
   evicted: T[]
 }
 
-/** Candidate offsets, in steps of half the new number's width / height. Rows go down only (never up into the HUD). */
+/** Where a number may go besides the bounds (CSS px). */
+export interface FloatZone {
+  /** The number's anchor (its horizontal centre) stays within [left, right]: near its target. */
+  band?: { left: number; right: number }
+  /** A box the number should never cover, from birth to the top of its rise (used while a free spot elsewhere exists). */
+  avoid?: FloatRect
+}
+
+/**
+ * Candidate offsets, in steps of half the new number's width / height. Rows go down first; rows up
+ * are offered only when the caller gives bounds (the layout then checks the whole rise stays below
+ * the HUD) — with a band capping the columns, a burst stacks above and below its target instead.
+ */
 const COLUMN_STEPS = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]
 const ROW_STEPS = [0, 1, 2, 3, 4]
+const BANDED_ROW_STEPS = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]
 /** A row step costs more than a column step: numbers fan out above the target before stacking onto it. */
 const ROW_COST = 1.6
 
@@ -120,12 +141,12 @@ interface Candidate {
   cost: number
 }
 
-function candidates(size: FloatSize): Candidate[] {
+function candidates(size: FloatSize, rows: readonly number[] = ROW_STEPS): Candidate[] {
   const sx = size.w / 2 + FLOAT_GAP_X / 2
   const sy = size.h / 2 + FLOAT_GAP_Y / 2
   const list: Candidate[] = []
-  for (const r of ROW_STEPS) {
-    for (const c of COLUMN_STEPS) list.push({ dx: c * sx, dy: r * sy, cost: Math.abs(c) * sx + r * sy * ROW_COST })
+  for (const r of rows) {
+    for (const c of COLUMN_STEPS) list.push({ dx: c * sx, dy: r * sy, cost: Math.abs(c) * sx + Math.abs(r) * sy * ROW_COST })
   }
   // Stable: equal costs keep the column order above (right of the impact first, then left).
   return list.map((c, i) => ({ c, i })).sort((a, b) => a.c.cost - b.c.cost || a.i - b.i).map(({ c }) => c)
@@ -154,17 +175,30 @@ export class FloatLayout<T> {
 
   /**
    * Places a number born `now` at the impact point (`at`, CSS px) and records it as live.
-   * `bounds` keeps it clear of the HUD where possible.
+   * `bounds` keeps it clear of the HUD where possible; `zone` keeps it near its target (see above).
    */
-  place(item: T, now: number, at: { x: number; y: number }, size: FloatSize, crit: boolean, reducedMotion: boolean, bounds?: FloatBounds): FloatPlacement<T> {
+  place(item: T, now: number, at: { x: number; y: number }, size: FloatSize, crit: boolean, reducedMotion: boolean, bounds?: FloatBounds, zone: FloatZone = {}): FloatPlacement<T> {
     this.prune(now)
     this.remove(item)
-    const all = candidates(size)
-    const inside = bounds ? all.filter((c) => this.fits(at, c, size, crit, reducedMotion, bounds)) : all
-    const pool = inside.length > 0 ? inside : all
+    const { band, avoid } = zone
+    const all = candidates(size, band && bounds ? BANDED_ROW_STEPS : ROW_STEPS)
+    const near = band ? all.filter((c) => at.x + c.dx >= band.left - 1e-9 && at.x + c.dx <= band.right + 1e-9) : all
+    const inside = bounds ? near.filter((c) => this.fits(at, c, size, crit, reducedMotion, bounds)) : near
+    const pool = inside.length > 0 ? inside : near.length > 0 ? near : all
     const blockers = (c: Candidate) => this.live.filter((f) => collides(f, { x: at.x + c.dx, y: at.y + c.dy, ...size, crit, bornAt: now }, now, reducedMotion))
+    // Clear of `avoid` over the whole life: the box at birth, the risen box at the end, and the path between.
+    const clear = (c: Candidate) => {
+      if (!avoid) return true
+      const f = { x: at.x + c.dx, y: at.y + c.dy, ...size, crit }
+      const born = rectAt(f, 0, reducedMotion)
+      const risen = rectAt(f, FLOAT_MS, reducedMotion)
+      const x = Math.min(born.x, risen.x)
+      const y = Math.min(born.y, risen.y)
+      return !rectsOverlap({ x, y, w: Math.max(born.x + born.w, risen.x + risen.w) - x, h: Math.max(born.y + born.h, risen.y + risen.h) - y }, avoid)
+    }
 
-    let chosen = pool.find((c) => blockers(c).length === 0)
+    const free = (c: Candidate) => blockers(c).length === 0
+    let chosen = pool.find((c) => clear(c) && free(c)) ?? pool.find(free)
     let evicted: LiveFloat<T>[] = []
     if (!chosen) {
       // No free offset: retire as little as possible — never a crit for a normal hit when avoidable.
@@ -215,13 +249,32 @@ export function rectsOverlap(a: FloatRect, b: FloatRect, gapX = 0, gapY = gapX):
   return a.x < b.x + b.w + gapX && b.x < a.x + a.w + gapX && a.y < b.y + b.h + gapY && b.y < a.y + a.h + gapY
 }
 
+/** Clear space a mark keeps around a live number, in multiples of the number's height. */
+export interface MarkClearance {
+  side: number
+  above: number
+  below: number
+}
+
+/** Reach-guide dashes, a thrust's streak, a shot's body: a whole glyph's room to either side, a quarter of one above and below. */
+export const MARK_CLEARANCE: MarkClearance = { side: 1, above: 0.25, below: 0.25 }
 /**
- * Whether a reach-guide dash (its box, CSS px) sits close enough to a live number to read as part
- * of it: a short gold dash beside a number at its height reads as a minus sign ("–15"). Dashes keep
- * a whole glyph's room (the number's own height) to either side and a quarter of that above and below.
+ * A shot's trail and the tracer it leaves (design review P3-S4/S5 M4): a thin level line that ends
+ * at the impact, right where numbers spawn — its end stub two glyphs to the left of a number, along
+ * its baseline, still read as a minus ("–57"). Twice the room to the side, half a glyph below.
  */
-export function readsAsPartOfNumber(dash: FloatRect, numbers: readonly FloatRect[]): boolean {
-  return numbers.some((n) => rectsOverlap(dash, n, n.h, n.h / 4))
+export const TRACER_CLEARANCE: MarkClearance = { side: 2, above: 0.25, below: 0.5 }
+
+/**
+ * Whether a mark (a reach-guide dash, a streak or tracer cell — its box, CSS px) sits close enough to
+ * a live number to read as part of it: a short dash beside a number at its height reads as a minus
+ * sign ("–15"). `clearance` is the room it keeps, in multiples of the number's height.
+ */
+export function readsAsPartOfNumber(dash: FloatRect, numbers: readonly FloatRect[], clearance: MarkClearance = MARK_CLEARANCE): boolean {
+  return numbers.some((n) => {
+    const side = clearance.side * n.h
+    return dash.x < n.x + n.w + side && n.x - side < dash.x + dash.w && dash.y < n.y + n.h + clearance.below * n.h && n.y - clearance.above * n.h < dash.y + dash.h
+  })
 }
 
 type Placed = Omit<LiveFloat<unknown>, 'item'>
@@ -256,6 +309,68 @@ function collides(prev: Placed, next: Placed, now: number, reducedMotion: boolea
     if (r(t1) < nextBelow && r(t0) > -prevBelow) return true
   }
   return false
+}
+
+// ------------------------------------------------------------------------------------------------
+// Damage-over-time numbers (UX_SPEC §12: "DoT smaller cadence")
+//
+// The engine emits a DoT damage event whenever a debuff's accrued damage reaches a whole point —
+// Frostbite's 25/s is a "1" every 2–3 ticks, far too many numbers to read. The arena shows DoT at
+// its own, slower cadence instead: the damage each debuff dealt to each dummy over DOT_NUMBER_TICKS
+// of sim time, as one small number. Display only — the stats count every event.
+
+/** One DoT number per debuff per dummy per this many ticks (half a second). */
+export const DOT_NUMBER_TICKS = 30
+
+export interface DotNumber {
+  dummyId: string
+  /** `buff:<id>` (the event's sourceId). */
+  sourceId: string
+  amount: number
+  /** Where the debuff ticks (the dummy's centre, tiles). */
+  x: number
+  y: number
+}
+
+interface DotBucket extends DotNumber {
+  /** Sim tick of the bucket's first DoT event. */
+  from: number
+}
+
+export class DotNumberTicker {
+  private readonly buckets = new Map<string, DotBucket>()
+  private readonly windowTicks: number
+
+  constructor(windowTicks = DOT_NUMBER_TICKS) {
+    this.windowTicks = Math.max(1, windowTicks)
+  }
+
+  add(e: { tick: number; dummyId: string; sourceId: string; amount: number; x: number; y: number }): void {
+    const key = `${e.dummyId}|${e.sourceId}`
+    const bucket = this.buckets.get(key)
+    if (bucket) {
+      bucket.amount += e.amount
+      bucket.x = e.x
+      bucket.y = e.y
+    } else {
+      this.buckets.set(key, { dummyId: e.dummyId, sourceId: e.sourceId, amount: e.amount, x: e.x, y: e.y, from: e.tick })
+    }
+  }
+
+  /** Numbers due by sim tick `tick` (a full window since their first event); `all` flushes every bucket. */
+  drain(tick: number, all = false): DotNumber[] {
+    const out: DotNumber[] = []
+    for (const [key, bucket] of this.buckets) {
+      if (!all && tick - bucket.from < this.windowTicks) continue
+      this.buckets.delete(key)
+      if (bucket.amount > 0) out.push({ dummyId: bucket.dummyId, sourceId: bucket.sourceId, amount: bucket.amount, x: bucket.x, y: bucket.y })
+    }
+    return out
+  }
+
+  clear(): void {
+    this.buckets.clear()
+  }
 }
 
 /**

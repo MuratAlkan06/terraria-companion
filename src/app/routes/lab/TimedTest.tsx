@@ -18,7 +18,8 @@ import { lockReason, testDpsLabel, testName } from './timedTestCopy'
  * - `ResultsSummary`: slides up 260 ms when the run ends (readouts are frozen by then — the engine
  *   halts), the estimated DPS counts up 300 ms in tabular numerals with its width reserved (no
  *   shift), no confetti; reduced motion: no slide, no count-up. "Run again" replays the exact run;
- *   "Reset" is the single Lab reset. The DoT rows appear only for a weapon that applies DoT.
+ *   "Reset" is the single Lab reset. The DoT rows appear only for a weapon that applies DoT, the
+ *   "Ammo used" / "Mana used" rows only for a weapon that uses them.
  * - `LockBadge` / `LockNotice`: why the panels are disabled while a test runs (§5.7).
  * Copy shared with the announcer lives in ./timedTestCopy.ts. The countdown and the results heading
  * are programmatically focusable (tabIndex −1): the Lab moves focus to them as each one replaces
@@ -136,6 +137,10 @@ export interface ResultsSummaryProps {
   weaponName: string
   /** The equipped weapon applies damage over time: show the direct / DoT split. */
   appliesDot: boolean
+  /** A bow or gun: show the ammo the run used. */
+  usesAmmo?: boolean
+  /** A weapon with a mana cost: show the mana the run used. */
+  usesMana?: boolean
   /** The test result's AssumptionsTip (labAssumptions 'timed-test-dps'). */
   assumptions: Assumptions
   onRunAgain: () => void
@@ -143,7 +148,7 @@ export interface ResultsSummaryProps {
   compact: boolean
 }
 
-export function ResultsSummary({ result, weaponName, appliesDot, assumptions, onRunAgain, onReset, compact }: ResultsSummaryProps) {
+export function ResultsSummary({ result, weaponName, appliesDot, usesAmmo = false, usesMana = false, assumptions, onRunAgain, onReset, compact }: ResultsSummaryProps) {
   const reducedMotion = useReducedMotion()
   const dps = useCountUp(result.estimatedDps, 300, !reducedMotion)
   const counting = dps !== result.estimatedDps
@@ -184,12 +189,13 @@ export function ResultsSummary({ result, weaponName, appliesDot, assumptions, on
         <Row label="Total damage">
           <span data-result="total">{formatInt(result.totalDamage)}</span>
         </Row>
+        {/* The two parts of the total, nested under it (indented on a rule, a size smaller). */}
         {appliesDot ? (
           <>
-            <Row label="Direct damage">
+            <Row label="Direct damage" nested>
               <span data-result="direct">{formatInt(result.directDamage)}</span>
             </Row>
-            <Row label="DoT damage" srLabel="Damage over time (DoT)">
+            <Row label="DoT damage" srLabel="Damage over time (DoT)" nested>
               <span data-result="dot">{formatInt(result.dotDamage)}</span>
             </Row>
           </>
@@ -201,6 +207,16 @@ export function ResultsSummary({ result, weaponName, appliesDot, assumptions, on
           <span data-result="crits">{formatInt(result.crits)}</span>
           <span className="ml-1 text-xs font-normal text-fg-muted">({critRate}% of hits)</span>
         </Row>
+        {usesAmmo ? (
+          <Row label="Ammo used">
+            <span data-result="ammo">{formatInt(result.ammoConsumed)}</span>
+          </Row>
+        ) : null}
+        {usesMana ? (
+          <Row label="Mana used">
+            <span data-result="mana">{formatInt(result.manaConsumed)}</span>
+          </Row>
+        ) : null}
       </dl>
       <p className="mt-2 text-xs text-fg-muted">
         Seed <span className="tabular-nums" data-result="seed">{result.seed}</span> · Run again replays this exact run.
@@ -219,10 +235,10 @@ export function ResultsSummary({ result, weaponName, appliesDot, assumptions, on
   )
 }
 
-function Row({ label, srLabel, emphasis, children }: { label: string; srLabel?: string; emphasis?: boolean; children: ReactNode }) {
+function Row({ label, srLabel, emphasis, nested, children }: { label: string; srLabel?: string; emphasis?: boolean; nested?: boolean; children: ReactNode }) {
   return (
     <>
-      <dt className={cx('self-center text-fg-muted', emphasis && 'font-semibold text-fg')}>
+      <dt className={cx('self-center text-fg-muted', emphasis && 'font-semibold text-fg', nested && 'ml-1 border-l-2 border-night-600 pl-2.5 text-xs')} data-result-nested={nested ? '' : undefined}>
         {srLabel ? (
           <>
             <span aria-hidden="true">{label}</span>
@@ -232,7 +248,7 @@ function Row({ label, srLabel, emphasis, children }: { label: string; srLabel?: 
           label
         )}
       </dt>
-      <dd className="self-center text-right font-semibold whitespace-nowrap text-fg">{children}</dd>
+      <dd className={cx('self-center text-right font-semibold whitespace-nowrap text-fg', nested && 'text-xs')}>{children}</dd>
     </>
   )
 }

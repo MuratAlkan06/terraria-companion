@@ -1,23 +1,28 @@
-import { ChartColumn, Maximize, Minimize, MousePointerClick, RotateCcw } from 'lucide-react'
+import { ChartColumn, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { hasAssumptions, type Assumptions } from '../../../components/assumptions'
 import { buttonClass } from '../../../components/buttonStyles'
 import { cx } from '../../../components/cx'
 import { EstimateLabel } from '../../../components/EstimateLabel'
+import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
 import { SpriteImg } from '../../../components/SpriteImg'
-import type { SpriteIndex, Weapon } from '../../../data-access/types'
+import { Toggletip } from '../../../components/Toggletip'
+import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import type { LabHudState } from '../../../lab/labSession'
+import type { LabHudState, LabManaHud } from '../../../lab/labSession'
 import { getField } from '../../../schemas/getField'
+import { APPROXIMATIONS } from '../../../sim'
 import { format1, format2, formatInt, HUD_PANEL } from './hudStyles'
 import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
 
 /**
  * HudOverlay (UX_SPEC §3.4) — HTML over the canvas; the canvas itself is aria-hidden, so every
- * meaningful output lives here (§9). EquippedBar top-left, StatReadout cluster top-right, the
- * timed tests bottom-left (./TimedTest.tsx), the Graph / Reset / Fullscreen controls bottom-right.
+ * meaningful output lives here (§9). EquippedBar top-left with the contextual ManaBar / AmmoCounter
+ * under it, StatReadout cluster top-right (with the amber "test mode" chip while mana is ignored,
+ * §5.7), the timed tests bottom-left (./TimedTest.tsx), the Graph / Reset / Fullscreen controls
+ * bottom-right.
  * Numbers use tabular numerals so live updates never shift the layout. Derived numbers carry an
  * EstimateLabel with the session's AssumptionsTip. `compact` follows the arena's own width (narrow
  * phones, or a tablet/desktop arena squeezed by side panels): short labels, content-sized columns,
@@ -88,6 +93,7 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
   const dpsAssumptions = hasAssumptions(dps) ? dps : assumptions
   return (
     <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="">
+      {hud.mana?.ignoreMana ? <TestModeChip className={compact ? 'mb-1.5' : 'mb-2'} /> : null}
       {/* Compact: both columns reserve their width from the first frame — "999 (99 crits)" and
           "8.57 est." — so the box doesn't grow (and squeeze the EquippedBar) as the numbers climb. */}
       <dl
@@ -228,5 +234,258 @@ export function AttackHint({ touch, verb = 'swing' }: { touch: boolean; verb?: s
       <MousePointerClick aria-hidden="true" className="size-4 shrink-0 text-accent" />
       {touch ? `Touch and hold the arena to ${verb}` : `Press and hold to ${verb} · or hold Space`}
     </p>
+  )
+}
+
+/**
+ * "ignore mana (test mode)" is on (UX_SPEC §5.7): a persistent amber chip in the StatReadout
+ * cluster — filled, with an icon and words, so it never reads as the outlined "est." chip.
+ */
+export function TestModeChip({ className }: { className?: string }) {
+  return (
+    <p
+      className={cx('flex w-fit items-center gap-1.5 border-2 border-gold-300 bg-gold-500 px-1.5 text-xs leading-5 font-bold text-fg-on-accent', className)}
+      data-test-mode-chip=""
+    >
+      <FlaskConical aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={2.5} />
+      Test mode: ignoring mana
+    </p>
+  )
+}
+
+/** The engine's low-mana rule, with its wiki source (AMENDMENTS-008 B35: the Lab labels the 40% behavior). */
+const LOW_MANA_RULE = APPROXIMATIONS['insufficient-mana']
+export const LOW_MANA_LABEL = 'Low mana: 40% speed (game behavior)'
+/** "Stop at zero" (named as in the settings) without regeneration: casting stops for good (until a reset). */
+export const OUT_OF_MANA_LABEL = 'Stop at zero: casting stopped (test setting)'
+/** "Stop at zero" with regeneration: casting waits until mana covers the cost (the setting's own words). */
+export const OUT_OF_MANA_WAIT_LABEL = 'Stop at zero: casting waits for mana (test setting)'
+/** A label split before its closing parenthesis, which is kept on one line ("(game / behavior)" read badly). */
+const keepParenthesis = (label: string): readonly [string, string] => {
+  const at = label.lastIndexOf(' (')
+  return [label.slice(0, at), label.slice(at + 1)]
+}
+const LOW_MANA_COPY = keepParenthesis(LOW_MANA_LABEL)
+const OUT_OF_MANA_COPY = keepParenthesis(OUT_OF_MANA_LABEL)
+const OUT_OF_MANA_WAIT_COPY = keepParenthesis(OUT_OF_MANA_WAIT_LABEL)
+
+/** Which low-mana notice shows (none, the B35 slow cast, or stop at zero waiting / stopped). */
+type LowManaNotice = 'none' | 'slow-cast' | 'stop-wait' | 'stop'
+
+function lowManaNotice(mana: LabManaHud): LowManaNotice {
+  if (!mana.warning) return 'none'
+  if (mana.policy === 'slow-cast') return 'slow-cast'
+  return mana.regen ? 'stop-wait' : 'stop'
+}
+
+/** The shown notice's words: the ManaBar's meter is described by them, wherever the notice sits. */
+const noticeTextId = (kind: Exclude<LowManaNotice, 'none'>) => `lab-mana-notice-${kind}`
+
+/**
+ * ManaBar (UX_SPEC §3.4, contextual: weapons with a mana cost): the engine's pool as a meter, the
+ * cost per cast, "Mana used" since the last reset, and — while the latched low-mana warning is on —
+ * what happens instead, labeled: the game's 40% slow cast (default, with its wiki source in a tip)
+ * or the "stop at zero" test setting (casting waits for mana while it regenerates, else stops).
+ * The notice's room is ALWAYS laid out (design review P3-S4/S5 B1): every notice is stacked in one
+ * cell, only the current one visible, so the HUD — and the phone camera framed below it — never
+ * changes height when the warning comes or goes. The full HUD keeps that cell in the card; the
+ * compact HUD moves it out (`inlineNotice` false) into the stats column beside the card, as a
+ * callout pointing at it (`LowManaCallout`), so the card — and the HUD row — stay short enough for
+ * the phone camera's 2× zoom (and keeps no room while mana is ignored: no warning can show then).
+ * Either way the meter is described by the notice on show.
+ */
+export function ManaBar({ mana, manaConsumed, compact, inlineNotice = true }: { mana: LabManaHud; manaConsumed: number; compact: boolean; inlineNotice?: boolean }) {
+  const fill = mana.max > 0 ? Math.min(1, Math.max(0, mana.current / mana.max)) : 0
+  const costMark = mana.max > 0 ? Math.min(1, mana.costPerUse / mana.max) : 0
+  const notice = lowManaNotice(mana)
+  return (
+    <section aria-label="Mana bar" className={cx(PANEL, 'w-full max-w-64', compact ? 'p-1.5' : 'p-2')} data-mana-bar="" data-low-mana-notice={notice}>
+      <div className="flex items-baseline justify-between gap-2 text-xs text-fg-muted tabular-nums">
+        <span className="font-semibold tracking-wide uppercase">Mana</span>
+        <span>
+          <span className="font-semibold text-fg" data-stat="mana">
+            {formatInt(mana.current)}
+          </span>
+          <span aria-hidden="true"> / </span>
+          <span className="sr-only"> of </span>
+          <span data-stat="mana-max">{formatInt(mana.max)}</span>
+        </span>
+      </div>
+      <div
+        role="meter"
+        aria-label="Mana"
+        aria-valuemin={0}
+        aria-valuemax={mana.max}
+        aria-valuenow={mana.current}
+        aria-valuetext={`${mana.current} of ${mana.max}`}
+        aria-describedby={notice === 'none' ? undefined : noticeTextId(notice)}
+        className="relative mt-1 h-3 border-2 border-night-600 bg-night-900"
+      >
+        <span aria-hidden="true" className={cx('absolute inset-y-0 left-0', mana.warning ? 'bg-night-600' : 'bg-night-400')} style={{ width: `${fill * 100}%` }} />
+        {/* One cast's cost: below this mark the next cast can't be paid. */}
+        <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-fg-muted" style={{ left: `${costMark * 100}%` }} data-mana-cost-mark="" />
+      </div>
+      <dl className="mt-1 flex flex-wrap gap-x-2.5 text-xs text-fg-muted tabular-nums">
+        <Fact label="Cost per cast" short="Cost" compact={compact}>
+          {mana.costPerUse}
+        </Fact>
+        <Fact label="Mana used" short="Used" compact={compact}>
+          {/* Room for "9,999" from the first frame: a growing count never re-wraps the row (or moves the camera). */}
+          <span className="inline-block min-w-[5ch]" data-stat="mana-used">
+            {formatInt(manaConsumed)}
+          </span>
+        </Fact>
+      </dl>
+      {inlineNotice ? <LowManaSlot notice={notice} className="mt-1" /> : null}
+    </section>
+  )
+}
+
+/**
+ * The compact HUD's low-mana notice (see ManaBar): in the stats column, bottom-aligned with the
+ * ManaBar beside it — framed in the chip's gold with a pixel pointer at its left edge, toward the
+ * card. Its room is always laid out, like the card's own cell.
+ */
+export function LowManaCallout({ mana }: { mana: LabManaHud }) {
+  const notice = lowManaNotice(mana)
+  // As wide as the stats box above it, never wider (w-0 + min-w-full: no say in the column's width);
+  // the pointer sticks out into the gap between the columns.
+  return <LowManaSlot notice={notice} callout className="w-0 min-w-full" data-low-mana-notice={notice} />
+}
+
+/**
+ * Every notice in one grid cell: the cell is as tall as the tallest, shown or not. Hidden ones are
+ * `invisible` (out of the accessibility tree and the tab order).
+ */
+function LowManaSlot({ notice, callout = false, className, ...data }: { notice: LowManaNotice; callout?: boolean; className?: string; 'data-low-mana-notice'?: LowManaNotice }) {
+  return (
+    <div className={cx('grid text-xs', className)} data-low-mana-slot="" {...data}>
+      <LowManaIndicator shown={notice === 'slow-cast'} callout={callout} />
+      <StopAtZeroNotice kind="stop-wait" copy={OUT_OF_MANA_WAIT_COPY} shown={notice === 'stop-wait'} callout={callout} />
+      <StopAtZeroNotice kind="stop" copy={OUT_OF_MANA_COPY} shown={notice === 'stop'} callout={callout} />
+    </div>
+  )
+}
+
+/**
+ * The callout: on the HUD panel's surface, as it floats over the arena (`CALLOUT_SURFACE`), framed
+ * by the slow-cast chip's gold edge (the stop-at-zero notices take the same one there:
+ * `CALLOUT_EDGE`), with a pixel arrowhead sticking out of its left edge toward the ManaBar.
+ */
+const CALLOUT_SURFACE = 'pointer-events-auto w-fit bg-night-950/95'
+const CALLOUT_EDGE = 'border-2 border-gold-600 px-1'
+
+/**
+ * The callout's pointer: a stepped pixel arrowhead in the HUD's 2 px pixel unit (columns 12, 8 and
+ * 4 px tall), centred on the notice's left edge and reaching into the gap toward the ManaBar.
+ * `bordered`: the parent draws the gold edge itself, so the pointer starts outside that border.
+ */
+function CalloutPointer({ bordered = false }: { bordered?: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 6 12"
+      className={cx('absolute top-1/2 h-3 w-1.5 -translate-y-1/2 text-gold-600', bordered ? 'right-[calc(100%+--spacing(0.5))]' : 'right-full')}
+      shapeRendering="crispEdges"
+      data-callout-pointer=""
+    >
+      <path d="M4 0h2v12H4zM2 2h2v8H2zM0 4h2v4H0z" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** A label whose closing parenthesis never breaks from its words; `id`: what the meter's description points at. */
+function NoticeText({ copy, id }: { copy: readonly [string, string]; id?: string }) {
+  return (
+    <span id={id}>
+      {copy[0]} <span className="whitespace-nowrap">{copy[1]}</span>
+    </span>
+  )
+}
+
+/**
+ * "Stop at zero" in effect (a labeled test setting): casting waits for mana, or has stopped. As a
+ * callout (the narrow stats column) the icon flows with the words, so they wrap under it: two lines,
+ * where an icon column would push "casting waits for mana" onto a third.
+ */
+function StopAtZeroNotice({ kind, copy, shown, callout }: { kind: 'stop' | 'stop-wait'; copy: readonly [string, string]; shown: boolean; callout: boolean }) {
+  return (
+    <p
+      className={cx('leading-4 font-semibold text-fg [grid-area:1/1]', callout ? cx('relative', CALLOUT_SURFACE, CALLOUT_EDGE) : 'flex items-start gap-1.5', !shown && 'invisible')}
+      data-low-mana={kind}
+      data-shown={shown}
+    >
+      {callout ? <CalloutPointer bordered /> : null}
+      <OctagonPause aria-hidden="true" className={cx('size-3.5 shrink-0 text-accent', callout && 'mr-1.5 inline-block align-[-0.1875rem]')} />
+      <NoticeText copy={copy} id={shown ? noticeTextId(kind) : undefined} />
+    </p>
+  )
+}
+
+const LOW_MANA_CHIP = 'inline-flex items-start gap-1.5 border-2 border-gold-600 px-1 text-left leading-4 font-semibold text-accent'
+
+/**
+ * The 40% slow cast in effect (B35), with the wiki-sourced rule one tap / hover away. While hidden
+ * it keeps its room as a plain, invisible copy of the chip (no tip that could stay open behind it).
+ */
+function LowManaIndicator({ shown, callout }: { shown: boolean; callout: boolean }) {
+  const text = (
+    <>
+      <Snail aria-hidden="true" className="size-3.5 shrink-0" />
+      <NoticeText copy={LOW_MANA_COPY} id={shown ? noticeTextId('slow-cast') : undefined} />
+    </>
+  )
+  // The callout is the chip itself (its frame is the chip's gold edge); its row carries the pointer.
+  const chip = cx(LOW_MANA_CHIP, callout && CALLOUT_SURFACE)
+  return (
+    <p className={cx('[grid-area:1/1]', callout && 'relative flex', !shown && 'invisible')} data-low-mana="slow-cast" data-shown={shown}>
+      {callout ? <CalloutPointer /> : null}
+      {shown ? (
+        <Toggletip
+          data={{ 'data-low-mana-tip': '' }}
+          className={cx(chip, 'hover:bg-night-800')}
+          label={
+            <>
+              {text}
+              <span className="sr-only"> — show the rule and its source</span>
+            </>
+          }
+        >
+          <p className="font-semibold text-fg">{LOW_MANA_RULE.title}</p>
+          <p className="text-xs text-fg-muted">{LOW_MANA_RULE.detail}</p>
+          {LOW_MANA_RULE.sourceUrl ? <ProvenanceLink href={LOW_MANA_RULE.sourceUrl} label="Mana, on the wiki" className="text-xs" /> : null}
+        </Toggletip>
+      ) : (
+        <span className={chip}>{text}</span>
+      )}
+    </p>
+  )
+}
+
+/** AmmoCounter (UX_SPEC §3.4, contextual: bows and guns): the loaded ammo and "Ammo used" since the last reset. */
+export function AmmoCounter({ ammo, sprites, used, compact }: { ammo: Item; sprites: SpriteIndex | null; used: number; compact: boolean }) {
+  const damage = ammo.ammoStats?.damage
+  return (
+    <section aria-label="Ammo counter" className={cx(PANEL, 'flex max-w-64 items-center gap-2', compact ? 'p-1.5' : 'p-2')} data-ammo-counter="">
+      <span className="grid shrink-0 place-items-center border-2 border-slot-border bg-slot">
+        <SpriteImg src={ammo.sprite} sprites={sprites} placeholder="ranged" box={compact ? 20 : 24} maxScale={1} />
+      </span>
+      <div className="min-w-0 text-xs leading-tight">
+        <p className="line-clamp-2 font-semibold text-fg" title={ammo.name}>
+          <span className="sr-only">Loaded ammo: </span>
+          {ammo.name}
+          {/* "+8 dmg" never breaks over two lines; the separator stays with the name. */}
+          {damage !== undefined ? (
+            <span className="font-normal text-fg-muted">
+              {' · '}
+              <span className="whitespace-nowrap">+{damage} dmg</span>
+            </span>
+          ) : null}
+        </p>
+        <p className="text-fg-muted tabular-nums">
+          Ammo used <span className="font-semibold text-fg" data-stat="ammo-used">{formatInt(used)}</span>
+        </p>
+      </div>
+    </section>
   )
 }

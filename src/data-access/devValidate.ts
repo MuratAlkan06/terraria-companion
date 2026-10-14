@@ -6,9 +6,11 @@
 import * as z from 'zod'
 import {
   Boss,
+  Buff,
   Condition,
   DropSource,
   Enemy,
+  Item,
   ItemId,
   Meta,
   ProgressionEdge,
@@ -55,6 +57,8 @@ const ItemUniverseSchema = z.object({
 const SCHEMAS: Record<DataFile, z.ZodType> = {
   'weapons.list': z.array(WeaponListRecordSchema),
   'weapons.detail': z.array(Weapon),
+  'items.detail': z.array(Item),
+  buffs: z.array(Buff),
   recipes: z.array(Recipe),
   'recipe-groups': z.array(RecipeGroup),
   drops: z.array(DropSource),

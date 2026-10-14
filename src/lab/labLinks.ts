@@ -11,12 +11,11 @@
 import type { Archetype, Weapon } from '../schemas'
 
 /**
- * Archetypes the Lab UI equips today: the ones whose attack the arena draws from the engine's blade
- * pose — swing-melee (P3-S1) and thrust (AMENDMENTS-010 B47; spears and shortswords light up as soon
- * as the data gives them params, with no UI change). Grows with the ammo (P3-S4) and
- * projectile/mana (P3-S5) tools.
+ * Archetypes the Lab UI equips: swing-melee (P3-S1) and thrust (AMENDMENTS-010 B47) draw the
+ * engine's blade pose; bow-gun (P3-S4, with its ammo picker) and magic-bolt (P3-S5, with mana) draw
+ * the engine's projectiles. Weapons light up as soon as their data gives them params, with no UI change.
  */
-export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust']
+export const LAB_ARCHETYPES: readonly Archetype[] = ['swing-melee', 'thrust', 'bow-gun', 'magic-bolt']
 
 /** The Lab's deep-link query parameter (`/lab?weapon=:id`, UX_SPEC §10.11). */
 export const LAB_WEAPON_PARAM = 'weapon'
@@ -27,10 +26,11 @@ export function labWeaponSearch(weaponId: number): string {
 }
 
 /**
- * True when the weapon's record gives the Lab an archetype it can equip (pipeline-authored params)
- * and needs nothing the Lab doesn't load yet: a damage-over-time modifier needs the buff registry.
+ * True when the weapon's record gives the Lab an archetype it can equip (pipeline-authored params).
+ * The Lab loads the ammo and the buff registry itself; whether the data offers usable ammo or a
+ * verified debuff is the engine's call (`labStatus`), which agrees with this on the whole dataset.
  */
 export function offersLab(weapon: Weapon): boolean {
   const lab = weapon.labBehavior
-  return lab.kind === 'archetype' && LAB_ARCHETYPES.includes(lab.params.archetype) && lab.modifiers?.dot === undefined
+  return lab.kind === 'archetype' && LAB_ARCHETYPES.includes(lab.params.archetype)
 }

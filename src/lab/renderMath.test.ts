@@ -25,26 +25,34 @@ import {
 } from './blade'
 import { actionBox, DEFAULT_CAMERA, fitCamera, PLAYER_TOP_Y, screenToWorld, visibleWorldX, worldToScreen, type CameraFit, type CameraOptions } from './camera'
 import {
+  DotNumberTicker,
   FLOAT_GAP_X,
   FLOAT_GAP_Y,
   FLOAT_MS,
   FLOAT_RISE_PX,
   FloatLayout,
   floatPose,
+  MARK_CLEARANCE,
   readsAsPartOfNumber,
   RecyclingPool,
+  rectAt,
   rectsOverlap,
+  TRACER_CLEARANCE,
   type FloatBounds,
   type FloatRect,
+  type FloatZone,
 } from './floatingNumbers'
 import { createLabSession } from './labSession'
 import { labWeapons } from './labWeapons'
+import { bullseyeRect, dotAnchor, NUMBER_BAND_PAD_TILES, numberZone } from './numberZone'
+import { LAB_SETUP } from './testing/labData'
+import type { RenderState } from '../sim'
 
 /** The swing renderer's subjects: every equippable swung weapon (thrusts draw no arc or guide). */
-const weapons = labWeapons(weaponsJson as Weapon[]).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
+const weapons = labWeapons(weaponsJson as Weapon[], LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
 const byName = (name: string) => weapons.find((w) => w.name === name)!
 /** Every equippable thrust weapon (spears, shortswords), with its sprite's size from the sprite manifest. */
-const thrusts = labWeapons(weaponsJson as Weapon[])
+const thrusts = labWeapons(weaponsJson as Weapon[], LAB_SETUP)
   .filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'thrust')
   .map((weapon) => {
     const file = manifest.files.find((f) => f.path === weapon.sprite)
@@ -75,7 +83,7 @@ interface Viewport {
 
 /** The Lab at 375 (phone, action framing) and 1024 (narrow centre column between both panels). */
 function viewports(weapon: Weapon): Viewport[] {
-  const created = createLabSession(weapon, { seed: () => 1 })
+  const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
   if (!created.ok) throw new Error('refused')
   const box = actionBox(created.session.swing!.reachTiles, created.session.sim.renderState().dummies)
   const phone = fitCamera(360, 447, 1, { framing: 'action', insetTop: 138, insetBottom: 52, action: box })
@@ -86,40 +94,53 @@ function viewports(weapon: Weapon): Viewport[] {
   ]
 }
 
-/** Drives a real session at 60 fps with attack held; returns every damage event with its time (ms). */
+/** Drives a real session at 60 fps with attack held; returns every direct hit with its time (ms). */
 function sustainedAttack(weapon: Weapon, seconds: number, seed = 7) {
-  const created = createLabSession(weapon, { seed: () => seed })
+  const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => seed })
   if (!created.ok) throw new Error('refused')
   const s = created.session
   s.press('key')
   const hits: { at: number; amount: number; crit: boolean; x: number; y: number }[] = []
   const frameMs = 1000 / 60
   for (let f = 0; f < seconds * 60; f++) {
-    for (const e of s.frame(frameMs).events) if (e.type === 'damage') hits.push({ at: f * frameMs, amount: e.amount, crit: e.crit, x: e.x, y: e.y })
+    for (const e of s.frame(frameMs).events) if (e.type === 'damage' && e.source !== 'dot') hits.push({ at: f * frameMs, amount: e.amount, crit: e.crit, x: e.x, y: e.y })
   }
   return hits
 }
 
-/** Places every hit through a FloatLayout and checks all live boxes, every `stepMs`, for any pair that is too close. */
-function playOut(hits: ReturnType<typeof sustainedAttack>, view: Viewport, reduced: boolean, stepMs = 4) {
+/** The arena's zone for numbers on the view's (only) dummy: near the dummy (../numberZone.ts). */
+const zoneOf = (weapon: Weapon, view: Viewport) => {
+  const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
+  if (!created.ok) throw new Error('refused')
+  return numberZone(view.fit, created.session.sim.renderState().dummies[0], false)
+}
+
+/**
+ * Places every hit through a FloatLayout (with the arena's zone, when given) and checks all live
+ * boxes, every `stepMs`, for any pair that is too close; returns each number's anchor x as placed.
+ */
+function playOut(hits: ReturnType<typeof sustainedAttack>, view: Viewport, reduced: boolean, stepMs = 4, zone?: FloatZone) {
   const layout = new FloatLayout<number>()
   let overlaps = 0
   let evictions = 0
   let maxLive = 0
   let next = 0
+  const anchors: number[] = []
   const end = (hits.at(-1)?.at ?? 0) + FLOAT_MS
   for (let now = 0; now <= end; now += stepMs) {
     for (; next < hits.length && hits[next].at <= now; next++) {
       const h = hits[next]
       const p = worldToScreen(view.fit, h.x, h.y)
       const size = numberSize(h.amount, h.crit)
-      evictions += layout.place(next, h.at, { x: p.x, y: p.y - 4 }, size, h.crit, reduced, view.bounds).evicted.length
+      const placed = layout.place(next, h.at, { x: p.x, y: p.y - 4 }, size, h.crit, reduced, view.bounds, zone)
+      evictions += placed.evicted.length
+      anchors.push(p.x + placed.dx)
     }
     const rects = layout.rectsAt(now, reduced)
     maxLive = Math.max(maxLive, rects.length)
     for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) if (tooClose(rects[i], rects[j])) overlaps++
   }
-  return { overlaps, evictions, maxLive }
+  return { overlaps, evictions, maxLive, anchors }
 }
 
 describe('floating damage numbers', () => {
@@ -187,13 +208,16 @@ describe('damage-number layout: never two numbers on top of each other (design r
   })
 
   for (const reduced of [false, true]) {
-    it(`${reduced ? 'reduced motion (stacked in place)' : 'rising'}: zero overlapping boxes at 375 and 1024, nothing dropped`, () => {
+    it(`${reduced ? 'reduced motion (stacked in place)' : 'rising'}: zero overlapping boxes at 375 and 1024, nothing dropped — kept near the dummy as the arena does`, () => {
       for (const view of viewports(glove)) {
-        const run = playOut(hits, view, reduced)
-        expect(run.overlaps, view.name).toBe(0)
-        // The layout has room for every number at this cadence: none is retired early.
-        expect(run.evictions, view.name).toBe(0)
-        expect(run.maxLive, view.name).toBeGreaterThanOrEqual(5)
+        for (const zone of [undefined, zoneOf(glove, view)]) {
+          const run = playOut(hits, view, reduced, 4, zone)
+          expect(run.overlaps, view.name).toBe(0)
+          // The layout has room for every number at this cadence: none is retired early.
+          expect(run.evictions, view.name).toBe(0)
+          expect(run.maxLive, view.name).toBeGreaterThanOrEqual(5)
+          if (zone?.band) for (const x of run.anchors) expect(x).toBeGreaterThanOrEqual(zone.band.left - 1e-6)
+        }
       }
     })
   }
@@ -203,7 +227,7 @@ describe('damage-number layout: never two numbers on top of each other (design r
       const run = sustainedAttack(weapon, 20, 3)
       for (const view of viewports(weapon)) {
         for (const reduced of [false, true]) {
-          const result = playOut(run, view, reduced)
+          const result = playOut(run, view, reduced, 4, zoneOf(weapon, view))
           expect(result.overlaps, `${weapon.name} ${view.name}`).toBe(0)
           expect(result.evictions, `${weapon.name} ${view.name}`).toBe(0)
         }
@@ -249,6 +273,120 @@ describe('damage-number layout: never two numbers on top of each other (design r
     }
     // Rising numbers reach FLOAT_RISE_PX above their spot; the layout leaves room for that under the HUD.
     expect(layout.rectsAt(FLOAT_MS - 1, false)[0].y).toBeCloseTo(250 - FLOAT_RISE_PX - size.h, 0)
+  })
+})
+
+describe('numbers stay with their dummy; tracers never read as a minus (design review P3-S4/S5 M4)', () => {
+  const all = labWeapons(weaponsJson as Weapon[], LAB_SETUP)
+  const named = (name: string) => all.find((w) => w.name === name)!
+  /** A projectile weapon on a phone (action framing between the HUD rows), as the arena frames it. */
+  function phone(weapon: Weapon): Viewport & { dummy: RenderState['dummies'][number] } {
+    const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
+    if (!created.ok) throw new Error('refused')
+    const s = created.session
+    const dummy = s.sim.renderState().dummies[0]
+    const fit = fitCamera(360, 447, 1, { framing: 'action', insetTop: 138, insetBottom: 52, reachTiles: s.frameTiles, action: actionBox(s.frameTiles, [dummy]) })
+    return { name: '375', fit, bounds: { left: 0, top: 138, right: 360, bottom: 447 - 52 }, dummy }
+  }
+
+  it('Minishark (and the Quad-Barrel’s volleys) at 375: every number’s anchor stays over the dummy, at most half a tile into the flight lane — with no overlap and nothing dropped', () => {
+    for (const name of ['Minishark', 'Quad-Barrel Shotgun']) {
+      const weapon = named(name)
+      const view = phone(weapon)
+      const hits = sustainedAttack(weapon, 20)
+      expect(hits.length, name).toBeGreaterThan(40)
+      const zone = numberZone(view.fit, view.dummy, false)
+      const tile = view.fit.tilePx
+      // The band: the dummy's 2 tiles, half a tile toward the player (the flight lane), more behind it.
+      const dummyLeft = worldToScreen(view.fit, view.dummy.x - view.dummy.width / 2, 0).x
+      expect(dummyLeft - zone.band!.left).toBeCloseTo(NUMBER_BAND_PAD_TILES.towardPlayer * tile, 6)
+      expect(zone.band!.right - zone.band!.left).toBeCloseTo((view.dummy.width + NUMBER_BAND_PAD_TILES.towardPlayer + NUMBER_BAND_PAD_TILES.beyond) * tile, 6)
+      for (const reduced of [false, true]) {
+        const run = playOut(hits, view, reduced, 4, zone)
+        expect(run.overlaps, name).toBe(0)
+        expect(run.evictions, name).toBe(0)
+        for (const x of run.anchors) {
+          expect(x, name).toBeGreaterThanOrEqual(zone.band!.left - 1e-6)
+          expect(x, name).toBeLessThanOrEqual(zone.band!.right + 1e-6)
+        }
+      }
+      // Without the band the same burst fans far back toward the player (the reviewer's capture): the cap is what holds them.
+      if (name === 'Minishark') expect(Math.min(...playOut(hits, view, false).anchors)).toBeLessThan(zone.band!.left - tile)
+    }
+  })
+
+  it('damage over time rises from above the bullseye and never crosses it, birth to the top of its rise (Frost Staff at full speed, its own half-second cadence)', () => {
+    const frost = named('Frost Staff')
+    // 375 (a 360 × 447 arena; bottom row 44 px + pad, first-use hint 28 px + pad — measured live): the
+    // swords' baseline row (insetTop 138, as above), then Frost Staff's rows measured live + the 8 px
+    // pad: the ManaBar with the low-mana callout's room reserved beside it (177 px), and the same in
+    // test mode (193 px: the test-mode chip widens the stats box). All three frame the fight at 2×.
+    for (const insetTop of [138, 185, 201]) {
+      for (const reduced of [false, true]) {
+        const created = createLabSession(frost, { setup: LAB_SETUP, seed: () => 5, settings: { ignoreMana: true } })
+        if (!created.ok) throw new Error('refused')
+        const s = created.session
+        const dummy = s.sim.renderState().dummies[0]
+        const fit = fitCamera(360, 447, 1, { framing: 'action', insetTop, insetBottom: 52, floorPx: 32, reachTiles: s.frameTiles, action: actionBox(s.frameTiles, [dummy]) })
+        expect(fit.tilePx, `insetTop ${insetTop}`).toBe(2 * GAME_PX_PER_TILE)
+        const bounds = { left: 0, top: insetTop, right: 360, bottom: 447 - 52 }
+        const layout = new FloatLayout<number>()
+        const ticker = new DotNumberTicker()
+        const eye = bullseyeRect(fit, dummy)
+        const anchor = worldToScreen(fit, dotAnchor(dummy).x, dotAnchor(dummy).y)
+        expect(anchor.y).toBeCloseTo(eye.y, 6) // just above the painted bullseye
+        const dots: { born: number; x: number; y: number; w: number; h: number }[] = []
+        let evictions = 0
+        let id = 0
+        const band = numberZone(fit, dummy, false).band!
+        s.press('key')
+        const frameMs = 1000 / 60
+        for (let f = 0; f < 20 * 60; f++) {
+          const now = f * frameMs
+          for (const e of s.frame(frameMs).events) {
+            if (e.type !== 'damage') continue
+            if (e.source === 'dot') ticker.add({ ...e, tick: s.sim.renderState().tick })
+            else {
+              const p = worldToScreen(fit, e.x, e.y)
+              const placed = layout.place(id++, now, { x: p.x, y: p.y - 4 }, numberSize(e.amount, e.crit), e.crit, reduced, bounds, numberZone(fit, dummy, false))
+              evictions += placed.evicted.length
+              expect(p.x + placed.dx).toBeGreaterThanOrEqual(band.left - 1e-6) // never back along the flight lane
+            }
+          }
+          for (const n of ticker.drain(s.sim.renderState().tick)) {
+            const size = { w: String(n.amount).length * 12 + 3, h: 15 }
+            const at = { x: anchor.x, y: anchor.y - 4 + 1.5 }
+            const placed = layout.place(id++, now, at, size, false, reduced, bounds, numberZone(fit, dummy, true))
+            evictions += placed.evicted.length
+            expect(at.x + placed.dx).toBeGreaterThanOrEqual(band.left - 1e-6)
+            dots.push({ born: now, x: at.x + placed.dx, y: at.y + placed.dy, ...size })
+          }
+        }
+        expect(dots.length).toBeGreaterThan(20)
+        const label = `insetTop ${insetTop}, reduced ${reduced}, tile ${fit.tilePx}px`
+        // At 2× nothing is retired early — the mana weapon's phone camera included, now that its HUD
+        // row (the warning's room beside the ManaBar) leaves it at 2×, at a non-stop 5 casts/s.
+        expect(evictions, label).toBe(0)
+        // Every age of every DoT number, as drawn: never over the bullseye.
+        for (const d of dots) {
+          for (let age = 0; age < FLOAT_MS; age += 10) expect(rectsOverlap(rectAt({ ...d, crit: false }, age, reduced), eye), `${insetTop} ${reduced} ${age}`).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('a tracer’s end stub along a number’s baseline, ~25 px to its left, read as "–57": the tracer rule knocks it out (guide dashes keep theirs)', () => {
+    const n = { x: 200, y: 280, ...numberSize(57, false) } // "57": 36 × 20
+    const stub = (gap: number, below = 0): FloatRect => ({ x: n.x - gap - 8, y: n.y + n.h - 6 + below, w: 8, h: 8 })
+    // The reviewer's frame: the grey stub ends ~25 px left of the number, on its baseline.
+    expect(readsAsPartOfNumber(stub(25), [n], MARK_CLEARANCE)).toBe(false) // the old (dash) rule missed it
+    expect(readsAsPartOfNumber(stub(25), [n], TRACER_CLEARANCE)).toBe(true)
+    // …a little under the baseline too (the impact line sits just under a number's spawn point).
+    expect(readsAsPartOfNumber(stub(25, n.h * 0.4), [n], TRACER_CLEARANCE)).toBe(true)
+    // Two glyphs' room away, or clearly below, it stays drawn.
+    expect(readsAsPartOfNumber(stub(2 * n.h + 1), [n], TRACER_CLEARANCE)).toBe(false)
+    expect(readsAsPartOfNumber(stub(10, n.h * 0.5 + 7), [n], TRACER_CLEARANCE)).toBe(false)
+    expect(MARK_CLEARANCE).toEqual({ side: 1, above: 0.25, below: 0.25 })
   })
 })
 
@@ -326,7 +464,7 @@ describe('blade + arc guide geometry', () => {
 
   it('Wooden Sword on a phone: numbers do spawn beside the guide’s top end; knocking those dashes out keeps the rest of the guide', () => {
     const sword = byName('Wooden Sword')
-    const created = createLabSession(sword, { seed: () => 7 })
+    const created = createLabSession(sword, { setup: LAB_SETUP, seed: () => 7 })
     if (!created.ok) throw new Error('refused')
     const s = created.session
     const view = viewports(sword).find((v) => v.name === '375')!
@@ -372,7 +510,7 @@ describe('blade + arc guide geometry', () => {
 })
 
 describe('camera: crisp pixels at every size', () => {
-  const glove = createLabSession(byName('Bladed Glove'), { seed: () => 1 })
+  const glove = createLabSession(byName('Bladed Glove'), { setup: LAB_SETUP, seed: () => 1 })
   if (!glove.ok) throw new Error('refused')
   const gloveBox = actionBox(glove.session.swing!.reachTiles, glove.session.sim.renderState().dummies)
 
@@ -466,7 +604,7 @@ describe('camera: crisp pixels at every size', () => {
     ]) {
       for (const dpr of [1, 2, 3]) {
         for (const weapon of weapons) {
-          const created = createLabSession(weapon, { seed: () => 1 })
+          const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
           if (!created.ok) throw new Error('refused')
           const box = actionBox(created.session.swing!.reachTiles, created.session.sim.renderState().dummies)
           const scene = fitCamera(w, h, dpr, { insetTop: 138 })
@@ -488,11 +626,31 @@ describe('camera: crisp pixels at every size', () => {
     }
     // The 375 baseline (16 px tiles before) doubles for the starter sword and the fastest weapon.
     for (const name of ['Wooden Sword', 'Bladed Glove']) {
-      const created = createLabSession(byName(name), { seed: () => 1 })
+      const created = createLabSession(byName(name), { setup: LAB_SETUP, seed: () => 1 })
       if (!created.ok) throw new Error('refused')
       const box = actionBox(created.session.swing!.reachTiles, created.session.sim.renderState().dummies)
       expect(fitCamera(360, 447, 1, { insetTop: 138 }).tilePx).toBe(16)
       expect(fitCamera(360, 447, 1, { framing: 'action', action: box, insetTop: 138, insetBottom: 52 }).tilePx, name).toBe(32)
+    }
+  })
+
+  it('mana weapons at 375 frame the fight at 2× again: the low-mana room moved beside the ManaBar (design review P3-S4/S5 follow-up)', () => {
+    const bolts = labWeapons(weaponsJson as Weapon[], LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'magic-bolt')
+    expect(bolts.length).toBeGreaterThan(0)
+    // HUD rows measured live at 375 (Diamond Staff), + the 8 px pad: the warning's room inside the
+    // ManaBar made the row 233 px; beside it (under the stats box) the row is the ManaBar column's 177 px.
+    const fitWith = (w: Weapon, hudRow: number) => {
+      const created = createLabSession(w, { setup: LAB_SETUP, seed: () => 1 })
+      if (!created.ok) throw new Error('refused')
+      const s = created.session
+      return fitCamera(360, 447, 1, { framing: 'action', insetTop: hudRow + 8, insetBottom: 52, floorPx: 32, reachTiles: s.frameTiles, action: actionBox(s.frameTiles, s.sim.renderState().dummies) })
+    }
+    for (const w of bolts) {
+      expect(fitWith(w, 233).tilePx, w.name).toBe(1.5 * GAME_PX_PER_TILE)
+      expect(fitWith(w, 177).tilePx, w.name).toBe(2 * GAME_PX_PER_TILE)
+      // The room left: 2× holds up to a 195 px row (test mode's 193 px included).
+      expect(fitWith(w, 195).tilePx, w.name).toBe(2 * GAME_PX_PER_TILE)
+      expect(fitWith(w, 196).tilePx, w.name).toBe(1.5 * GAME_PX_PER_TILE)
     }
   })
 
@@ -543,7 +701,7 @@ describe('camera: crisp pixels at every size', () => {
 describe('thrust sprite at native art scale (design review P3-S2/S3 H1)', () => {
   /** Every pose one auto-aimed (Space) attack draws over two whole thrusts: each tick at three interpolation alphas. */
   function thrustPoses(weapon: Weapon) {
-    const created = createLabSession(weapon, { seed: () => 2 })
+    const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 2 })
     if (!created.ok) throw new Error('refused')
     const s = created.session
     s.press('key')
@@ -680,7 +838,7 @@ describe('camera: the fight clear of the HUD rows (design review P3-S2/S3)', () 
   ] as const
   const melee = [...weapons, ...thrusts.map((t) => t.weapon)]
   const fitFor = (l: (typeof layouts)[number], dpr: number, weapon: Weapon, use = { floor: true, reach: true }) => {
-    const created = createLabSession(weapon, { seed: () => 1 })
+    const created = createLabSession(weapon, { setup: LAB_SETUP, seed: () => 1 })
     if (!created.ok) throw new Error('refused')
     const { reachTiles, sim } = created.session
     return {

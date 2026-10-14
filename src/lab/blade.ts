@@ -150,6 +150,50 @@ export function thrustVisual(angle: number, length: number, reachTiles: number, 
 }
 
 /**
+ * How a projectile weapon is held (render-only choice from its sprite's shape): near-square sprites
+ * — staffs, drawn diagonally like swords — point their diagonal at the aim; long sprites — guns
+ * (wide) and bows (tall) — point their own +x axis at the aim, as the game draws them.
+ */
+export type HoldStyle = 'axis' | 'diagonal'
+
+export function holdStyleFor(width: number, height: number): HoldStyle {
+  const ratio = height > 0 ? width / height : 0
+  return ratio >= 0.8 && ratio <= 1.25 ? 'diagonal' : 'axis'
+}
+
+export interface HeldWeaponVisual {
+  /** Sprite anchor (fractions of its size): bottom-left (diagonal) or left-middle (axis). */
+  anchor: { x: number; y: number }
+  /** Where the anchor sits: the front hand (game px from the player's centre). */
+  handle: { x: number; y: number }
+  /** Native art scale (|scale| = 1). */
+  transform: SpriteTransform
+  /** The far end of the weapon along the aim (game px from the player's centre). */
+  muzzle: { x: number; y: number }
+}
+
+/**
+ * A bow, gun or staff held in the front hand, at native art scale, pointing along `angle` (the
+ * launch direction, 0 = +x, y down). Axis-held sprites facing left are flipped vertically so they
+ * stay upright; diagonal ones mirror like a sword. Render-only: shots come from the engine's
+ * launch line (see ../projectiles.ts).
+ */
+export function heldWeaponVisual(angle: number, facing: 1 | -1, width: number, height: number, style: HoldStyle): HeldWeaponVisual {
+  const handle = { x: facing * THRUST_HAND.x, y: THRUST_HAND.y }
+  if (style === 'diagonal') {
+    const transform = orient(angle, facing, width, height, 1)
+    const tip = spriteTipOffset(transform, width, height)
+    return { anchor: { x: 0, y: 1 }, handle, transform, muzzle: { x: handle.x + tip.x, y: handle.y + tip.y } }
+  }
+  return {
+    anchor: { x: 0, y: 0.5 },
+    handle,
+    transform: { rotation: angle, scaleX: 1, scaleY: facing },
+    muzzle: { x: handle.x + Math.cos(angle) * width, y: handle.y + Math.sin(angle) * width },
+  }
+}
+
+/**
  * A straight streak on the art-pixel grid: the top-left corners (game px) of the `cell`-sized
  * squares from `from` to `to`, in order, never the same square twice in a row.
  */

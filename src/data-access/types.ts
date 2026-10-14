@@ -4,8 +4,10 @@
  */
 import type {
   Boss,
+  Buff,
   Condition,
   DropSource,
+  Item,
   LabBehavior,
   Meta,
   ProgressionEdge,
@@ -92,8 +94,10 @@ export interface SpriteIndex {
 
 export type {
   Boss,
+  Buff,
   Condition,
   DropSource,
+  Item,
   Meta,
   ProgressionEdge,
   ProgressionNode,

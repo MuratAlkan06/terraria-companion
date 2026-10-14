@@ -9,6 +9,8 @@ import rawMeta from '../data/meta.json'
 export type DataFile =
   | 'weapons.list'
   | 'weapons.detail'
+  | 'items.detail'
+  | 'buffs'
   | 'recipes'
   | 'recipe-groups'
   | 'drops'
@@ -38,6 +40,8 @@ async function fetchJson(url: string): Promise<unknown> {
 export const DEFAULT_IMPORTERS: Importers = {
   'weapons.list': () => import('../data/weapons.list.json').then((m) => m.default),
   'weapons.detail': () => import('../data/weapons.detail.json').then((m) => m.default),
+  'items.detail': () => import('../data/items.detail.json').then((m) => m.default),
+  buffs: () => import('../data/buffs.json').then((m) => m.default),
   recipes: () => import('../data/recipes.json').then((m) => m.default),
   'recipe-groups': () => import('../data/recipe-groups.json').then((m) => m.default),
   drops: () => import('../data/drops.json').then((m) => m.default),

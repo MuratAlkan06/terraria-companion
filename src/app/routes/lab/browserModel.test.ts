@@ -10,6 +10,7 @@ import type { Weapon, WeaponListRecord } from '../../../data-access/types'
 import weaponsJson from '../../../data/weapons.detail.json'
 import weaponsList from '../../../data/weapons.list.json'
 import { labStatus } from '../../../lab/labWeapons'
+import { LAB_SETUP } from '../../../lab/testing/labData'
 import { STAGE_OPTIONS } from '../db/weapons/weaponFilters'
 import {
   activeLabFilterCount,
@@ -31,7 +32,7 @@ import {
 
 const all = weaponsJson as Weapon[]
 const list = weaponsList as WeaponListRecord[]
-const rows = browserRows(all)
+const rows = browserRows(all, LAB_SETUP)
 const f = (partial: Partial<LabFilters>): LabFilters => ({ ...EMPTY_LAB_FILTERS, ...partial })
 const names = (r: readonly { weapon: Weapon }[]) => r.map((x) => x.weapon.name)
 
@@ -52,7 +53,7 @@ describe('every weapon, with its simulation status from the data', () => {
 
   it('"Simulated" is exactly what equips (labStatus): every archetype record the Lab can run, never a limitation', () => {
     for (const row of rows) {
-      expect(row.simulated, row.weapon.name).toBe(labStatus(row.weapon).kind === 'equippable')
+      expect(row.simulated, row.weapon.name).toBe(labStatus(row.weapon, LAB_SETUP).kind === 'equippable')
       if (row.weapon.labBehavior.kind !== 'archetype') expect(row.simulated, row.weapon.name).toBe(false)
     }
     expect(simulatedCount(rows)).toBeGreaterThanOrEqual(35)
@@ -62,8 +63,8 @@ describe('every weapon, with its simulation status from the data', () => {
   it('a record that gains thrust params appears as simulated (equippable) with no UI change', () => {
     const spear = all.find((w) => w.tags.includes('spears'))!
     const mocked: Weapon = { ...spear, labBehavior: { kind: 'archetype', params: { archetype: 'thrust', reachTiles: 3.5 } } }
-    const before = browserRows(all.filter((w) => w.id !== spear.id).concat(spear)).find((r) => r.weapon.id === spear.id)!
-    const after = browserRows(all.filter((w) => w.id !== spear.id).concat(mocked)).find((r) => r.weapon.id === spear.id)!
+    const before = browserRows(all.filter((w) => w.id !== spear.id).concat(spear), LAB_SETUP).find((r) => r.weapon.id === spear.id)!
+    const after = browserRows(all.filter((w) => w.id !== spear.id).concat(mocked), LAB_SETUP).find((r) => r.weapon.id === spear.id)!
     expect(after.status).toEqual({ kind: 'equippable', archetype: 'thrust' })
     expect(after.simulated).toBe(true)
     // Same weapon, same filters: only the data changed.
@@ -74,11 +75,11 @@ describe('every weapon, with its simulation status from the data', () => {
     const magic = filterRows(rows, f({ class: ['magic'] }), '')
     expect(magic).toHaveLength(all.filter((w) => w.damageClass === 'magic').length)
     expect(magic.every((r) => r.weapon.damageClass === 'magic')).toBe(true)
-    const engineReady = magic.filter((r) => r.weapon.labBehavior.kind === 'archetype')
-    // Today's data: two magic-bolt staffs have params, but the Lab can't equip magic bolts yet
-    // (projectiles + mana, P3-S5) — so they read "Not simulated" and their card says why.
-    expect(simulatedCount(magic)).toBe(magic.filter((r) => labStatus(r.weapon).kind === 'equippable').length)
-    for (const r of engineReady) expect(r.status.kind === 'equippable' || r.status.kind === 'not-in-lab-yet', r.weapon.name).toBe(true)
+    const engineReady = magic.filter((r) => r.weapon.labBehavior.kind === 'archetype' && r.weapon.labBehavior.params.archetype === 'magic-bolt')
+    // P3-S5: every magic weapon with magic-bolt params now equips (mana + projectiles), so it reads "Simulated".
+    expect(simulatedCount(magic)).toBe(magic.filter((r) => labStatus(r.weapon, LAB_SETUP).kind === 'equippable').length)
+    expect(engineReady.length).toBeGreaterThan(0)
+    for (const r of engineReady) expect(r.status.kind, r.weapon.name).toBe('equippable')
   })
 })
 

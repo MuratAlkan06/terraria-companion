@@ -17,10 +17,11 @@ import { cx } from '../../../components/cx'
 import { PixelLoader } from '../../../components/PixelLoader'
 import { EmptyState, ErrorState } from '../../../components/States'
 import { useBreakpoint, useMediaQuery } from '../../../components/useMediaQuery'
-import type { Weapon } from '../../../data-access/types'
+import type { Item, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
 import { createLabSession, type LabSession } from '../../../lab/labSession'
 import { LAB_WEAPON_PARAM } from '../../../lab/labLinks'
+import { ammoChoices, resolveAmmo } from '../../../lab/labSetup'
 import { attackVerb, labStatus, resolveLabSelection, type LabNotice, type LabSelection } from '../../../lab/labWeapons'
 import type { LabSettings, TimedTestDuration } from '../../../sim'
 import { useSettingsStore } from '../../settingsStore'
@@ -29,9 +30,10 @@ import { useDocumentTitle } from '../../useDocumentTitle'
 import { ArenaCanvas } from './ArenaCanvas'
 import { DpsGraph } from './DpsGraph'
 import { graphOpenByDefault } from './dpsGraphModel'
-import { AttackHint, EquippedBar, HudControls, StatReadouts } from './Hud'
+import { AmmoCounter, AttackHint, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts } from './Hud'
 import { INITIAL_BROWSER_STATE, type LabBrowserState } from './browserModel'
 import { LabBrowser } from './LabBrowser'
+import { ammoLoadedAnnouncement, manaSettingAnnouncement } from './settingsCopy'
 import { arenaSpriteUrl, loadLabData, peekLabData, type LabData } from './labData'
 import { DPS_GRAPH_ID, lockNoticeId, PANEL_SETTINGS, PANEL_WEAPONS, panelToggleId } from './labIds'
 import { LIMITATION_TITLE_ID, LimitationCard } from './LimitationCard'
@@ -46,7 +48,14 @@ import { useLabHud } from './useLabHud'
 
 /**
  * /lab — Weapon Lab: P3-S1 arena core, P3-S2 in-Lab weapon browser + single reset, P3-S3 live
- * stats + DPS graph + timed tests (PRD P3-S1–S3; UX_SPEC §3.4, §5.5, §5.7, §7, §8, §9, §12).
+ * stats + DPS graph + timed tests, P3-S4 bows/guns + ammo, P3-S5 magic bolts + mana (PRD P3-S1–S5;
+ * UX_SPEC §3.4, §5.5, §5.7, §7, §8, §9, §12).
+ *
+ * Ammo (P3-S4): the chosen ammo is kept per ammo class for the visit (like ammo in an inventory, so
+ * switching between two bows keeps your arrows) and loads with the weapon; changing it starts a new
+ * session — the engine fixes ammo per sim — so the stats, "Ammo used" included, start from zero.
+ * A changed mana setting restarts the stats the same way (the session's own restart), and the
+ * announcer says so in the same words (./settingsCopy.ts).
  *
  * Desktop (≥ lg): weapon browser | arena (canvas + HTML HUD) | target & settings panel, both panels
  * collapsible. Tablet (md–lg): the arena in the centre and ONE side panel at a time, opened from a
@@ -66,7 +75,7 @@ type PanelKey = 'weapons' | 'settings'
 // its rows — design review P3-S2/S3).
 const DOCK: readonly { key: PanelKey; title: string; panelId: string; icon: LucideIcon; description: string }[] = [
   { key: 'weapons', title: 'Weapons', panelId: PANEL_WEAPONS, icon: Swords, description: 'Simulated weapons equip; others show why not.' },
-  { key: 'settings', title: 'Target & settings', panelId: PANEL_SETTINGS, icon: SlidersHorizontal, description: 'The dummy, the test settings, and how to attack.' },
+  { key: 'settings', title: 'Target & settings', panelId: PANEL_SETTINGS, icon: SlidersHorizontal, description: 'The dummy, ammo and mana, the test settings, and how to attack.' },
 ]
 
 /** Arena width (CSS px) below which the HUD switches to its compact corner layout. */
@@ -117,9 +126,15 @@ interface WorkspaceProps {
 function LabWorkspace({ data, fullscreen, onToggleFullscreen }: WorkspaceProps) {
   const [params, setParams] = useSearchParams()
   const requested = params.get(LAB_WEAPON_PARAM)
-  const selection = useMemo(() => resolveLabSelection(requested, data.byId, data.list), [requested, data])
+  const selection = useMemo(() => resolveLabSelection(requested, data.byId, data.list, data.setup), [requested, data])
   // Test settings carry over to the next weapon's session (Reset is what restores the defaults).
   const settingsRef = useRef<LabSettings | null>(null)
+  // The ammo chosen per ammo class during this visit.
+  const [ammoPicks, setAmmoPicks] = useState<Readonly<Record<string, number>>>({})
+  const pickAmmo = useCallback((item: Item) => {
+    const ammoClass = item.ammoStats?.ammoClass
+    if (ammoClass) setAmmoPicks((prev) => ({ ...prev, [ammoClass]: item.id }))
+  }, [])
 
   const equip = useCallback(
     (id: number) => {
@@ -144,21 +159,38 @@ function LabWorkspace({ data, fullscreen, onToggleFullscreen }: WorkspaceProps) 
       </div>
     )
   }
-  return <LabStage selection={selection} data={data} equip={equip} settingsRef={settingsRef} fullscreen={fullscreen} onToggleFullscreen={onToggleFullscreen} />
+  return (
+    <LabStage
+      selection={selection}
+      data={data}
+      equip={equip}
+      settingsRef={settingsRef}
+      ammoPicks={ammoPicks}
+      onPickAmmo={pickAmmo}
+      fullscreen={fullscreen}
+      onToggleFullscreen={onToggleFullscreen}
+    />
+  )
 }
 
 interface StageProps extends WorkspaceProps {
   selection: LabSelection
   equip: (id: number) => void
   settingsRef: RefObject<LabSettings | null>
+  ammoPicks: Readonly<Record<string, number>>
+  onPickAmmo: (item: Item) => void
 }
 
 function LabStage({ selection, settingsRef, ...rest }: StageProps) {
+  const { data, ammoPicks } = rest
+  const weapon = selection.weapon
+  const choices = ammoChoices(weapon, data.setup)
+  const ammo = resolveAmmo(weapon, data.setup, choices ? ammoPicks[choices.ammoClass] : null)
   const created = useMemo(
-    () => createLabSession(selection.weapon, settingsRef.current ? { settings: settingsRef.current } : {}),
-    // A new session per weapon only; settings changes go to the live session.
+    () => createLabSession(weapon, { setup: data.setup, ammoId: ammo?.id ?? null, ...(settingsRef.current ? { settings: settingsRef.current } : {}) }),
+    // A new session per weapon and per loaded ammo only; settings changes go to the live session.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [selection.weapon],
+    [weapon, ammo, data.setup],
   )
   if (!created.ok) {
     // Unreachable for weapons that passed labStatus(); kept as a designed state, never a crash.
@@ -209,7 +241,7 @@ function useSpaceAttack(session: LabSession, enabled: boolean): void {
   }, [session, enabled])
 }
 
-function LabView({ session, selection, data, equip, settingsRef, fullscreen, onToggleFullscreen }: StageProps & { session: LabSession }) {
+function LabView({ session, selection, data, equip, settingsRef, onPickAmmo, fullscreen, onToggleFullscreen }: StageProps & { session: LabSession }) {
   const hud = useLabHud(session)
   const wide = useBreakpoint('lg')
   const medium = useBreakpoint('md') && !wide
@@ -249,9 +281,9 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
   // The card on show: a browser pick, else a deep link that fell back.
   const notice: LabNotice | null = useMemo(() => {
     if (!inspected) return selection.notice
-    const status = labStatus(inspected)
+    const status = labStatus(inspected, data.setup)
     return status.kind === 'equippable' ? selection.notice : { kind: 'not-equippable', weapon: inspected, status }
-  }, [inspected, selection.notice])
+  }, [inspected, selection.notice, data.setup])
   const blocked = notice !== null
   // Phone layout (not fullscreen): the LimitationCard flows in the page instead of scrolling in the arena.
   const cardInFlow = blocked && !(wide || medium || fullscreen)
@@ -271,7 +303,7 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
   // (WCAG 3.2.2); Radix then returns focus to the Weapons button.
   const onSelect = (next: Weapon) => {
     if (locked) return
-    if (labStatus(next).kind === 'equippable') {
+    if (labStatus(next, data.setup).kind === 'equippable') {
       setInspected(null)
       equip(next.id)
       announce(`Equipped ${next.name}.`)
@@ -283,6 +315,17 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
     announce(`${next.name} isn’t simulated in the Lab — its card says why. ${weapon.name} stays equipped.`)
   }
   const closeSheet = () => setSheet(null)
+  const choices = ammoChoices(weapon, data.setup)
+  const onAmmoSelect = (item: Item) => {
+    if (locked || item.id === session.ammo?.id) return
+    onPickAmmo(item)
+    announce(ammoLoadedAnnouncement(item.name))
+  }
+  // A mana setting restarts the stats (src/lab/labSession.ts): said like an ammo switch.
+  const onSettingsChange = (patch: Partial<LabSettings>) => {
+    const result = session.updateSettings(patch)
+    if (result.ok && result.restarted) announce(manaSettingAnnouncement(patch))
+  }
   const onReset = () => {
     const stopped = hud.timedTest.status === 'running'
     session.reset()
@@ -376,13 +419,19 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
         usesMana={hud.weapon.manaCostPerUse > 0}
         dummy={session.sim.renderState().dummies[0]}
         settings={hud.settings}
-        onSettingsChange={(patch) => session.updateSettings(patch)}
+        onSettingsChange={onSettingsChange}
         locked={locked}
         verb={verb}
+        ammo={choices ? { choices, selectedId: session.ammo?.id ?? null, onSelect: onAmmoSelect, sprites: data.sprites } : null}
       />,
     ),
   }
   const hasEstimates = hasAssumptions(assumptions)
+  // Compact HUD: the low-mana notice leaves the ManaBar for the room under the stats box beside it
+  // (./Hud.tsx ManaBar), keeping the HUD row short enough for the phone camera's 2× zoom. While mana
+  // is ignored (test mode) no warning can show, so no room is kept: the test-mode chip takes it.
+  const manaNotice: 'inline' | 'callout' | 'none' = !hud.mana ? 'none' : !(compact && hasEstimates) ? 'inline' : hud.mana.ignoreMana ? 'none' : 'callout'
+  const manaCallout = manaNotice === 'callout'
   const testAssumptions = assumptionsForEstimate(assumptions, 'timed-test-dps')
   const graphAssumptions = assumptionsForEstimate(assumptions, 'dps-graph')
   const appliesDot = weapon.labBehavior.kind === 'archetype' && weapon.labBehavior.modifiers?.dot !== undefined
@@ -443,12 +492,17 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
           {/* Inert behind a LimitationCard: the card is the only thing to act on. */}
           <div className="pointer-events-none absolute inset-0 z-(--z-hud) flex flex-col justify-between gap-2 p-2 md:p-3" inert={blocked}>
             <div ref={hudTopRef} className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
                 <EquippedBar weapon={weapon} sprites={data.sprites} hud={hud} compact={compact} />
+                {/* Contextual resources (UX_SPEC §3.4): the ManaBar for mana weapons, the AmmoCounter for bows and guns. */}
+                {hud.mana ? <ManaBar mana={hud.mana} manaConsumed={hud.manaConsumed} compact={compact} inlineNotice={manaNotice === 'inline'} /> : null}
+                {session.ammo ? <AmmoCounter ammo={session.ammo} sprites={data.sprites} used={hud.ammoConsumed} compact={compact} /> : null}
               </div>
               {hasEstimates ? (
-                <div className="shrink-0">
+                // Compact: the low-mana notice sits at the foot of this column, level with the ManaBar it points at.
+                <div className={cx('shrink-0', manaCallout && 'flex flex-col justify-between gap-1 self-stretch')}>
                   <StatReadouts hud={hud} assumptions={assumptions} compact={compact} />
+                  {manaCallout && hud.mana ? <LowManaCallout mana={hud.mana} /> : null}
                 </div>
               ) : null}
             </div>
@@ -489,6 +543,8 @@ function LabView({ session, selection, data, equip, settingsRef, fullscreen, onT
                     result={finished}
                     weaponName={weapon.name}
                     appliesDot={appliesDot}
+                    usesAmmo={session.ammo !== null}
+                    usesMana={hud.weapon.manaCostPerUse > 0}
                     assumptions={testAssumptions}
                     onRunAgain={onRunAgain}
                     onReset={onResultsReset}

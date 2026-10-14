@@ -16,11 +16,13 @@ import { SendToLabButton } from '../../../components/SendToLabButton'
 import type { Weapon } from '../../../data-access/types'
 import weaponsJson from '../../../data/weapons.detail.json'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import { createLabSession, type LabSession } from '../../../lab/labSession'
+import { createLabSession, RATE_WINDOW_ATTACKS, type LabSession } from '../../../lab/labSession'
+import { LAB_SETUP } from '../../../lab/testing/labData'
 import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS } from '../../../sim'
 import {
   defaultLabWeapon,
   inGameDescription,
+  labScopeNouns,
   labStatus,
   labWeapons,
   notSimulatedReason,
@@ -34,12 +36,13 @@ import { PickerIntent, type PickerAction } from './pickerIntent'
 import { SIM_DISCLAIMER, SIM_DISCLAIMER_SHORT, SimDisclaimerBar } from './SimDisclaimerBar'
 import { TargetSettingsPanel } from './TargetSettingsPanel'
 import { PickerRow } from './WeaponPicker'
-import { browserRows } from './browserModel'
+import { browserRows, INITIAL_BROWSER_STATE } from './browserModel'
+import { LabBrowser } from './LabBrowser'
 import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
 
 const all = weaponsJson as Weapon[]
 const byId = new Map(all.map((w) => [w.id, w]))
-const list = labWeapons(all)
+const list = labWeapons(all, LAB_SETUP)
 /** The starter weapon the Lab falls back to (whatever archetype the data makes weakest). */
 const fallback = defaultLabWeapon(list)!
 /** A starter sword, for swing-specific checks. */
@@ -49,7 +52,7 @@ const SETTINGS = { settings: DEFAULT_LAB_SETTINGS, onSettingsChange: () => {}, l
 const render = (node: ReactNode) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Tooltip.Provider, null, node)))
 
 function session(weapon: Weapon, seed = 3): LabSession {
-  const created = createLabSession(weapon, { seed: () => seed })
+  const created = createLabSession(weapon, { seed: () => seed, setup: LAB_SETUP })
   if (!created.ok) throw new Error('refused')
   return created.session
 }
@@ -120,19 +123,24 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
     expect(html.match(/terraria\.wiki\.gg/g)?.length).toBeGreaterThanOrEqual(s.assumptions.filter((a) => a.sourceUrl).length)
   })
 
-  it('the attacks/sec AssumptionsTip lists only what decides the attack rate (design review M5)', () => {
+  it('the attacks/sec AssumptionsTip leads with how it is measured, then only what decides the attack rate (design review M5)', () => {
     for (const w of [sword, ...list.slice(0, 5)]) {
       const s = session(w)
       const rate = assumptionsForEstimate(s.assumptions, 'attacks-per-sec')
       if (!hasAssumptions(rate)) throw new Error('no cadence assumptions')
       const ids = rate.map((a) => a.id)
+      // Counted from the latest attacks the engine made (design review P3-S4/S5 H3).
+      expect(ids[0]).toBe('attack-rate')
+      expect(rate[0].detail).toMatch(new RegExp(`^Attacks/sec = the latest ${RATE_WINDOW_ATTACKS} attacks ÷ the time they took`))
       expect(ids).toContain('cadence')
       expect(ids).toContain('fixed-tick')
-      for (const unrelated of ['swing-reach-arc', 'dps-while-attacking', 'crit-base', 'defense', 'damage-variance', 'swing-geometry', 'dummy-hitbox']) {
+      for (const unrelated of ['swing-reach-arc', 'dps-while-attacking', 'crit-base', 'defense', 'damage-variance', 'swing-geometry', 'dummy-hitbox', 'target-distance', 'ammo-effects']) {
         expect(ids, w.name).not.toContain(unrelated)
       }
-      // Same order as the full list (a subset, never re-ordered).
-      expect(ids).toEqual(s.assumptions.map((a) => a.id).filter((id) => ids.includes(id)))
+      // The rest: the full list's order (a subset, never re-ordered).
+      expect(ids.slice(1)).toEqual(s.assumptions.map((a) => a.id).filter((id) => ids.includes(id)))
+      // The measurement rule is the attack rate's alone: no DPS tip carries it.
+      for (const estimate of ['estimated-dps', 'timed-test-dps', 'dps-graph'] as const) expect(assumptionsForEstimate(s.assumptions, estimate).map((a) => a.id)).not.toContain('attack-rate')
     }
   })
 
@@ -221,19 +229,54 @@ describe('HUD (AC3 live stats, §8 estimates)', () => {
 
   it('the low-mana setting (with its wiki source) shows only for a weapon that uses mana — none of the Lab’s swords do', () => {
     const dummy = session(sword).sim.renderState().dummies[0]
-    expect(list.every((w) => session(w).summary.manaCostPerUse === 0)).toBe(true)
+    const swordList = list.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
+    expect(swordList.every((w) => session(w).summary.manaCostPerUse === 0)).toBe(true)
     const swords = render(createElement(TargetSettingsPanel, { usesMana: false, dummy, ...SETTINGS }))
     expect(swords).not.toContain('Low-mana casting')
     expect(swords).not.toContain('data-lab-setting="low-mana"')
+    expect(swords).not.toContain('Ignore mana')
     const mana = render(createElement(TargetSettingsPanel, { usesMana: true, dummy, ...SETTINGS }))
     expect(mana).toContain('Low-mana casting')
     expect(mana).toContain('40% attack speed')
     expect(mana).toContain('href="https://terraria.wiki.gg/wiki/Mana"')
   })
+
+  it('mana settings (P3-S5): max mana, the B35 default (game behavior) vs the labeled stop-at-zero setting, regen, and the labeled test mode', () => {
+    const dummy = session(sword).sim.renderState().dummies[0]
+    const html = render(createElement(TargetSettingsPanel, { usesMana: true, dummy, ...SETTINGS }))
+    // Max mana: a labeled slider showing the current capacity.
+    expect(html).toMatch(/<input id="lab-setting-max-mana" type="range" min="20" max="400" step="20"[^>]*value="200"/)
+    expect(html).toContain('data-max-mana="200"')
+    // Low-mana casting: two labeled choices, the default (slow cast) checked and called game behavior.
+    const policy = (value: string) => new RegExp(`<input type="radio" id="lab-low-mana-${value}"[^>]*>`).exec(html)?.[0] ?? ''
+    expect(policy('slow-cast')).toContain('checked=""')
+    expect(policy('block')).not.toContain('checked=""')
+    expect(html).toContain('Keep casting at 40% attack speed')
+    expect(html).toContain('Game behavior since 1.4.5.7 · default')
+    expect(html).toContain('Stop at zero')
+    expect(html).toContain('Test setting: casting waits until mana covers the cost')
+    // Ignore mana: a labeled switch (role="switch") called a test mode, off by default.
+    expect(html).toMatch(/<input type="checkbox" role="switch" id="lab-setting-ignore-mana"(?![^>]*checked)[^>]*>/)
+    expect(html).toContain('Ignore mana (test mode)')
+    expect(html).toContain('A test mode, not game behavior')
+    expect(html).toMatch(/<input type="checkbox" role="switch" id="lab-setting-mana-regen"[^>]*checked=""/)
+    // Choosing "stop at zero" checks it.
+    const block = render(createElement(TargetSettingsPanel, { usesMana: true, dummy, ...SETTINGS, settings: { ...DEFAULT_LAB_SETTINGS, insufficientMana: 'block' as const } }))
+    expect(/<input type="radio" id="lab-low-mana-block"[^>]*>/.exec(block)?.[0]).toContain('checked=""')
+  })
 })
 
 describe('in-Lab browser rows (P3-S2 AC1/AC2: every weapon selectable, simulated vs not marked)', () => {
-  const rows = browserRows(all)
+  const rows = browserRows(all, LAB_SETUP)
+
+  it('the browser intro states what the Lab simulates now — no forward promise ("so far")', () => {
+    const html = render(
+      createElement(LabBrowser, { rows, state: INITIAL_BROWSER_STATE, onStateChange: () => {}, selectedId: fallback.id, equippedId: fallback.id, sprites: null, onSelect: () => {}, name: 'p' }),
+    )
+    const intro = /<p id="p-scope"[^>]*>(.*?)<\/p>/.exec(html)?.[1] ?? ''
+    expect(intro).toContain(`(the Lab simulates ${labScopeNouns()})`)
+    expect(intro).not.toMatch(/so far|\byet\b/)
+  })
   const renderRow = (row: (typeof rows)[number], extra: Partial<Parameters<typeof PickerRow>[0]> = {}) =>
     render(
       createElement(PickerRow, {
@@ -341,8 +384,8 @@ describe('weapon picker intent (radio semantics kept from P3-S1)', () => {
 
 describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
   it('names the weapon, says what it does in-game (sourced) and why it isn’t simulated, and links to its page', () => {
-    const refused = all.find((w) => labStatus(w).kind === 'not-simulable')!
-    const selection = resolveLabSelection(String(refused.id), byId, list)!
+    const refused = all.find((w) => labStatus(w, LAB_SETUP).kind === 'not-simulable')!
+    const selection = resolveLabSelection(String(refused.id), byId, list, LAB_SETUP)!
     const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
     expect(html).toContain(refused.name)
     expect(html).toContain('Not simulated in the Lab')
@@ -354,9 +397,24 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
     expect(html).toContain(`${selection.weapon.name}</span> is equipped instead`)
   })
 
+  it('launchers: the regenerated data says plainly where the explosion comes from — no pipeline terms (design review P3-S4/S5 M5)', () => {
+    const launchers = all.filter((w) => w.tags.includes('launchers') && w.labBehavior.kind === 'limitation' && w.ammoClass !== undefined)
+    expect(launchers.map((w) => w.name)).toEqual(expect.arrayContaining(['Rocket Launcher', 'Grenade Launcher', 'Stynger', 'Nail Gun']))
+    for (const w of all) {
+      if (w.labBehavior.kind === 'limitation') expect(w.labBehavior.reason, w.name).not.toMatch(/explosive parameters|carry no ammunition/)
+    }
+    const rocket = byId.get(all.find((w) => w.name === 'Rocket Launcher')!.id)!
+    expect(rocket.labBehavior).toMatchObject({ reason: "Launchers get their explosion from the rocket ammo, which the Lab doesn't model." })
+    const selection = resolveLabSelection(String(rocket.id), byId, list, LAB_SETUP)!
+    const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
+    expect(html).toContain('Launchers get their explosion from the rocket ammo, which the Lab doesn&#x27;t model.')
+    const nailGun = all.find((w) => w.name === 'Nail Gun')!
+    expect(nailGun.labBehavior).toMatchObject({ reason: "This launcher gets its explosion from the ammo it fires, which the Lab doesn't model." })
+  })
+
   it('Zenith: no verified description → says so plainly with the source link; the reason is plain language (M4)', () => {
     const zenith = all.find((w) => w.name === 'Zenith')!
-    const selection = resolveLabSelection(String(zenith.id), byId, list)!
+    const selection = resolveLabSelection(String(zenith.id), byId, list, LAB_SETUP)!
     const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
     expect(html).toContain('data-limitation-description="none"')
     expect(html).toContain('No verified description yet.')
@@ -368,8 +426,8 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
   })
 
   it('a weapon with verified tooltip text shows that text as "What it does in-game"', () => {
-    const described = all.find((w) => labStatus(w).kind !== 'equippable' && inGameDescription(w))!
-    const selection = resolveLabSelection(String(described.id), byId, list)!
+    const described = all.find((w) => labStatus(w, LAB_SETUP).kind !== 'equippable' && inGameDescription(w))!
+    const selection = resolveLabSelection(String(described.id), byId, list, LAB_SETUP)!
     const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
     expect(html).toContain('data-limitation-description="verified"')
     expect(html).toContain(inGameDescription(described)!.split('\n')[0].replace(/'/g, '&#x27;'))
@@ -378,7 +436,7 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
   it('no LimitationCard anywhere in the dataset shows pipeline jargon as its reason', () => {
     let plain = 0
     for (const w of all) {
-      const status = labStatus(w)
+      const status = labStatus(w, LAB_SETUP)
       if (status.kind === 'equippable') continue
       const reason = notSimulatedReason(status)
       expect(reason, w.name).not.toMatch(/parameters have not been assigned/)
@@ -388,7 +446,7 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
   })
 
   it('an unknown id gets a short notice, the fallback still equipped', () => {
-    const selection = resolveLabSelection('999999', byId, list)!
+    const selection = resolveLabSelection('999999', byId, list, LAB_SETUP)!
     const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
     expect(html).toContain('No weapon with that ID')
     expect(html).toContain('999999')
@@ -416,10 +474,9 @@ describe('weapon detail → Lab (SendToLabButton, UX_SPEC §3.3)', () => {
   })
 
   it('weapons the Lab can’t equip have no button (absent, never disabled) and say so — no "coming" promise', () => {
-    const others = all.filter((w) => labStatus(w).kind !== 'equippable')
+    const others = all.filter((w) => labStatus(w, LAB_SETUP).kind !== 'equippable')
     for (const w of others) expect(render(createElement(SendToLabButton, { weapon: w })), w.name).toBe('')
-    const bow = others.find((w) => labStatus(w).kind === 'not-in-lab-yet')!
-    const page = renderDetail(bow)
+    const page = renderDetail(others[0])
     expect(page).not.toContain('/lab?weapon=')
     expect(page).toContain('Not simulated in the Weapon Lab')
     expect(page).not.toMatch(/simulation coming|Until then/)

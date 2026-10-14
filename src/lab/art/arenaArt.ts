@@ -237,8 +237,22 @@ const TORCH: readonly string[] = (() => {
  * wooden cross-post with a painted bullseye — sized to the sim's default dummy, 2 × 3 tiles
  * (16 × 24 art px). Generic iconography, not a copy of the game's Target Dummy sprite.
  */
+/** The dummy art's size (art px) and its painted bullseye's box within it (art px, end-exclusive). */
+export const DUMMY_ART = { width: 16, height: 24, bullseye: { x0: 5, x1: 11, y0: 9, y1: 16 } } as const
+
+/**
+ * The bullseye's box in world tiles for a dummy drawn over its whole box (the arena stretches the art
+ * to the dummy's width × height) — damage-over-time numbers keep clear of it.
+ */
+export function dummyBullseye(d: { x: number; y: number; width: number; height: number }): { x0: number; x1: number; y0: number; y1: number } {
+  const { width, height, bullseye: b } = DUMMY_ART
+  const left = d.x - d.width / 2
+  const top = d.y - d.height / 2
+  return { x0: left + (b.x0 / width) * d.width, x1: left + (b.x1 / width) * d.width, y0: top + (b.y0 / height) * d.height, y1: top + (b.y1 / height) * d.height }
+}
+
 export function buildDummy(): string[] {
-  const c = new PixelCanvas(16, 24)
+  const c = new PixelCanvas(DUMMY_ART.width, DUMMY_ART.height)
   // Base plank with two feet, and the post.
   c.rect(3, 21, 10, 2, A.e600).rect(3, 21, 10, 1, A.e500).rect(3, 23, 3, 1, A.e800).rect(10, 23, 3, 1, A.e800)
   c.rect(7, 15, 2, 6, A.e600).rect(8, 15, 1, 6, A.e700)
@@ -249,9 +263,10 @@ export function buildDummy(): string[] {
   c.rect(4, 7, 8, 9, A.e400).rect(5, 16, 6, 1, A.e400)
   c.rect(4, 7, 1, 9, A.skin).rect(11, 7, 1, 9, A.e500).rect(5, 16, 6, 1, A.e500)
   for (let y = 8; y <= 15; y += 2) c.set(4, y, A.e600).set(11, y, A.e700)
-  // Painted bullseye on the chest.
-  for (let y = 9; y <= 15; y++) {
-    for (let x = 5; x <= 10; x++) {
+  // Painted bullseye on the chest (DUMMY_ART.bullseye).
+  const eye = DUMMY_ART.bullseye
+  for (let y = eye.y0; y < eye.y1; y++) {
+    for (let x = eye.x0; x < eye.x1; x++) {
       const d = Math.hypot(x - 7.5, y - 12)
       if (d <= 1.2) c.set(x, y, A.red)
       else if (d <= 2.2) c.set(x, y, A.white)

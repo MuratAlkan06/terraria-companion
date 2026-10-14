@@ -15,6 +15,7 @@ import { hasAssumptions, type Assumption } from '../../../components/assumptions
 import { AssumptionsTip } from '../../../components/EstimateLabel'
 import type { Weapon } from '../../../data-access/types'
 import weaponsJson from '../../../data/weapons.detail.json'
+import { LAB_SETUP } from '../../../lab/testing/labData'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
 import { createLabSession, type LabGraphHud, type LabSession } from '../../../lab/labSession'
 import { defaultLabWeapon, labWeapons } from '../../../lab/labWeapons'
@@ -29,7 +30,7 @@ import { completionAnnouncement, LIVE_DPS_LABEL, lockReason, testDpsLabel } from
 import { focusIsLost, timedTestFocusTarget } from './timedTestFocus'
 
 const all = weaponsJson as Weapon[]
-const sword = defaultLabWeapon(labWeapons(all).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee'))!
+const sword = defaultLabWeapon(labWeapons(all, LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee'))!
 const render = (node: ReactNode) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Tooltip.Provider, null, node)))
 
 function session(weapon: Weapon = sword, seed = 5): LabSession {

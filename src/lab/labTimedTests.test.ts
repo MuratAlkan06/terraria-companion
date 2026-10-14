@@ -12,15 +12,16 @@ import weaponsJson from '../data/weapons.detail.json'
 import { DEFAULT_LAB_SETTINGS, TICKS_PER_SECOND, type LabSettings, type SimEvent } from '../sim'
 import { createLabSession, type LabSession } from './labSession'
 import { defaultLabWeapon, labStatus, labWeapons } from './labWeapons'
+import { LAB_SETUP } from './testing/labData'
 
 const all = weaponsJson as Weapon[]
-const swords = labWeapons(all).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
+const swords = labWeapons(all, LAB_SETUP).filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')
 const sword = defaultLabWeapon(swords)!
 const FRAME_MS = 1000 / 60
 
 function session(weapon: Weapon, seed = 7, settings?: Partial<LabSettings>): LabSession {
   let s = seed
-  const created = createLabSession(weapon, { seed: () => s++, ...(settings ? { settings } : {}) })
+  const created = createLabSession(weapon, { seed: () => s++, setup: LAB_SETUP, ...(settings ? { settings } : {}) })
   if (!created.ok) throw new Error(`${weapon.name} refused: ${created.refusal.message}`)
   return created.session
 }
@@ -208,7 +209,7 @@ describe('data-driven archetypes: a record with thrust params equips with no UI 
   }
 
   it('is equippable, thrusts at the dummy and hits it; the reach is labeled a modeling choice', () => {
-    expect(labStatus(mock)).toEqual({ kind: 'equippable', archetype: 'thrust' })
+    expect(labStatus(mock, LAB_SETUP)).toEqual({ kind: 'equippable', archetype: 'thrust' })
     const s = session(mock)
     expect(s.reachTiles).toBe(3.5)
     expect(s.swing).toBeNull()

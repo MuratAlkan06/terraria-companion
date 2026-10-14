@@ -16,14 +16,15 @@
  *   is in each of their buckets; no verified route = "Source unknown" (never guessed).
  * - damage: base-damage bands; unverified damage = "Damage unknown".
  *
- * Simulated or not comes from `labStatus` — the engine's verdict on the record plus what the Lab
- * can equip — never a per-weapon list: a weapon whose data gains archetype params lights up as
- * equippable on its own, with no UI change.
+ * Simulated or not comes from `labStatus` — the engine's verdict on the record with the ammo and
+ * buffs the Lab loads — never a per-weapon list: a weapon whose data gains archetype params (or whose
+ * ammo / debuff gains verified data) lights up as equippable on its own, with no UI change.
  */
 import type { Facet, FacetOption } from '../../../components/FilterBar'
 import { asRarity, rarityColor } from '../../../components/rarity'
 import { slugify } from '../../../data-access'
 import type { Weapon } from '../../../data-access/types'
+import type { LabSetup } from '../../../lab/labSetup'
 import { labStatus, type LabStatus } from '../../../lab/labWeapons'
 import type { Acquisition } from '../../../schemas'
 import { CLASS_OPTIONS, classBucket, facetValues, RARITY_UNKNOWN, rarityBucket, rarityOptionLabel, STAGE_OPTIONS, stageBucket } from '../db/weapons/weaponFilters'
@@ -93,11 +94,11 @@ export function damageBucket(weapon: Pick<Weapon, 'damage'>): string {
 
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 
-/** Every weapon as a browser row, in browse order (by name, then id). */
-export function browserRows(weapons: Iterable<Weapon>): LabBrowserRow[] {
+/** Every weapon as a browser row, in browse order (by name, then id); status with the Lab's ammo + buffs. */
+export function browserRows(weapons: Iterable<Weapon>, setup: LabSetup): LabBrowserRow[] {
   return [...weapons]
     .map((weapon): LabBrowserRow => {
-      const status = labStatus(weapon)
+      const status = labStatus(weapon, setup)
       return {
         weapon,
         status,

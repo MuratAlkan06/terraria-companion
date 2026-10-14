@@ -80,7 +80,7 @@ export function LabBrowser({ rows, state, onStateChange, selectedId, equippedId,
       <div className="shrink-0 space-y-3">
       <p id={scopeId} className={introVisible ? 'text-xs text-fg-muted' : 'sr-only'}>
         Choose a <span className="font-semibold text-fg">Simulated</span> weapon to equip it; any other shows why it isn’t simulated
-        <span className="sr-only"> (so far the Lab simulates {labScopeNouns()})</span>.
+        <span className="sr-only"> (the Lab simulates {labScopeNouns()})</span>.
       </p>
 
       <div role="search" className="relative">

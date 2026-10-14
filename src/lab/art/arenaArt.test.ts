@@ -7,6 +7,7 @@ import type { Weapon } from '../../data-access/types'
 import weaponsJson from '../../data/weapons.detail.json'
 import { createLabSim } from '../../sim'
 import { labWeapons } from '../labWeapons'
+import { LAB_SETUP } from '../testing/labData'
 import {
   ART_PX_PER_TILE,
   ARENA_CORE_X,
@@ -66,7 +67,7 @@ describe('arena art', () => {
   })
 
   it('the Infinite Dummy sprite is exactly the sim’s dummy hitbox (2 × 3 tiles), standing on the ground line', () => {
-    const created = createLabSim({ weapon: labWeapons(weaponsJson as Weapon[])[0] })
+    const created = createLabSim({ weapon: labWeapons(weaponsJson as Weapon[], LAB_SETUP).find((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'swing-melee')! })
     if (!created.ok) throw new Error('refused')
     const dummy = created.sim.renderState().dummies[0]
     expect(grids.dummy[0].length).toBe(dummy.width * ART_PX_PER_TILE)

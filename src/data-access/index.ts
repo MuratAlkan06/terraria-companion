@@ -11,6 +11,7 @@
  * | loadBosses()              | ChunkLoadError; DataValidationError (dev)                  |
  * | loadEnemies()             | ChunkLoadError; DataValidationError (dev)                  |
  * | loadSearchDocs()          | ChunkLoadError → search UI shows its designed error state  |
+ * | loadItems() / loadBuffs() | ChunkLoadError; DataValidationError (dev)                  |
  * | load*Index / loadItemNames| ChunkLoadError; DataValidationError (dev)                  |
  * | loadSpriteIndex()         | ChunkLoadError (manifest fetch)                            |
  *
@@ -24,12 +25,14 @@ import { memo, type Memo } from './memo'
 import { DEFAULT_IMPORTERS, DEFAULT_VALIDATOR, FETCHED_FILES, type DataFile, type Importers, type Validator } from './sources'
 import type {
   Boss,
+  Buff,
   Condition,
   ConditionIndex,
   DetailRecordMap,
   DropIndex,
   DropSource,
   EntityType,
+  Item,
   ItemNames,
   ItemUniverseFile,
   ListRecordMap,
@@ -153,6 +156,8 @@ export function createDataAccess(options: DataAccessOptions = {}) {
   const bosses = memo(() => loadFile<Boss[]>('bosses'))
   const enemies = memo(() => loadFile<Enemy[]>('enemies'))
   const searchDocs = memo(() => loadFile<SearchDoc[]>('search-docs'))
+  const items = memo(() => loadFile<Item[]>('items.detail'))
+  const buffs = memo(() => loadFile<Buff[]>('buffs'))
   const spriteIndex = memo(async (): Promise<SpriteIndex> => {
     const manifest = await loadFile<SpriteManifest>('sprite-manifest')
     return { fallbackMode: manifest.fallbackMode, byPath: byKey(manifest.files, (f) => f.path) }
@@ -196,6 +201,12 @@ export function createDataAccess(options: DataAccessOptions = {}) {
     loadEnemies: (): Promise<Enemy[]> => enemies.get(),
     /** Compact SearchDocs (§2.10) — the MiniSearch input; loaded on the first search interaction. */
     loadSearchDocs: (): Promise<SearchDoc[]> => searchDocs.get(),
+    /** Encyclopedia item records (§2.6) — ammo with its `ammoStats` for the Lab's ammo picker. */
+    loadItems: (): Promise<Item[]> => items.get(),
+    peekItems: (): Item[] | undefined => items.peek(),
+    /** Buff/debuff registry (§2.9) — the Lab resolves a weapon's damage-over-time debuff here. */
+    loadBuffs: (): Promise<Buff[]> => buffs.get(),
+    peekBuffs: (): Buff[] | undefined => buffs.peek(),
     loadRecipeIndex: () => recipeIndex.get(),
     loadDropIndex: () => dropIndex.get(),
     loadConditionIndex: () => conditionIndex.get(),
@@ -246,6 +257,10 @@ export const {
   peekBosses,
   loadEnemies,
   loadSearchDocs,
+  loadItems,
+  peekItems,
+  loadBuffs,
+  peekBuffs,
   loadRecipeIndex,
   loadDropIndex,
   loadConditionIndex,
