@@ -23,20 +23,21 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P6-S8 nav: Home + Weapons + Lab + Bosses in header and tab bar; Guides in header + More; Licensing in More + footer', () => {
+  it('P7-S1 nav: Home + Weapons + Lab + Bosses in header and tab bar; Guides in header + More; Favorites and Licensing in More + footer', () => {
     expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/bosses', '/guides'])
-    expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/about/licensing'])
+    // AMENDMENTS-001 A8: the footer's secondary links are data-driven; Favorites joins at P7-S1.
+    expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/favorites', '/about/licensing'])
     const { tabs, more } = tabBarLayout()
-    // UX_SPEC §2: Home · Weapons · Lab · Bosses · More (Guides lives in the More sheet).
+    // UX_SPEC §2: Home · Weapons · Lab · Bosses · More (Guides, Favorites, About live in the More sheet).
     expect({ tabs, more }).toMatchObject({
       tabs: [{ to: '/' }, { to: '/weapons', label: 'Weapons' }, { to: '/lab', label: 'Lab' }, { to: '/bosses', label: 'Bosses' }],
-      more: [{ to: '/guides', label: 'Guides' }, { to: '/about/licensing' }],
+      more: [{ to: '/guides', label: 'Guides' }, { to: '/favorites', label: 'Favorites' }, { to: '/about/licensing' }],
     })
     // 4 tabs + the More tab: exactly the UX_SPEC §10.12 cap.
     expect(tabs.length + (more.length > 0 ? 1 : 0)).toBeLessThanOrEqual(TAB_BAR_MAX)
   })
 
-  it.each(['lab', 'bosses', 'guides'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
+  it.each(['lab', 'bosses', 'guides', 'favorites'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
     const route = APP_ROUTES.find((r) => r.id === id)
     if (!route) throw new Error(`no ${id} route`)
     expect(route.path).toBe(`/${id}`)

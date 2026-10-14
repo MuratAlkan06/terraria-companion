@@ -1,7 +1,9 @@
 import { Tooltip } from 'radix-ui'
 import { Suspense, useEffect, useRef } from 'react'
 import { Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { FavoritesSaveNotice } from '../../components/FavoriteStar'
 import { PixelLoader } from '../../components/PixelLoader'
+import { pathFor } from '../routes'
 import { useDelayedFlag } from '../useResource'
 import { BottomTabBar } from './BottomTabBar'
 import { useNavigationPending } from './navigationPending'
@@ -59,6 +61,9 @@ export default function AppShell() {
           <>
             <SiteFooter />
             <BottomTabBar />
+            {/* One notice when favorites stop saving (the pressed star can't explain it in place);
+                /favorites says so inline, in place, so it shows none of its own there. */}
+            {pathname === pathFor('favorites') ? null : <FavoritesSaveNotice />}
           </>
         )}
       </div>

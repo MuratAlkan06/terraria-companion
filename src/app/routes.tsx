@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { BookOpen, FlaskConical, House, Scale, Skull, Swords, type LucideIcon } from 'lucide-react'
+import { BookOpen, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -113,6 +113,19 @@ export const APP_ROUTES: readonly AppRoute[] = [
     id: 'guide',
     path: '/guides/:slug',
     Component: lazy(() => chunkGuides().then((m) => ({ default: m.GuidePage }))),
+  },
+  {
+    // P7-S1: starred weapons and bosses (tc.v1.favorites); in chunk-db per UX_SPEC §1.
+    id: 'favorites',
+    path: '/favorites',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.FavoritesPage }))),
+    nav: {
+      label: 'Favorites',
+      icon: Star,
+      surfaces: ['more', 'footer'],
+      order: 800,
+      description: 'The weapons and bosses you starred',
+    },
   },
   {
     id: 'licensing',

@@ -1,5 +1,6 @@
 import { ChevronDown, FlaskConical } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { FavoriteStar } from '../../../../components/FavoriteStar'
 import { PartiallyVerifiedBadge } from '../../../../components/PartiallyVerifiedBadge'
 import { PixelPanel } from '../../../../components/PixelPanel'
 import { ProvenanceLink } from '../../../../components/ProvenanceLink'
@@ -85,11 +86,15 @@ function DetailHeader({
         <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={96} full />
       </div>
       <div className="min-w-0 flex-1 space-y-4">
-        <h1 className="font-display text-base leading-relaxed md:text-2xl">
-          <RarityText rarity={rarity} tooltip>
-            {weapon.name}
-          </RarityText>
-        </h1>
+        <div className="flex items-start justify-between gap-2">
+          <h1 className="min-w-0 font-display text-base leading-relaxed md:text-2xl">
+            <RarityText rarity={rarity} tooltip>
+              {weapon.name}
+            </RarityText>
+          </h1>
+          {/* UX_SPEC §3.3 DetailHeader FavoriteStar (P7-S1); the negative margin aligns the 44px target's star with the title. */}
+          <FavoriteStar entityRef={`i:${weapon.id}`} name={weapon.name} className="-mt-2.5 -mr-2" />
+        </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-3">
           {classView.status === 'not-applicable' ? (
             <HeaderFact label="Class">

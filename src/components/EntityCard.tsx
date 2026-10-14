@@ -7,8 +7,10 @@ import { RarityText } from './RarityText'
 
 /**
  * EntityCard (UX_SPEC §3.1): sprite + rarity-coloured name + type/class badges + stage chip,
- * as one link to the entity's page (whole row = >= 44px target). Contains no interactive
- * children, so Unknown markers inside must use `UnknownValue interactive={false}`.
+ * as one link to the entity's page (whole row = >= 44px target). The link contains no
+ * interactive children, so Unknown markers inside must use `UnknownValue interactive={false}`.
+ * An `action` (e.g. FavoriteStar, P7-S1) sits beside the link inside the same card frame, in its
+ * own cell — never inside the link, since a control can't nest in another.
  * Stacked on small screens; from lg the stats align in fixed columns ("wide rows", UX_SPEC §7).
  */
 export interface EntityCardStat {
@@ -26,20 +28,16 @@ export interface EntityCardProps {
   rarity: Rarity | undefined
   badges?: ReactNode
   stats?: readonly EntityCardStat[]
+  /** A control shown in its own cell at the card's end (outside the link). */
+  action?: ReactNode
   className?: string
 }
 
-export function EntityCard({ to, state, sprite, name, rarity, badges, stats = [], className }: EntityCardProps) {
-  return (
-    <Link
-      to={to}
-      state={state}
-      className={cx(
-        'group flex min-h-tap items-center gap-3 border-2 border-panel-border bg-panel px-3 py-2 text-fg shadow-pixel',
-        'transition-colors duration-(--dur-ui) ease-out-strong hover:border-gold-600',
-        className,
-      )}
-    >
+const FRAME = 'border-2 border-panel-border bg-panel text-fg shadow-pixel transition-colors duration-(--dur-ui) ease-out-strong'
+
+export function EntityCard({ to, state, sprite, name, rarity, badges, stats = [], action, className }: EntityCardProps) {
+  const content = (
+    <>
       <span className="grid size-slot shrink-0 place-items-center border-2 border-slot-border bg-slot">{sprite}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-1 lg:flex-row lg:items-center lg:gap-4">
         <span className="flex min-w-0 flex-col gap-1 lg:flex-1">
@@ -63,6 +61,27 @@ export function EntityCard({ to, state, sprite, name, rarity, badges, stats = []
         aria-hidden="true"
         className="size-5 shrink-0 text-fg-muted transition-colors duration-(--dur-ui) ease-out-strong group-hover:text-accent"
       />
-    </Link>
+    </>
+  )
+
+  if (action === undefined) {
+    return (
+      <Link
+        to={to}
+        state={state}
+        className={cx('group flex min-h-tap items-center gap-3 px-3 py-2 hover:border-gold-600', FRAME, className)}
+      >
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <div className={cx('flex items-stretch has-[a:hover]:border-gold-600', FRAME, className)}>
+      <Link to={to} state={state} className="group flex min-h-tap min-w-0 flex-1 items-center gap-3 py-2 pr-2 pl-3">
+        {content}
+      </Link>
+      <div className="flex shrink-0 items-center border-l-2 border-panel-border px-1">{action}</div>
+    </div>
   )
 }

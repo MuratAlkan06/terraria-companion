@@ -8,11 +8,12 @@
  * - Writes are a single atomic `setItem`; failures throw `StorageQuotaError` so callers
  *   can keep state in memory and warn.
  *
- * Registered: `settings` (P1), `recent` (P2-S3), `progress` (P5-S1), `checklists` (P6-S8, A7).
- * Later slices add their domains to `DOMAINS` (builds, favorites, plans, readiness).
+ * Registered: `settings` (P1), `recent` (P2-S3), `progress` (P5-S1), `checklists` (P6-S8, A7),
+ * `favorites` (P7-S1). Later slices add their domains to `DOMAINS` (builds, plans, readiness).
  */
 import { meta } from '../data/meta'
 import { checklistsDomain, type ChecklistsData } from './checklists'
+import { favoritesDomain, type FavoritesData } from './favorites'
 import { progressDomain, type ProgressData } from './progress'
 import { recentDomain, type RecentData } from './recent'
 import { settingsDomain, type SettingsData } from './settings'
@@ -26,6 +27,7 @@ interface DomainDataMap {
   recent: RecentData
   progress: ProgressData
   checklists: ChecklistsData
+  favorites: FavoritesData
 }
 
 export type DomainKey = keyof DomainDataMap
@@ -36,6 +38,7 @@ const DOMAINS: { [K in DomainKey]: DomainDef<DomainDataMap[K]> } = {
   recent: recentDomain,
   progress: progressDomain,
   checklists: checklistsDomain,
+  favorites: favoritesDomain,
 }
 
 export const storageKey = (domain: DomainKey): string => `tc.v1.${domain}`

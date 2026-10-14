@@ -3,6 +3,7 @@ import { useLocation, useSearchParams } from 'react-router'
 import { EmptyChest } from '../../../../components/art/EmptyChest'
 import { buttonClass } from '../../../../components/buttonStyles'
 import { EntityCard } from '../../../../components/EntityCard'
+import { FavoriteStar } from '../../../../components/FavoriteStar'
 import { ActiveFilterChips, FilterBar } from '../../../../components/FilterBar'
 import { ProvenanceLink } from '../../../../components/ProvenanceLink'
 import { rarityLabel, asRarity } from '../../../../components/rarity'
@@ -223,6 +224,9 @@ function WeaponRow({ weapon, sprites }: { weapon: WeaponListRecord; sprites: Spr
         { key: 'useTime', label: 'Use time', value: weapon.useAnimationTicks ?? unknown('useAnimationTicks') },
         { key: 'stage', label: 'Stage', value: weapon.stage ? stageLabel(weapon.stage, true) : unknown('stage') },
       ]}
+      // P7-S1: each row's star subscribes to its own ref in the shared store, so a toggle anywhere
+      // re-renders only the rows whose answer changed (virtualization-safe: no per-list state).
+      action={<FavoriteStar entityRef={`i:${weapon.id}`} name={weapon.name} />}
     />
   )
 }
