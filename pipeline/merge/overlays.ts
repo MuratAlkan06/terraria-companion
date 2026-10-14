@@ -22,6 +22,12 @@ const ConditionOverlayEntry = z.strictObject({
       stations: z.array(z.string().min(1)).optional(),
       recipeNotes: z.array(z.string().min(1)).optional(),
       dropNotes: z.array(z.string().min(1)).optional(),
+      /**
+       * Group captions of a boss article's rendered drop list ("Only in Corrupt worlds"): every item
+       * listed under the caption drops only under this condition (parse/dropCaptions.ts). Cargo Drops
+       * rows do not carry these captions.
+       */
+      dropCaptions: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 })
@@ -128,6 +134,18 @@ export type CurationGap = z.infer<typeof CurationGap>
 
 export const isCurationGap = (v: unknown): v is CurationGap => typeof v === 'object' && v !== null && !Array.isArray(v) && 'gap' in v
 
+/**
+ * Honest partial gear (P5-S3): one class whose suggested gear is Unknown while other classes have
+ * authored entries. SuggestedEquipment needs ≥ 1 weapon per entry, so a class with no weapon both
+ * recommended by a quote and verified obtainable before the fight has no entry: it is emitted as
+ * `suggestedEquipment.<class>` listed in unverifiedFields (absent → Unknown) + a `missing-field` gap
+ * on that path carrying the reason.
+ */
+const BossGearClassGap = z.strictObject({ class: DamageClass.exclude(['other']), gap: PlainText.min(20) })
+export type BossGearClassGap = z.infer<typeof BossGearClassGap>
+
+export const isGearClassGap = (v: BossGearEntry | BossGearClassGap): v is BossGearClassGap => 'gap' in v
+
 /** The three A1-staged list fields an overlay entry may curate (attackPatternTags are quoted tags, above). */
 export const CURATED_BOSS_FIELDS = ['prepChecklist', 'strategies', 'suggestedEquipment'] as const
 export type CuratedBossField = (typeof CURATED_BOSS_FIELDS)[number]
@@ -161,7 +179,8 @@ const BossOverlayEntry = z.strictObject({
   /** P5 curated fields (see above): entries, or `{ gap }`; absent = not curated. */
   prepChecklist: z.union([z.array(BossPrepEntry).min(1), CurationGap]).optional(),
   strategies: z.union([z.array(BossStrategyEntry).min(1), CurationGap]).optional(),
-  suggestedEquipment: z.union([z.array(BossGearEntry).min(1), CurationGap]).optional(),
+  /** Entries (+ per-class gaps for classes without one, see BossGearClassGap), or a whole-field `{ gap }`. */
+  suggestedEquipment: z.union([z.array(z.union([BossGearEntry, BossGearClassGap])).min(1), CurationGap]).optional(),
 })
 export type BossOverlayEntry = z.infer<typeof BossOverlayEntry>
 
@@ -184,6 +203,15 @@ export const BossesOverlay = z
         if (new Set(texts).size !== texts.length) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": duplicate prep checklist text` })
         for (const p of e.prepChecklist) {
           if (OUTCOME_PROMISE.test(p.text)) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": prep checklist text promises an outcome: "${p.text}"` })
+        }
+      }
+      if (Array.isArray(e.suggestedEquipment)) {
+        const entries = e.suggestedEquipment.filter((g) => !isGearClassGap(g))
+        const gapClasses = e.suggestedEquipment.filter(isGearClassGap).map((g) => g.class)
+        if (entries.length === 0) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": suggestedEquipment has per-class gaps only; declare the whole field as { gap } instead` })
+        if (new Set(gapClasses).size !== gapClasses.length) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": duplicate per-class gear gap` })
+        for (const cls of gapClasses) {
+          if (entries.some((g) => g.class === cls)) ctx.addIssue({ code: 'custom', message: `boss "${e.id}": class "${cls}" has gear entries and a gear gap` })
         }
       }
       if (Array.isArray(e.strategies)) {
@@ -430,7 +458,7 @@ export function evidencePages(b: BossesOverlay, p: ProgressionOverlay, w: Withhe
   const curatedPages = (e: BossOverlayEntry) =>
     CURATED_BOSS_FIELDS.flatMap((f) => {
       const v = e[f]
-      return Array.isArray(v) ? v.map((x) => x.page) : []
+      return Array.isArray(v) ? v.flatMap((x) => ('page' in x ? [x.page] : [])) : []
     })
   return [
     ...b.entries.flatMap((e) => [e.page, ...e.attackPatternTags.flatMap((t) => (t.page ? [t.page] : [])), ...curatedPages(e)]),
@@ -445,14 +473,16 @@ export interface ConditionMatchers {
   station: Map<string, ConditionOverlayEntry>
   recipeNote: Map<string, ConditionOverlayEntry>
   dropNote: Map<string, ConditionOverlayEntry>
+  dropCaption: Map<string, ConditionOverlayEntry>
 }
 
 export function conditionMatchers(overlay: ConditionsOverlay): ConditionMatchers {
-  const m: ConditionMatchers = { station: new Map(), recipeNote: new Map(), dropNote: new Map() }
+  const m: ConditionMatchers = { station: new Map(), recipeNote: new Map(), dropNote: new Map(), dropCaption: new Map() }
   for (const e of overlay.entries) {
     for (const t of e.match?.stations ?? []) m.station.set(t, e)
     for (const t of e.match?.recipeNotes ?? []) m.recipeNote.set(t, e)
     for (const t of e.match?.dropNotes ?? []) m.dropNote.set(t, e)
+    for (const t of e.match?.dropCaptions ?? []) m.dropCaption.set(t, e)
   }
   return m
 }

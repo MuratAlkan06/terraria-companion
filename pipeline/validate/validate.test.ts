@@ -354,7 +354,13 @@ describe('corrupted records fail with named errors', () => {
       boss._prov.unverifiedFields = boss._prov.unverifiedFields.filter((f: string) => f !== field)
       if (!boss._prov.editorialFields.includes(field)) boss._prov.editorialFields.push(field)
     }
-    /** The sample's Eater of Worlds with every curated minimum authored (gear = an ungated weapon). */
+    /** Per-class gear gap (P5-S3 honest partial): the class's path listed Unknown + its reason in the stage gap log. */
+    const classGap = (raw: RawDataset, cls: string) => {
+      const field = `suggestedEquipment.${cls}`
+      find(raw, 'bosses', EOW)._prov.unverifiedFields.push(field)
+      raw.stageGaps = [...((raw.stageGaps as Rec[] | undefined) ?? []), { ref: `boss:${EOW}`, field, kind: 'missing-field', detail: `Eater of Worlds: no ${cls} weapon the wiki recommends is verified as obtainable before this fight.`, sources: ['https://terraria.wiki.gg/wiki/Eater_of_Worlds'] }]
+    }
+    /** The sample's Eater of Worlds with every curated minimum authored (gear = an ungated weapon; the other classes declared Unknown). */
     const curated = (raw: RawDataset) => {
       const eow = find(raw, 'bosses', EOW)
       eow.attackPatternTags = ['burrows']
@@ -362,6 +368,7 @@ describe('corrupted records fail with named errors', () => {
       eow.strategies = [{ class: 'ranged', text: 'Jester\'s Arrows can pierce through infinitely many segments, although the damage drops each segment.', sourceUrl: SRC }]
       eow.suggestedEquipment = [{ class: 'ranged', weapons: [98], armorSetIds: [], accessories: [], buffs: [] }]
       for (const f of ['attackPatternTags', 'prepChecklist', 'strategies', 'suggestedEquipment']) unlist(eow, f)
+      for (const cls of ['melee', 'magic', 'summon']) classGap(raw, cls)
       return raw
     }
     const declareGap = (raw: RawDataset, field: string) => {
@@ -411,7 +418,7 @@ describe('corrupted records fail with named errors', () => {
       const raw = withPages(curated(sample()))
       declareGap(raw, 'strategies')
       expect(run(raw).ok).toBe(true)
-      raw.stageGaps = []
+      raw.stageGaps = (raw.stageGaps as Rec[]).filter((g) => g.field !== 'strategies')
       expect(fieldsOf(run(raw))).toEqual([`${EOW}:strategies`])
     })
 
@@ -425,6 +432,45 @@ describe('corrupted records fail with named errors', () => {
       for (const id of [39, 98, 3069]) find(raw, 'weapons', id).gatedBy = { bosses: ['wall-of-flesh'], conditions: [], stage: 'early-hm' }
       const result = run(raw)
       if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    })
+
+    describe('curated gear covers every class (P5-S3 honest partial)', () => {
+      const weaponName = (raw: RawDataset, id: number) => find(raw, 'weapons', id).name as string
+
+      it('a class with neither an entry nor a declared per-class Unknown fails', () => {
+        const raw = withPages(curated(sample()))
+        const eow = find(raw, 'bosses', EOW)
+        eow._prov.unverifiedFields = eow._prov.unverifiedFields.filter((f: string) => f !== 'suggestedEquipment.summon')
+        expect(fieldsOf(run(raw))).toEqual([`${EOW}:suggestedEquipment.summon`])
+      })
+
+      it('a per-class Unknown needs its reason in the stage gap log', () => {
+        const raw = withPages(curated(sample()))
+        raw.stageGaps = (raw.stageGaps as Rec[]).filter((g) => g.field !== 'suggestedEquipment.magic')
+        expect(fieldsOf(run(raw))).toEqual([`${EOW}:suggestedEquipment.magic`])
+      })
+
+      it('a class cannot both have entries and be listed Unknown', () => {
+        const raw = withPages(curated(sample()))
+        classGap(raw, 'ranged')
+        expect(fieldsOf(run(raw))).toEqual([`${EOW}:suggestedEquipment.ranged`])
+      })
+
+      it('a per-class Unknown is stale once one of the boss\'s quoted strategies names a suggestable weapon of that class', () => {
+        const raw = withPages(curated(sample()))
+        const eow = find(raw, 'bosses', EOW)
+        // Wand of Sparking (i:3069): a magic weapon with no gates in the sample, so it passes E_SUGGESTION_GATING
+        expect(weaponName(raw, 3069)).toBe('Wand of Sparking')
+        eow.strategies.push({ class: 'magic', text: 'The Wand of Sparking is fine here.', sourceUrl: SRC })
+        const errors = expectOnly(run(raw), 'E_BOSS_CURATION')
+        expect(errors).toHaveLength(1)
+        expect(errors[0].message).toMatch(/suggestedEquipment\.magic: per-class gap is stale: .*Wand of Sparking \(i:3069\)/)
+        // a quote naming a weapon of ANOTHER class (Minishark, ranged) leaves the magic gap standing
+        eow.strategies.pop()
+        eow.strategies.push({ class: 'magic', text: `The ${weaponName(raw, 98)} is fine here.`, sourceUrl: SRC })
+        const result = run(raw)
+        if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+      })
     })
 
     it('a listed boss without a record fails', () => {

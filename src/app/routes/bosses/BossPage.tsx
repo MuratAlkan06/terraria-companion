@@ -11,9 +11,9 @@ import { loadBossPageData, peekBossPageData } from './bossPageData'
 import { BossPageView } from './BossPageView'
 
 /**
- * /bosses/:id — boss page (PRD P5-S2; UX_SPEC §3.7). Pages exist for the bosses in
- * src/schemas/bossPages.ts (pre-Hardmode); any other id gets the styled 404 with a link to that
- * node on the map when it is one (its focus card has the details). Loading → skeleton after 300 ms;
+ * /bosses/:id — boss page (PRD P5-S2/S3; UX_SPEC §3.7). Pages exist for the bosses in
+ * src/schemas/bossPages.ts (every registry boss); any other id gets the styled 404 with a link to
+ * that node on the map when it is one (events and milestones: its focus card has the details). Loading → skeleton after 300 ms;
  * a failed chunk → ErrorState with Retry (shell alive). Progress is display only (P5-S4 adds marking).
  */
 const HEADING_ID = 'boss-page-title'
@@ -36,8 +36,8 @@ export default function BossPage() {
         message={
           <>
             There&rsquo;s no boss page at{' '}
-            <code className="bg-night-950 px-1.5 py-0.5 font-mono text-sm break-all text-fg">{id}</code>. Boss pages cover the
-            pre-Hardmode bosses; every boss, event and milestone is on the progression map with its details.
+            <code className="bg-night-950 px-1.5 py-0.5 font-mono text-sm break-all text-fg">{id}</code>. Every boss has a
+            page; events and milestones are on the progression map with their details.
           </>
         }
         action={{ to: bossMapHref(/^[a-z0-9-]+$/.test(id) ? id : undefined), label: 'Open the boss map' }}

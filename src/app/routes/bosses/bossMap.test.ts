@@ -95,10 +95,11 @@ describe('BossMapWorkspace (SSR: phone layout, nothing persisted)', () => {
     expect(text(html)).not.toMatch(FORWARD_PROMISE)
   })
 
-  it('P5-S1 AC4 / P5-S2: a pre-Hardmode boss node is a link to its page; every other node stays a card button', () => {
+  it('P5-S1 AC4 / P5-S2 / P5-S3: a boss node is a link to its page; every event / milestone node stays a card button', () => {
     const html = renderWorkspace()
     for (const node of raw.nodes) {
       const element = new RegExp(`<(button|a)[^>]*data-node-id="${node.id}"[^>]*>`).exec(html)!
+      expect(hasBossPage(node.id), node.id).toBe(node.kind === 'boss')
       if (hasBossPage(node.id)) {
         expect(element[1], node.id).toBe('a')
         expect(element[0]).toContain(`href="/bosses/${node.id}"`)
@@ -117,10 +118,13 @@ describe('BossMapWorkspace (SSR: phone layout, nothing persisted)', () => {
     const pageLink = /<a[^>]*data-page-link=""[^>]*>([^<]*)/.exec(html)
     expect(pageLink?.[0]).toContain('href="/bosses/eye-of-cthulhu"')
     expect(pageLink?.[1]).toBe('Open the Eye of Cthulhu page')
-    const plantera = renderWorkspace('plantera')
-    expect(plantera).toContain('data-focus-card="plantera"')
-    expect(plantera).not.toContain('data-page-link')
-    expect(/<button[^>]*data-node-id="plantera"[^>]*>/.exec(plantera)?.[0]).toContain('aria-expanded="true"')
+    // P5-S3: Hardmode bosses have pages too
+    expect(/<a[^>]*data-page-link=""[^>]*>([^<]*)/.exec(renderWorkspace('plantera'))?.[0]).toContain('href="/bosses/plantera"')
+    // events and milestones stay map markers (A3): the card, no page link
+    const event = renderWorkspace('pumpkin-moon')
+    expect(event).toContain('data-focus-card="pumpkin-moon"')
+    expect(event).not.toContain('data-page-link')
+    expect(/<button[^>]*data-node-id="pumpkin-moon"[^>]*>/.exec(event)?.[0]).toContain('aria-expanded="true"')
     // An unknown id is ignored: no card, the usual opening view.
     expect(renderWorkspace('not-a-node')).not.toContain('data-focus-card')
   })

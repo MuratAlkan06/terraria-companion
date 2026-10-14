@@ -199,6 +199,11 @@ export interface DropSections {
   rows: DropRow[]
   /** Boss.dropIds missing from the loaded drop data. */
   missing: number
+  /**
+   * The one NPC variant every non-bag record comes from ("Plantera (Second Form)"), when there is
+   * exactly one and it isn't the boss itself: said once above the table instead of on every row.
+   */
+  commonSource?: string
 }
 
 const conditionsUnknown = (drop: DropSource) => getField(drop, 'conditions').status === 'unverified'
@@ -276,7 +281,11 @@ export function bossDropSections(boss: Boss, drops: DropIndex, itemOf: (id: numb
   tiers.rewards.sort((a, b) => Number(b.treasureBag) - Number(a.treasureBag) || b.topRate - a.topRate || byName(a, b))
   tiers.materials.sort((a, b) => b.topRate - a.topRate || byName(a, b))
   tiers.conditional.sort(byName)
-  return { tiers, rows: DROP_TIERS.flatMap((t) => tiers[t].flatMap((g) => g.rows)), missing: loaded.length - records.length }
+  const rows = DROP_TIERS.flatMap((t) => tiers[t].flatMap((g) => g.rows))
+  const own = rows.filter((r) => !r.bag)
+  const sources = new Set(own.map((r) => r.drop.source.npcName))
+  const commonSource = sources.size === 1 && own.every((r) => r.role === 'variant') ? own[0].drop.source.npcName : undefined
+  return { tiers, rows, missing: loaded.length - records.length, ...(commonSource ? { commonSource } : {}) }
 }
 
 /** The boss's drop records as table rows, in display order (see bossDropSections). */
@@ -380,6 +389,23 @@ export type GearEntry = NonNullable<Boss['suggestedEquipment']>[number]
 /** The curated gear entries for one class tab. */
 export const gearFor = (entries: readonly GearEntry[], cls: GearClass): GearEntry[] => entries.filter((g) => g.class === cls)
 
+/** Path of one class's gear (P5-S3 honest partial: listed in unverifiedFields = that class's gear is Unknown). */
+export const gearClassField = (cls: GearClass) => `suggestedEquipment.${cls}`
+
+/**
+ * One class tab's gear while the boss's suggested gear is curated: its entries, Unknown (the class
+ * is listed on its own path — no weapon both recommended by a quote and verified obtainable before
+ * the fight), or nothing curated for it. While the whole field is not curated this is `none`: the
+ * field's own Unknown (one block above the tabs) covers every class.
+ */
+export function classGear(boss: Boss, cls: GearClass): { status: 'curated'; entries: GearEntry[] } | { status: 'unknown' } | { status: 'none' } {
+  const gear = curatedList(boss, 'suggestedEquipment')
+  if (gear.status !== 'curated') return { status: 'none' }
+  const entries = gearFor(gear.entries, cls)
+  if (entries.length > 0) return { status: 'curated', entries }
+  return getField(boss, gearClassField(cls)).status === 'unverified' ? { status: 'unknown' } : { status: 'none' }
+}
+
 // --- next steps -----------------------------------------------------------------------------
 
 export interface NextSteps {
@@ -387,8 +413,12 @@ export interface NextSteps {
   before: Connection[]
   /** Either/or partners (Eater of Worlds / Brain of Cthulhu). */
   alternatives: Connection[]
-  /** Links out of this node; an either/or target lists its partners too. */
-  after: { connection: Connection; partners: MapNode[] }[]
+  /**
+   * Links out of this node; an either/or target lists its partners too. A milestone target (a world
+   * change with no page: Hardmode after the Wall of Flesh) also lists what IT opens — its own links
+   * out, ranked like these — so the page names the fights the marker leads to.
+   */
+  after: { connection: Connection; partners: MapNode[]; opens?: Connection[] }[]
   /**
    * A side branch (no links out): where the path it branched from continues — that node's
    * recommended-next / required-gate links, other than this node.
@@ -401,7 +431,11 @@ export function nextSteps(graph: MapGraph, nodeId: string): NextSteps {
   const group = graph.groups.find((g) => g.includes(nodeId))
   const before = own.before.length > 0 || !group ? own.before : connectionsOf(graph, group[0]).before
   const partnersOf = (id: string) => (graph.groups.find((g) => g[0] === id) ?? []).slice(1).flatMap((m) => graph.nodeById.get(m) ?? [])
-  const after = rankSteps(graph, own.after).map((connection) => ({ connection, partners: partnersOf(connection.other.id) }))
+  // Fights first, then events (each kind in step order).
+  const KIND_ORDER = { boss: 0, event: 1, milestone: 2 } as const
+  const opensOf = (node: MapNode) =>
+    node.kind === 'milestone' ? { opens: rankSteps(graph, connectionsOf(graph, node.id).after).sort((a, b) => KIND_ORDER[a.other.kind] - KIND_ORDER[b.other.kind]) } : {}
+  const after = rankSteps(graph, own.after).map((connection) => ({ connection, partners: partnersOf(connection.other.id), ...opensOf(connection.other) }))
   const steps: NextSteps = { before, alternatives: own.alternatives, after }
   if (after.length === 0) {
     const origin = before.find((c) => connectionsOf(graph, c.other.id).after.some((x) => x.other.id !== nodeId && isMainPath(x)))
@@ -526,6 +560,16 @@ export const STAT_KEYS = ['hp', 'defense', 'contactDamage'] as const
 export const statField = (difficulty: (typeof STAT_DIFFICULTIES)[number], key: (typeof STAT_KEYS)[number]) => `statsByDifficulty.${difficulty}.${key}`
 
 /**
+ * The stats are the boss's BASE stats, i.e. its first form's (the dataset's stat rule). That caveat
+ * only means something for a boss that changes form mid-fight — one whose curated attack patterns
+ * include multiple phases (Eye of Cthulhu, Plantera, …); for any other boss it would be noise (B82).
+ */
+export function isMultiForm(boss: Boss): boolean {
+  const tags = curatedList(boss, 'attackPatternTags')
+  return tags.status === 'curated' && tags.entries.includes('multi-phase')
+}
+
+/**
  * How the stats panel reads (H1): `none` when not one value is verified — one honest line with the
  * stated reason (a `missing-field` gap on `statsByDifficulty`, when the gap log carries one) instead
  * of a grid of nine Unknown cells; otherwise the table.
@@ -551,6 +595,8 @@ export function bossPageUnknowns(boss: Boss, rows: readonly DropRow[]): PageUnkn
   if (unknown('location.time')) out.push({ key: 'time', label: 'When — time of day' })
   if (unknown('prepChecklist')) out.push({ key: 'prepChecklist', label: 'Prep checklist' })
   if (unknown('suggestedEquipment')) out.push({ key: 'suggestedEquipment', label: 'Suggested gear' })
+  // Curated gear with a class left Unknown: one marker in that class's tab.
+  for (const cls of GEAR_CLASSES) if (classGear(boss, cls).status === 'unknown') out.push({ key: gearClassField(cls), label: `Suggested ${CLASS_LABEL[cls].toLowerCase()} gear` })
   // An Unknown strategies field shows in the patterns panel and in each class tab.
   if (unknown('strategies')) out.push({ key: 'strategies', label: 'Survival and class tips', count: 1 + GEAR_CLASSES.length })
   if (unknown('attackPatternTags')) out.push({ key: 'attackPatternTags', label: 'Attack patterns' })

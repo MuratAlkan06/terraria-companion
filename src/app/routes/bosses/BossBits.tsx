@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CuratedLabel } from '../../../components/CuratedLabel'
@@ -30,7 +30,11 @@ export function PanelHeading({ id, children, curated = false, aside }: { id: str
   )
 }
 
-/** A 44px icon link to a claim's wiki source (one per tip / row), with the claim named for screen readers. */
+/**
+ * A 44px icon link to a claim's wiki source (one per tip / row), with the claim named for screen
+ * readers. Its glyph is a page (the cited article), never the ↗ that marks an item's own link — a
+ * drop row carries both, and they lead to different pages (B82).
+ */
 export function SourceIconLink({ href, srLabel, className }: { href: string; srLabel: string; className?: string }) {
   return (
     <a
@@ -38,11 +42,26 @@ export function SourceIconLink({ href, srLabel, className }: { href: string; srL
       target="_blank"
       rel="noopener noreferrer"
       title="Source on terraria.wiki.gg"
+      data-source-link=""
       className={cx('grid min-h-tap min-w-tap shrink-0 place-items-center text-link hover:text-accent-strong', className)}
     >
-      <ExternalLink aria-hidden="true" className="size-4" />
+      <FileText aria-hidden="true" className="size-4" />
       <span className="sr-only">{srLabel} on terraria.wiki.gg (opens in a new tab)</span>
     </a>
+  )
+}
+
+/** A name with the new-tab marker glued to its last word (so the icon never wraps alone), 4px from the text. */
+function MarkedName({ name }: { name: string }) {
+  const split = name.lastIndexOf(' ') + 1
+  return (
+    <>
+      {name.slice(0, split)}
+      <span className="whitespace-nowrap">
+        {name.slice(split)}
+        <ExternalLink aria-hidden="true" className="ml-1 inline-block size-3.5 align-[-0.125em]" />
+      </span>
+    </>
   )
 }
 
@@ -69,6 +88,7 @@ export function ItemCell({
   stack,
   gates = [],
   slotFromMd = false,
+  trailing,
   className,
 }: {
   item: ItemInfo
@@ -77,6 +97,8 @@ export function ItemCell({
   gates?: readonly GateRef[]
   /** Narrow table columns: show the slot art only from `md` up, so the name keeps a readable width on phones. */
   slotFromMd?: boolean
+  /** Inline after the name and badges, in the same wrapping row (a drop row's tags and source link). */
+  trailing?: ReactNode
   className?: string
 }) {
   const slot = (
@@ -95,10 +117,11 @@ export function ItemCell({
       />
     </span>
   )
+  const external = item.link?.kind === 'external'
   const name = (
     <span className="min-w-0">
       {stack !== undefined && stack > 1 ? <span className="sr-only">{stack} × </span> : null}
-      {item.name}
+      {external ? <MarkedName name={item.name} /> : item.name}
     </span>
   )
   const body =
@@ -111,7 +134,6 @@ export function ItemCell({
       <a href={item.link.href} target="_blank" rel="noopener noreferrer" className={cx('flex min-h-tap min-w-0 items-center gap-3', LINK)}>
         {slot}
         {name}
-        <ExternalLink aria-hidden="true" className="size-3.5 shrink-0" />
         <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
       </a>
     ) : (
@@ -126,6 +148,7 @@ export function ItemCell({
       {gates.map((g) => (
         <GateBadge key={g.id} name={g.name} to={g.to} />
       ))}
+      {trailing}
     </span>
   )
 }

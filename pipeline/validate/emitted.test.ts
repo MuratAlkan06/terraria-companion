@@ -13,6 +13,7 @@ import { formatError } from './errors'
 import { checkFixtures, REQUIREMENTS_BOSSES } from './fixtures'
 import { requiredGateUpstream } from './graph'
 import { validateDataset } from './index'
+import { GEAR_CLASSES } from './curation'
 import { checkSuggestionGating } from './suggestions'
 
 const DATA_DIR = join(import.meta.dirname, '../../src/data')
@@ -278,6 +279,38 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(read<{ partial: { pending: string[] } }>('dataset.json').partial.pending).not.toEqual(expect.arrayContaining(['bosses']))
     })
 
+    it('P5-S3 review audit: every bundled drop ("Grenade Launcher :+ Rocket I (50–149)") gives the primary its own quantity and the companion its stated amount, as separate records', () => {
+      const drops = read<DropSource[]>('drops.json')
+      const universe = read<{ items: { id: number; name?: string }[] }>('item-universe.json')
+      const idOf = (name: string) => universe.items.find((i) => i.name === name)?.id as number
+      // The 9 bundled custom cells of the Cargo Drops sync (20 rows): source → [primary, companion, companion amount].
+      const BUNDLES: [string, string, string, { min: number; max: number }][] = [
+        ['Pumpking', 'Candy Corn Rifle', 'Candy Corn', { min: 50, max: 100 }],
+        ['Pumpking', "Jack 'O Lantern Launcher", "Explosive Jack 'O Lantern", { min: 25, max: 50 }],
+        ['Crimson Heart', 'The Undertaker', 'Musket Ball', { min: 100, max: 100 }],
+        ['Shadow Orb', 'Musket', 'Musket Ball', { min: 100, max: 100 }],
+        ['Nailhead', 'Nail Gun', 'Nail', { min: 100, max: 200 }],
+        ['Mourning Wood', 'Stake Launcher', 'Stake', { min: 30, max: 60 }],
+        ['Golem', 'Stynger', 'Stynger Bolt', { min: 60, max: 99 }],
+        ['Treasure Bag (Golem)', 'Stynger', 'Stynger Bolt', { min: 60, max: 99 }],
+        ['Plantera (Second Form)', 'Grenade Launcher', 'Rocket I', { min: 50, max: 149 }],
+        ['Treasure Bag (Plantera)', 'Grenade Launcher', 'Rocket I', { min: 50, max: 149 }],
+      ]
+      for (const [source, primary, companion, amount] of BUNDLES) {
+        const of = (name: string) => drops.filter((d) => d.itemId === idOf(name) && d.source.npcName === source)
+        expect(of(primary).length, `${source} → ${primary}`).toBeGreaterThan(0)
+        for (const d of of(primary)) expect(d.quantity, `${source} → ${primary}`).toEqual({ min: 1, max: 1 })
+        expect(of(companion).length, `${source} → ${companion}`).toBeGreaterThan(0)
+        for (const d of of(companion)) {
+          expect(d.quantity, `${source} → ${companion}`).toEqual(amount)
+          // same chance as the primary: they drop together
+          expect(d.rates, `${source} → ${companion}`).toEqual(of(primary)[0].rates)
+        }
+      }
+      // the item at the centre of the finding: never a stack of rockets on the launcher, on the boss or the weapon page
+      expect(drops.filter((d) => d.itemId === 758).map((d) => d.quantity)).toEqual([{ min: 1, max: 1 }, { min: 1, max: 1 }])
+    })
+
     it('B19: Pretty Mirror acquisition is withheld (Unknown + source-mismatch gap)', () => {
       const mirror = read<Weapon[]>('weapons.detail.json').find((w) => w.id === 5577)!
       expect(mirror.acquisition).toEqual([])
@@ -287,7 +320,7 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     })
   })
 
-  describe('P5-S2 boss pages: curated fields + the E_BOSS_CURATION gate (AMENDMENTS-001 A1)', () => {
+  describe('P5-S2/S3 boss pages: curated fields + the E_BOSS_CURATION gate (AMENDMENTS-001 A1)', () => {
     const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
     const bosses = read<Boss[]>('bosses.json')
     const stageGaps = read<GapEntry[]>('stage-gaps.json')
@@ -312,10 +345,27 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       }
     })
 
-    it('suggested gear is Unknown on every page boss, with a declared reason (no weapon passes E_SUGGESTION_GATING before them)', () => {
+    it('suggested gear: Unknown with a declared reason before Hardmode (nothing is required before those fights); from Queen Slime on, entries + per-class Unknowns covering every class', () => {
+      const wholeField = ['king-slime', 'eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu', 'queen-bee', 'skeletron', 'deerclops', 'wall-of-flesh']
       for (const id of BOSS_PAGE_IDS) {
-        expect(getField(boss(id), 'suggestedEquipment').status, id).toBe('unverified')
-        expect(stageGaps).toContainEqual(expect.objectContaining({ ref: `boss:${id}`, field: 'suggestedEquipment', kind: 'missing-field' }))
+        const b = boss(id)
+        if (wholeField.includes(id)) {
+          expect(getField(b, 'suggestedEquipment').status, id).toBe('unverified')
+          expect(stageGaps).toContainEqual(expect.objectContaining({ ref: `boss:${id}`, field: 'suggestedEquipment', kind: 'missing-field' }))
+          continue
+        }
+        expect(getField(b, 'suggestedEquipment').status, id).toBe('editorial')
+        for (const cls of GEAR_CLASSES) {
+          const field = `suggestedEquipment.${cls}`
+          const entries = (b.suggestedEquipment ?? []).filter((g) => g.class === cls)
+          if (entries.length > 0) {
+            expect(getField(b, field).status, `${id} ${cls}`).toBe('not-applicable')
+          } else {
+            // honest partial: the class's own path is Unknown, with its reason in the stage gap log
+            expect(getField(b, field).status, `${id} ${cls}`).toBe('unverified')
+            expect(stageGaps).toContainEqual(expect.objectContaining({ ref: `boss:${id}`, field, kind: 'missing-field' }))
+          }
+        }
       }
     })
 
@@ -328,6 +378,30 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const result = validateDataset(raw, { now: new Date(meta.generatedAt) })
       expect(result.ok).toBe(false)
       expect(result.errors).toEqual([expect.objectContaining({ code: 'E_BOSS_CURATION', bossId: 'eye-of-cthulhu', field: 'prepChecklist' })])
+    })
+
+    it('gate check (P5-S3, the Hardmode list): a class left neither curated nor declared fails; a per-class Unknown goes stale once a quoted tip names a suggestable weapon of that class', () => {
+      const run = (mutate: (plantera: Boss, raw: typeof loaded.raw) => void) => {
+        const raw = structuredClone(loaded.raw)
+        mutate((raw.collections.bosses as Boss[]).find((b) => b.id === 'plantera') as Boss, raw)
+        return validateDataset(raw, { now: new Date(meta.generatedAt) })
+      }
+      // the melee class is neither an entry nor listed Unknown
+      const uncovered = run((p) => {
+        p._prov.unverifiedFields = p._prov.unverifiedFields.filter((f) => f !== 'suggestedEquipment.melee')
+      })
+      expect(uncovered.ok).toBe(false)
+      expect(uncovered.errors).toEqual([expect.objectContaining({ code: 'E_BOSS_CURATION', bossId: 'plantera', field: 'suggestedEquipment.melee' })])
+      // listed Unknown, but its reason dropped from the stage gap log
+      const unexplained = run((_p, raw) => {
+        raw.stageGaps = (raw.stageGaps as GapEntry[]).filter((g) => !(g.ref === 'boss:plantera' && g.field === 'suggestedEquipment.melee'))
+      })
+      expect(unexplained.errors).toEqual([expect.objectContaining({ code: 'E_BOSS_CURATION', bossId: 'plantera', field: 'suggestedEquipment.melee', message: expect.stringContaining('without a declared reason') })])
+      // a quoted melee tip naming the Breaker Blade (Wall of Flesh drop, verified obtainable before Plantera) makes the melee Unknown stale
+      const stale = run((p) => {
+        p.strategies = [...(p.strategies ?? []), { class: 'melee', text: 'The Breaker Blade is a test sentence.', sourceUrl: p.wikiUrl }]
+      })
+      expect(stale.errors).toEqual([expect.objectContaining({ code: 'E_BOSS_CURATION', bossId: 'plantera', field: 'suggestedEquipment.melee', message: expect.stringContaining('Breaker Blade (i:426)') })])
     })
 
     it('property: no item gated by the boss itself or a later node can be suggested for it (every emitted weapon, accessory and armor set, every page boss)', () => {
@@ -365,8 +439,15 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
           expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name}`).toBe(!suggestable(item, target))
           if (item.gatedBy?.bosses.includes(target.nodeId)) expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name} (gated by the boss itself)`).toBe(true)
         }
-        // Today no pre-Hardmode boss has a verified-obtainable weapon before it (the declared gaps say so).
-        expect(ds.weapons.filter((w) => suggestable(w, target)), id).toEqual([])
+        // A whole-field gear gap stands only while no weapon is suggestable (the stale-gap rule: every
+        // pre-Hardmode boss and the Wall of Flesh); curated gear names suggestable weapons only.
+        const eligible = new Set(ds.weapons.filter((w) => suggestable(w, target)).map((w) => w.id))
+        if (target.suggestedEquipment) {
+          expect(eligible.size, id).toBeGreaterThan(0)
+          for (const w of target.suggestedEquipment.flatMap((g) => g.weapons)) expect(eligible.has(w), `${id} suggests i:${w}`).toBe(true)
+        } else {
+          expect(eligible.size, id).toBe(0)
+        }
       }
     })
   })

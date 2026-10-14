@@ -11,7 +11,7 @@ import { useDelayedFlag, useResource } from '../../useResource'
 import { ItemCell, PanelHeading, TipList, type GateRef } from './BossBits'
 import { bossMapHref, bossPageHref } from './bossNav'
 import { loadGearData, peekGearData, type GearData } from './bossPageData'
-import { CLASS_LABEL, curatedList, declaredGapReason, GEAR_CLASSES, gearFor, prepGuideFor, strategyGroups, type GearClass, type GearEntry, type ItemInfo, type Strategy, type TipSegment } from './bossPageModel'
+import { CLASS_LABEL, classGear, curatedList, declaredGapReason, GEAR_CLASSES, gearClassField, prepGuideFor, strategyGroups, type GearClass, type GearEntry, type ItemInfo, type Strategy, type TipSegment } from './bossPageModel'
 import type { GapEntry } from '../../../data-access/types'
 
 /**
@@ -25,6 +25,11 @@ import type { GapEntry } from '../../../data-access/types'
  * the overlay's stated reason one tap away — and points to a guide's curated picks where one covers
  * this fight (M3); the tabs then carry the class tips only, the weapons they name linked to their
  * pages. Never an invented pick.
+ *
+ * When the gear is curated (P5-S3: a weapon passes E_SUGGESTION_GATING and a quoted tip recommends
+ * it), a class without an entry is either Unknown on its own path (`suggestedEquipment.<class>`
+ * listed — the same Unknown block inside that tab, with its own stated reason) or, if unlisted,
+ * simply has no curated pick.
  */
 export interface ClassGearProps {
   boss: Boss
@@ -74,17 +79,15 @@ export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, spri
                 guide has curated weapon picks for each class.
               </p>
             ) : null}
-            {reason ? (
-              <details className="group text-fg-muted">
-                <summary className="inline-flex min-h-tap cursor-pointer list-none items-center gap-1 font-semibold text-fg hover:text-accent-strong [&::-webkit-details-marker]:hidden">
-                  <ChevronRight aria-hidden="true" className="size-4 shrink-0 transition-transform duration-(--dur-ui) group-open:rotate-90" />
-                  Why we can’t tell
-                </summary>
-                <p className="pb-1">{reason}</p>
-              </details>
-            ) : null}
+            {reason ? <WhyUnknown reason={reason} /> : null}
           </div>
         </div>
+      ) : gear.status === 'curated' ? (
+        // P5-S3: what the gear slots are (and why a class can read Unknown) — the basis of every pick.
+        <p data-gear-basis="" className="text-sm text-fg-muted">
+          Suggested gear lists only weapons a quoted wiki tip recommends that are verified as obtainable before this fight. A class
+          without one reads Unknown.
+        </p>
       ) : null}
 
       <Tabs.Root value={tab} onValueChange={(v) => setTab(v as GearClass)}>
@@ -109,7 +112,7 @@ export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, spri
           // findable in-page and render server-side.
           <Tabs.Content key={cls} value={cls} forceMount className="space-y-4 pt-4 data-[state=inactive]:hidden" data-class-panel={cls}>
             {gear.status === 'curated' ? (
-              <ClassGearSlots boss={boss} entries={gearFor(gear.entries, cls)} cls={cls} graph={graph} conditions={conditions} itemOf={itemOf} sprites={sprites} nodeStates={nodeStates} gearData={gearData} />
+              <ClassGearSlots boss={boss} cls={cls} gaps={gaps} graph={graph} conditions={conditions} itemOf={itemOf} sprites={sprites} nodeStates={nodeStates} gearData={gearData} />
             ) : null}
             <ClassTips cls={cls} tips={tips.byClass[cls]} unknown={strategies.status === 'unknown'} boss={boss} linkTip={linkTip} />
           </Tabs.Content>
@@ -136,12 +139,42 @@ function ClassTips({ cls, tips, unknown, boss, linkTip }: { cls: GearClass; tips
   )
 }
 
+/** The stated reason behind an Unknown, one tap away. */
+function WhyUnknown({ reason }: { reason: string }) {
+  return (
+    <details className="group text-fg-muted">
+      <summary className="inline-flex min-h-tap cursor-pointer list-none items-center gap-1 font-semibold text-fg hover:text-accent-strong [&::-webkit-details-marker]:hidden">
+        <ChevronRight aria-hidden="true" className="size-4 shrink-0 transition-transform duration-(--dur-ui) group-open:rotate-90" />
+        Why we can’t tell
+      </summary>
+      <p className="pb-1">{reason}</p>
+    </details>
+  )
+}
+
+/** One class's gear is Unknown while other classes have curated picks (P5-S3 honest partial). */
+function ClassGearUnknown({ boss, cls, reason }: { boss: Boss; cls: GearClass; reason: string | undefined }) {
+  const label = CLASS_LABEL[cls].toLowerCase()
+  return (
+    <div data-gear-class-unknown={cls} className="flex gap-3 border-2 border-dashed border-stone-500 bg-hatch-unknown p-3">
+      <CircleHelp aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-unknown" />
+      <div className="min-w-0 space-y-2 text-sm">
+        <p className="font-semibold text-fg">
+          Suggested {label} gear: <UnknownValue field={gearClassField(cls)} sourceUrl={boss.wikiUrl} />
+        </p>
+        <p>None of the {label} weapons the wiki recommends here is verified as obtainable before this fight. The {label} tips below quote its advice.</p>
+        {reason ? <WhyUnknown reason={reason} /> : null}
+      </div>
+    </div>
+  )
+}
+
 // --- gear slots (only when the boss has curated gear) ----------------------------------------
 
 function ClassGearSlots(props: {
   boss: Boss
-  entries: readonly GearEntry[]
   cls: GearClass
+  gaps: readonly GapEntry[] | undefined
   graph: MapGraph
   conditions: ConditionIndex
   itemOf: (id: number) => ItemInfo
@@ -152,7 +185,9 @@ function ClassGearSlots(props: {
   const resource = useResource('boss-gear', loadGearData, peekGearData)
   const showLoader = useDelayedFlag(!props.gearData && resource.status === 'loading')
   const data = props.gearData ?? (resource.status === 'ready' ? resource.data : undefined)
-  if (props.entries.length === 0) return <p className="text-sm text-fg-muted">No curated {CLASS_LABEL[props.cls].toLowerCase()} gear for this fight.</p>
+  const own = classGear(props.boss, props.cls)
+  if (own.status === 'unknown') return <ClassGearUnknown boss={props.boss} cls={props.cls} reason={declaredGapReason(props.gaps, props.boss, gearClassField(props.cls))} />
+  if (own.status !== 'curated') return <p className="text-sm text-fg-muted">No curated {CLASS_LABEL[props.cls].toLowerCase()} gear for this fight.</p>
   if (!data) {
     if (resource.status === 'error') {
       return (
@@ -168,7 +203,7 @@ function ClassGearSlots(props: {
   }
   return (
     <div className="space-y-4">
-      {props.entries.map((entry, i) => (
+      {own.entries.map((entry, i) => (
         <GearEntrySlots key={i} {...props} entry={entry} data={data} />
       ))}
     </div>
@@ -179,7 +214,8 @@ function GearGroup({ label, children }: { label: string; children: ReactNode }) 
   return (
     <div className="space-y-1">
       <h3 className="text-xs font-semibold tracking-wide text-fg-muted uppercase">{label}</h3>
-      <ul aria-label={label} className="grid gap-x-4 gap-y-1 md:grid-cols-2">
+      {/* Natural-width entries that wrap as a whole: an item keeps its GateBadge on its line while the row has room. */}
+      <ul aria-label={label} className="flex flex-wrap gap-x-6 gap-y-1">
         {children}
       </ul>
     </div>

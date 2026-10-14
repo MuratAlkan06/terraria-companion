@@ -1,5 +1,5 @@
-/* Boss pages (PRD P5-S2 AC1–AC4; UX_SPEC §3.7) rendered server-side from the shipped data, the
- * prep-checklist persistence (AMENDMENTS-001 A7), and the page model. */
+/* Boss pages (PRD P5-S2/P5-S3 AC1–AC4; UX_SPEC §3.7) rendered server-side from the shipped data,
+ * the prep-checklist persistence (AMENDMENTS-001 A7), and the page model. */
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
@@ -38,11 +38,14 @@ import { loadBossPageData, type BossPageData, type GearData } from './bossPageDa
 import {
   BOSS_PREP_GUIDES,
   bossDropRows,
+  classGear,
   bossDropSections,
   bossPageUnknowns,
   declaredGapReason,
   DROP_TIERS,
   GEAR_CLASSES,
+  gearClassField,
+  isMultiForm,
   itemResolver,
   nextSteps,
   pathDepths,
@@ -77,6 +80,14 @@ const itemOf = itemResolver({
 const linkTip = tipLinker(weaponList, itemOf)
 const conditions = { byId: new Map((conditionsJson as Condition[]).map((c) => [c.id, c])) }
 const gaps = stageGapsJson as GapEntry[]
+/** The gear panel's detail data (gating, sets, buffs) — what the page loads once a boss has curated gear. */
+const gearData: GearData = {
+  weapons: new Map((weaponsDetailJson as Weapon[]).map((w) => [w.id, w])),
+  accessories: new Map((accessoriesDetailJson as Accessory[]).map((a) => [a.id, a])),
+  armor: new Map((armorDetailJson as ArmorPiece[]).map((a) => [a.id, a])),
+  sets: new Map((armorSetsJson as ArmorSet[]).map((s) => [s.id, s])),
+  buffs: new Map((buffsJson as Buff[]).map((b) => [b.id, b])),
+}
 let sprites: SpriteIndex
 
 beforeAll(async () => {
@@ -111,6 +122,7 @@ function ownCopy(html: string, b: Boss): string {
     b.summon.text ?? '',
     ...raw.edges.map((e) => e.note ?? ''),
     declaredGapReason(gaps, b, 'suggestedEquipment') ?? '',
+    ...GEAR_CLASSES.map((cls) => declaredGapReason(gaps, b, gearClassField(cls)) ?? ''),
   ]
   for (const q of quoted.filter(Boolean).sort((x, y) => y.length - x.length)) t = t.split(escaped(q)).join(' ')
   return t
@@ -118,10 +130,22 @@ function ownCopy(html: string, b: Boss): string {
 
 const ALLOWED_LOCAL = new RegExp(`^(/weapons/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`)
 
-describe('boss pages: every pre-Hardmode page renders every PRD P5-S2 AC1 section from the shipped data', () => {
+/** One class tab's panel markup. */
+const classPanel = (html: string, cls: string) => {
+  const start = html.indexOf(`data-class-panel="${cls}"`)
+  const next = html.indexOf('data-class-panel="', start + 1)
+  return html.slice(start, next < 0 ? html.indexOf('data-section="patterns"') : next)
+}
+
+describe('boss pages: every page (pre-Hardmode P5-S2, Wall of Flesh + Hardmode P5-S3) renders every AC1 section from the shipped data', () => {
+  it('the page list is every registry boss (B79: the Wall of Flesh joins the Hardmode list)', () => {
+    expect([...BOSS_PAGE_IDS].sort()).toEqual(bosses.map((b) => b.id).sort())
+    expect(BOSS_PAGE_IDS).toHaveLength(18)
+  })
+
   it.each(BOSS_PAGE_IDS.map((id) => [id]))('%s', (id) => {
     const b = boss(id)
-    const html = render(b)
+    const html = render(b, gearData)
 
     // AC1 sections, in order: visual/header, summon, where & when, prep, gear (per class), attack patterns + tips, drops, next steps (+ stats)
     const sections = [...html.matchAll(/data-section="([a-z]+)"/g)].map((m) => m[1])
@@ -145,15 +169,39 @@ describe('boss pages: every pre-Hardmode page renders every PRD P5-S2 AC1 sectio
     for (const p of prep) expect(html).toContain(`href="${p.sourceUrl}"`)
     expect(html).toContain(`data-prep-progress="0/${prep.length}"`)
 
-    // gear: four class tabs; suggested gear Unknown with the overlay's stated reason (no item verified obtainable before)
+    // gear: four class tabs. Either the whole field is Unknown with the overlay's stated reason (no
+    // weapon verified obtainable before the fight), or it is curated and every class tab shows its
+    // picks — each a real weapon page with its gate — or its own Unknown with its stated reason.
     expect([...html.matchAll(/data-class-tab="([a-z]+)"/g)].map((m) => m[1])).toEqual([...GEAR_CLASSES])
     expect(count(html, /data-class-panel="/g)).toBe(4)
-    expect(getField(b, 'suggestedEquipment').status).toBe('unverified')
-    expect(html).toContain('data-gear-unknown=""')
-    expect(html).toContain('data-unknown-field="suggestedEquipment"')
-    const reason = declaredGapReason(gaps, b, 'suggestedEquipment')
-    expect(reason).toMatch(/^No weapon is verified as obtainable before this fight/)
-    expect(html).toContain(escaped(reason as string))
+    if (getField(b, 'suggestedEquipment').status === 'unverified') {
+      expect(html).toContain('data-gear-unknown=""')
+      expect(html).toContain('data-unknown-field="suggestedEquipment"')
+      const reason = declaredGapReason(gaps, b, 'suggestedEquipment')
+      expect(reason).toMatch(/^No weapon is verified as obtainable before this fight/)
+      expect(html).toContain(escaped(reason as string))
+      expect(html).not.toContain('data-gear-class-unknown')
+    } else {
+      expect(getField(b, 'suggestedEquipment').status).toBe('editorial')
+      expect(html).not.toContain('data-gear-unknown=""')
+      expect(html).toContain('data-gear-basis=""')
+      for (const cls of GEAR_CLASSES) {
+        const own = classGear(b, cls)
+        const panel = classPanel(html, cls)
+        expect(own.status, `${id} ${cls}`).not.toBe('none') // the gate makes every class an entry or a declared Unknown
+        if (own.status === 'curated') {
+          expect(panel).toContain(`data-gear-entry="${cls}"`)
+          for (const w of own.entries.flatMap((e) => e.weapons)) expect(panel, `${id} ${cls} i:${w}`).toMatch(new RegExp(`data-item-id="${w}"[^>]*>\\s*<a [^>]*href="/weapons/${w}"`))
+          expect(panel).not.toContain('data-gear-class-unknown')
+        } else {
+          expect(panel).toContain(`data-gear-class-unknown="${cls}"`)
+          expect(panel).toContain(`data-unknown-field="${gearClassField(cls)}"`)
+          const reason = declaredGapReason(gaps, b, gearClassField(cls))
+          expect(reason, `${id} ${cls}`).toMatch(new RegExp(`^No ${cls} weapon the wiki recommends for this fight is verified as obtainable before it`))
+          expect(panel).toContain(escaped(reason as string))
+        }
+      }
+    }
 
     // attack patterns + every strategy (survival tips + Expert tips + class tips), each a quote with its own source
     for (const tag of b.attackPatternTags ?? []) expect(html).toContain(`data-attack-tag="${tag}"`)
@@ -205,20 +253,15 @@ describe('boss pages: every pre-Hardmode page renders every PRD P5-S2 AC1 sectio
     expect(html).toContain('Display only: defeats can’t be marked on this page.')
   })
 
-  it('unknown or non-page boss ids are a NotFoundError (styled 404), never a half page', async () => {
-    await expect(loadBossPageData('plantera')).rejects.toBeInstanceOf(NotFoundError)
+  it('event / milestone node ids and unknown ids are a NotFoundError (styled 404), never a half page', async () => {
+    // A3: events and milestones are map markers without pages.
+    await expect(loadBossPageData('hardmode')).rejects.toBeInstanceOf(NotFoundError)
+    await expect(loadBossPageData('pumpkin-moon')).rejects.toBeInstanceOf(NotFoundError)
     await expect(loadBossPageData('not-a-boss')).rejects.toBeInstanceOf(NotFoundError)
   })
 })
 
 describe('per-class gear when a boss has curated entries (rendering contract; validate enforces the gating)', () => {
-  const gearData: GearData = {
-    weapons: new Map((weaponsDetailJson as Weapon[]).map((w) => [w.id, w])),
-    accessories: new Map((accessoriesDetailJson as Accessory[]).map((a) => [a.id, a])),
-    armor: new Map((armorDetailJson as ArmorPiece[]).map((a) => [a.id, a])),
-    sets: new Map((armorSetsJson as ArmorSet[]).map((s) => [s.id, s])),
-    buffs: new Map((buffsJson as Buff[]).map((b) => [b.id, b])),
-  }
   // A synthetic gear entry on Skeletron naming real records: Bee Keeper (gated by Queen Bee), Shield of
   // Cthulhu (Eye of Cthulhu), Ninja armor (King Slime), the Ironskin buff.
   const withGear = (): Boss => {
@@ -237,6 +280,8 @@ describe('per-class gear when a boss has curated entries (rendering contract; va
     expect(melee).toMatch(/data-gate="Queen Bee"[^>]*>|href="\/bosses\/queen-bee"[^>]*data-gate="Queen Bee"/)
     expect(melee).toContain('data-gate="Eye of Cthulhu"')
     expect(melee).toContain('data-gate="King Slime"')
+    // review nit (768): entries take their natural width and wrap whole, so a badge stays on its item's line while there is room
+    expect(melee).toContain('<ul aria-label="Weapons" class="flex flex-wrap gap-x-6 gap-y-1">')
     expect(melee).toContain('Ninja armor')
     expect(melee).toContain(`href="${gearData.buffs.get('ironskin')?.wikiUrl}"`)
     // other classes: an honest empty state, never another class's picks
@@ -337,6 +382,40 @@ describe('page model', () => {
     expect(brain.after.map((a) => a.connection.other.id)).toEqual(['skeletron'])
   })
 
+  it('next steps: a milestone step (Hardmode after the Wall of Flesh) lists what it opens — exactly its links out of the graph, fights first', () => {
+    const wof = nextSteps(graph, 'wall-of-flesh')
+    expect(wof.after.map((a) => a.connection.other.id)).toEqual(['hardmode'])
+    const opens = wof.after[0].opens ?? []
+    const fromGraph = new Set(raw.edges.filter((e) => e.from === 'hardmode' && e.type !== 'alternative-route').map((e) => e.to))
+    expect(new Set(opens.map((c) => c.other.id))).toEqual(fromGraph)
+    expect(opens.map((c) => c.other.id)).toEqual(expect.arrayContaining(['queen-slime', 'the-twins', 'the-destroyer', 'skeletron-prime', 'duke-fishron']))
+    const kindRank = (k: string) => ['boss', 'event', 'milestone'].indexOf(k)
+    expect(opens.map((c) => kindRank(c.other.kind))).toEqual(opens.map((c) => kindRank(c.other.kind)).sort((a, b) => a - b))
+    expect(opens.find((c) => c.other.id === 'duke-fishron')?.link.types).toContain('early-challenge-possible')
+    // the mechanical bosses' milestone opens Plantera; a boss step opens nothing of its own
+    expect(nextSteps(graph, 'the-twins').after.find((a) => a.connection.other.id === 'all-mechanical-bosses')?.opens?.map((c) => c.other.id)).toEqual(['plantera'])
+    expect(nextSteps(graph, 'skeletron').after.every((a) => a.opens === undefined)).toBe(true)
+  })
+
+  it('the Wall of Flesh page points past the Hardmode marker: one map link per step Hardmode opens, read from the graph (not hand-written)', () => {
+    const next = section(render(boss('wall-of-flesh')), 'next')
+    const pointer = next.slice(next.indexOf('data-step-opens="hardmode"'))
+    expect(pointer).toContain('From Hardmode, the path continues with:')
+    const listed = [...pointer.matchAll(/data-opens="([^"]+)"/g)].map((m) => m[1])
+    expect(listed).toEqual((nextSteps(graph, 'wall-of-flesh').after[0].opens ?? []).map((c) => c.other.id))
+    for (const id of listed) expect(pointer).toContain(`href="/bosses?node=${id}"`)
+    expect(pointer).toMatch(/Duke Fishron<span class="sr-only"> on the map<\/span><\/a><span[^>]*>can be fought early</)
+    expect(pointer).toMatch(/Queen Slime<span class="sr-only"> on the map<\/span><\/a><span[^>]*>optional</)
+    // graph-derived: drop Hardmode's link to Queen Slime and she leaves the pointer
+    const trimmed = buildMapGraph({ nodes: raw.nodes, edges: raw.edges.filter((e) => !(e.from === 'hardmode' && e.to === 'queen-slime')) }, bosses)
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(BossPageView, { data: { ...pageData(boss('wall-of-flesh')), graph: trimmed }, worldEvil: null, nodeStates: {}, headingId: 'h' })))
+    const trimmedPointer = section(html, 'next').slice(section(html, 'next').indexOf('data-step-opens="hardmode"'))
+    expect(trimmedPointer).not.toContain('data-opens="queen-slime"')
+    expect(trimmedPointer).toContain('data-opens="the-twins"')
+    // boss pages whose next step is a boss show no pointer
+    expect(section(render(boss('skeletron')), 'next')).not.toContain('data-step-opens')
+  })
+
   it('next steps: an optional side branch points to where the path it branched from continues', () => {
     for (const id of ['king-slime', 'queen-bee', 'deerclops']) {
       const steps = nextSteps(graph, id)
@@ -371,9 +450,47 @@ describe('page model', () => {
 describe('H1: stats — an all-Unknown table collapses to one honest line', () => {
   const noStats = BOSS_PAGE_IDS.filter((id) => statsView(boss(id), gaps).kind === 'none')
 
-  it('the shipped data: no stat verified for Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron; all for the rest', () => {
-    expect([...noStats].sort()).toEqual(['brain-of-cthulhu', 'eater-of-worlds', 'queen-bee', 'skeletron'])
-    for (const id of BOSS_PAGE_IDS.filter((x) => !noStats.includes(x))) expect(statsView(boss(id), gaps), id).toEqual({ kind: 'table', unknownCells: 0 })
+  it('the shipped data: a stats table for six bosses (Empress of Light and Plantera with Unknown contact damage), one honest line for the rest', () => {
+    expect([...noStats].sort()).toEqual([
+      'brain-of-cthulhu',
+      'duke-fishron',
+      'eater-of-worlds',
+      'golem',
+      'lunatic-cultist',
+      'moon-lord',
+      'queen-bee',
+      'skeletron',
+      'skeletron-prime',
+      'the-destroyer',
+      'the-twins',
+      'wall-of-flesh',
+    ])
+    const tables = Object.fromEntries(BOSS_PAGE_IDS.filter((x) => !noStats.includes(x)).map((id) => [id, statsView(boss(id), gaps)]))
+    expect(tables).toEqual({
+      'king-slime': { kind: 'table', unknownCells: 0 },
+      'eye-of-cthulhu': { kind: 'table', unknownCells: 0 },
+      deerclops: { kind: 'table', unknownCells: 0 },
+      'queen-slime': { kind: 'table', unknownCells: 0 },
+      plantera: { kind: 'table', unknownCells: 3 },
+      'empress-of-light': { kind: 'table', unknownCells: 3 },
+    })
+  })
+
+  it('the Moon Lord line carries its multi-part reason (P5-S3 evidence)', () => {
+    const ml = boss('moon-lord')
+    const reason = 'Multi-part boss (head, two hands and core, each with its own health and defense); no boss-level row.'
+    expect(statsView(ml, gaps)).toEqual({ kind: 'none', reason })
+    expect(section(render(ml), 'stats')).toContain(`Stats not verified for Terraria ${meta.gameVersion} — ${escaped(reason)}`)
+  })
+
+  it('B82: the "first form" caption only on bosses that change form mid-fight (curated multi-phase tag)', () => {
+    for (const id of BOSS_PAGE_IDS.filter((x) => !noStats.includes(x))) {
+      const stats = section(render(boss(id)), 'stats')
+      expect(stats.includes('first form'), id).toBe(isMultiForm(boss(id)))
+    }
+    // pinned: two single-form tables without it, four multi-phase ones with it
+    expect(['king-slime', 'deerclops'].map((id) => isMultiForm(boss(id)))).toEqual([false, false])
+    expect(['eye-of-cthulhu', 'queen-slime', 'plantera', 'empress-of-light'].map((id) => isMultiForm(boss(id)))).toEqual([true, true, true, true])
   })
 
   it.each(noStats.map((id) => [id]))('%s: one line, one Unknown marker, no grid, no first-form caption', (id) => {
@@ -397,8 +514,8 @@ describe('H1: stats — an all-Unknown table collapses to one honest line', () =
     expect(statsView(eow, undefined)).toEqual({ kind: 'none', reason: undefined })
   })
 
-  it('a partial table keeps the grid: each Unknown cell hatched and phone-sized, the caption shown', () => {
-    const b = structuredClone(boss('king-slime'))
+  it('a partial table keeps the grid: each Unknown cell hatched and phone-sized, the caption shown (multi-form boss)', () => {
+    const b = structuredClone(boss('eye-of-cthulhu'))
     delete b.statsByDifficulty.expert
     delete b.statsByDifficulty.master
     b._prov = { ...b._prov, unverifiedFields: [...b._prov.unverifiedFields, 'statsByDifficulty.expert', 'statsByDifficulty.master'] }
@@ -407,8 +524,11 @@ describe('H1: stats — an all-Unknown table collapses to one honest line', () =
     const hatched = [...stats.matchAll(/<td class="([^"]*\bbg-hatch-unknown\b[^"]*)">/g)].map((m) => m[1])
     expect(hatched).toHaveLength(6)
     for (const cls of hatched) expect(cls).toContain('max-md:text-xs')
+    // neighbouring hatched cells stay apart (review nit: touching "Unknown"s in the 1440 rail)
+    for (const cls of hatched) expect(cls).toMatch(/\bborder-x-2\b.*\bborder-panel\b/)
+    expect(stats).toMatch(/<th scope="col" class="[^"]*\blg:w-\[28%\]/)
     for (const d of ['expert', 'master'] as const) for (const k of STAT_KEYS) expect(stats).toContain(`data-unknown-field="${statField(d, k)}"`)
-    expect(stats).toContain('2,000')
+    expect(stats).toContain(Number(boss('eye-of-cthulhu').statsByDifficulty.classic?.hp).toLocaleString('en-US'))
     expect(stats).toContain('first form')
     expect(STAT_DIFFICULTIES).toEqual(['classic', 'expert', 'master'])
   })
@@ -512,6 +632,183 @@ describe('H2: drops — order and grouping (property over every boss page)', () 
   })
 })
 
+describe('P5-S3 review fixes on the drops table (shipped data)', () => {
+  const dropRow = (html: string, id: string) => {
+    const start = html.indexOf(`data-drop-row="${id}"`)
+    return html.slice(start, html.indexOf('</tr>', start))
+  }
+  const rowsOf = (bossId: string, itemName: string) => boss(bossId).dropIds.map((id) => drops.byId.get(id) as DropSource).filter((d) => itemOf(d.itemId).name === itemName)
+  const quantities = (row: string) => [...row.matchAll(/<span data-quantity=""[^>]*>[\s\S]*?× ([^<]+)<\/span>/g)].map((m) => m[1])
+
+  it('[High] Plantera: the Grenade Launcher is one launcher (no rocket stack); Rocket I is its own row with 50–149 at the same chance', () => {
+    const html = render(boss('plantera'))
+    const launchers = rowsOf('plantera', 'Grenade Launcher')
+    const rockets = rowsOf('plantera', 'Rocket I')
+    expect(launchers.map((d) => d.source.npcName).sort()).toEqual(['Plantera (Second Form)', 'Treasure Bag (Plantera)'])
+    expect(rockets.map((d) => d.source.npcName).sort()).toEqual(['Plantera (Second Form)', 'Treasure Bag (Plantera)'])
+    for (const d of launchers) {
+      expect(d.quantity).toEqual({ min: 1, max: 1 })
+      expect(quantities(dropRow(html, d.id))).toEqual([]) // a quantity of 1 shows no "×" line
+      const rocket = rockets.find((r) => r.source.npcName === d.source.npcName) as DropSource
+      expect(rocket.rates).toEqual(d.rates)
+      expect(rocket.quantity).toEqual({ min: 50, max: 149 })
+      expect(quantities(dropRow(html, rocket.id)).length).toBeGreaterThan(0)
+      for (const q of quantities(dropRow(html, rocket.id))) expect(q).toBe('50–149')
+    }
+  })
+
+  it('[Medium] Plantera: the four Jungle Temple drops carry their caption condition (no longer Unknown); only the first-defeat-note rows stay condition-dependent', () => {
+    const html = render(boss('plantera'))
+    const temple = ['Lihzahrd Brick', 'Forbidden Lihzahrd Brick Wall', 'Lihzahrd Altar', 'Picksaw'].flatMap((n) => rowsOf('plantera', n))
+    expect(temple).toHaveLength(4)
+    for (const d of temple) {
+      expect(d.conditions).toEqual(['jungle-temple-absent'])
+      expect(getField(d, 'conditions').status).toBe('verified')
+      expect(d._prov.sources).toContainEqual(expect.objectContaining({ kind: 'wiki-article', url: 'https://terraria.wiki.gg/wiki/Plantera' }))
+      expect(dropRow(html, d.id)).toContain('Only: <span class="font-semibold text-fg">Jungle Temple not present</span>')
+    }
+    const { tiers } = bossDropSections(boss('plantera'), drops, itemOf)
+    expect(tiers.conditional.map((g) => g.item.name)).toEqual(['Grenade Launcher', 'Rocket I'])
+    expect(conditions.byId.get('jungle-temple-absent')).toMatchObject({ name: 'Jungle Temple not present', kind: 'world-state' })
+  })
+
+  it('nit: a source every non-bag row shares ("Plantera (Second Form)") is said once, not on each row; mixed sources keep their row labels', () => {
+    const plantera = bossDropSections(boss('plantera'), drops, itemOf)
+    expect(plantera.commonSource).toBe('Plantera (Second Form)')
+    const html = render(boss('plantera'))
+    expect(count(html, /data-common-source="Plantera \(Second Form\)"/g)).toBe(1)
+    expect(text(section(html, 'drops')).replace(/ \./g, '.')).toContain('Every drop not marked Treasure Bag comes from Plantera (Second Form).')
+    expect(html).not.toContain('From Plantera (Second Form)')
+    // Skeletron: its head and the Red Hat variant both drop — every row keeps its own source
+    const skeletron = bossDropSections(boss('skeletron'), drops, itemOf)
+    expect(skeletron.commonSource).toBeUndefined()
+    expect(render(boss('skeletron'))).toContain('From Skeletron (Red Hat Skeletron)')
+    // a boss whose own rows name the boss itself has nothing to hoist
+    expect(bossDropSections(boss('golem'), drops, itemOf).commonSource).toBeUndefined()
+  })
+
+  it('nit: the Empress condition reads once ("Only: 100% of damage dealt at daytime"), not "Only: … damaged only …"', () => {
+    const html = render(boss('empress-of-light'))
+    const terraprisma = rowsOf('empress-of-light', 'Terraprisma')
+    expect(terraprisma.length).toBeGreaterThan(0)
+    for (const d of terraprisma) {
+      expect(d.conditions).toEqual(['empress-daytime-damage'])
+      const row = text(dropRow(html, d.id))
+      expect(row).toContain('Only: 100% of damage dealt at daytime')
+      expect(row).not.toMatch(/Only:[^]*\bonly\b/)
+    }
+  })
+
+  it('nit: each chance sits on its row name\'s line — first rows (44px, 48px slot from md) and sub-rows get the matching top padding', () => {
+    const html = render(boss('plantera'))
+    for (const d of rowsOf('plantera', 'The Axe')) {
+      const cells = [...dropRow(html, d.id).matchAll(/<td data-cell="[a-z]+"[^>]*class="([^"]*)"/g)].map((m) => m[1])
+      expect(cells).toHaveLength(3)
+      for (const cls of cells) {
+        expect(cls).toContain('pt-[1.125rem]')
+        expect(cls).not.toMatch(/\bpy-1\.5\b/)
+        if (d.source.treasureBag) expect(cls).toContain('md:pt-4')
+        else expect(cls).not.toContain('md:pt-4')
+      }
+    }
+  })
+})
+
+describe('B82: world-condition labels and one distinct source link per drop row (every page)', () => {
+  /** A drop row's markup, from its <tr> to the next one. */
+  const dropRow = (html: string, id: string) => {
+    const start = html.indexOf(`data-drop-row="${id}"`)
+    return html.slice(start, html.indexOf('</tr>', start))
+  }
+  const WORLD = ['corruption-world', 'crimson-world']
+
+  it('Eye of Cthulhu: the world-evil ores and seeds (boss and bag rows) say which world they drop in', () => {
+    const eye = boss('eye-of-cthulhu')
+    const html = render(eye)
+    const byItem = new Map<string, string[]>()
+    for (const id of eye.dropIds) {
+      const d = drops.byId.get(id) as DropSource
+      const world = d.conditions.filter((c) => WORLD.includes(c))
+      if (world.length === 0) continue
+      byItem.set(itemOf(d.itemId).name, [...(byItem.get(itemOf(d.itemId).name) ?? []), ...world])
+      expect(dropRow(html, id), id).toContain(`data-drop-conditions="${d.conditions.join(' ')}"`)
+      expect(dropRow(html, id), id).toMatch(world[0] === 'corruption-world' ? />Corruption world</ : />Crimson world</)
+    }
+    // the wiki's drop list: Demonite Ore + Corrupt Seeds only in Corrupt worlds, Crimtane Ore + Crimson Seeds only in Crimson ones
+    expect(Object.fromEntries(byItem)).toEqual({
+      'Demonite Ore': ['corruption-world', 'corruption-world'],
+      'Corrupt Seeds': ['corruption-world', 'corruption-world'],
+      'Crimtane Ore': ['crimson-world', 'crimson-world'],
+      'Crimson Seeds': ['crimson-world', 'crimson-world'],
+    })
+    // the Unholy Arrow is listed outside those groups on the wiki: no world condition
+    const arrow = eye.dropIds.map((id) => drops.byId.get(id) as DropSource).filter((d) => itemOf(d.itemId).name === 'Unholy Arrow')
+    expect(arrow.length).toBeGreaterThan(0)
+    for (const d of arrow) expect(d.conditions).toEqual([])
+  })
+
+  it.each(BOSS_PAGE_IDS.map((id) => [id]))('%s: every drop row with verified conditions renders their labels; one page-glyph source link per row, beside its name', (id) => {
+    const b = boss(id)
+    const html = render(b)
+    for (const dropId of b.dropIds) {
+      const d = drops.byId.get(dropId) as DropSource
+      const row = dropRow(html, dropId)
+      if (getField(d, 'conditions').status !== 'unverified' && d.conditions.length > 0) {
+        for (const c of d.conditions) expect(row, `${dropId} ${c}`).toContain(escaped(conditions.byId.get(c)?.name ?? c))
+      }
+      // exactly one source link, a page glyph (never the item's ↗), inside the row header with the name
+      expect(count(row, /data-source-link=""/g), dropId).toBe(1)
+      const header = row.slice(row.indexOf('<th'), row.indexOf('</th>'))
+      expect(header, dropId).toContain('data-source-link=""')
+      expect(/data-source-link=""[^>]*>\s*<svg[^>]*class="[^"]*lucide-file-text/.test(header), dropId).toBe(true)
+    }
+    // Hardmode pages: the wiki's drop lists carry no world-evil captions, so no HM boss drop is world-conditional
+    if (BOSS_PAGE_IDS.indexOf(id as (typeof BOSS_PAGE_IDS)[number]) >= BOSS_PAGE_IDS.indexOf('queen-slime')) {
+      for (const dropId of b.dropIds) expect((drops.byId.get(dropId) as DropSource).conditions.filter((c) => WORLD.includes(c)), dropId).toEqual([])
+    }
+  })
+})
+
+describe('P5-S3: real gear where a quoted wiki tip names a weapon verified obtainable before the fight', () => {
+  const weaponName = (id: number) => weaponList.find((w) => w.id === id)?.name
+  const picks = (id: string) => Object.fromEntries((boss(id).suggestedEquipment ?? []).map((g) => [g.class, g.weapons.map(weaponName)]))
+
+  it('the shipped picks (Wall of Flesh-gated weapons from Queen Slime on; Plantera / Golem drops for the later fights)', () => {
+    expect(Object.fromEntries(BOSS_PAGE_IDS.filter((id) => boss(id).suggestedEquipment).map((id) => [id, picks(id)]))).toEqual({
+      'queen-slime': { summon: ['Firecracker'] },
+      'the-twins': { ranged: ['Clockwork Assault Rifle'], summon: ['Firecracker'] },
+      'the-destroyer': { summon: ['Firecracker'] },
+      'skeletron-prime': { ranged: ['Clockwork Assault Rifle'] },
+      plantera: { summon: ['Firecracker'] },
+      golem: { ranged: ['Venus Magnum'], magic: ['Leaf Blower'], summon: ['Vulgar Display of Flower'] },
+      'empress-of-light': { summon: ['Vulgar Display of Flower'] },
+      'duke-fishron': { summon: ['Firecracker'] },
+      'lunatic-cultist': { melee: ['Possessed Hatchet'] },
+      'moon-lord': { summon: ['Vulgar Display of Flower', 'Firecracker'] },
+    })
+  })
+
+  it('every pick is also quoted in that class\'s tips (the tip that recommends it, with its source)', () => {
+    for (const id of BOSS_PAGE_IDS) {
+      for (const g of boss(id).suggestedEquipment ?? []) {
+        const tips = (boss(id).strategies ?? []).filter((s) => s.class === g.class)
+        for (const w of g.weapons) expect(tips.some((t) => t.text.includes(weaponName(w) as string)), `${id} ${g.class} ${weaponName(w)}`).toBe(true)
+      }
+    }
+  })
+
+  it('Plantera: the Firecracker links its weapon page with a GateBadge to the Wall of Flesh page; the other classes read Unknown', () => {
+    const summon = classPanel(render(boss('plantera'), gearData), 'summon')
+    expect(summon).toContain('data-gear-entry="summon"')
+    expect(summon).toMatch(/data-item-id="4912"[^>]*>\s*<a [^>]*href="\/weapons\/4912"/)
+    expect(summon).toMatch(/href="\/bosses\/wall-of-flesh"[^>]*data-gate="Wall of Flesh"|data-gate="Wall of Flesh"[^>]*href="\/bosses\/wall-of-flesh"/)
+    // the badge goes once the player has marked the Wall of Flesh defeated
+    expect(classPanel(render(boss('plantera'), gearData, { 'wall-of-flesh': 'defeated' }), 'summon')).not.toContain('data-gate="Wall of Flesh"')
+    for (const cls of ['melee', 'ranged', 'magic']) expect(classPanel(render(boss('plantera'), gearData), cls)).toContain(`data-gear-class-unknown="${cls}"`)
+    expect(bossPageUnknowns(boss('plantera'), []).filter((u) => u.key.startsWith('suggestedEquipment.')).map((u) => u.label)).toEqual(['Suggested melee gear', 'Suggested ranged gear', 'Suggested magic gear'])
+  })
+})
+
 describe('M1: next steps — nearest first, plain phrases', () => {
   const key = (c: { link: { types: readonly string[] }; other: { id: string; name: string } }) => [
     Number(c.link.types.every((t) => t === 'optional')),
@@ -602,7 +899,9 @@ describe('M4: every item slot links its real page, else the wiki search for its 
       const href = wikiSearchUrl(name)
       expect(href).toBe(`https://terraria.wiki.gg/wiki/Special:Search?search=${name}`)
       const link = new RegExp(`<a href="${escaped(href).replace(/[.?]/g, '\\$&')}" target="_blank" rel="noopener noreferrer"[^>]*>[\\s\\S]*?</a>`).exec(html)?.[0] ?? ''
-      expect(link, name).toMatch(new RegExp(`>${name}</span><svg[^>]*aria-hidden="true"`))
+      // B82: the ↗ is glued to the name's last word, 4px from it (never wrapping alone)
+      expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*aria-hidden="true"`))
+      expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*class="[^"]*\\bml-1\\b`))
       expect(link, name).toContain('on terraria.wiki.gg (opens in a new tab)')
     }
   })
@@ -660,7 +959,10 @@ describe('M3: quoted tips link the weapons they name; the quotes stay verbatim',
 
 describe('M2/M3: the suggested-gear Unknown block', () => {
   it('plain words; the stated reason one tap away; the first-boss guide linked on the Eye of Cthulhu only', () => {
-    for (const id of BOSS_PAGE_IDS) {
+    const wholeFieldUnknown = BOSS_PAGE_IDS.filter((id) => getField(boss(id), 'suggestedEquipment').status === 'unverified')
+    // the seven pre-Hardmode bosses and the Wall of Flesh: nothing is required before them
+    expect(wholeFieldUnknown).toEqual(['king-slime', 'eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu', 'queen-bee', 'skeletron', 'deerclops', 'wall-of-flesh'])
+    for (const id of wholeFieldUnknown) {
       const gear = section(render(boss(id)), 'gear')
       expect(gear).toContain('We can’t verify which weapons you can get before this fight, so we don’t suggest any.')
       expect(gear).toMatch(/<details[^>]*>[\s\S]*?Why we can’t tell[\s\S]*?<\/details>/)

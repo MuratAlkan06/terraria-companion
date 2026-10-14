@@ -18,7 +18,11 @@ import { dropCells, type DropCellView, type DropGroup, type DropRow, type DropSe
  * conditions are Unknown sit apart in a COLLAPSED group that says up front that their chance only
  * applies under those unverified conditions. Per difficulty: the verified chance (+ quantity) or
  * UnknownValue (hatched cell), "n/a" where the drop doesn't apply. Each row carries its own source
- * link (the drop record's wiki page). Values are read through getField on the DROP record.
+ * link (the drop record's wiki page) inline after its name and tags — a page glyph, distinct from the
+ * ↗ of the item's own link (B82) — and the conditions it needs ("Only: Corruption world" for the Eye
+ * of Cthulhu's world-evil ores and seeds). Values are read through getField on the DROP record.
+ * A source every non-bag row shares ("Plantera (Second Form)") is named once above the table instead
+ * of on each row; each chance sits on its row name's line (CELL_TOP).
  */
 export const CONDITIONAL_SUMMARY = 'Condition-dependent drops (conditions not verified)'
 export const CONDITIONAL_QUALIFIER =
@@ -27,9 +31,9 @@ export const CONDITIONAL_QUALIFIER =
 const TIER_LABEL: Readonly<Record<Exclude<DropTier, 'conditional'>, string>> = { rewards: 'Rewards', materials: 'Materials & supplies' }
 
 export function BossDrops({ boss, sections, conditions, sprites, titleId }: { boss: Boss; sections: DropSections; conditions: ConditionIndex; sprites: SpriteIndex | null; titleId: string }) {
-  const { tiers, rows, missing } = sections
+  const { tiers, rows, missing, commonSource } = sections
   const conditionalRecords = tiers.conditional.reduce((n, g) => n + g.rows.length, 0)
-  const shared = { bossName: boss.name, conditions, sprites }
+  const shared = { bossName: boss.name, commonSource, conditions, sprites }
   return (
     <PixelPanel as="section" aria-labelledby={titleId} data-section="drops" className="space-y-4">
       <PanelHeading id={titleId} aside={<span className="text-fg-muted">{rows.length} drop records</span>}>
@@ -38,6 +42,12 @@ export function BossDrops({ boss, sections, conditions, sprites, titleId }: { bo
       <p className="text-sm text-fg-muted">
         Chance and quantity per difficulty. Expert and Master drops usually come from the Treasure Bag.
       </p>
+      {commonSource ? (
+        // Said once (like the segment note), not as "From …" on every row.
+        <p data-common-source={commonSource} className="text-sm">
+          Every drop not marked Treasure Bag comes from <span className="font-semibold">{commonSource}</span>.
+        </p>
+      ) : null}
       {rows.length === 0 ? (
         <p className="text-fg-muted">No drop records are linked to this boss.</p>
       ) : (
@@ -121,7 +131,7 @@ function DropTable({ caption, children }: { caption: string; children: ReactNode
   )
 }
 
-type Shared = { bossName: string; conditions: ConditionIndex; sprites: SpriteIndex | null }
+type Shared = { bossName: string; commonSource?: string; conditions: ConditionIndex; sprites: SpriteIndex | null }
 
 /** One item's records: the first row names the item; the rest read as indented sub-rows of it. */
 function DropGroupRows({ group, ...shared }: { group: DropGroup } & Shared) {
@@ -141,55 +151,70 @@ function DropGroupRows({ group, ...shared }: { group: DropGroup } & Shared) {
   )
 }
 
-/** What a row is, in words: its source within the boss's fight. */
-function roleLabel(row: DropRow, group: DropGroup, bossName: string): string | undefined {
+/** What a row is, in words: its source within the boss's fight (the panel names a common source once). */
+function roleLabel(row: DropRow, group: DropGroup, bossName: string, commonSource?: string): string | undefined {
   switch (row.role) {
     case 'bag':
       return 'Treasure Bag'
     case 'segment':
       return `Per segment: ${row.part}`
     case 'variant':
-      return `From ${row.drop.source.npcName}`
+      return row.drop.source.npcName === commonSource ? undefined : `From ${row.drop.source.npcName}`
     case 'boss':
       return group.segmented ? 'On defeat (whole boss)' : row.drop.source.npcName === bossName ? undefined : `From ${row.drop.source.npcName}`
   }
 }
 
-function DropTableRow({ row, first, group, bossName, conditions, sprites }: { row: DropRow; first: boolean; group: DropGroup } & Shared) {
+function DropTableRow({ row, first, group, bossName, commonSource, conditions, sprites }: { row: DropRow; first: boolean; group: DropGroup } & Shared) {
   const { drop } = row
   const source = dropSourceUrl(drop)
   const conditionView = getField(drop, 'conditions')
-  const label = roleLabel(row, group, bossName)
+  const label = roleLabel(row, group, bossName, commonSource)
   const tag = label === undefined ? null : row.role === 'bag' ? <BagTag className="font-semibold" /> : <span>{label}</span>
-  const meta = (
-    <span className="flex flex-wrap items-center gap-x-2 text-xs text-fg-muted">
-      {first ? tag : null}
-      {conditionView.status === 'unverified' ? (
-        <span>
-          Only when: <UnknownValue field={`drop:${drop.id}:conditions`} sourceUrl={source} />
-        </span>
-      ) : drop.conditions.length > 0 ? (
-        <span>Only: {drop.conditions.map((c) => conditions.byId.get(c)?.name ?? humanizeSlug(c)).join(', ')}</span>
-      ) : null}
-      {source ? <SourceIconLink href={source} srLabel={`Source for the ${row.item.name} drop${label ? ` (${label})` : ''}`} /> : null}
-    </span>
-  )
+  // When the drop applies: Unknown, or the registered conditions it needs (world evil, Hardmode, …).
+  const when =
+    conditionView.status === 'unverified' ? (
+      <span className="text-xs text-fg-muted">
+        Only when: <UnknownValue field={`drop:${drop.id}:conditions`} sourceUrl={source} />
+      </span>
+    ) : drop.conditions.length > 0 ? (
+      <span data-drop-conditions={drop.conditions.join(' ')} className="text-xs text-fg-muted">
+        Only: <span className="font-semibold text-fg">{drop.conditions.map((c) => conditions.byId.get(c)?.name ?? humanizeSlug(c)).join(', ')}</span>
+      </span>
+    ) : null
+  // The row's own source, in the same wrapping row as its name and tags (B82: a page glyph, not ↗).
+  // From md it sits beside them; a phone's ~80px item column can't fit a 44px target beside a name, so it wraps.
+  const sourceLink = source ? <SourceIconLink href={source} srLabel={`Source for the ${row.item.name} drop${label ? ` (${label})` : ''}`} /> : null
   return (
     <tr data-drop-row={drop.id} data-drop-role={row.role} className={cx('align-top', first && 'border-t border-border')}>
       <th scope="row" className="py-1 pr-2 text-left font-normal">
         {first ? (
-          <ItemCell item={row.item} sprites={sprites} slotFromMd />
+          <ItemCell
+            item={row.item}
+            sprites={sprites}
+            slotFromMd
+            trailing={
+              <>
+                {tag ? <span className="text-xs text-fg-muted">{tag}</span> : null}
+                {when}
+                {sourceLink}
+              </>
+            }
+          />
         ) : (
           // A sub-row of the item above: indented, named for screen readers, labelled by its source.
-          <span className="flex min-h-8 items-center border-l-2 border-panel-border pl-2 text-xs font-semibold text-fg">
-            <span className="sr-only">{row.item.name}, </span>
-            {row.role === 'bag' ? <BagTag /> : label}
+          <span className="flex min-h-tap flex-wrap items-center gap-x-2 border-l-2 border-panel-border pl-2">
+            <span className="text-xs font-semibold text-fg">
+              <span className="sr-only">{row.item.name}, </span>
+              {row.role === 'bag' ? <BagTag /> : label}
+            </span>
+            {when}
+            {sourceLink}
           </span>
         )}
-        <span className={cx(!first && 'block pl-2.5')}>{meta}</span>
       </th>
       {dropCells(drop).map((cell) => (
-        <DropCellTd key={cell.difficulty} drop={drop} cell={cell} source={source} />
+        <DropCellTd key={cell.difficulty} drop={drop} cell={cell} source={source} first={first} />
       ))}
     </tr>
   )
@@ -204,7 +229,14 @@ function BagTag({ className }: { className?: string }) {
   )
 }
 
-function DropCellTd({ drop, cell, source }: { drop: DropSource; cell: DropCellView; source: string | undefined }) {
+/**
+ * Top padding that puts a cell's chance on the row name's line (centre to centre): the name sits
+ * centred in a 44px line (th py-1), 48px from md on an item's first row (its slot); the chance line
+ * is 16px (phones, text-xs) or 20px (md, text-sm). 4 + 44/2 − 8 = 18 = 4 + 48/2 − 10; sub-row from md 16.
+ */
+const CELL_TOP = { first: 'pt-[1.125rem]', sub: 'pt-[1.125rem] md:pt-4' } as const
+
+function DropCellTd({ drop, cell, source, first }: { drop: DropSource; cell: DropCellView; source: string | undefined; first: boolean }) {
   const rate = cell.rate.view
   const quantity = cell.quantity?.view
   const unknownRate = rate.status === 'unverified'
@@ -214,7 +246,7 @@ function DropCellTd({ drop, cell, source }: { drop: DropSource; cell: DropCellVi
     <td
       data-cell={`${cell.difficulty}`}
       data-rate={unknownRate ? 'unknown' : rate.status === 'not-applicable' ? 'n/a' : String(rate.value)}
-      className={cx('px-0.5 py-1.5 max-md:text-xs md:px-2 [&_[data-unknown-field]]:px-0.5', unknownRate && 'bg-hatch-unknown')}
+      className={cx('px-0.5 pb-1.5 max-md:text-xs md:px-2 [&_[data-unknown-field]]:px-0.5', first ? CELL_TOP.first : CELL_TOP.sub, unknownRate && 'bg-hatch-unknown')}
     >
       {unknownRate ? (
         <UnknownValue field={`drop:${drop.id}:${cell.rate.field}`} sourceUrl={source} inCell />

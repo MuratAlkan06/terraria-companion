@@ -1,6 +1,7 @@
 /**
  * Nav selectors derived from the route registry (data-driven nav, PRD P1-S1 AC2).
  */
+import { matchPath } from 'react-router'
 import { APP_ROUTES, type AppRoute, type NavMeta, type NavSurface } from './routes'
 
 export interface NavItem extends NavMeta {
@@ -43,4 +44,13 @@ export function tabBarLayout(routes: readonly AppRoute[] = APP_ROUTES): { tabs: 
   const tabs = tabCandidates.slice(0, tabSlots)
   const more = [...tabCandidates.slice(tabSlots), ...moreOnly]
   return { tabs, more }
+}
+
+/**
+ * Whether a nav link is the current section — NavLink's own matching: "/" only exactly, every other
+ * link also for its sub-paths (/guides/first-boss-prep is in Guides). The mobile "More" sheet and its
+ * trigger use it too (AMENDMENTS-015 B82: guide pages highlighted "More" nowhere).
+ */
+export function isNavCurrent(to: string, pathname: string): boolean {
+  return matchPath({ path: to, end: to === '/' }, pathname) !== null
 }

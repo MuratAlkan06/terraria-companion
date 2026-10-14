@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CuratedLabel } from '../../../components/CuratedLabel'
 import { cx } from '../../../components/cx'
-import { EDGE_STYLES } from '../../../components/nodeMap/edgeStyles'
+import { FavoriteStar } from '../../../components/FavoriteStar'
+import { EDGE_STYLES, type EdgeType } from '../../../components/nodeMap/edgeStyles'
 import { isNodeActive, stageName, WORLD_EVIL_LABEL, type Connection, type MapNode, type NodeState, type WorldEvil } from '../../../components/nodeMap/graph'
 import { NoBreak } from '../../../components/NoBreak'
 import { PartiallyVerifiedBadge } from '../../../components/PartiallyVerifiedBadge'
@@ -18,7 +19,7 @@ import { ItemCell, PanelHeading, SourceIconLink, TipList } from './BossBits'
 import { BossDrops } from './BossDrops'
 import { bossMapHref, bossPageHref } from './bossNav'
 import type { BossPageData } from './bossPageData'
-import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, nextSteps, SECTION_IDS, statField, statsView, stepPhrase, strategyGroups, TIME_LABEL } from './bossPageModel'
+import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, isMultiForm, nextSteps, SECTION_IDS, statField, statsView, stepPhrase, strategyGroups, TIME_LABEL } from './bossPageModel'
 import { ClassGear } from './ClassGear'
 import type { GearData } from './bossPageData'
 import { PrepChecklist } from './PrepChecklist'
@@ -93,6 +94,7 @@ function BossHeader({ data, node, worldEvil, state, headingId, unknowns }: { dat
         <SpriteImg src={boss.sprite} sprites={sprites} placeholder="creature" box={128} full />
       </div>
       <div className="min-w-0 flex-1 space-y-4">
+        <FavoriteStar entityRef={`boss:${boss.id}`} name={boss.name} className="float-right -mt-2.5 -mr-2 ml-2" />
         <div className="space-y-1">
           <p className="text-xs font-semibold tracking-wide text-fg-muted uppercase">Boss</p>
           <h1 id={headingId} tabIndex={-1} className="font-display text-base leading-relaxed text-accent text-shadow-pixel focus:outline-none md:text-2xl">
@@ -322,7 +324,7 @@ function StatsPanel({ data }: { data: BossPageData }) {
             <caption className="sr-only">Base stats of {boss.name} by difficulty</caption>
             <thead>
               <tr className="text-left text-xs text-fg-muted">
-                <th scope="col" className="w-[28%] py-1 pr-1 font-semibold md:w-[34%] md:pr-2">
+                <th scope="col" className="w-[28%] py-1 pr-1 font-semibold md:w-[34%] md:pr-2 lg:w-[28%] lg:pr-1">
                   <span className="sr-only">Stat</span>
                 </th>
                 {(['classic', 'expert', 'master'] as const).map((d) => (
@@ -342,7 +344,9 @@ function StatsPanel({ data }: { data: BossPageData }) {
                     const field = statField(d, key)
                     const cell = getField(boss, field)
                     return cell.status === 'unverified' ? (
-                      <td key={d} className="bg-hatch-unknown px-0.5 py-1.5 max-md:text-xs md:px-1">
+                      // The lg rail (20rem) is as narrow as a phone column: Unknown cells shrink there too. A
+                      // panel-coloured side border keeps neighbouring hatched cells (and their "Unknown") apart.
+                      <td key={d} className="border-x-2 border-panel bg-hatch-unknown px-0.5 py-1.5 max-md:text-xs md:px-1 lg:px-0.5 lg:text-xs lg:[&_[data-unknown-field]]:px-0.5">
                         <UnknownValue field={field} sourceUrl={boss.wikiUrl} inCell />
                       </td>
                     ) : (
@@ -362,7 +366,7 @@ function StatsPanel({ data }: { data: BossPageData }) {
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-fg-muted">Base stats of the boss’s first form.</p>
+          {isMultiForm(boss) ? <p className="text-xs text-fg-muted">Base stats of the boss’s first form.</p> : null}
         </>
       )}
       <ProvenanceLink href={boss.wikiUrl} srContext={`for the stats of ${boss.name}`} />
@@ -384,7 +388,7 @@ function NodeIcon({ node }: { node: MapNode }) {
  * One connected node: its page (if it has one), the relation in plain words (M1; the map legend's
  * icons alongside), "Show on map", and the edge's quoted note + source.
  */
-function StepItem({ connection, phrase, partners = [] }: { connection: Connection; phrase: string; partners?: readonly MapNode[] }) {
+function StepItem({ connection, phrase, partners = [], opens = [] }: { connection: Connection; phrase: string; partners?: readonly MapNode[]; opens?: readonly Connection[] }) {
   const { link, other } = connection
   const page = other.kind === 'boss' ? bossPageHref(other.id) : undefined
   const edge = link.edges[0]
@@ -436,7 +440,44 @@ function StepItem({ connection, phrase, partners = [] }: { connection: Connectio
         <MapIcon aria-hidden="true" className="size-4" />
         Show {other.name} on the map
       </Link>
+      {opens.length > 0 ? <OpensPointer from={other} opens={opens} /> : null}
     </li>
+  )
+}
+
+/** How an opened step reads beside its name: only what changes the plan (optional, or early at a cost). */
+function opensNote(types: readonly EdgeType[]): string | undefined {
+  if (types.includes('early-challenge-possible')) return 'can be fought early'
+  return types.includes('optional') ? 'optional' : undefined
+}
+
+/**
+ * The Duke-Fishron-style pointer under a milestone step (Hardmode after the Wall of Flesh): what the
+ * marker opens, straight from the progression graph's links out of it, each a link to its place on
+ * the map — so the page names the next fights instead of stopping at a world change.
+ */
+function OpensPointer({ from, opens }: { from: MapNode; opens: readonly Connection[] }) {
+  return (
+    <div data-step-opens={from.id} className="space-y-1 border-t-2 border-panel-border pt-2">
+      <p className="text-sm">From {from.name}, the path continues with:</p>
+      <ul aria-label={`What ${from.name} opens`} className="flex flex-wrap gap-x-4">
+        {opens.map(({ link, other }) => {
+          const note = opensNote(link.types)
+          return (
+            <li key={link.id} data-opens={other.id} className="inline-flex items-center gap-1.5 text-sm">
+              <Link to={bossMapHref(other.id)} data-map-link={other.id} className={cx('inline-flex min-h-tap items-center gap-1.5 font-semibold', LINK)}>
+                <MapIcon aria-hidden="true" className="size-4 shrink-0" />
+                <span className="sr-only">Show </span>
+                {other.name}
+                <span className="sr-only"> on the map</span>
+              </Link>
+              {other.kind === 'event' ? <span className="text-xs text-fg-muted">event</span> : null}
+              {note ? <span className="text-xs text-fg-muted">{note}</span> : null}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -452,8 +493,8 @@ function NextStepsPanel({ data }: { data: BossPageData }) {
       <PanelHeading id={SECTION_IDS.next}>After {boss.name}</PanelHeading>
       {steps.after.length > 0 ? (
         <ul aria-label={`What ${boss.name} leads to`} className="space-y-2">
-          {steps.after.map(({ connection, partners }) => (
-            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} partners={partners} />
+          {steps.after.map(({ connection, partners, opens }) => (
+            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} partners={partners} opens={opens} />
           ))}
         </ul>
       ) : steps.continueFrom ? (

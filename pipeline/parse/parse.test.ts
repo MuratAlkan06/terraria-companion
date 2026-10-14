@@ -2,7 +2,7 @@
  * infoboxes / Buff IDs table / Module:Projectileinfo/data.
  * Fixtures mirror the real shapes verified against terraria.wiki.gg on 2026-10-13. */
 import { describe, expect, it } from 'vitest'
-import { customNotesOf, desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf, plainTextOf } from './dropCells'
+import { bundleQuantity, customBundle, customNotesOf, desktopSegments, modeParts, notesOf, parseQty, parseRate, platformsOf, plainTextOf, type BundleEntry } from './dropCells'
 import { infoboxForItem, parseBuffIdTable, parseBuffInfoboxes, parseIdList, parseItemInfoboxes } from './infobox'
 import { parseIteminfo, resolveItemName } from './iteminfo'
 import { parseNpcStat } from './npcStats'
@@ -140,6 +140,36 @@ describe('Cargo Drops cell grammar', () => {
     expect(customNotesOf(terraprisma)).toEqual(['if 100% of damage is dealt at daytime'])
     expect(customNotesOf(happyGrenade)).toEqual([])
     expect(plainTextOf(happyGrenade)).toBe('Happy Grenade(30–60)') // the amount stays readable for the quantity fallback
+  })
+
+  describe('bundled custom cells (P5-S3 review: "Grenade Launcher :+ Rocket I (50–149)")', () => {
+    // Cell shapes copied from the cached Cargo Drops rows (2026-10-13 sync).
+    const link = (name: string) => `<span class="i">[[File:${name}.png|link=${name}|${name}]]<span><span>[[${name}]]</span></span></span>`
+    const planteraBoss = `${link('Grenade Launcher')}\n:+ ${link('Rocket I')} (50–149)\n<div class="note-text small">(will always drop the first time Plantera is defeated in a world that is neither in Expert nor Master Mode)</div>`
+    const planteraBag = `${link('Grenade Launcher')}\n:+ ${link('Rocket I')} (50–149)`
+    const pumpking = `${link('Candy Corn Rifle')}\n: + ${link('Candy Corn')} (50–100)`
+    const shadowOrb = `${link('Musket')}\n: + ${link('Musket Ball')} (100)`
+
+    it('reads the primary and its companions; the trailing amount belongs to the companion; a note line is not an entry', () => {
+      expect(customBundle(planteraBoss)).toEqual({ ok: true, value: [{ name: 'Grenade Launcher', companion: false }, { name: 'Rocket I', amount: '50–149', companion: true }] })
+      expect(customBundle(planteraBag)).toEqual(customBundle(planteraBoss))
+      expect(customBundle(pumpking)).toEqual({ ok: true, value: [{ name: 'Candy Corn Rifle', companion: false }, { name: 'Candy Corn', amount: '50–100', companion: true }] })
+      expect(customBundle(shadowOrb)).toMatchObject({ ok: true, value: [{ name: 'Musket' }, { name: 'Musket Ball', amount: '100' }] })
+    })
+
+    it('each row gets its OWN entry\'s quantity: the Grenade Launcher 1 (none stated), Rocket I 50–149', () => {
+      const entries = (customBundle(planteraBoss) as { ok: true; value: BundleEntry[] }).value
+      expect(bundleQuantity(entries, 'Grenade Launcher')).toEqual({ ok: true, value: { min: 1, max: 1 } })
+      expect(bundleQuantity(entries, 'Rocket I')).toEqual({ ok: true, value: { min: 50, max: 149 } })
+      expect(bundleQuantity(entries, 'Rocket II')).toMatchObject({ ok: false })
+    })
+
+    it('a plain custom cell is not a bundle (its trailing amount is its own item\'s); an unreadable bundle fails instead of guessing', () => {
+      expect(customBundle('<span class="i -w">[[File:Lihzahrd Brick.png|link=Lihzahrd Brick|Lihzahrd Brick]]<span><span>[[Lihzahrd Brick]]</span></span></span> (500–600)')).toBeUndefined()
+      expect(customBundle('[[Gel]] (2–5)')).toBeUndefined()
+      expect(customBundle(`${link('Musket')}\n: + ${link('Musket Ball')} (Hardmode)`)).toMatchObject({ ok: false })
+      expect(customBundle(`${link('Musket')}\nstray text\n: + ${link('Musket Ball')} (100)`)).toMatchObject({ ok: false })
+    })
   })
 
   it('rejects text outside a per-difficulty block', () => {

@@ -304,7 +304,36 @@
       "attackPatternTags": [
         { "tag": "summons-adds", "quote": "The Wall of Flesh has small mouths called The Hungry, each attached by a long vein, which move towards and damage players." },
         { "tag": "inflicts-debuffs", "quote": "the two exclusive debuffs from the boss, Horrified and The Tongue" }
-      ]
+      ],
+      "prepChecklist": [
+        { "text": "Build a long bridge across the Underworld, about 1000 blocks or more", "page": "Guide:Wall of Flesh strategies", "quote": "The simplest arena is a long bridge of about 1000 blocks or more with some space above it for the player to maneuver." },
+        { "text": "No bridge? Get Lava Waders (or an upgrade) or drink a Water Walking Potion", "items": ["Lava Waders", "Water Walking Potion"], "page": "Wall of Flesh", "quote": "If the player does not want to build a bridge, acquiring the Lava Waders or their upgrades is necessary; they can also use the Water Walking Potion." },
+        { "text": "Reach 400 maximum health: Hardmode starts as soon as the Wall is defeated", "page": "Guide:Wall of Flesh strategies", "quote": "Having 400 health is essentially required at this point, especially since Hardmode will start immediately upon the Wall's defeat." },
+        { "text": "Wear Hermes Boots or an upgrade: the Wall speeds up as it loses health", "items": ["Hermes Boots"], "page": "Guide:Wall of Flesh strategies", "quote": "it is recommended to have fast movement accessories such as Hermes Boots or its upgrades" },
+        { "text": "Fighting up close? Equip an Obsidian Shield against knockback", "items": ["Obsidian Shield"], "page": "Guide:Wall of Flesh strategies", "quote": "An Obsidian Shield is mandatory if doing the fight with a close ranged melee weapon, as knockback is a great issue when standing close to the Wall." },
+        { "text": "Drink Ironskin, Endurance and Regeneration Potions", "items": ["Ironskin Potion", "Endurance Potion", "Regeneration Potion"], "page": "Guide:Wall of Flesh strategies", "quote": "Ironskin Potions, Endurance Potions and Regeneration Potions do wonders for survivability." },
+        { "text": "Drink a Heartreach Potion to collect the Hearts from The Hungry and Leeches", "items": ["Heartreach Potion"], "page": "Guide:Wall of Flesh strategies", "quote": "The Heartreach Potion is invaluable for collecting Hearts dropped by The Hungry and Leeches." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Wall of Flesh strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:Wall of Flesh strategies", "quote": "The Wall will steadily move toward the player, so a safe distance should always be maintained." },
+        { "page": "Guide:Wall of Flesh strategies", "quote": "At the start of the fight The Hungry should be focused on, preferably using piercing weapons or explosives." },
+        { "page": "Wall of Flesh", "quote": "The Hungry's damage and defense are boosted as the body takes damage, which will make them more difficult to kill if left for later." },
+        { "page": "Guide:Wall of Flesh strategies", "quote": "Prioritize damaging the Eyes over the Mouth, as they have 0 / 6 defense compared to the Mouth's 12 / 18 defense." },
+        { "page": "Guide:Wall of Flesh strategies", "quote": "The laser damage can be halved by building a bridge out of blocks instead of platforms, blocking the lower eye." },
+        { "page": "Guide:Wall of Flesh strategies", "quote": "The Horrified debuff has the effect of instantly killing the player when they use a Teleporter, Magic Mirror/Ice Mirror or any of its upgrades, or a Recall Potion." },
+        { "difficulty": "expert", "page": "Guide:Wall of Flesh strategies", "quote": "The Hungry will respawn quickly over time, making non-penetrating ammo less effective against the Wall.", "why": "The guide's \"Expert and Master Mode\" section." },
+        { "difficulty": "expert", "page": "Guide:Wall of Flesh strategies", "quote": "Lasers can reach extremely fast firing rates, to the point where the lasers have no usable gap between them.", "why": "The guide's \"Expert and Master Mode\" section." },
+        { "class": "melee", "page": "Guide:Wall of Flesh strategies", "quote": "The Night's Edge has high DPS and a large area attack that make it the best melee option for this fight.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Wall of Flesh strategies", "quote": "The Sunfury pierces with medium range, making it effective at both The Hungry and the boss.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Wall of Flesh strategies", "quote": "The Hellwing Bow is the strongest bow available for this fight due to its rapid fire and piercing projectiles, with its accuracy downside mitigated by the Wall's huge size.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Wall of Flesh strategies", "quote": "The Phoenix Blaster is the best gun available, being extremely consistent with its damage output, precise aim, and long range.", "why": "Under \"For Ranged users:\"." },
+        { "class": "magic", "page": "Guide:Wall of Flesh strategies", "quote": "The Demon Scythe is without a doubt the strongest magic weapon against the boss, as its projectiles can hit the boss and The Hungry multiple times per projectile, especially if aimed vertically to hit multiple sections as the Wall moves.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Wall of Flesh strategies", "quote": "The Aqua Scepter is one of the strongest mage weapons for this fight, due to its high DPS and piercing.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Wall of Flesh strategies", "quote": "The best combination of minions involves two uses of the Vampire Frog Staff, two uses of the Flinx Staff, and one use of the Imp Staff.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Wall of Flesh strategies", "quote": "The Spinal Tap or Starcrash are the best whips for the fight.", "why": "Under \"For Summoners:\" (whips)." }
+      ],
+      "suggestedEquipment": { "gap": "No weapon is verified as obtainable before this fight: the item data does not cover how basic materials, shop stock and chest loot are obtained, and no other boss is a required step before this one. Gear that might not be available is not suggested, so this stays Unknown; the class tips quote the wiki's own gear advice." }
     },
     {
       "id": "queen-slime", "name": "Queen Slime", "page": "Queen Slime", "stage": "early-hm",
@@ -317,6 +346,40 @@
         { "tag": "multi-phase", "quote": "The Queen Slime fight consists of two phases." },
         { "tag": "flies", "quote": "she grows large wings and begins flying above the player while passing through blocks" },
         { "tag": "despawn-leash", "quote": "If the player dies or if the horizontal distance of the player from Queen Slime is greater than 500 tiles, she begins moving away from the player" }
+      ],
+      "prepChecklist": [
+        { "text": "Fight off the ground, on platforms, so her bouncing shots fall out of the arena", "page": "Guide:Queen Slime strategies", "quote": "Fighting in an off-ground arena with platforms on the bottom will allow the projectiles to fall out safely." },
+        { "text": "Fight her in daylight: her attacks can be hard to see at night", "page": "Queen Slime", "quote": "Fight Queen Slime in daylight, since her attacks may be hard to see at night." },
+        { "text": "Bring weapons for her crowd of slimes and for reaching her winged form", "page": "Guide:Queen Slime strategies", "quote": "It is important to have weapons that can deal with the crowd of slimes that she summons, as well as weapons that can reach her in her winged form." },
+        { "text": "Drink Regeneration, Endurance, Lifeforce and Ironskin Potions", "items": ["Regeneration Potion", "Endurance Potion", "Lifeforce Potion", "Ironskin Potion"], "page": "Guide:Queen Slime strategies", "quote": "Regeneration Potion, Endurance Potion, Lifeforce Potion, and Ironskin Potion will greatly increase survivability." },
+        { "text": "Bring Gravitation Potions for dodging in her second phase", "items": ["Gravitation Potion"], "page": "Guide:Queen Slime strategies", "quote": "Gravitation Potions are very useful for dodging during her second phase, especially when paired with the Shield of Cthulhu." },
+        { "text": "Drink a Swiftness Potion for mobility", "items": ["Swiftness Potion"], "page": "Guide:Queen Slime strategies", "quote": "Swiftness Potion will increase mobility." },
+        { "text": "Equip a Cobalt Shield (or an upgrade) against knockback", "items": ["Cobalt Shield"], "page": "Guide:Queen Slime strategies", "quote": "The Cobalt Shield or its upgrades prevents knockback, which can be useful in the second phase as projectiles can cover the screen." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Queen Slime strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:Queen Slime strategies", "quote": "Killing the smaller slimes should be a priority during this phase, as they can quickly overwhelm the player." },
+        { "page": "Queen Slime", "quote": "Stay in the air using wings or mounts during her first phase, as many of her attacks cannot reach the player there." },
+        { "page": "Queen Slime", "quote": "During her second phase, the player should stay closer to the ground while occasionally luring her back up, as they can avoid many of her projectiles and minions due to their slow and predictable movement patterns." },
+        { "page": "Queen Slime", "quote": "Use several disconnected platforms, which can allow her minions to fall down and away from the fight." },
+        { "page": "Queen Slime", "quote": "Like most bosses, she is immune to lava, but her minions are not." },
+        { "page": "Guide:Queen Slime strategies", "quote": "The player can run back and forth on the skybridge, jumping over projectiles, and Queen Slime will remain at roughly the same height the entire time, making targeting easier." },
+        { "difficulty": "expert", "page": "Guide:Queen Slime strategies", "quote": "Queen Slime receives few changes in higher difficulties, beyond her minions having a faster attack rate and/or more projectiles.", "why": "The guide's \"Expert/Master Mode\" section." },
+        { "difficulty": "expert", "page": "Queen Slime", "quote": "When fighting her in higher difficulties, never remain directly above multiple Crystal Slimes.", "why": "The sentence is about higher difficulties (Expert and Master Mode)." },
+        { "class": "melee", "page": "Guide:Queen Slime strategies", "quote": "The Shadowflame Knife is good because of its accuracy and bouncing projectiles, as well as the ability to inflict Shadowflame on multiple minions.", "why": "Under the guide's \"For Melee users\" weapons heading." },
+        { "class": "melee", "page": "Guide:Queen Slime strategies", "quote": "Yoyos are excellent in this fight due to their range and being easy to aim.", "why": "Under \"For Melee users\"." },
+        { "class": "ranged", "page": "Guide:Queen Slime strategies", "quote": "The Dart Pistol or Dart Rifle with Crystal Darts is useful due to its high damage output and its semi-homing ricochet ability, which can kill all of the nearby slimes that are summoned.", "why": "Under the guide's \"For Ranged users\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Queen Slime strategies", "quote": "The Onyx Blaster is extremely powerful against Queen Slime when used with Crystal Bullets and supported with Ichor; however it has issues against the slimes.", "why": "Under \"For Ranged users\"." },
+        { "class": "magic", "page": "Guide:Queen Slime strategies", "quote": "The Life Drain is extremely useful for killing large groups of slimes with little aiming required.", "why": "Under the guide's \"For Magic users\" weapons heading." },
+        { "class": "magic", "page": "Guide:Queen Slime strategies", "quote": "The Crystal Storm also deals respectable DPS, especially if using the Blessed Apple mount in the second phase, as Queen Slime will ram into all of the projectiles.", "why": "Under \"For Magic users\"." },
+        { "class": "summon", "page": "Guide:Queen Slime strategies", "quote": "The Firecracker has very high DPS when used as a main weapon if both the player and their minions are attacking the same target due to its ability of creating explosion on tagged enemies after minions hit them.", "why": "Under the guide's \"For Summoners\" weapons heading (whips)." },
+        { "class": "summon", "page": "Guide:Queen Slime strategies", "quote": "The Sanguine Staff is the best staff for this fight that doesn't require a whip, due to its high drop rate, damage, and aerial tracking, which allows it to consistently hit Queen Slime through out the second phase.", "why": "Under \"For Summoners\"." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "page": "Guide:Queen Slime strategies", "quote": "The Firecracker has very high DPS when used as a main weapon if both the player and their minions are attacking the same target due to its ability of creating explosion on tagged enemies after minions hit them." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -332,6 +395,39 @@
         { "tag": "inflicts-debuffs", "quote": "fires green balls of Cursed Flames, which have a 11/16 (68.75%) chance of inflicting the Cursed Inferno debuff" },
         { "tag": "projectile-spam", "page": "Bosses", "quote": "it will shoot Death Lasers extremely fast, sometimes having the same fire rate as a Megashark" },
         { "tag": "despawn-leash", "quote": "The Twins will flee and despawn if they are not defeated by dawn (4:30 AM), if all players die, or if they go too far off-screen." }
+      ],
+      "prepChecklist": [
+        { "text": "Build your arena in the sky: dodging most attacks needs vertical room", "page": "Guide:The Twins strategies", "quote": "The Sky above the surface is highly recommended for The Twins arena, as vertical movement is required to dodge most of the attacks." },
+        { "text": "Summon them just after dusk (7:30 PM) for the most time before dawn", "items": ["Mechanical Eye"], "page": "Guide:The Twins strategies", "quote": "For nocturnal bosses, starting the battle just after the sun sets (7:30 PM) will provide the maximum amount of time to defeat the boss." },
+        { "text": "If another mechanical boss is down, eat Life Fruit from the Underground Jungle", "items": ["Life Fruit"], "page": "Guide:The Twins strategies", "quote": "If a mechanical boss has been defeated, Life Fruits will begin to grow in the Underground Jungle, increasing health by 5 per Life Fruit until the player reaches 500 health." },
+        { "text": "Gear up for mobility: The Twins attack quickly", "page": "Guide:The Twins strategies", "quote": "Accessories that improve mobility are a must, since The Twins use quick attacks." },
+        { "text": "Equip the Emblem of your class", "page": "Guide:The Twins strategies", "quote": "An Emblem of the player's respective class greatly increases damage output." },
+        { "text": "Bring Crystal or Ichor Bullets for guns, Holy or Ichor Arrows for bows", "items": ["Crystal Bullet", "Ichor Bullet", "Holy Arrow", "Ichor Arrow"], "page": "Guide:The Twins strategies", "quote": "Crystal Bullets and Ichor Bullets are a must have if using guns, and Holy Arrows and Ichor Arrows for bows." },
+        { "text": "Drink Regeneration, Endurance and Ironskin Potions", "items": ["Regeneration Potion", "Endurance Potion", "Ironskin Potion"], "page": "Guide:The Twins strategies", "quote": "Regeneration Potion, Endurance Potion, and Ironskin Potion will help prevent fatal damage." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:The Twins strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:The Twins strategies", "quote": "It is a good idea to focus on one Eye, since the fight becomes easier if a single Eye has been defeated." },
+        { "page": "The Twins", "quote": "Spazmatism may be a better choice for defeating first, since its Cursed Flames are difficult to avoid without proper mobility equipment and buffs in its second phase." },
+        { "page": "Guide:The Twins strategies", "quote": "Misdirecting Spazmatism's charges is easier than it sounds; by jumping as he slows down, he will charge over the player." },
+        { "page": "Guide:The Twins strategies", "quote": "With wings it is possible to \"zig-zag\" up and down to dodge the lasers." },
+        { "page": "The Twins", "quote": "In its second phase, Retinazer can only attack the player if it has an unobstructed line of sight. Hiding in a box prevents it from dealing any damage." },
+        { "page": "The Twins", "quote": "A Gravitation Potion can be an excellent method of keeping distance from the Twins, allowing them to be attacked freely." },
+        { "difficulty": "expert", "page": "Guide:The Twins strategies", "quote": "In Expert Mode, both Twins fire faster projectiles and have shorter cooldowns between attacks.", "why": "The guide's \"Expert/Master Mode\" section." },
+        { "class": "melee", "page": "Guide:The Twins strategies", "quote": "The Shadowflame Knife shoots very fast and deals a lot of damage per dagger.", "why": "Under the guide's \"For Melee users\" weapons heading." },
+        { "class": "melee", "page": "Guide:The Twins strategies", "quote": "Yoyos with the Yoyo Bag can be useful.", "why": "Under \"For Melee users\"." },
+        { "class": "ranged", "page": "Guide:The Twins strategies", "quote": "Guns such as the Megashark, Uzi, Onyx Blaster, Gatligator, and Clockwork Assault Rifle can be quite effective when paired with Ichor, Crystal, or Cursed Bullets.", "why": "Under the guide's \"For Ranged users\" weapons heading." },
+        { "class": "ranged", "page": "Guide:The Twins strategies", "quote": "The Daedalus Stormbow is a great bow, especially if combined with Ichor Arrows or Cursed Arrows, even better with a Magic Quiver and its upgrades, as they greatly increase arrow velocity, making it much easier to hit your shots.", "why": "Under \"For Ranged users\"." },
+        { "class": "magic", "page": "Guide:The Twins strategies", "quote": "The Crystal Serpent is one of the strongest weapons mages can use in early Hardmode.", "why": "Under the guide's \"For Magic users\" weapons heading." },
+        { "class": "magic", "page": "Guide:The Twins strategies", "quote": "The Spirit Flame's homing abilities and high damage allows the user to deal consistent damage.", "why": "Under \"For Magic users\"." },
+        { "class": "summon", "page": "Guide:The Twins strategies", "quote": "The Firecracker increases damage output for minions, which is particular potent with ones that have high base damage, such as the Sanguine Staff or Abigail's Flower (if used all-in).", "why": "Under the guide's \"For Summoners\" weapons heading (whips)." },
+        { "class": "summon", "page": "Guide:The Twins strategies", "quote": "The Sanguine Staff has perfect tracking and high base damage, which make it a decent choice.", "why": "Under \"For Summoners\"." }
+      ],
+      "suggestedEquipment": [
+        { "class": "ranged", "weapons": ["Clockwork Assault Rifle"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the guns this tip names, only the Clockwork Assault Rifle is verified as obtainable before this fight.", "page": "Guide:The Twins strategies", "quote": "Guns such as the Megashark, Uzi, Onyx Blaster, Gatligator, and Clockwork Assault Rifle can be quite effective when paired with Ichor, Crystal, or Cursed Bullets." },
+        { "class": "summon", "weapons": ["Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "page": "Guide:The Twins strategies", "quote": "The Firecracker increases damage output for minions, which is particular potent with ones that have high base damage, such as the Sanguine Staff or Abigail's Flower (if used all-in)." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -343,6 +439,40 @@
       "attackPatternTags": [
         { "tag": "burrows", "quote": "It has limited mobility when fully in the air, requiring blocks or platforms to \"burrow\" through." },
         { "tag": "summons-adds", "quote": "It releases flying Probes from its body" }
+      ],
+      "prepChecklist": [
+        { "text": "Build a tall, wide arena with several rows of platforms", "page": "Guide:The Destroyer strategies", "quote": "Like with the Eater of Worlds, a tall, wide arena with multiple rows of platforms can make dodging its main body easier." },
+        { "text": "Summon it just after dusk (7:30 PM) for the most time before dawn", "items": ["Mechanical Worm"], "page": "Guide:The Destroyer strategies", "quote": "For nocturnal bosses, starting the battle just after the sun sets (7:30 PM) will provide the maximum amount of time to defeat the boss." },
+        { "text": "Bring a weapon that pierces or deals area damage", "page": "Guide:The Destroyer strategies", "quote": "As such, a weapon that pierces or deals area-of-effect damage is practically mandatory for this fight." },
+        { "text": "Leave flasks and debuff weapons at home: it is immune to debuffs", "page": "The Destroyer", "quote": "As The Destroyer is immune to debuffs, the player should avoid using flasks and weapons heavily dependent on debuffs." },
+        { "text": "Equip a Cross Necklace (or an upgrade) against its laser barrage", "items": ["Cross Necklace"], "page": "Guide:The Destroyer strategies", "quote": "The Cross Necklace (or its upgrades) will make the barrage of laser bolts much more survivable due to the extra invincibility frames." },
+        { "text": "Drink Regeneration, Endurance, Lifeforce and Ironskin Potions", "items": ["Regeneration Potion", "Endurance Potion", "Lifeforce Potion", "Ironskin Potion"], "page": "Guide:The Destroyer strategies", "quote": "Regeneration Potion, Endurance Potion, Lifeforce Potion, and Ironskin Potion will greatly increase survivability." },
+        { "text": "Drink a Swiftness Potion for mobility", "items": ["Swiftness Potion"], "page": "Guide:The Destroyer strategies", "quote": "Swiftness Potions will increase mobility." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:The Destroyer strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:The Destroyer strategies", "quote": "When avoiding The Destroyer, go up, not down." },
+        { "page": "Guide:The Destroyer strategies", "quote": "Getting stuck under The Destroyer is extremely dangerous, so be sure to have an arena with platforms or good jump items." },
+        { "page": "The Destroyer", "quote": "Probes should be taken out as soon as possible, since they interfere with the fight and additionally serve as a steady source of Hearts." },
+        { "page": "Guide:The Destroyer strategies", "quote": "Find a balance between damaging the worm and dealing with Probes to survive the fight." },
+        { "page": "The Destroyer", "quote": "For extra risk and reward, line up with the head (which has no defense) and fire down the length of its body." },
+        { "page": "The Destroyer", "quote": "Using the minimap to see where The Destroyer will surface can greatly help with dodging." },
+        { "difficulty": "expert", "page": "Guide:The Destroyer strategies", "quote": "It is very important not to get touched by the head, as it can deal massive damage, bringing players from full health to zero in only two hits.", "why": "The guide's \"Expert Mode\" section." },
+        { "difficulty": "master", "page": "Guide:The Destroyer strategies", "quote": "It is even more important not to get hit by the head as it can bring someone from a full, 400 health to 0 in one hit if they have less than 20 defense.", "why": "The guide's \"Master Mode\" section." },
+        { "class": "melee", "page": "Guide:The Destroyer strategies", "quote": "The Shadowflame Knife is a safe choice due to its long range as well as its ability to bounce off The Destroyer, hitting it and its Probes multiple times.", "why": "Under the guide's \"For Melee users\" weapons heading." },
+        { "class": "melee", "page": "Guide:The Destroyer strategies", "quote": "The Drippler Crippler and Dao of Pow can do significant damage across multiple body parts.", "why": "Under \"For Melee users\" (flails)." },
+        { "class": "ranged", "page": "Guide:The Destroyer strategies", "quote": "The Daedalus Stormbow is excellent against large bosses like The Destroyer.", "why": "Under the guide's \"For Ranged users\" weapons heading." },
+        { "class": "ranged", "page": "Guide:The Destroyer strategies", "quote": "The Onyx Blaster is the best gun available, and should be used with Exploding Bullets, or if another mech boss has been defeated, High Velocity Bullets.", "why": "Under \"For Ranged users\"." },
+        { "class": "magic", "page": "Guide:The Destroyer strategies", "quote": "The Life Drain is a great weapon for fighting The Destroyer, as it damages multiple segments at once, and can also strike down the Probes in a wide area.", "why": "Under the guide's \"For Magic users\" weapons heading." },
+        { "class": "magic", "page": "Guide:The Destroyer strategies", "quote": "The Meteor Staff deals extreme amounts of damage at a high speed and pierces many segments, but it burns through mana extremely quickly, so may perform inconsistently without a large supply of Greater Mana Potions.", "why": "Under \"For Magic users\"." },
+        { "class": "summon", "page": "Guide:The Destroyer strategies", "quote": "The Firecracker and Cool Whip are the best whips for this fight, with the former multiplying enemy damage and the latter having a snowflake projectile that pierces multiple segments and hits Probes.", "why": "Under the guide's \"For Summoners\" weapons heading (whips)." },
+        { "class": "summon", "page": "Guide:The Destroyer strategies", "quote": "The Optic Staff and Sanguine Staff are the strongest minions available for this fight. Use these with the Firecracker.", "why": "Under \"For Summoners\"." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the whips this tip names, only the Firecracker is verified as obtainable before this fight.", "page": "Guide:The Destroyer strategies", "quote": "The Firecracker and Cool Whip are the best whips for this fight, with the former multiplying enemy damage and the latter having a snowflake projectile that pierces multiple segments and hits Probes." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -353,6 +483,40 @@
       "attackPatternTags": [
         { "tag": "enrage-mechanic", "quote": "If Skeletron Prime is not killed before dawn (4:30 AM), it will enrage" },
         { "tag": "despawn-leash", "quote": "If the player is more than 375 tiles away, Skeletron Prime will start moving downwards and will quickly despawn." }
+      ],
+      "prepChecklist": [
+        { "text": "Build several suspended rows of platforms, each around 50 blocks long", "page": "Guide:Skeletron Prime strategies", "quote": "You will want several rows of platforms, each around 50 or so blocks long." },
+        { "text": "Leave out a solid ceiling: it retreats a fair distance between spins", "page": "Guide:Skeletron Prime strategies", "quote": "A solid ceiling should be avoided since Skeletron Prime will often retreat a fair distance when not using his spinning attack." },
+        { "text": "Summon it just after dusk (7:30 PM): it enrages at dawn", "items": ["Mechanical Skull"], "page": "Guide:Skeletron Prime strategies", "quote": "For nocturnal bosses, starting the battle just after the sun sets (7:30 PM) will provide the maximum amount of time to defeat the boss." },
+        { "text": "Equip Lightning Boots or other mobility accessories", "items": ["Lightning Boots"], "page": "Guide:Skeletron Prime strategies", "quote": "Accessories that increase your mobility such as the Lightning Boots are extremely useful." },
+        { "text": "Equip the Emblem of your class", "page": "Guide:Skeletron Prime strategies", "quote": "An Emblem for your class can increase your damage output significantly." },
+        { "text": "Bring a way to inflict Ichor: it has high defense", "page": "Skeletron Prime", "quote": "Due to Skeletron Prime's overall high defense, inflicting it with Ichor is effective, as it is not immune to it." },
+        { "text": "Drink Swiftness, Ironskin and Regeneration Potions", "items": ["Swiftness Potion", "Ironskin Potion", "Regeneration Potion"], "page": "Guide:Skeletron Prime strategies", "quote": "For buff potions, the Swiftness Potion, Ironskin Potion, and Regeneration Potion will help out immensely." },
+        { "text": "Bring Greater Healing Potions", "items": ["Greater Healing Potion"], "page": "Guide:Skeletron Prime strategies", "quote": "Greater Healing Potions are recommended." }
+      ],
+      "strategies": [
+        { "page": "Skeletron Prime", "quote": "Although it is a little more time-consuming, focusing on the arms first is very rewarding." },
+        { "page": "Skeletron Prime", "quote": "A good idea is to focus on the Prime Laser first, as it is harder to dodge than the other limbs." },
+        { "page": "Guide:Skeletron Prime strategies", "quote": "The inaccuracy and relatively low damage of the bombs makes the Cannon significantly less threatening than any of the other limbs." },
+        { "page": "Skeletron Prime", "quote": "Unhindered movement is crucial when Skeletron Prime's head starts spinning, as it deals double the regular damage." },
+        { "page": "Guide:Skeletron Prime strategies", "quote": "Moving diagonally will make dodging the spinning head easier, as players can move faster in diagonal directions than in others." },
+        { "page": "Guide:Skeletron Prime strategies", "quote": "If the player gets too far from the head while it is not spinning, it will fly back to the player extremely quickly, which can be difficult to dodge." },
+        { "difficulty": "expert", "page": "Guide:Skeletron Prime strategies", "quote": "In this mode, the spinning head is much faster, and increases the further away the player is.", "why": "The guide's \"Expert Mode/Master Mode\" section." },
+        { "difficulty": "expert", "page": "Guide:Skeletron Prime strategies", "quote": "Its shots deal significant damage and it is Prime's most threatening limb in Expert mode.", "why": "From the guide's \"Prime Laser\" section; the sentence is about Expert mode." },
+        { "class": "melee", "page": "Guide:Skeletron Prime strategies", "quote": "The Hel-Fire, Amarok, or Yelets with the Yoyo Bag or Magic Yoyo Bag are all very strong choices.", "why": "Under the guide's \"For melee users\" weapons heading." },
+        { "class": "melee", "page": "Guide:Skeletron Prime strategies", "quote": "The Chain Guillotines can be useful, thanks to their decent range and good damage.", "why": "Under \"For melee users\"." },
+        { "class": "ranged", "page": "Guide:Skeletron Prime strategies", "quote": "The Onyx Blaster and Clockwork Assault Rifle are very powerful guns made even stronger with Crystal Bullets.", "why": "Under the guide's \"For ranged users\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Skeletron Prime strategies", "quote": "The Adamantite Repeater and Titanium Repeater are easy to obtain and do high damage, especially with Ichor Arrows.", "why": "Under \"For ranged users\"." },
+        { "class": "magic", "page": "Guide:Skeletron Prime strategies", "quote": "The Lightning Strike is another strong weapon that attacks from above and does not get blocked by the hands.", "why": "Under the guide's \"For magic users\" weapons heading." },
+        { "class": "magic", "page": "Guide:Skeletron Prime strategies", "quote": "The Meteor Staff is powerful and easy to craft, provided you have some leftover Meteorite Bars from Pre-Hardmode.", "why": "Under \"For magic users\"." },
+        { "class": "summon", "page": "Guide:Skeletron Prime strategies", "quote": "The Sanguine Staff is an extremely good summon weapon, due to its perfect tracking and high damage.", "why": "Under the guide's \"For summoners\" weapons heading." },
+        { "class": "summon", "page": "Guide:Skeletron Prime strategies", "quote": "When using Summon weapons, it is recommended to use the targeting function to focus one arm at a time and reduce the threat Skeletron Prime poses.", "why": "From the guide's \"General tips\"; the sentence is about summon weapons." }
+      ],
+      "suggestedEquipment": [
+        { "class": "ranged", "weapons": ["Clockwork Assault Rifle"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the two guns this tip names, only the Clockwork Assault Rifle is verified as obtainable before this fight.", "page": "Guide:Skeletron Prime strategies", "quote": "The Onyx Blaster and Clockwork Assault Rifle are very powerful guns made even stronger with Crystal Bullets." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." },
+        { "class": "summon", "gap": "No summon weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so summon gear stays Unknown; the summon tips quote the wiki's own advice." }
       ]
     },
     {
@@ -364,6 +528,40 @@
         { "tag": "projectile-spam", "quote": "instead focusing on rapidly bombarding them with high-velocity projectile attacks" },
         { "tag": "inflicts-debuffs", "quote": "The green Poison Seeds have a 1/2 (50%) / 100% chance to inflict the Poisoned debuff" },
         { "tag": "enrage-mechanic", "quote": "Being enraged causes Plantera to gain double damage" }
+      ],
+      "prepChecklist": [
+        { "text": "Fight in the Underground Jungle: anywhere else she enrages", "page": "Guide:Plantera strategies", "quote": "She must then be killed within the Underground Jungle, otherwise she will become enraged." },
+        { "text": "Excavate a sizable arena before breaking her bulb", "page": "Plantera", "quote": "Excavate a sizable area to allow easier dodging before summoning Plantera." },
+        { "text": "Clear the arena's background walls so her second form has less to hook onto", "page": "Plantera", "quote": "Make sure the area has no background walls. This will significantly reduce Plantera's mobility in the second form as she does not have walls to hook onto." },
+        { "text": "Don't dig out too much Mud: the arena must still count as Underground Jungle", "page": "Guide:Plantera strategies", "quote": "Make sure the arena is not too big and empty, as taking out too many Mud blocks might turn the Underground Jungle into just regular caverns, enraging Plantera and making the fight much more difficult." },
+        { "text": "Raise your maximum health to 500 with Life Fruit", "items": ["Life Fruit"], "page": "Guide:Plantera strategies", "quote": "It is recommended to increase your maximum life to 500 before trying to tackle Plantera and later challenges after her defeat." },
+        { "text": "Drink Ironskin, Endurance, Regeneration and Lifeforce Potions", "items": ["Ironskin Potion", "Endurance Potion", "Regeneration Potion", "Lifeforce Potion"], "page": "Guide:Plantera strategies", "quote": "Ironskin, Endurance, Regeneration, and Lifeforce Potions will help you survive much longer." },
+        { "text": "Equip wings (or bring a mount) to dodge her attacks", "page": "Guide:Plantera strategies", "quote": "Wings will allow you to dodge Plantera's attacks. Alternatively, a mount can be used." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Plantera strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:Plantera strategies", "quote": "In a large enough arena, distance can be maintained by constant movement." },
+        { "page": "Plantera", "quote": "In Plantera's second form, her only ranged attack consists of the Spores which are very easy to kill. This means that keeping a distance is key to avoiding damage." },
+        { "page": "Plantera", "quote": "Using a Gravitation Potion can help the player avoid damage from Thorn Balls laying on the ground, as the Thorn Balls obey gravity and fall to the floor." },
+        { "page": "Plantera", "quote": "Narrow passages slow Plantera as it takes more time for her to grip the surrounding terrain." },
+        { "page": "Guide:Plantera strategies", "quote": "They simply wave themselves around at the end of their leash and get in the way of the player's attacks, making piercing weapons more valuable." },
+        { "page": "Plantera", "quote": "An arena with Teleporters will make the player escape from Plantera's attacks easily." },
+        { "difficulty": "expert", "page": "Guide:Plantera strategies", "quote": "In these modes, Plantera's seed attacks can travel through blocks, and her tentacles can regrow.", "why": "The guide's \"Expert Mode/Master Mode\" section." },
+        { "difficulty": "expert", "page": "Guide:Plantera strategies", "quote": "This makes dodging the hooks important, either through removing blocks and walls from the arena or by moving down a long tunnel.", "why": "The guide's \"Expert Mode/Master Mode\" section (the hooks' own tentacles)." },
+        { "class": "melee", "page": "Guide:Plantera strategies", "quote": "The True Excalibur has a very large range and can handle all phases of the fight fairly well due to its piercing.", "why": "Under the guide's \"For Melee users\" weapons heading." },
+        { "class": "melee", "page": "Guide:Plantera strategies", "quote": "The Mushroom Spear is easy to obtain and deals high damage, but is somewhat risky to use.", "why": "Under \"For Melee users\"." },
+        { "class": "ranged", "page": "Guide:Plantera strategies", "quote": "The Megashark with Crystal Bullets is the best gun at this stage.", "why": "Under the guide's \"For Ranged users\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Plantera strategies", "quote": "The Chlorophyte Shotbow with Holy Arrows can be used to great effect.", "why": "Under \"For Ranged users\"." },
+        { "class": "magic", "page": "Guide:Plantera strategies", "quote": "The Venom Staff shoots multiple projectiles with piercing and Acid Venom.", "why": "Under the guide's \"For Magic users\" weapons heading." },
+        { "class": "magic", "page": "Guide:Plantera strategies", "quote": "The Rainbow Rod is both homing and piercing and deals a good amount of damage.", "why": "Under \"For Magic users\"." },
+        { "class": "summon", "page": "Guide:Plantera strategies", "quote": "The Optic Staff and Blade Staff are the best options to summoners.", "why": "Under the guide's \"For Summoners\" weapons heading." },
+        { "class": "summon", "page": "Guide:Plantera strategies", "quote": "The Durendal is typically the best whip at this stage, while Firecracker deals higher damage when paired with Spider Staff in the first phase.", "why": "Under \"For Summoners\" (whips)." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the whips this tip names, only the Firecracker is verified as obtainable before this fight.", "page": "Guide:Plantera strategies", "quote": "The Durendal is typically the best whip at this stage, while Firecracker deals higher damage when paired with Spider Staff in the first phase." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -378,6 +576,39 @@
         { "tag": "enrage-mechanic", "quote": "Golem becomes enraged while outside the Underground Jungle" },
         { "tag": "inflicts-debuffs", "quote": "Golem's head shoots ricocheting fireballs from its mouth which have a 1/2 (50%) chance of inflicting the On Fire! debuff" },
         { "tag": "despawn-leash", "quote": "Golem will despawn if the head chases the player too far away" }
+      ],
+      "prepChecklist": [
+        { "text": "Place a row of platforms 25–30 blocks above the floor: Golem can't jump that high", "page": "Guide:Golem strategies", "quote": "The best way to avoid contact with the body is to place a row of platforms about 25-30 blocks from the ground, as Golem is unable to jump that high." },
+        { "text": "Fighting in the temple? Hang Lihzahrd and Flying Snake Banners", "items": ["Lihzahrd Banner", "Flying Snake Banner"], "page": "Guide:Golem strategies", "quote": "If you decided to fight Golem in the temple, then Lihzahrd and Flying Snake Banners would be useful because they will still keep spawning during the fight." },
+        { "text": "Stay in the Underground Jungle: outside it Golem enrages", "page": "Golem", "quote": "Golem becomes enraged while outside the Underground Jungle" },
+        { "text": "Drink an Obsidian Skin Potion so its fireballs can't set you on fire", "items": ["Obsidian Skin Potion"], "page": "Guide:Golem strategies", "quote": "Obsidian Skin Potion will prevent Golem's fireballs from setting you on fire." },
+        { "text": "Drink Ironskin, Endurance, Regeneration and Lifeforce Potions", "items": ["Ironskin Potion", "Endurance Potion", "Regeneration Potion", "Lifeforce Potion"], "page": "Guide:Golem strategies", "quote": "Ironskin, Endurance, Regeneration, and Lifeforce Potions will help you survive much longer." },
+        { "text": "Bring Jungle Juice, or Greater Healing Potions", "items": ["Jungle Juice", "Greater Healing Potion"], "page": "Guide:Golem strategies", "quote": "Jungle Juice is the best healing potion available. Greater Healing Potion is a weaker alternative if you don't want to farm Life Fruits." },
+        { "text": "Equip wings: the fight fills the arena with projectiles", "page": "Guide:Golem strategies", "quote": "Wings are especially useful for this fight due to the large number of projectiles." },
+        { "text": "Equip a Frozen Shield for knockback immunity", "items": ["Frozen Shield"], "page": "Guide:Golem strategies", "quote": "The Frozen Shield provides crucial knockback immunity that will allow you to avoid being thrown around by enemy attacks." }
+      ],
+      "strategies": [
+        { "page": "Guide:Golem strategies", "quote": "Dodging the fireballs is your priority, as they will inflict On Fire! and prevent health regeneration." },
+        { "page": "Guide:Golem strategies", "quote": "Destroying the arms is not strictly necessary, but recommended to make the next phase much easier." },
+        { "page": "Guide:Golem strategies", "quote": "The lasers signal a DPS race and all focus should be concentrated on getting through each laser phase." },
+        { "page": "Guide:Golem strategies", "quote": "These eye lasers can pass through blocks." },
+        { "page": "Golem", "quote": "A blocked line of sight increases the Eye Beam's damage by 50% and their velocity by 150%." },
+        { "page": "Guide:Golem strategies", "quote": "Golem's movement is slowed down drastically when submerged in honey." },
+        { "difficulty": "expert", "page": "Guide:Golem strategies", "quote": "The only difference in these modes are increased damage and increased health.", "why": "The guide's \"Expert mode/Master mode\" section." },
+        { "class": "melee", "page": "Guide:Golem strategies", "quote": "Terra Blade is usually the best weapon for Golem, especially when using the blade itself to damage the fists.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Golem strategies", "quote": "Scourge of the Corruptor is also extremely useful as it does good damage, splits into three and is homing.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Golem strategies", "quote": "Venus Magnum coupled with Crystal Bullets is also a great weapon.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Golem strategies", "quote": "The Stake Launcher and Candy Corn Rifle excel in this fight.", "why": "Under \"For Ranged users:\"." },
+        { "class": "magic", "page": "Guide:Golem strategies", "quote": "The Spectre Staff, Leaf Blower and Inferno Fork are the usually the best magic weapons for Golem.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Golem strategies", "quote": "Golden Shower is the best support magic weapon as it gives +15 armor penetration.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Golem strategies", "quote": "The Desert Tiger Staff does excellent damage against Golem when combined with the Vulgar Display of Flower whip.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Golem strategies", "quote": "The Raven Staff is amazing for this fight, as the ravens can easily stay on top of Golem thanks to its slow movement.", "why": "Under \"For Summoners:\"." }
+      ],
+      "suggestedEquipment": [
+        { "class": "ranged", "weapons": ["Venus Magnum"], "armorSets": [], "accessories": [], "buffs": [], "page": "Guide:Golem strategies", "quote": "Venus Magnum coupled with Crystal Bullets is also a great weapon." },
+        { "class": "magic", "weapons": ["Leaf Blower"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the weapons this tip names, only the Leaf Blower is verified as obtainable before this fight.", "page": "Guide:Golem strategies", "quote": "The Spectre Staff, Leaf Blower and Inferno Fork are the usually the best magic weapons for Golem." },
+        { "class": "summon", "weapons": ["Vulgar Display of Flower"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the two weapons this tip names, only the Vulgar Display of Flower is verified as obtainable before this fight.", "page": "Guide:Golem strategies", "quote": "The Desert Tiger Staff does excellent damage against Golem when combined with the Vulgar Display of Flower whip." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." }
       ]
     },
     {
@@ -391,6 +622,39 @@
         { "tag": "projectile-spam", "quote": "The Empress of Light performs a multitude of complex, projectile-focused attacks." },
         { "tag": "enrage-mechanic", "quote": "The Empress of Light can be fought at any time, but she becomes \"enraged\" during daytime" },
         { "tag": "multi-phase", "quote": "she will disappear and reappear above the next estimated location of the player and enters her second phase" }
+      ],
+      "prepChecklist": [
+        { "text": "Fight her at night: by day her attacks kill in one hit", "page": "Guide:Empress of Light strategies", "quote": "She will enrage if still alive or if summoned during the daytime, causing her attacks to do tens of thousands of damage, instantly killing players who are hit by her attacks." },
+        { "text": "Catch a Prismatic Lacewing with a Bug Net to pick when and where to fight", "items": ["Bug Net", "Prismatic Lacewing"], "page": "Empress of Light", "quote": "Capturing Prismatic Lacewings with a Bug Net rather than killing them immediately allows the player to fight the Empress of Light at a proper time and place once prepared." },
+        { "text": "Build a wide arena with 3–5 rows of platforms, 15–25 tiles apart", "page": "Guide:Empress of Light strategies", "quote": "3-5 rows of platforms separated 15-25 tiles from each other will do." },
+        { "text": "Equip wings, or bring a mount", "page": "Guide:Empress of Light strategies", "quote": "Wings are a necessity, if not using a mount." },
+        { "text": "Drink Lifeforce, Ironskin, Regeneration and Endurance Potions", "items": ["Lifeforce Potion", "Ironskin Potion", "Regeneration Potion", "Endurance Potion"], "page": "Guide:Empress of Light strategies", "quote": "Lifeforce Potion, Ironskin Potion, Regeneration Potion and Endurance Potion greatly increases survivability." },
+        { "text": "Drink a Wrath Potion and a Rage Potion for damage", "items": ["Wrath Potion", "Rage Potion"], "page": "Guide:Empress of Light strategies", "quote": "Wrath Potion increases damage all-round, so does having a Rage Potion." },
+        { "text": "At night, a Cross Necklace or Star Veil helps against rapid hits", "items": ["Cross Necklace", "Star Veil"], "page": "Guide:Empress of Light strategies", "quote": "The Cross Necklace or Star Veil can be useful for avoiding rapid hits, although this is irrelevant for the daytime version of the fight since the player dies in only one hit from her." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Empress of Light strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:Empress of Light strategies", "quote": "These bolts do not have perfect tracking, and will miss if the player makes a sharp turn as they approach." },
+        { "page": "Guide:Empress of Light strategies", "quote": "When the Empress of Light initiates a charge, it is advised that you go downwards, as often the charge crosses the player's position if the same height is kept." },
+        { "page": "Empress of Light", "quote": "It is best to stay at an average level or below the Empress of Light as she zips above the player's position after every attack she does, making it more likely for the player to be killed by contact damage during the day or take unnecessary hits during the night." },
+        { "page": "Empress of Light", "quote": "Ethereal Lance is the only move the Empress of Light can use to attack the player regardless of distance since the Ethereal Lances appear near the player's position instead of traveling from the Empress of Light to the player." },
+        { "page": "Empress of Light", "quote": "A Rod of Discord will help the player evade some of the Empress of Light's attacks." },
+        { "page": "Empress of Light", "quote": "Use weapons that are capable of dealing damage reliably from long range or have homing, such as the Blizzard Staff, Possessed Hatchet, Scourge of the Corruptor, Tsunami, Aerial Bane, Snowman Cannon, Chain Gun, or Tactical Shotgun with Chlorophyte Bullets." },
+        { "difficulty": "expert", "page": "Guide:Empress of Light strategies", "quote": "In Expert mode or higher, the Empress of Light follows the same pattern of attacks as in her enraged state.", "why": "The guide's \"Expert/Master mode\" section." },
+        { "class": "melee", "page": "Guide:Empress of Light strategies", "quote": "The Influx Waver, Terra Blade and the Flying Dragon are the best swords available, having strong reliable projectiles.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Empress of Light strategies", "quote": "The Flairon is also viable thanks to its good damage and homing capabilities.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Empress of Light strategies", "quote": "The Tsunami is a very strong option with great accuracy and power when using Ichor Arrows or Venom Arrows.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Empress of Light strategies", "quote": "The Xenopopper is the strongest gun available pre-Cultist, with very high damage and good accuracy.", "why": "Under \"For Ranged users:\"." },
+        { "class": "magic", "page": "Guide:Empress of Light strategies", "quote": "The Blizzard Staff is a very good choice due to its consistent and high DPS.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Empress of Light strategies", "quote": "The Spectre Staff doesn't deal as much damage as other options but can be obtained without fighting any Bosses or Events, making it a good choice for fighting the Empress of Light immediately after Plantera.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Empress of Light strategies", "quote": "The Desert Tiger Staff is the best option before defeating Golem. It should be used with the Vulgar Display of Flower whip.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Empress of Light strategies", "quote": "The Xeno Staff's High DPS and accuracy makes it the best option against the Empress of Light.", "why": "Under \"For Summoners:\"." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Vulgar Display of Flower"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the two weapons this tip names, only the Vulgar Display of Flower is verified as obtainable before this fight.", "page": "Guide:Empress of Light strategies", "quote": "The Desert Tiger Staff is the best option before defeating Golem. It should be used with the Vulgar Display of Flower whip." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -404,6 +668,41 @@
         { "tag": "enrage-mechanic", "quote": "Straying too far from the surface Ocean area during the fight causes Duke Fishron to \"enrage\"" },
         { "tag": "inflicts-debuffs", "quote": "before exploding and dealing damage while inflicting the Wet debuff for 3–8 seconds" },
         { "tag": "despawn-leash", "quote": "Duke Fishron will despawn if all players are dead or if the targeted player is more than 350 tiles away from him." }
+      ],
+      "prepChecklist": [
+        { "text": "Build the arena over the Ocean: away from it he enrages", "page": "Guide:Duke Fishron strategies", "quote": "The arena must be located in the Ocean, unless you're very confident that you can beat an enraged Fishron, which is usually not recommended." },
+        { "text": "Stack 3–5 rows of platforms about 50 tiles apart: the tornadoes are tall", "page": "Guide:Duke Fishron strategies", "quote": "Make an arena with 3 - 5 rows of Platforms, each about 50 tiles apart due to the height of the Cthulhunados." },
+        { "text": "Find a Truffle Worm in the underground Glowing Mushroom biome", "items": ["Truffle Worm"], "page": "Guide:Duke Fishron strategies", "quote": "Truffle Worms can be found underground in the Glowing Mushroom biome during Hardmode." },
+        { "text": "Drink an Inferno Potion to destroy his Detonating Bubbles", "items": ["Inferno Potion"], "page": "Guide:Duke Fishron strategies", "quote": "Inferno Potion is highly recommended as it will destroy the Detonating Bubbles that Duke Fishron spawns before they reach the player." },
+        { "text": "Bring fast wings: quick aerial movement is a must", "page": "Guide:Duke Fishron strategies", "quote": "Quick aerial movement is a must-have for the fight." },
+        { "text": "Drink Regeneration, Ironskin, Endurance and Lifeforce Potions", "items": ["Regeneration Potion", "Ironskin Potion", "Endurance Potion", "Lifeforce Potion"], "page": "Guide:Duke Fishron strategies", "quote": "Regeneration Potion and Ironskin Potion, Endurance and Lifeforce will improve survivability." },
+        { "text": "No platform over the water? Drink Water Walking Potions", "items": ["Water Walking Potion"], "page": "Guide:Duke Fishron strategies", "quote": "Water Walking Potions can be used as a substitute for a platform in the Ocean." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Duke Fishron strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Duke Fishron", "quote": "Duke Fishron's charges aim for where the player is, not where they will be. Because of this, moving perpendicularly with his charges will cause him to completely miss." },
+        { "page": "Guide:Duke Fishron strategies", "quote": "Also, note that Duke Fishron's first attack will always be bubbles." },
+        { "page": "Guide:Duke Fishron strategies", "quote": "Do not fly all the way into the space layer, or the reduced gravity will render you helpless." },
+        { "page": "Guide:Duke Fishron strategies", "quote": "Once the bubble strikes the player, they should do all they can to quickly move, to prevent the Cthulhunado from spawning on top of them." },
+        { "page": "Guide:Duke Fishron strategies", "quote": "Contact with a Cthulhunado, either immediately after its spawning or later, should be avoided by all possible means, as they deal 100 contact damage." },
+        { "page": "Duke Fishron", "quote": "Though his difficulty makes him a post-Plantera or Golem boss, it is possible to defeat him before the mechanical bosses." },
+        { "difficulty": "expert", "page": "Guide:Duke Fishron strategies", "quote": "When Duke Fishron drops below 15% health, he will transform again and the background will notably darken, while making himself invisible except for his glowing eyes.", "why": "The guide's \"Expert Mode\" section (the third phase is Expert and Master only)." },
+        { "difficulty": "expert", "page": "Guide:Duke Fishron strategies", "quote": "As there won't be many opportunities to deal damage, you should try to deal as much burst damage as possible during his charges.", "why": "The guide's \"Expert Mode\" section (his final phase)." },
+        { "difficulty": "expert", "page": "Duke Fishron", "quote": "In Expert Mode, the Shield of Cthulhu can be used to great effect, providing brief invincibility frames when dashing into him.", "why": "The sentence is about Expert Mode." },
+        { "class": "melee", "page": "Guide:Duke Fishron strategies", "quote": "The Terra Blade scales with melee speed as well as damage and critical chance, and its large projectile makes hitting Duke Fishron and the Detonating Bubbles easy.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Duke Fishron strategies", "quote": "The Bananarang and Chain Guillotines are the best options against this boss before any mechanical bosses with the former being better in the second phase and the latter being better at fighting him at a close range.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Duke Fishron strategies", "quote": "The Daedalus Stormbow with Ichor Arrows is the best ranged option for dispatching Duke before defeating any other Hardmode boss.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Duke Fishron strategies", "quote": "Ichor Arrows, Bullets, or Darts will reduce his defense significantly, since he is vulnerable to Ichor.", "why": "Under \"For Ranged users:\" (ammo)." },
+        { "class": "magic", "page": "Guide:Duke Fishron strategies", "quote": "The Spirit Flame, Crystal Serpent, Orange Zapinator, Lightning Strike, Rainbow Rod, and Unholy Trident are the best pre-Plantera magic weapons against this boss, with the former four being available at the start of Hardmode.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Duke Fishron strategies", "quote": "The Golden Shower spellbook is helpful as it reduces his defense and easily pops all the Detonating Bubbles.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Duke Fishron strategies", "quote": "If you are fighting the boss at an early stage, the Sanguine Staff paired with Firecracker and Snapthorn (or Durendal if you have defeated at least one mechanical boss) is the best weapon pre-Plantera.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Duke Fishron strategies", "quote": "While most sentries are unable to hit this boss effectively, the Barnacle Staff can float in the air over the ocean.", "why": "Under \"For Summoners:\" (sentries)." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the weapons this tip names, only the Firecracker is verified as obtainable before this fight.", "page": "Guide:Duke Fishron strategies", "quote": "If you are fighting the boss at an early stage, the Sanguine Staff paired with Firecracker and Snapthorn (or Durendal if you have defeated at least one mechanical boss) is the best weapon pre-Plantera." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     },
     {
@@ -416,6 +715,40 @@
         { "tag": "summons-adds", "quote": "Performs a ritual to summon extra enemies." },
         { "tag": "inflicts-debuffs", "quote": "that explode upon contact with the player or solid blocks, inflicting the On Fire! debuff" },
         { "tag": "despawn-leash", "quote": "if one is too far away from it (e.g. by using a Magic Mirror or Recall Potion), it will despawn" }
+      ],
+      "prepChecklist": [
+        { "text": "Build a basic arena with a few rows of platforms near the Dungeon (a Skeletron arena works)", "page": "Guide:Lunatic Cultist strategies", "quote": "A basic arena with some rows of platforms will suffice. If the player made an arena for Skeletron, they can reuse it here." },
+        { "text": "Be ready for the Lunar Events: defeating it starts them at once", "page": "Lunatic Cultist", "quote": "Beating the Lunatic Cultist causes the Lunar Events to begin immediately, and there is no way to de-summon them thereafter (aside from defeating all of the Celestial Pillars)." },
+        { "text": "Fight at night: the decoy cultists glow", "page": "Guide:Lunatic Cultist strategies", "quote": "It is recommended to fight the Cultist at night, as the fake cultists will glow." },
+        { "text": "Drink a Hunter Potion to spot the real Cultist among its clones", "items": ["Hunter Potion"], "page": "Guide:Lunatic Cultist strategies", "quote": "Hunter Potion will show the real cultist when cloning itself." },
+        { "text": "Drink Regeneration, Endurance, Lifeforce and Ironskin Potions", "items": ["Regeneration Potion", "Endurance Potion", "Lifeforce Potion", "Ironskin Potion"], "page": "Guide:Lunatic Cultist strategies", "quote": "Regeneration Potion, Endurance Potion, Lifeforce Potion, and Ironskin Potion will greatly increase survivability." },
+        { "text": "Drink a Swiftness Potion for mobility", "items": ["Swiftness Potion"], "page": "Guide:Lunatic Cultist strategies", "quote": "Swiftness Potion will increase mobility." },
+        { "text": "Equip a Frozen Shield for knockback immunity and less damage taken", "items": ["Frozen Shield"], "page": "Guide:Lunatic Cultist strategies", "quote": "The Frozen Shield is a powerful accessory that grants immunity to knockback, and reduces damage taken." },
+        { "text": "Afterwards, keep a Magic Mirror or Recall Potion ready in case a Celestial Pillar spawns nearby", "items": ["Magic Mirror", "Recall Potion"], "page": "Lunatic Cultist", "quote": "it is recommended to immediately pick up the Lunatic Cultist's drops and teleport back to a safe base using a Magic Mirror or Recall Potion to prevent from being unexpectedly ambushed by dangerous enemies spawned from the Lunar Events." },
+        { "text": "Carry a stack of the best healing potion you have", "page": "Guide:Lunatic Cultist strategies", "quote": "Always carry around a stack of the highest-tier healing potion available, as relying only on natural health regeneration is not a good idea." }
+      ],
+      "strategies": [
+        { "page": "Guide:Lunatic Cultist strategies", "quote": "If the real Lunatic Cultist is damaged, neither of these two powerful minions will spawn in." },
+        { "page": "Lunatic Cultist", "quote": "When the ritual starts, the real Cultist is the copy that is furthest away from the player." },
+        { "page": "Lunatic Cultist", "quote": "When hovered over, decoys will always display as having 10000/10000 health, while the real Cultist will display its true health value instead." },
+        { "page": "Lunatic Cultist", "quote": "Using Autopause grants as much time as needed for identifying the real Cultist." },
+        { "page": "Lunatic Cultist", "quote": "Many of the Lunatic Cultist's attacks can be blocked by hiding behind solid blocks, including its lightning bolts and fireballs." },
+        { "page": "Guide:Lunatic Cultist strategies", "quote": "By remain very close to the boss and slowly circling him using a flying mount, the attacks are closer together and easier to dodge." },
+        { "difficulty": "expert", "page": "Guide:Lunatic Cultist strategies", "quote": "In Expert Mode, when the health of the boss is below 50%, the Cultist may also spawn Ancient Dooms that fire purple projectiles in a cross shape.", "why": "The guide's \"Expert mode/Master mode\" section." },
+        { "class": "melee", "page": "Guide:Lunatic Cultist strategies", "quote": "The Paladin's Hammer has high damage and quick attacks, while the Possessed Hatchet trades some power for a homing effect.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Lunatic Cultist strategies", "quote": "The Kraken is the best yoyo at this stage, which deals high damage and will help with taking out the Lunatic Cultist and the Phantasm Dragon he summons.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Lunatic Cultist strategies", "quote": "The Xenopopper with Nano Bullets is the strongest gun available.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Lunatic Cultist strategies", "quote": "The Snowman Cannon is the best launcher available, which is very useful with its homing high damaging projectiles.", "why": "Under \"For Ranged users:\"." },
+        { "class": "magic", "page": "Guide:Lunatic Cultist strategies", "quote": "The Nightglow is a very strong weapon with high damage and requires no aiming.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Lunatic Cultist strategies", "quote": "Magnet Sphere will do a lot of damage, and can be used in combination with other weapons.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Lunatic Cultist strategies", "quote": "The Terraprisma is the strongest minion available, though you will have to face the monumental task of beating Empress of Light during the day.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Lunatic Cultist strategies", "quote": "The Ballista Staff is the strongest sentry available.", "why": "Under \"For Summoners:\" (sentries)." }
+      ],
+      "suggestedEquipment": [
+        { "class": "melee", "weapons": ["Possessed Hatchet"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the two weapons this tip names, only the Possessed Hatchet is verified as obtainable before this fight.", "page": "Guide:Lunatic Cultist strategies", "quote": "The Paladin's Hammer has high damage and quick attacks, while the Possessed Hatchet trades some power for a homing effect." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." },
+        { "class": "summon", "gap": "No summon weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so summon gear stays Unknown; the summon tips quote the wiki's own advice." }
       ]
     },
     {
@@ -428,6 +761,41 @@
         { "tag": "summons-adds", "quote": "When destroyed, each eye then spawns an invulnerable True Eye of Cthulhu." },
         { "tag": "homing-projectiles", "page": "Bosses", "quote": "The Moon Lord's hands shoot two projectiles at once which home onto the player" },
         { "tag": "inflicts-debuffs", "quote": "Moon Leech inflicts the Moon Bite debuff to the associated player" }
+      ],
+      "prepChecklist": [
+        { "text": "Build a long sky bridge on both sides of your spawn point (700–1000 platforms)", "page": "Guide:Moon Lord strategies", "quote": "Ideally, it should extend quite far from either side of your spawn point (700-1000 platform blocks should suffice)." },
+        { "text": "Build a house for the Nurse nearby", "page": "Guide:Moon Lord strategies", "quote": "although it is still wise to build a nearby house for the Nurse" },
+        { "text": "Craft Super Healing Potions from Celestial Fragments", "items": ["Super Healing Potion"], "page": "Guide:Moon Lord strategies", "quote": "Super Healing Potions are absolutely worth the Celestial Fragments required to craft them." },
+        { "text": "Drink Regeneration, Endurance, Lifeforce and Ironskin Potions", "items": ["Regeneration Potion", "Endurance Potion", "Lifeforce Potion", "Ironskin Potion"], "page": "Guide:Moon Lord strategies", "quote": "Regeneration Potion, Endurance Potion, Lifeforce Potion, and to a lesser extent, Ironskin Potion will greatly increase survivability." },
+        { "text": "Drink Rage, Summoning and Wrath Potions for damage", "items": ["Rage Potion", "Summoning Potion", "Wrath Potion"], "page": "Guide:Moon Lord strategies", "quote": "Rage Potion, Summoning Potion, and Wrath Potion will improve DPS." },
+        { "text": "Equip your best wings, unless you fly on a mount", "page": "Guide:Moon Lord strategies", "quote": "Wings are almost a requirement when dodging the Moon Lord's attacks, unless the player is using a flying mount." },
+        { "text": "Bring a Rod of Discord to teleport out of the Phantasmal Deathray", "items": ["Rod of Discord"], "page": "Guide:Moon Lord strategies", "quote": "It can also be dodged with a Rod of Discord by teleporting out of its path." },
+        { "text": "Equip a Frozen Shield for knockback immunity", "items": ["Frozen Shield"], "page": "Guide:Moon Lord strategies", "quote": "The Frozen Shield provides crucial knockback immunity that will allow you to avoid being thrown around by enemy attacks." }
+      ],
+      "strategies": [
+        { "page": "Moon Lord", "quote": "Keeping a distance while dodging the Moon Lord's attacks is crucial. In particular, his Phantasmal Deathray should be avoided at all costs." },
+        { "page": "Moon Lord", "quote": "It is advisable to kill the eye on the head first." },
+        { "page": "Guide:Moon Lord strategies", "quote": "Because of this attack it is a bad idea to keep the Moon Lord offscreen, as the player won't be able to see it coming." },
+        { "page": "Guide:Moon Lord strategies", "quote": "The eyes will look at the player when preparing the attack, so you can predict it as well." },
+        { "page": "Guide:Moon Lord strategies", "quote": "Running away in this case is better, as the True Eyes' Deathrays have much shorter reach compared to the Moon Lord's." },
+        { "page": "Moon Lord", "quote": "Using homing weapons or ammo like Chlorophyte Bullets allow the player to focus on dodging." },
+        { "page": "Moon Lord", "quote": "However, since the Moon Lord's eyes remove all debuffs when they close, the player will have to reapply them accordingly." },
+        { "difficulty": "expert", "page": "Guide:Moon Lord strategies", "quote": "There are no important changes in these modes outside of increased damage.", "why": "The guide's \"Expert mode/Master mode\" section." },
+        { "difficulty": "expert", "page": "Guide:Moon Lord strategies", "quote": "The Soaring Insignia is by far the most important movement accessory after any wings in Expert and Master Mode.", "why": "From the guide's Accessories list; the sentence is about Expert and Master Mode." },
+        { "class": "melee", "page": "Guide:Moon Lord strategies", "quote": "The Daybreak is the strongest melee weapon available for the fight.", "why": "Under the guide's \"For Melee users:\" weapons heading." },
+        { "class": "melee", "page": "Guide:Moon Lord strategies", "quote": "The Terra Blade and Flying Dragon are two other good options.", "why": "Under \"For Melee users:\"." },
+        { "class": "ranged", "page": "Guide:Moon Lord strategies", "quote": "The Vortex Beater is the strongest gun available.", "why": "Under the guide's \"For Ranged users:\" weapons heading." },
+        { "class": "ranged", "page": "Guide:Moon Lord strategies", "quote": "The Phantasm is a powerful option with the highest DPS in the stage.", "why": "Under \"For Ranged users:\"." },
+        { "class": "magic", "page": "Guide:Moon Lord strategies", "quote": "The Nebula Blaze has good DPS and homing ability.", "why": "Under the guide's \"For Magic users:\" weapons heading." },
+        { "class": "magic", "page": "Guide:Moon Lord strategies", "quote": "Since the Moon Lord is not immune to any debuffs aside from Shimmering and Confused, the Golden Shower can be used as a support weapon to lower the Moon Lords defense.", "why": "Under \"For Magic users:\"." },
+        { "class": "summon", "page": "Guide:Moon Lord strategies", "quote": "The Stardust Dragon Staff is generally the best minion that can be used against the Moon Lord, due to having the highest tracking distance.", "why": "Under the guide's \"For Summoners:\" weapons heading." },
+        { "class": "summon", "page": "Guide:Moon Lord strategies", "quote": "If using all minion slots on the Stardust Dragon, the strongest whip-stacking combination consists of the Constellation, Kaleidoscope, Vulgar Display of Flower and Firecracker.", "why": "Under \"For Summoners:\" (whips)." }
+      ],
+      "suggestedEquipment": [
+        { "class": "summon", "weapons": ["Vulgar Display of Flower", "Firecracker"], "armorSets": [], "accessories": [], "buffs": [], "note": "Of the four whips this tip names, these two are verified as obtainable before this fight.", "page": "Guide:Moon Lord strategies", "quote": "If using all minion slots on the Stardust Dragon, the strongest whip-stacking combination consists of the Constellation, Kaleidoscope, Vulgar Display of Flower and Firecracker." },
+        { "class": "melee", "gap": "No melee weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so melee gear stays Unknown; the melee tips quote the wiki's own advice." },
+        { "class": "ranged", "gap": "No ranged weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so ranged gear stays Unknown; the ranged tips quote the wiki's own advice." },
+        { "class": "magic", "gap": "No magic weapon the wiki recommends for this fight is verified as obtainable before it: the item data does not cover how basic materials, shop stock and chest loot are obtained, and drops of fights that are not a required step before this one don't count. Gear that might not be available is not suggested, so magic gear stays Unknown; the magic tips quote the wiki's own advice." }
       ]
     }
   ]

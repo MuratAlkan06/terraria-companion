@@ -13,6 +13,7 @@ const NAMES: Record<number, string> = {
   9: 'Wood', 22: 'Iron Bar', 704: 'Lead Bar', 35: 'Iron Anvil', 716: 'Lead Anvil', 36: 'Work Bench', 48: 'Chest', 381: 'Cobalt Bar', 371: 'Cobalt Hat',
   1329: 'Tissue Sample', 3322: 'Treasure Bag (Queen Bee)', 1121: 'Bee Gun', 216: 'Shackle', 5134: 'Terraformer', 5011: 'Clentaminator', 699: 'Tin Ore', 701: 'Iron Ore',
   267: 'Voodoo Doll', 2: 'Dirt Block', 3: 'Stone Block', 61: 'Ebonstone Block', 836: 'Crimstone Block', 409: 'Pearlstone Block', 405: 'Spectre Boots',
+  758: 'Grenade Launcher', 771: 'Rocket I',
 }
 const iteminfo: Iteminfo = {
   rev: 1023241,
@@ -170,6 +171,50 @@ describe('buildDrops', () => {
     expect(out.ledger).toMatchObject({ bossLinkedRecords: 2, eventBossRecords: 0, bossMismatchRecords: 0 })
   })
 
+  it('P5-S3 (B82): a condition from the article\'s drop-list caption joins the row\'s conditions (and its id), with the article revision as source; an ambiguous listing makes them Unknown', () => {
+    const rows = [
+      dropRow({ _page: 'Queen Bee', nameraw: 'Queen Bee', id: '222', item: 'Bee Gun', rate: '100%' }),
+      dropRow({ _rowid: '2', _page: 'Queen Bee', nameraw: 'Treasure Bag (Queen Bee)', id: '222', item: 'Bee Gun', rate: '100%', isfromnpc: '0', normal: '0' }),
+    ]
+    const article = { url: 'https://terraria.wiki.gg/wiki/Queen_Bee', rev: 123, fetchedAt: '2026-10-14T00:00:00.000Z' }
+    const plain = buildDrops({ rows, fetchedAt: '2026-10-13T02:46:00.000Z', npcs: indexNpcs(npcRows), npcsFetchedAt: '2026-10-13T02:47:00.000Z', iteminfo, conditions: matchers, bosses: registry })
+    const captioned = buildDrops({
+      rows,
+      fetchedAt: '2026-10-13T02:46:00.000Z',
+      npcs: indexNpcs(npcRows),
+      npcsFetchedAt: '2026-10-13T02:47:00.000Z',
+      iteminfo,
+      conditions: matchers,
+      bosses: registry,
+      captions: new Map([['Queen Bee', { ...article, items: new Map([['Bee Gun', { conditions: ['corruption-world'] }]]) }]]),
+    })
+    expect(plain.drops.map((d) => d.conditions)).toEqual([[], []])
+    for (const d of captioned.drops) {
+      expect(d.conditions).toEqual(['corruption-world'])
+      expect(d._prov.unverifiedFields).not.toContain('conditions')
+      expect(d._prov.sources).toContainEqual({ kind: 'wiki-article', url: article.url, rev: 123, fetchedAt: '2026-10-14' })
+    }
+    // drop ids hash the conditions: the captioned records are distinct records
+    expect(captioned.drops.map((d) => d.id).some((id) => plain.drops.some((p) => p.id === id))).toBe(false)
+    expect(captioned.ledger.captionConditionRecords).toBe(2)
+    // listed both under a caption and outside it on the article: conditions Unknown, never a guess
+    const ambiguous = buildDrops({
+      rows,
+      fetchedAt: '2026-10-13T02:46:00.000Z',
+      npcs: indexNpcs(npcRows),
+      npcsFetchedAt: '2026-10-13T02:47:00.000Z',
+      iteminfo,
+      conditions: matchers,
+      bosses: registry,
+      captions: new Map([['Queen Bee', { ...article, items: new Map([['Bee Gun', { ambiguous: ['Only in Corrupt worlds', '(no caption)'] }]]) }]]),
+    })
+    for (const d of ambiguous.drops) {
+      expect(d.conditions).toEqual([])
+      expect(d._prov.unverifiedFields).toContain('conditions')
+    }
+    expect(ambiguous.ledger.captionConditionRecords).toBe(0)
+  })
+
   it('B12: a boss-typed row on a non-registry article is an event boss (bossId not applicable); NPC ids foreign to the registry boss keep bossId Unknown + gap', () => {
     const out = drops([
       dropRow({ _page: 'Moon Lord', nameraw: 'Moon Lord', id: '', item: 'Shackle' }),
@@ -225,6 +270,35 @@ describe('buildDrops', () => {
     expect(unknown.rates).toEqual({})
     expect(unknown._prov.unverifiedFields).toEqual(['rates.classic', 'rates.expert', 'rates.master'])
     expect(out.ledger).toMatchObject({ emittedRows: 2, emittedRecords: 3, splitRows: 1 })
+  })
+
+  it('P5-S3 review: a bundled custom cell gives each row its OWN entry\'s quantity (Grenade Launcher 1, Rocket I 50–149); a companion without its own row is a gap, never merged', () => {
+    const link = (name: string) => `<span class="i">[[File:${name}.png|link=${name}|${name}]]<span><span>[[${name}]]</span></span></span>`
+    const custom = `${link('Grenade Launcher')}\n:+ ${link('Rocket I')} (50–149)`
+    const bundled = { quantity: '', rate: '12.5%', custom }
+    const out = drops([
+      dropRow({ ...bundled, _rowid: '133017', item: 'Grenade Launcher' }),
+      dropRow({ ...bundled, _rowid: '133018', item: 'Rocket I' }),
+      // the same bundle from another source with no Rocket I row of its own
+      dropRow({ ...bundled, _rowid: '133037', _page: 'Creeper', nameraw: 'Creeper', id: '267', item: 'Grenade Launcher' }),
+    ])
+    const of = (itemId: number, npcName: string) => out.drops.find((d) => d.itemId === itemId && d.source.npcName === npcName)
+    expect(DropSource.parse(of(758, 'Zombie'))).toMatchObject({ quantity: { min: 1, max: 1 }, rates: { classic: 0.125, expert: 0.125, master: 0.125 } })
+    expect(of(758, 'Zombie')?._prov.unverifiedFields).toEqual([])
+    expect(DropSource.parse(of(771, 'Zombie'))).toMatchObject({ quantity: { min: 50, max: 149 }, rates: { classic: 0.125, expert: 0.125, master: 0.125 } })
+    expect(of(758, 'Creeper')?.quantity).toEqual({ min: 1, max: 1 })
+    expect(of(771, 'Creeper')).toBeUndefined() // not synthesized from the cell
+    expect(out.ledger).toMatchObject({ bundledRows: 3, bundleCompanionsWithoutRow: 1, emittedRecords: 3 })
+    expect(out.gaps).toEqual([expect.objectContaining({ ref: 'drop:cargo-row-133037', field: 'bundle', kind: 'count-reconciliation' })])
+    expect(out.gaps[0].detail).toContain('"Rocket I" (50–149) with "Grenade Launcher"')
+  })
+
+  it('a bundled cell this grammar cannot read leaves the quantity Unknown (never the trailing amount)', () => {
+    const link = (name: string) => `<span class="i">[[File:${name}.png|link=${name}|${name}]]<span><span>[[${name}]]</span></span></span>`
+    const out = drops([dropRow({ quantity: '', custom: `${link('Grenade Launcher')}\nstray\n:+ ${link('Rocket I')} (50–149)`, item: 'Grenade Launcher' })])
+    expect(out.drops[0].quantity).toEqual({})
+    expect(out.drops[0]._prov.unverifiedFields).toEqual(['quantity.classic', 'quantity.expert', 'quantity.master'])
+    expect([...out.reasons.keys()]).toContain('quantity: bundled custom cell — unexpected text "…" on a line of a bundled cell')
   })
 
   it('skips rows whose platform icons exclude Desktop; unresolvable items are excluded with a gap', () => {

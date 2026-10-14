@@ -21,7 +21,8 @@ const LINK = 'text-link underline decoration-1 underline-offset-4 hover:text-acc
 function ExternalMark() {
   return (
     <>
-      <ExternalLink aria-hidden="true" className="ml-0.5 inline-block size-3.5 align-[-0.125em]" />
+      {/* 4px from the word, the same inline gap as the boss pages' item links (B82) */}
+      <ExternalLink aria-hidden="true" className="ml-1 inline-block size-3.5 align-[-0.125em]" />
       <span className="sr-only"> (opens in a new tab)</span>
     </>
   )

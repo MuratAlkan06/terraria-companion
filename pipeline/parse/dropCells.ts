@@ -192,3 +192,56 @@ export function plainTextOf(cell: string): string {
     nodes.map((n) => (n.type === 'text' ? n.text : n.type === 'br' ? ' ' : isEico(n) || isNote(n) ? '' : strip(n.children))).join('')
   return stripMarkup(strip(parseHtml(cell)))
 }
+
+/** One item of a bundled `custom` cell: its name and the amount stated after it (absent = none stated). */
+export interface BundleEntry {
+  name: string
+  amount?: string
+  companion: boolean
+}
+
+/** A wikitext indented "+" line: `:+ [[Rocket I]] (50–149)` / `: + [[Candy Corn]] (50–100)`. */
+const COMPANION_LINE = /^\s*:\s*\+\s*/
+/** A trailing parenthesized amount: "(50–149)", "(100)". */
+const TRAILING_AMOUNT = /\(\s*(\d+(?:\s?[–-]\s?\d+)?)\s*\)\s*$/
+
+/**
+ * A `custom` cell that bundles companion items with its first item (P5-S3 review; verified against
+ * all 3,253 rows on 2026-10-14 — 9 cells, 20 rows): the first line names the primary item, each
+ * further `:+ [[Companion]] (amount)` line an item that drops TOGETHER with it ("Grenade Launcher" /
+ * ":+ Rocket I (50–149)"); other lines may only be notes. Cargo carries one row per entry, each with
+ * the same cell, so the cell's trailing amount belongs to the LAST entry, not to the row's item.
+ *
+ * `undefined` = not a bundle (no companion line); a bundle-shaped cell this grammar can't read is a
+ * failure (the caller lists the quantity as Unknown, never guesses).
+ */
+export function customBundle(cell: string): Parsed<BundleEntry[]> | undefined {
+  const lines = cell.split('\n')
+  if (!lines.slice(1).some((l) => COMPANION_LINE.test(l))) return undefined
+  const entries: BundleEntry[] = []
+  for (const [i, line] of lines.entries()) {
+    const companion = i > 0 && COMPANION_LINE.test(line)
+    const text = plainTextOf(companion ? line.replace(COMPANION_LINE, '') : line)
+    if (!companion && i > 0) {
+      if (text !== '') return fail(`unexpected text "${text}" on a line of a bundled cell`)
+      continue // a note line ("(will always drop the first time …)")
+    }
+    const amount = TRAILING_AMOUNT.exec(text)
+    const name = (amount ? text.slice(0, amount.index) : text).trim()
+    if (name === '' || /[()]/.test(name)) return fail(`unreadable bundle entry "${text}"`)
+    entries.push({ name, ...(amount ? { amount: amount[1] } : {}), companion })
+  }
+  return { ok: true, value: entries }
+}
+
+/**
+ * The quantity of `itemName`'s own entry in a bundle: its stated amount, else 1 (the line is only
+ * the item link — the wiki states amounts above one). Never another entry's amount.
+ */
+export function bundleQuantity(entries: readonly BundleEntry[], itemName: string): Parsed<{ min: number; max: number }> {
+  const own = entries.filter((e) => e.name === itemName)
+  if (own.length !== 1) return fail(own.length === 0 ? 'row item is not an entry of its bundled cell' : 'row item is listed twice in its bundled cell')
+  if (own[0].amount === undefined) return { ok: true, value: { min: 1, max: 1 } }
+  const q = parseQty(own[0].amount)
+  return q ? { ok: true, value: q } : fail(`unparseable amount "${own[0].amount}"`)
+}

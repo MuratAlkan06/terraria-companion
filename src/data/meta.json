@@ -1,7 +1,7 @@
 {
   "gameVersion": "1.4.5.8",
   "dataSchemaVersion": 1,
-  "generatedAt": "2026-10-14T09:15:25.195Z",
+  "generatedAt": "2026-10-14T11:13:28.585Z",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -20,16 +20,16 @@
     "nodes": 28,
     "edges": 35,
     "buffs": 40,
-    "conditions": 37,
+    "conditions": 38,
     "scenarios": 0
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 4437,
+    "total": 4456,
     "byKind": {
       "source-mismatch": 31,
       "count-reconciliation": 57,
-      "missing-field": 2506,
+      "missing-field": 2525,
       "gating-underived": 1097,
       "unverified-drop-rate": 392,
       "lab-limitation-default": 354

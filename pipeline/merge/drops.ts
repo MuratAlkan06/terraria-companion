@@ -26,12 +26,27 @@
  *   Betsy, Celestial Pillars…): REQUIREMENTS §6 bosses are the registry and A3 keeps events as
  *   progression markers without Boss records, so bossId is not applicable (absent, not listed) —
  *   counted per article in the ledger, never guessed.
+ * - Drop-list captions (P5-S3, AMENDMENTS-015 B82): a registry boss article's rendered drop list can
+ *   group items under a condition caption ("Only in Corrupt worlds" / "Only in Crimson worlds" on
+ *   the Eye of Cthulhu) that its Cargo rows do not carry. Captions registered in the conditions
+ *   overlay (`match.dropCaptions`) add their condition to the article's rows of those items (the
+ *   article revision joins the sources); an item listed both under one and elsewhere gets Unknown
+ *   conditions (parse/dropCaptions.ts).
+ * - Bundled drops (P5-S3 review): a `custom` cell may bundle companion items with its first item
+ *   ("Grenade Launcher" / ":+ Rocket I (50–149)" — they drop together). Cargo carries one row per
+ *   entry with the same cell, so each row's quantity is its OWN entry's (parse/dropCells.ts
+ *   customBundle/bundleQuantity): the primary's (1 when none is stated), the companion's stated
+ *   amount — never the companion's amount on the primary. A companion with no row of its own on the
+ *   same source and rate is not emitted and gets a count-reconciliation gap (never merged).
  */
 import type { GapEntry, ProvSource } from '../../src/schemas'
 import { type DropSource } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import {
+  bundleQuantity,
+  type BundleEntry,
+  customBundle,
   customNotesOf,
   DIFFICULTIES,
   desktopSegments,
@@ -129,6 +144,23 @@ export interface DropLedger {
   bossMismatchRecords: number
   /** Event-boss records per article (not registry bosses). */
   eventBossPages: Map<string, number>
+  /** Records whose conditions include one read from their article's drop-list group caption (P5-S3). */
+  captionConditionRecords: number
+  /** Emitted rows whose `custom` cell bundles items that drop together (quantity = the row item's own entry). */
+  bundledRows: number
+  /** Bundle companions with no Drops row of their own on the same source and rate (not emitted; one gap each). */
+  bundleCompanionsWithoutRow: number
+}
+
+/**
+ * Drop-list group captions of an article (parse/dropCaptions.ts captionConditions), with the article
+ * revision they were read from (provenance of the added conditions).
+ */
+export interface ArticleDropCaptions {
+  url: string
+  rev: number
+  fetchedAt: string
+  items: ReadonlyMap<string, { conditions: string[] } | { ambiguous: string[] }>
 }
 
 /** Registry boss by article (merge/bosses.ts bossAttribution) + the overlay date for provenance. */
@@ -145,6 +177,12 @@ export interface DropBuildInput {
   iteminfo: Iteminfo
   conditions: ConditionMatchers
   bosses: DropBossRegistry
+  /**
+   * Article → its drop-list caption conditions (P5-S3): an item listed only under a registered
+   * caption ("Only in Corrupt worlds") gets that condition on every row of that article; an item
+   * listed both under one and elsewhere gets Unknown conditions. Absent = no captions read.
+   */
+  captions?: ReadonlyMap<string, ArticleDropCaptions>
 }
 
 export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: GapEntry[]; ledger: DropLedger; reasons: ReasonTally; ambiguousNames: Map<string, number[]> } {
@@ -165,9 +203,14 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     eventBossRecords: 0,
     bossMismatchRecords: 0,
     eventBossPages: new Map(),
+    captionConditionRecords: 0,
+    bundledRows: 0,
+    bundleCompanionsWithoutRow: 0,
   }
   const drops = new Map<string, DropSource>()
   const reasons: ReasonTally = new Map()
+  /** Bundled cells by source + rate: their entries and the row items seen (companion coverage check). */
+  const bundles = new Map<string, { rowId: string; page: string; sourceName: string; entries: readonly BundleEntry[]; rowItems: Set<string> }>()
 
   const mapNotes = (notes: readonly string[]): Parsed<string[]> => {
     const out: string[] = []
@@ -217,6 +260,15 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     if (rowPlatforms.length > 0 && !rowPlatforms.some((p) => p.includes('Desktop'))) {
       ledger.nonDesktopRows += 1
       continue
+    }
+
+    // bundled custom cell ("Grenade Launcher" / ":+ Rocket I (50–149)"): one row per entry
+    const bundle = str(row.quantity).trim() === '' ? customBundle(str(row.custom)) : undefined
+    if (bundle?.ok) {
+      const key = [page, str(row.nameraw), str(row.name), str(row.custom), str(row.rate), str(row.normal), str(row.expert), str(row.master)].join('\u0000')
+      const seen = bundles.get(key) ?? { rowId, page, sourceName, entries: bundle.value, rowItems: new Set<string>() }
+      seen.rowItems.add(itemName)
+      bundles.set(key, seen)
     }
 
     // item
@@ -332,13 +384,37 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     const customConds = mapNotes(customNotes)
     if (!customConds.ok) conditionsUnknown = true
 
+    // conditions stated by the article's drop-list group caption (P5-S3; not in the Cargo row)
+    const articleCaptions = input.captions?.get(page)
+    const captioned = articleCaptions?.items.get(itemName)
+    let captionConds: string[] = []
+    if (articleCaptions && captioned) {
+      if ('ambiguous' in captioned) {
+        conditionsUnknown = true
+        tally(reasons, 'conditions: listed both under a condition caption of the article\'s drop list and elsewhere', `${page}: ${sourceName} → ${itemName} (${captioned.ambiguous.join(' / ')})`)
+      } else {
+        captionConds = captioned.conditions
+        sources.push({ kind: 'wiki-article', url: articleCaptions.url, rev: articleCaptions.rev, fetchedAt: isoDate(articleCaptions.fetchedAt) })
+      }
+    }
+
     // quantity (per difficulty); custom rows put "(2–5)" after the item instead
     const qty: Partial<Record<Difficulty, { min: number; max: number }>> = {}
     const qtyUnknown = new Set<Difficulty>()
     const qtyCell = str(row.quantity)
+    let bundleFailure: string | undefined
     if (qtyCell.trim() === '') {
-      const m = /\(([\d–-]+)\)\s*$/.exec(plainTextOf(str(row.custom)))
-      const q = m ? parseQty(m[1]) : undefined
+      let q: { min: number; max: number } | undefined
+      if (bundle) {
+        // the row item's own bundle entry, never the companion's amount
+        ledger.bundledRows += 1
+        const own = bundle.ok ? bundleQuantity(bundle.value, itemName) : bundle
+        if (own.ok) q = own.value
+        else bundleFailure = own.reason
+      } else {
+        const m = /\(([\d–-]+)\)\s*$/.exec(plainTextOf(str(row.custom)))
+        q = m ? parseQty(m[1]) : undefined
+      }
       for (const d of applicable) {
         if (q) qty[d] = q
         else qtyUnknown.add(d)
@@ -366,7 +442,8 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
 
     // why fields are unknown (aggregated for the human-readable gap report, not duplicated in gaps.json)
     for (const r of rateFailures) tally(reasons, `rate: ${r.replace(/"[^"]*"/g, '"…"')}`, `${page}: ${sourceName} → ${itemName}`)
-    if (qtyFields.length > 0) tally(reasons, 'quantity: not parseable', `${page}: ${sourceName} → ${itemName} ("${plainTextOf(qtyCell) || plainTextOf(str(row.custom))}")`)
+    if (qtyFields.length > 0 && bundleFailure) tally(reasons, `quantity: bundled custom cell — ${bundleFailure.replace(/"[^"]*"/g, '"…"')}`, `${page}: ${sourceName} → ${itemName}`)
+    else if (qtyFields.length > 0) tally(reasons, 'quantity: not parseable', `${page}: ${sourceName} → ${itemName} ("${plainTextOf(qtyCell) || plainTextOf(str(row.custom))}")`)
     if (!customConds.ok) tally(reasons, `conditions: ${customConds.reason}`, `${page}: ${sourceName} → ${itemName}`)
     if (unverified.includes('source.npcIds')) tally(reasons, 'source.npcIds: unparseable, missing, multi-part boss or mismatched', `${page}: ${sourceName}`)
 
@@ -374,7 +451,8 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     ledger.emittedRows += 1
     if (variants.size > 1) ledger.splitRows += 1
     for (const variant of variants.values()) {
-      const conditions = [...new Set([...variant.conditions, ...(customConds.ok ? customConds.value : [])])].sort()
+      const conditions = [...new Set([...variant.conditions, ...(customConds.ok ? customConds.value : []), ...captionConds])].sort()
+      if (captionConds.length > 0 && !conditionsUnknown) ledger.captionConditionRecords += 1
       const fields = [...unverified, ...qtyFields]
       for (const d of applicable) if (variant.rates[d] === undefined) fields.push(`rates.${d}`)
       if (conditionsUnknown) fields.push('conditions')
@@ -399,6 +477,22 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
         ledger.eventBossRecords += 1
         ledger.eventBossPages.set(page, (ledger.eventBossPages.get(page) ?? 0) + 1)
       }
+    }
+  }
+  // A bundle entry needs a Drops row of its own (same source, cell and rate) to become a record;
+  // otherwise its drop is not emitted — a gap, never merged into another entry's record.
+  for (const b of bundles.values()) {
+    for (const entry of b.entries) {
+      if (b.rowItems.has(entry.name)) continue
+      ledger.bundleCompanionsWithoutRow += 1
+      const primary = b.entries[0].name
+      gaps.add({
+        ref: `drop:cargo-row-${b.rowId}`,
+        field: 'bundle',
+        kind: 'count-reconciliation',
+        detail: `Cargo Drops row ${b.rowId} (${b.page}: ${b.sourceName}) bundles "${entry.name}"${entry.amount ? ` (${entry.amount})` : ''} with "${primary}" (they drop together), but no Drops row of that source and rate lists "${entry.name}"; that drop is not emitted (never merged into another item's record).`,
+        sources: [wikiPageUrl(b.page)],
+      })
     }
   }
   const list = [...drops.values()].sort((a, b) => a.itemId - b.itemId || a.id.localeCompare(b.id))

@@ -21,7 +21,9 @@
  *   authored entries → emitted + editorialFields, each quote checked on its page (strategies emit the
  *   quote itself as text; checklist lines are short editorial wording backed by their quote); a
  *   declared `{ gap }` → absent + listed + a `missing-field` gap carrying the reason; not curated →
- *   absent + listed (A1 staging). Item names resolve through Module:Iteminfo/data. Whether a boss
+ *   absent + listed (A1 staging). suggestedEquipment entries may sit next to per-class gaps (P5-S3
+ *   honest partial: `{ class, gap }` → `suggestedEquipment.<class>` listed, absent, with its own
+ *   `missing-field` gap). Item names resolve through Module:Iteminfo/data. Whether a boss
  *   with a page is fully curated is validate's E_BOSS_CURATION gate, not checked here.
  * - stage: editorial (overlay). dropIds: derived from DropSource.source.bossId (§7a-3).
  * - Nodes: one boss node per boss (same slug, Boss↔Node 1:1) + the overlay's event / milestone
@@ -36,7 +38,7 @@ import { parseNpcStat, type PerDifficulty } from '../parse/npcStats'
 import { stripMarkup } from '../parse/text'
 import { BOSS_TYPES } from './drops'
 import { Evidence } from './evidence'
-import { CURATED_BOSS_FIELDS, isCurationGap, type BossesOverlay, type BossOverlayEntry, type NpcRowRef, type ProgressionOverlay } from './overlays'
+import { CURATED_BOSS_FIELDS, isCurationGap, isGearClassGap, type BossesOverlay, type BossOverlayEntry, type NpcRowRef, type ProgressionOverlay } from './overlays'
 import { GapLog, isoDate, makeProv, moduleSource } from './prov'
 import { OverlayError } from './registry'
 
@@ -94,16 +96,24 @@ function curatedFields(e: BossOverlayEntry, evidence: Evidence, iteminfo: Itemin
     }))
   }
   if (Array.isArray(e.suggestedEquipment)) {
-    fields.suggestedEquipment = e.suggestedEquipment.map((g, i) => {
-      quoted(g.page, g.quote, `suggestedEquipment.${i}`)
-      return {
-        class: g.class,
-        weapons: g.weapons.map((n) => itemId(n, `suggestedEquipment.${i}.weapons`)),
-        armorSetIds: [...g.armorSets],
-        accessories: g.accessories.map((n) => itemId(n, `suggestedEquipment.${i}.accessories`)),
-        buffs: [...g.buffs],
-        ...(g.note ? { note: g.note } : {}),
+    fields.suggestedEquipment = e.suggestedEquipment.flatMap((g, i) => {
+      if (isGearClassGap(g)) {
+        // honest partial (P5-S3): this class's gear is Unknown — `suggestedEquipment.<class>` absent + listed
+        unverified.push(`suggestedEquipment.${g.class}`)
+        gaps.push({ ref: `boss:${e.id}`, field: `suggestedEquipment.${g.class}`, kind: 'missing-field', detail: `${e.name}: ${g.gap}`, sources: [wikiUrl] })
+        return []
       }
+      quoted(g.page, g.quote, `suggestedEquipment.${i}`)
+      return [
+        {
+          class: g.class,
+          weapons: g.weapons.map((n) => itemId(n, `suggestedEquipment.${i}.weapons`)),
+          armorSetIds: [...g.armorSets],
+          accessories: g.accessories.map((n) => itemId(n, `suggestedEquipment.${i}.accessories`)),
+          buffs: [...g.buffs],
+          ...(g.note ? { note: g.note } : {}),
+        },
+      ]
     })
   }
   return { fields, sources, editorial, unverified, gaps }

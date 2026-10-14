@@ -16,10 +16,10 @@
     "Recipes: desktop rows only (legacy=0 and version empty or containing \"desktop\"); result = Cargo resultid checked against the Iteminfo name; ingredients from `ings`; \"Any X\" → Module:Recipes groups; stations split on \" and \" → registered environment condition, else Module:Recipes/l10n station category group (B3), else item; \"By Hand\" = no stations.",
     "Recipe result notes (#note_post_moon_lord, #note_moon_N, …) are availability conditions in Recipe.conditions (AMENDMENTS-003 B9); environment stations are only genuine crafting environments.",
     "Recipe ids: resultItemId-fnv1a32hex(JSON.stringify({s: sorted station refs (i:/grp:/cond:, availability conditions included as cond:), i: sorted \"ref*amount\"})); same canonical recipe with a different result amount gets a -2 suffix. Drop ids: itemId-slug(npcName)-fnv1a32hex(JSON.stringify(sorted conditions)), -N suffix on collision.",
-    "Drops: rows whose platform icons exclude Desktop are skipped; normal/expert/master flags give the applicable difficulties; rate/quantity cells are parsed per pipeline/parse/dropCells.ts; anything else is absent + listed (Unknown). Unregistered notes make conditions Unknown ([] + \"conditions\" listed).",
+    "Drops: rows whose platform icons exclude Desktop are skipped; normal/expert/master flags give the applicable difficulties; rate/quantity cells are parsed per pipeline/parse/dropCells.ts; anything else is absent + listed (Unknown). Unregistered notes make conditions Unknown ([] + \"conditions\" listed). A registry boss article's drop-list group caption registered as a condition (conditions overlay match.dropCaptions: \"Only in Corrupt worlds\" / \"Only in Crimson worlds\") adds that condition to the article's rows of the items listed under it (P5-S3; the Cargo rows do not carry it); an item listed both under one and elsewhere gets Unknown conditions. A custom cell bundling items that drop together (\"Grenade Launcher\" + \":+ Rocket I (50–149)\") gives each row its own entry's quantity (1 when none is stated), never a companion's; a companion without a Drops row of its own is a gap, never merged.",
     "Boss drops (source NPC typed boss / boss Part in Cargo NPCs, or a treasure bag): source.bossId = the registry boss of the row's article (pipeline/overlays/bosses.json), cross-checked against the boss's NPC ids (a mismatch keeps it Unknown + gap). Rows on event-boss articles (Pumpking, Betsy, Celestial Pillars…) carry no bossId: they are not Boss records (A3), so the field is not applicable.",
     "Bosses (P2-S6): the REQUIREMENTS §6 registry in pipeline/overlays/bosses.json; npcIds, environment and per-difficulty stats from Cargo NPCs (pipeline/parse/npcStats.ts withholds every cell that is not one integer per difficulty, incl. cells flagged as based on outdated source code; multi-part bosses without a boss-level row are Unknown; values are the representative NPC's BASE stats = the article's first infobox — later-phase changes such as the second forms of Eye of Cthulhu, Plantera and Empress of Light are fight behavior and not modeled); summon items resolved through Module:Iteminfo/data; summon text, location time and attack-pattern tags only as verbatim quotes checked against the cited article revision; stage editorial.",
-    "Boss pages (P5-S2): manifest.bossPages lists the bosses whose pages ship (src/schemas/bossPages.ts); validate runs the E_BOSS_CURATION gate on them (AMENDMENTS-001 A1). Their prepChecklist (short editorial steps, each backed by a verbatim quote of the boss article or its \"Guide:<boss> strategies\" page), strategies (verbatim quotes; class/difficulty tags are reviewed editorial classifications) and suggestedEquipment are editorial fields, or Unknown with a declared reason (gap report). Bosses without a page keep these fields absent + listed (A1 staging).",
+    "Boss pages (P5-S2): manifest.bossPages lists the bosses whose pages ship (src/schemas/bossPages.ts); validate runs the E_BOSS_CURATION gate on them (AMENDMENTS-001 A1). Their prepChecklist (short editorial steps, each backed by a verbatim quote of the boss article or its \"Guide:<boss> strategies\" page), strategies (verbatim quotes; class/difficulty tags are reviewed editorial classifications) and suggestedEquipment are editorial fields, or Unknown with a declared reason (gap report). P5-S3 (Wall of Flesh + the Hardmode bosses): where a weapon passes E_SUGGESTION_GATING, suggestedEquipment holds entries for the classes whose quoted wiki advice names such a weapon, and every other class is Unknown on its own path (suggestedEquipment.<class> listed in unverifiedFields + a missing-field gap with the reason). Bosses without a page keep these fields absent + listed (A1 staging).",
     "Progression (P2-S6): boss nodes 1:1 with bosses + milestone/event markers (A3) from pipeline/overlays/progression.json; every edge is typed, its note is a verbatim quote of its sourceUrl article (checked at build). Edges model one world; the hardmode condition is satisfied by the Hardmode milestone (required-gated by the Wall of Flesh).",
     "Enemies: Cargo NPCs rows with an enemy type and no boss/critter/town/projectile type, merged by name; biomes = NPCs `environment` alternatives verbatim (\"/\" = or, \"+\" = and); stage absent + listed; dropIds derived (deriveEnemyDropIds).",
     "Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.",
@@ -46,6 +46,17 @@
     "brain-of-cthulhu",
     "queen-bee",
     "skeletron",
-    "deerclops"
+    "deerclops",
+    "wall-of-flesh",
+    "queen-slime",
+    "the-twins",
+    "the-destroyer",
+    "skeletron-prime",
+    "plantera",
+    "golem",
+    "empress-of-light",
+    "duke-fishron",
+    "lunatic-cultist",
+    "moon-lord"
   ]
 }

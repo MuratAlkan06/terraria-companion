@@ -3,7 +3,7 @@ import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { cx } from '../../components/cx'
-import { tabBarLayout } from '../nav'
+import { isNavCurrent, tabBarLayout } from '../nav'
 
 /**
  * Mobile bottom tab bar (UX_SPEC §2): <= 5 items incl. "More", icon + label,
@@ -18,7 +18,8 @@ export function BottomTabBar() {
   const { pathname } = useLocation()
   const [moreOpen, setMoreOpen] = useState(false)
   const openedAtPath = useRef<string | null>(null)
-  const moreActive = more.some((item) => pathname === item.to)
+  // A sub-path counts (a guide page is in Guides), like the tabs' NavLinks.
+  const moreActive = more.some((item) => isNavCurrent(item.to, pathname))
 
   // Close the sheet whenever navigation happens (including back/forward):
   // adjust state during render when the route changes (no effect needed).
@@ -65,6 +66,8 @@ export function BottomTabBar() {
           <li className="flex flex-1">
             <Dialog.Root open={moreOpen} onOpenChange={onOpenChange}>
               <Dialog.Trigger
+                // The current page is one of its sections: say so, as the tabs' NavLinks do (B82).
+                aria-current={moreActive ? 'true' : undefined}
                 className={cx(
                   TAB_CLASSES,
                   moreActive || moreOpen ? 'text-accent before:bg-accent' : 'text-fg-muted hover:text-fg',
@@ -95,7 +98,7 @@ export function BottomTabBar() {
                     <Dialog.Description className="sr-only">Other sections of Terraria Companion</Dialog.Description>
                     <ul className="mt-3 space-y-2">
                       {more.map((item) => {
-                        const current = pathname === item.to
+                        const current = isNavCurrent(item.to, pathname)
                         return (
                           <li key={item.id}>
                             <Link
