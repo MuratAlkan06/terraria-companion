@@ -6,6 +6,7 @@ import { cx } from '../../../components/cx'
 import { FavoriteStar } from '../../../components/FavoriteStar'
 import { EDGE_STYLES, type EdgeType } from '../../../components/nodeMap/edgeStyles'
 import { isNodeActive, stageName, WORLD_EVIL_LABEL, type Connection, type MapNode, type NodeState, type WorldEvil } from '../../../components/nodeMap/graph'
+import { mapProgress, type MapProgress } from '../../../components/nodeMap/progressView'
 import { NoBreak } from '../../../components/NoBreak'
 import { PartiallyVerifiedBadge } from '../../../components/PartiallyVerifiedBadge'
 import { PixelPanel } from '../../../components/PixelPanel'
@@ -23,21 +24,22 @@ import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, isMu
 import { ClassGear } from './ClassGear'
 import type { GearData } from './bossPageData'
 import { PrepChecklist } from './PrepChecklist'
-import { PAGE_DISPLAY_ONLY_NOTE, STATE_LABEL } from './focusCardCopy'
+import { DefeatControl, NodeStatusTag } from './DefeatControl'
 
 /**
  * Boss page body (PRD P5-S2 AC1–AC4; UX_SPEC §3.7, §7): pure presentation over BossPageData, so tests
  * render it for every boss with a page. Sections, in reading order:
- *   header (full-size art, name, stage, world, progress — display only) ·
+ *   header (full-size art, name, stage, world, the defeat-tracking control — P5-S4) ·
  *   how to summon + where & when · prep checklist · gear & class tips · attack patterns & survival
- *   tips · drops · [rail from lg] stats · before / after this fight (links back into the map).
+ *   tips · drops · [rail from lg] stats · before / after this fight (links back into the map, each
+ *   step with its map status, so marking this fight shows what it opened).
  * Every data claim carries its source; curated (editorial) content is labeled "curated"; Unknown is
  * the only rendering of unverified values.
  */
 export interface BossPageViewProps {
   data: BossPageData
   worldEvil: WorldEvil | null
-  /** Tracked progress (tc.v1.progress; display only in P5-S2): this boss's state, and gates already passed. */
+  /** Tracked progress (tc.v1.progress): this boss's state, the gates already passed, the next steps' status. */
   nodeStates: Readonly<Record<string, NodeState>>
   headingId: string
   /** Gear details injected directly (tests). */
@@ -49,10 +51,11 @@ export function BossPageView({ data, worldEvil, nodeStates, headingId, gearData 
   const drops = bossDropSections(boss, data.drops, itemOf)
   const unknowns = bossPageUnknowns(boss, drops.rows)
   const node = graph.nodeById.get(boss.nodeId)
+  const progress = mapProgress(graph, nodeStates, worldEvil)
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <BossHeader data={data} node={node} worldEvil={worldEvil} state={nodeStates[boss.nodeId]} headingId={headingId} unknowns={unknowns} />
+      <BossHeader data={data} node={node} worldEvil={worldEvil} nodeStates={nodeStates} headingId={headingId} unknowns={unknowns} />
       <div className="grid gap-4 md:gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-4 md:space-y-6">
           <div className="grid gap-4 md:grid-cols-2 md:gap-6">
@@ -60,12 +63,12 @@ export function BossPageView({ data, worldEvil, nodeStates, headingId, gearData 
             <WherePanel data={data} />
           </div>
           <PrepChecklist boss={boss} itemOf={itemOf} sprites={sprites} titleId={SECTION_IDS.prep} />
-          <ClassGear boss={boss} graph={graph} conditions={conditions} gaps={data.gaps} itemOf={itemOf} linkTip={data.linkTip} sprites={sprites} nodeStates={nodeStates} titleId={SECTION_IDS.gear} gearData={gearData} />
+          <ClassGear boss={boss} graph={graph} conditions={conditions} gaps={data.gaps} itemOf={itemOf} linkTip={data.linkTip} sprites={sprites} nodeStates={nodeStates} worldEvil={worldEvil} titleId={SECTION_IDS.gear} gearData={gearData} />
           <AttackPatterns data={data} />
           <BossDrops boss={boss} sections={drops} conditions={conditions} sprites={sprites} titleId={SECTION_IDS.drops} />
         </div>
         <aside aria-label={`${boss.name}: stats and next steps`} className="min-w-0 space-y-4 md:space-y-6">
-          <NextStepsPanel data={data} />
+          <NextStepsPanel data={data} progress={progress} />
           <StatsPanel data={data} />
         </aside>
       </div>
@@ -84,7 +87,7 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
   )
 }
 
-function BossHeader({ data, node, worldEvil, state, headingId, unknowns }: { data: BossPageData; node: MapNode | undefined; worldEvil: WorldEvil | null; state: NodeState | undefined; headingId: string; unknowns: ReturnType<typeof bossPageUnknowns> }) {
+function BossHeader({ data, node, worldEvil, nodeStates, headingId, unknowns }: { data: BossPageData; node: MapNode | undefined; worldEvil: WorldEvil | null; nodeStates: Readonly<Record<string, NodeState>>; headingId: string; unknowns: ReturnType<typeof bossPageUnknowns> }) {
   const { boss, sprites } = data
   const stage = getField(boss, 'stage')
   return (
@@ -125,13 +128,8 @@ function BossHeader({ data, node, worldEvil, state, headingId, unknowns }: { dat
               {node && !isNodeActive(node, worldEvil) ? <span className="text-fg-muted">— not your chosen world evil</span> : null}
             </Fact>
           ) : null}
-          <Fact term="Your progress">
-            <span data-defeat-state={state ?? 'not-attempted'} className="font-semibold">
-              {STATE_LABEL[state ?? 'not-attempted']}
-            </span>
-            <span className="basis-full text-xs text-fg-muted">{PAGE_DISPLAY_ONLY_NOTE}</span>
-          </Fact>
         </dl>
+        <DefeatControl graph={data.graph} nodeId={boss.nodeId} worldEvil={worldEvil} nodeStates={nodeStates} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <ProvenanceLink href={boss.wikiUrl} label={`${boss.name} on terraria.wiki.gg`} />
           <PartiallyVerifiedBadge items={unknowns} />
@@ -388,7 +386,8 @@ function NodeIcon({ node }: { node: MapNode }) {
  * One connected node: its page (if it has one), the relation in plain words (M1; the map legend's
  * icons alongside), "Show on map", and the edge's quoted note + source.
  */
-function StepItem({ connection, phrase, partners = [], opens = [] }: { connection: Connection; phrase: string; partners?: readonly MapNode[]; opens?: readonly Connection[] }) {
+function StepItem({ connection, phrase, progress, partners = [], opens = [] }: { connection: Connection; phrase: string; progress: MapProgress; partners?: readonly MapNode[]; opens?: readonly Connection[] }) {
+  const status = progress.nodes.get(connection.other.id)
   const { link, other } = connection
   const page = other.kind === 'boss' ? bossPageHref(other.id) : undefined
   const edge = link.edges[0]
@@ -413,6 +412,7 @@ function StepItem({ connection, phrase, partners = [], opens = [] }: { connectio
         ) : (
           <span className="font-semibold">{other.name}</span>
         )}
+        {status ? <NodeStatusTag status={status} className="ml-auto" /> : null}
       </div>
       <p data-step-phrase="" className="text-sm text-fg-muted">
         {phrase}
@@ -440,7 +440,7 @@ function StepItem({ connection, phrase, partners = [], opens = [] }: { connectio
         <MapIcon aria-hidden="true" className="size-4" />
         Show {other.name} on the map
       </Link>
-      {opens.length > 0 ? <OpensPointer from={other} opens={opens} /> : null}
+      {opens.length > 0 ? <OpensPointer from={other} opens={opens} progress={progress} /> : null}
     </li>
   )
 }
@@ -456,23 +456,26 @@ function opensNote(types: readonly EdgeType[]): string | undefined {
  * marker opens, straight from the progression graph's links out of it, each a link to its place on
  * the map — so the page names the next fights instead of stopping at a world change.
  */
-function OpensPointer({ from, opens }: { from: MapNode; opens: readonly Connection[] }) {
+function OpensPointer({ from, opens, progress }: { from: MapNode; opens: readonly Connection[]; progress: MapProgress }) {
   return (
     <div data-step-opens={from.id} className="space-y-1 border-t-2 border-panel-border pt-2">
       <p className="text-sm">From {from.name}, the path continues with:</p>
-      <ul aria-label={`What ${from.name} opens`} className="flex flex-wrap gap-x-4">
+      {/* One row per step: its map status (P5-S4) right-aligned, wrapping whole under the name when narrow. */}
+      <ul aria-label={`What ${from.name} opens`}>
         {opens.map(({ link, other }) => {
           const note = opensNote(link.types)
+          const status = progress.nodes.get(other.id)
           return (
-            <li key={link.id} data-opens={other.id} className="inline-flex items-center gap-1.5 text-sm">
+            <li key={link.id} data-opens={other.id} className="flex flex-wrap items-center gap-x-1.5 text-sm">
               <Link to={bossMapHref(other.id)} data-map-link={other.id} className={cx('inline-flex min-h-tap items-center gap-1.5 font-semibold', LINK)}>
                 <MapIcon aria-hidden="true" className="size-4 shrink-0" />
                 <span className="sr-only">Show </span>
                 {other.name}
                 <span className="sr-only"> on the map</span>
               </Link>
-              {other.kind === 'event' ? <span className="text-xs text-fg-muted">event</span> : null}
-              {note ? <span className="text-xs text-fg-muted">{note}</span> : null}
+              {other.kind === 'event' ? <span className="text-xs whitespace-nowrap text-fg-muted">event</span> : null}
+              {note ? <span className="text-xs whitespace-nowrap text-fg-muted">{note}</span> : null}
+              {status ? <NodeStatusTag status={status} className="ml-auto" /> : null}
             </li>
           )
         })}
@@ -481,7 +484,7 @@ function OpensPointer({ from, opens }: { from: MapNode; opens: readonly Connecti
   )
 }
 
-function NextStepsPanel({ data }: { data: BossPageData }) {
+function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapProgress }) {
   const { boss, graph } = data
   const steps = nextSteps(graph, boss.nodeId)
   const self = graph.nodeById.get(boss.nodeId)?.name ?? boss.name
@@ -494,7 +497,7 @@ function NextStepsPanel({ data }: { data: BossPageData }) {
       {steps.after.length > 0 ? (
         <ul aria-label={`What ${boss.name} leads to`} className="space-y-2">
           {steps.after.map(({ connection, partners, opens }) => (
-            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} partners={partners} opens={opens} />
+            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} progress={progress} partners={partners} opens={opens} />
           ))}
         </ul>
       ) : steps.continueFrom ? (
@@ -504,7 +507,7 @@ function NextStepsPanel({ data }: { data: BossPageData }) {
           </p>
           <ul aria-label="Where the path continues" className="space-y-2">
             {steps.continueFrom.next.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={after(c, steps.continueFrom?.from.name)} />
+              <StepItem key={c.link.id} connection={c} phrase={after(c, steps.continueFrom?.from.name)} progress={progress} />
             ))}
           </ul>
         </div>
@@ -516,7 +519,7 @@ function NextStepsPanel({ data }: { data: BossPageData }) {
           <h3 className="text-xs font-semibold tracking-wide text-fg-muted uppercase">Either this or</h3>
           <ul aria-label={`Either ${boss.name} or`} className="space-y-2">
             {steps.alternatives.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={alternative(c)} />
+              <StepItem key={c.link.id} connection={c} phrase={alternative(c)} progress={progress} />
             ))}
           </ul>
         </div>
@@ -526,7 +529,7 @@ function NextStepsPanel({ data }: { data: BossPageData }) {
           <h3 className="text-xs font-semibold tracking-wide text-fg-muted uppercase">Before this fight</h3>
           <ul aria-label={`What comes before ${boss.name}`} className="space-y-2">
             {steps.before.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={before(c)} />
+              <StepItem key={c.link.id} connection={c} phrase={before(c)} progress={progress} />
             ))}
           </ul>
         </div>

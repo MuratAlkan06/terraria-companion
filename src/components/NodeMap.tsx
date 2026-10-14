@@ -1,8 +1,10 @@
 import { LocateFixed, Minus, Plus, Scan } from 'lucide-react'
 import {
   memo,
+  useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,11 +23,24 @@ import { EdgeBadges, EdgeMarkerDefs } from './nodeMap/EdgeGlyphs'
 import { EDGE_STYLES, markerId } from './nodeMap/edgeStyles'
 import { describeNode, isNodeActive, traverse, type MapGraph, type MapMove, type NodeState, type WorldEvil } from './nodeMap/graph'
 import type { Box, GraphLayout, LayoutOptions } from './nodeMap/layout'
-import { CONTROLS_ROW_INSET, hitPadding, MAX_ZOOM } from './nodeMap/mapConfig'
+import { CASCADE_LEAD_MS, cascadeRegion, crossPositions, planCascadeCamera } from './nodeMap/cascadeCamera'
+import { CONTROLS_ROW_INSET, hitPadding, MAX_ZOOM, tapFloorZoom } from './nodeMap/mapConfig'
 import { openingRect } from './nodeMap/opening'
-import { unionRect, type Inset, type Size } from './nodeMap/panZoom'
-import { buildScene, chipExtent, nodeExtent, type Scene } from './nodeMap/scene'
-import { usePanZoom } from './nodeMap/usePanZoom'
+import { unionRect, type Inset, type Size, type ZoomLimits } from './nodeMap/panZoom'
+import {
+  describeStatus,
+  EMPTY_SCHEDULE,
+  mapProgress,
+  unlockSchedule,
+  withLead,
+  type LinkStatus,
+  type LinkUnlock,
+  type MapProgress,
+  type UnlockSchedule,
+} from './nodeMap/progressView'
+import { buildScene, chipExtent, nodeExtent, type Scene, type ScenePath } from './nodeMap/scene'
+import { usePanZoom, type PanZoom } from './nodeMap/usePanZoom'
+import { useReducedMotion } from './useReducedMotion'
 
 /**
  * NodeMap (UX_SPEC §3.1/§3.7/§7/§9; PRD P5-S1): the boss progression tree on a pan/zoom surface.
@@ -44,6 +59,19 @@ import { usePanZoom } from './nodeMap/usePanZoom'
  *   mapConfig OPENING_FRAME (./nodeMap/opening): on desktop the whole opening region — the start
  *   through the first either/or fork — fitted; on phones the start centred. "Go to start" returns there.
  * - Keyboard focus pans the focused node into view, clear of the floating controls.
+ * - Progress (P5-S4, ./nodeMap/progressView): every node and line drawn in its tracked status
+ *   (defeated / skipped / reached / recommended / available / locked), the status in words leading
+ *   each node's description; a required gate's padlock badge turns into a check once the gate is met.
+ *   When the node states change from `cascadeBaseline` (what the map last showed — a defeat marked
+ *   here or on a boss page), the UNLOCK CASCADE plays once (UX_SPEC §12) where it can be seen (design
+ *   review P5-S4 H1/M1, ./nodeMap/cascadeCamera): the map keeps drawing the baseline until it is
+ *   measured (and `holdCascade` is off), then frames the cascade's region in the part of the map the
+ *   focus card leaves uncovered — or, when it can't fit there, asks the caller to close the card
+ *   (`onCascadeUncover`) and frames it in the whole map — and only once that 200ms pan is over does
+ *   the cascade start, its siblings rippling along their layers. `onCascadeShown` then lets the caller
+ *   catch the baseline up; the running cascade is held until it finishes. While a cascade waits or its
+ *   camera moves, other camera moves hold off: keyboard-focus panning is skipped, and a `show` waits
+ *   for the cascade to finish, then brings its nodes into view with the least movement.
  */
 export interface NodeMapHandle {
   /**
@@ -62,6 +90,20 @@ export interface NodeMapProps {
   sprites: SpriteIndex | null
   worldEvil: WorldEvil | null
   nodeStates: Readonly<Record<string, NodeState>>
+  /**
+   * The node states the map last showed (progressStore.shownNodeStates). Whatever unlocked since
+   * plays the unlock cascade. Absent = no cascade.
+   */
+  cascadeBaseline?: Readonly<Record<string, NodeState>>
+  /** The map has started showing the current node states (the caller catches the baseline up). */
+  onCascadeShown?: () => void
+  /**
+   * The cascade can't fit beside the overlay covering the map (`inset`): close it. The cascade waits
+   * for the inset to clear, then frames itself in the whole map and plays.
+   */
+  onCascadeUncover?: () => void
+  /** An overlay is opening but not measured yet: a cascade waits (the map draws the baseline meanwhile). */
+  holdCascade?: boolean
   selectedId: string | null
   /** Id of the details card a node opens. */
   detailsId: string
@@ -108,8 +150,22 @@ const descriptionId = (nodeId: string) => `map-node-desc-${nodeId}`
 const BLEED = 4000
 const INSTRUCTIONS_ID = 'node-map-instructions'
 
-/** The SVG layer: stage bands, edges, badges. Memoised: panning never re-renders it. */
-const MapDrawing = memo(function MapDrawing({ layout, scene }: { layout: GraphLayout; scene: Scene }) {
+/** A drawn path's progress status: its link's, its fork branch's, or (connectors) idle. */
+function pathStatus(path: ScenePath, progress: MapProgress): LinkStatus {
+  if (path.role === 'branch') return progress.branches.get(path.member ?? '') ?? 'idle'
+  return path.linkId ? (progress.links.get(path.linkId) ?? 'idle') : 'idle'
+}
+
+function pathUnlock(path: ScenePath, cascade: UnlockSchedule): LinkUnlock | undefined {
+  if (path.role === 'branch') return cascade.branches.get(path.member ?? '')
+  return path.linkId ? cascade.links.get(path.linkId) : undefined
+}
+
+/** How much wider than its line a lit (recommended-next) path's glow is, in map px. */
+const HALO_EXTRA = 7
+
+/** The SVG layer: stage bands, edges, badges. Memoised: panning never re-renders it. Exported for markup tests. */
+export const MapDrawing = memo(function MapDrawing({ layout, scene, progress, cascade }: { layout: GraphLayout; scene: Scene; progress: MapProgress; cascade: UnlockSchedule }) {
   const vertical = layout.orientation === 'vertical'
   return (
     <svg width={layout.width} height={layout.height} aria-hidden="true" className="absolute top-0 left-0 overflow-visible">
@@ -133,9 +189,34 @@ const MapDrawing = memo(function MapDrawing({ layout, scene }: { layout: GraphLa
           )
         })}
       </g>
+      {/* The recommended next steps glow: a soft wide band under each lit path (P5-S4). */}
+      <g data-layer="halos" fill="none">
+        {scene.paths.map((path) => {
+          if (pathStatus(path, progress) !== 'lit') return null
+          const unlock = pathUnlock(path, cascade)
+          return (
+            <path
+              key={path.key}
+              d={path.d}
+              data-edge-halo={path.linkId ?? path.member}
+              data-unlock={unlock?.lit ? 'halo' : undefined}
+              className={unlock?.lit ? 'animate-unlock-glow' : undefined}
+              style={{
+                stroke: 'var(--edge-recommended)',
+                strokeWidth: EDGE_STYLES[path.type].strokeWidth + HALO_EXTRA,
+                strokeLinecap: 'round',
+                opacity: 0.3,
+                animationDelay: unlock?.lit ? `${unlock.delayMs}ms` : undefined,
+              }}
+            />
+          )
+        })}
+      </g>
       <g data-layer="edges" fill="none">
         {scene.paths.map((path) => {
           const style = EDGE_STYLES[path.type]
+          const status = pathStatus(path, progress)
+          const unlock = pathUnlock(path, cascade)
           return (
             <path
               key={path.key}
@@ -145,23 +226,43 @@ const MapDrawing = memo(function MapDrawing({ layout, scene }: { layout: GraphLa
               data-link-id={path.linkId}
               data-member={path.member}
               data-in-play={path.inPlay ? 'true' : 'false'}
+              data-edge-status={status}
+              data-unlock={unlock?.unlock ? 'edge' : undefined}
               markerEnd={path.marker ? `url(#${markerId(path.type)})` : undefined}
-              className="transition-opacity duration-(--dur-ui) ease-out-strong"
+              className={cx('transition-opacity duration-(--dur-ui) ease-out-strong', unlock?.unlock && 'animate-unlock-fade')}
               style={{
                 stroke: style.color,
                 strokeWidth: style.strokeWidth,
                 strokeDasharray: style.dash,
                 strokeLinecap: style.lineCap,
-                opacity: path.inPlay ? 1 : 0.3,
+                // Subdued: the other world evil's branch, or not reachable yet (locked).
+                opacity: path.inPlay && status !== 'locked' ? 1 : 0.3,
+                animationDelay: unlock?.unlock ? `${unlock.delayMs}ms` : undefined,
               }}
             />
           )
         })}
       </g>
       <g data-layer="badges">
-        {scene.badges.map((badge) => (
-          <EdgeBadges key={badge.key} types={badge.types} x={badge.x} y={badge.y} dimmed={!badge.inPlay} />
-        ))}
+        {scene.badges.map((badge) => {
+          const unlock = cascade.links.get(badge.linkId)
+          const dimmed = !badge.inPlay || progress.links.get(badge.linkId) === 'locked'
+          const badges = (
+            <EdgeBadges
+              types={badge.types}
+              x={badge.x}
+              y={badge.y}
+              dimmed={dimmed}
+              gateMet={progress.openGates.has(badge.linkId)}
+              gateDelayMs={unlock?.gate ? unlock.delayMs : undefined}
+            />
+          )
+          return (
+            <g key={badge.key} data-badge-link={badge.linkId} data-unlock={unlock?.unlock ? 'badge' : undefined} className={unlock?.unlock ? 'animate-unlock-fade' : undefined} style={unlock?.unlock ? { animationDelay: `${unlock.delayMs}ms` } : undefined}>
+              {badges}
+            </g>
+          )
+        })}
       </g>
     </svg>
   )
@@ -174,6 +275,10 @@ export function NodeMap({
   sprites,
   worldEvil,
   nodeStates,
+  cascadeBaseline,
+  onCascadeShown,
+  onCascadeUncover,
+  holdCascade = false,
   selectedId,
   detailsId,
   minZoom,
@@ -220,19 +325,56 @@ export function NodeMap({
   // controls along the bottom, an overlay sitting on the bottom edge. Opening, centring, revealing,
   // fitting and bounded panning all keep the nodes clear of them.
   const insetRight = inset?.right
-  const insetBottom = Math.max(inset?.bottom ?? 0, controlsRow ? CONTROLS_ROW_INSET : 0, overlayBottom)
+  const stayingBottom = Math.max(controlsRow ? CONTROLS_ROW_INSET : 0, overlayBottom)
+  const insetBottom = Math.max(inset?.bottom ?? 0, stayingBottom)
   const viewInset = useMemo<Inset | undefined>(
     () => (insetRight === undefined && insetBottom === 0 ? undefined : { right: insetRight, bottom: insetBottom }),
     [insetRight, insetBottom],
   )
+  // What stays covered once the caller's overlay closes (the controls row, a bottom overlay).
+  const baseInset = useMemo<Inset | undefined>(() => (stayingBottom === 0 ? undefined : { bottom: stayingBottom }), [stayingBottom])
   const pz = usePanZoom(content, limits, viewInset)
   const { surfaceRef, handlers } = pz
   const layerRef = useRef<HTMLDivElement>(null)
   const scene = useMemo(() => buildScene(graph, layout, worldEvil), [graph, layout, worldEvil])
   const reading = useMemo(() => layout.layers.flat(), [layout])
+
+  // Open framed on the start (OPENING_FRAME: the opening region on desktop) — again whenever the
+  // layout changes (orientation switch). "Go to start" returns to the same view. (Before the cascade
+  // below: a cascade waiting at first paint frames itself from this view.)
+  const opening = useMemo(() => openingRect(graph, layout, scene, startId), [graph, layout, scene, startId])
+  // A deep-linked node opens centred (at the opening zoom); otherwise the opening view.
+  const firstFrame = (initialFocusId ? layout.nodes.get(initialFocusId) : undefined) ?? opening
+  const centeredFor = useRef<GraphLayout | null>(null)
+  const { center, frame, reveal } = pz
+  useEffect(() => {
+    if (!pz.ready || centeredFor.current === layout) return
+    centeredFor.current = layout
+    if (firstFrame) frame(firstFrame, { maxK: initialZoom, animate: false })
+  }, [pz.ready, layout, firstFrame, initialZoom, frame])
+
+  // The unlock cascade: what to draw (the baseline while it waits for the camera) and when.
+  const cascadeFloor = Math.max(minZoom, tapFloorZoom(layout, options))
+  const { states: shownStates, schedule: cascade, waiting: cascadeWaiting, busy: cascadeBusy } = useUnlockCascade({
+    graph,
+    layout,
+    nodeStates,
+    worldEvil,
+    baseline: cascadeBaseline,
+    onShown: onCascadeShown,
+    onUncover: onCascadeUncover,
+    ready: pz.ready && !holdCascade,
+    pz,
+    limits,
+    inset: viewInset,
+    baseInset,
+    floor: cascadeFloor,
+    avoid: keepOut,
+  })
+  const progress = useMemo(() => mapProgress(graph, shownStates, worldEvil), [graph, shownStates, worldEvil])
   const descriptions = useMemo(
-    () => new Map(graph.nodes.map((n) => [n.id, describeNode(graph, n.id, worldEvil)])),
-    [graph, worldEvil],
+    () => new Map(graph.nodes.map((n) => [n.id, `${describeStatus(graph, progress, n.id)} ${describeNode(graph, n.id, worldEvil)}`])),
+    [graph, progress, worldEvil],
   )
   const pad = hitPadding(options)
   const hit = layout.orientation === 'vertical' ? { x: pad.cross, y: pad.main } : { x: pad.main, y: pad.cross }
@@ -257,23 +399,24 @@ export function NodeMap({
 
   const nodeButton = (id: string) => layerRef.current?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`) ?? null
 
-  // Open framed on the start (OPENING_FRAME: the opening region on desktop) — again whenever the
-  // layout changes (orientation switch). "Go to start" returns to the same view.
-  const opening = useMemo(() => openingRect(graph, layout, scene, startId), [graph, layout, scene, startId])
-  // A deep-linked node opens centred (at the opening zoom); otherwise the opening view.
-  const firstFrame = (initialFocusId ? layout.nodes.get(initialFocusId) : undefined) ?? opening
-  const centeredFor = useRef<GraphLayout | null>(null)
-  const { center, frame, reveal } = pz
+  // A show() asked while a cascade has the camera: brought into view (least movement) once it's over.
+  const deferredShow = useRef<readonly string[] | null>(null)
   useEffect(() => {
-    if (!pz.ready || centeredFor.current === layout) return
-    centeredFor.current = layout
-    if (firstFrame) frame(firstFrame, { maxK: initialZoom, animate: false })
-  }, [pz.ready, layout, firstFrame, initialZoom, frame])
+    if (cascadeWaiting || cascade.size > 0 || !deferredShow.current) return
+    const rect = unionRect(deferredShow.current.flatMap((id) => layout.nodes.get(id) ?? []))
+    deferredShow.current = null
+    if (rect) reveal(rect, { animate: true })
+  }, [cascadeWaiting, cascade, layout, reveal])
 
   useImperativeHandle(
     ref,
     () => ({
       show: (ids, { mode = 'reveal' } = {}) => {
+        // A cascade framing itself has the camera: the request waits until the cascade is over.
+        if (cascadeBusy()) {
+          deferredShow.current = ids
+          return
+        }
         const rect = unionRect(ids.flatMap((id) => layout.nodes.get(id) ?? []))
         if (!rect) return
         if (mode === 'center') center(rect, { k: Math.max(pz.view.k, initialZoom), animate: true })
@@ -281,7 +424,7 @@ export function NodeMap({
       },
       focus: (id) => nodeButton(id)?.focus({ preventScroll: true }),
     }),
-    [layout, center, reveal, pz.view.k, initialZoom],
+    [layout, center, reveal, pz.view.k, initialZoom, cascadeBusy],
   )
 
   // The last edge step taken with the arrow keys: stepping straight back returns where it came from.
@@ -330,7 +473,7 @@ export function NodeMap({
   const onFocus = (event: FocusEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     const id = target.dataset.nodeId
-    if (!id || !target.matches(':focus-visible')) return
+    if (!id || !target.matches(':focus-visible') || cascadeBusy()) return
     const box = layout.nodes.get(id)
     if (!box) return
     const { x: px, y: py } = pageScroll.current
@@ -374,7 +517,7 @@ export function NodeMap({
         className={cx('absolute inset-0 touch-none select-none', pz.dragging ? 'cursor-grabbing' : 'cursor-grab')}
       >
         <div ref={layerRef} className="absolute top-0 left-0 origin-top-left" style={layerStyle} onKeyDown={onKeyDown} onFocus={onFocus}>
-          <MapDrawing layout={layout} scene={scene} />
+          <MapDrawing layout={layout} scene={scene} progress={progress} cascade={cascade} />
           {scene.orChips.map((chip) => (
             <span
               key={chip.key}
@@ -399,7 +542,9 @@ export function NodeMap({
                     sprites={sprites}
                     inPlay={isNodeActive(node, worldEvil)}
                     selected={selectedId === id}
-                    state={nodeStates[id]}
+                    state={shownStates[id]}
+                    status={progress.nodes.get(id)}
+                    unlock={cascade.nodes.get(id)}
                     describedBy={descriptionId(id)}
                     controls={detailsId}
                     hit={hit}
@@ -464,6 +609,133 @@ export function NodeMap({
       </div>
     </div>
   )
+}
+
+type NodeStates = Readonly<Record<string, NodeState>>
+
+/** How long a cascade waits for the overlay it asked to close before framing beside it instead. */
+const UNCOVER_WAIT_MS = 400
+
+interface CascadeInput {
+  graph: MapGraph
+  layout: GraphLayout
+  nodeStates: NodeStates
+  worldEvil: WorldEvil | null
+  /** What the map last showed (absent: no cascade). */
+  baseline: NodeStates | undefined
+  onShown: (() => void) | undefined
+  onUncover: (() => void) | undefined
+  /** The map (and any overlay over it) is measured: the cascade may frame itself. */
+  ready: boolean
+  pz: PanZoom
+  limits: ZoomLimits
+  /** Covered map edges now (the caller's overlay included), and once that overlay closes. */
+  inset: Inset | undefined
+  baseInset: Inset | undefined
+  /** Lowest zoom a cascade may be framed at beside the overlay (./nodeMap/cascadeCamera). */
+  floor: number
+  /** Controls floating over the map (map-box px): the cascade is framed clear of them. */
+  avoid: readonly Box[]
+}
+
+interface CascadeOutput {
+  /** The node states to draw: the baseline while a cascade waits to be framed. */
+  states: NodeStates
+  schedule: UnlockSchedule
+  /** A cascade is waiting to be framed. */
+  waiting: boolean
+  /** A cascade is waiting or its camera is still moving: other camera moves hold off. */
+  busy: () => boolean
+}
+
+/**
+ * The unlock cascade (UX_SPEC §12; design review P5-S4 H1/M1/M2). A change from the baseline is
+ * PENDING — the baseline still drawn — until the map is ready; then the camera plan
+ * (./nodeMap/cascadeCamera) runs: uncover the map first if the region can't fit beside the overlay
+ * (the caller closes it; this waits for the inset to clear), else pan to show the region and start
+ * the cascade CASCADE_LEAD_MS later (no pan: at once; reduced motion: at once, no stagger). Once
+ * playing, the caller catches the baseline up and the schedule is held until its last element has
+ * finished, so the running animations are never cut short.
+ */
+function useUnlockCascade({ graph, layout, nodeStates, worldEvil, baseline, onShown, onUncover, ready, pz, limits, inset, baseInset, floor, avoid }: CascadeInput): CascadeOutput {
+  const reducedMotion = useReducedMotion()
+  const position = useMemo(() => crossPositions(layout), [layout])
+  const live = useMemo(
+    () =>
+      !baseline || baseline === nodeStates
+        ? EMPTY_SCHEDULE
+        : unlockSchedule(graph, mapProgress(graph, baseline, worldEvil), mapProgress(graph, nodeStates, worldEvil), { reducedMotion, position }),
+    [graph, nodeStates, worldEvil, baseline, reducedMotion, position],
+  )
+  // The cascade started for `states` (`done` once its last element has finished).
+  const [playing, setPlaying] = useState<{ states: NodeStates; schedule: UnlockSchedule; cameraUntil: number; done: boolean } | null>(null)
+  const current = playing?.states === nodeStates ? playing : null
+  const pending = live.size > 0 && !current
+
+  // Frame, then play. Having asked the caller to uncover the map, wait for the inset to change (the
+  // overlay gone) — or, should it stay, give up after UNCOVER_WAIT_MS and frame beside it.
+  const uncoverWait = useRef<{ states: NodeStates; inset: Inset | undefined; expired: boolean } | null>(null)
+  const waitTimer = useRef(0)
+  const [waitedOut, setWaitedOut] = useState(0)
+  useEffect(() => () => window.clearTimeout(waitTimer.current), [])
+  const { current: viewNow, go, box } = pz
+  useEffect(() => {
+    if (!pending || !ready) return
+    const asked = uncoverWait.current?.states === nodeStates ? uncoverWait.current : null
+    if (asked && asked.inset === inset && !asked.expired) return
+    const region = cascadeRegion(graph, layout, live)
+    const plan = region
+      ? planCascadeCamera({
+          region,
+          view: viewNow(),
+          content: { width: layout.width, height: layout.height },
+          box,
+          inset,
+          uncoveredInset: baseInset,
+          limits,
+          floor,
+          canUncover: onUncover !== undefined && !asked,
+          avoid,
+        })
+      : { view: null, uncover: false }
+    if (plan.uncover) {
+      const wait = { states: nodeStates, inset, expired: false }
+      uncoverWait.current = wait
+      window.clearTimeout(waitTimer.current)
+      waitTimer.current = window.setTimeout(() => {
+        wait.expired = true
+        setWaitedOut((n) => n + 1)
+      }, UNCOVER_WAIT_MS)
+      onUncover?.()
+      return
+    }
+    if (plan.view) go(plan.view, { animate: true })
+    const lead = plan.view && !reducedMotion ? CASCADE_LEAD_MS : 0
+    setPlaying({ states: nodeStates, schedule: withLead(live, lead), cameraUntil: performance.now() + lead, done: false })
+  }, [pending, ready, live, nodeStates, graph, layout, box, inset, baseInset, limits, floor, avoid, onUncover, reducedMotion, viewNow, go, waitedOut])
+
+  // The map shows the current states (playing, or nothing to play): the caller catches the baseline up.
+  useEffect(() => {
+    if (baseline && baseline !== nodeStates && (current || live.size === 0)) onShown?.()
+  }, [baseline, nodeStates, current, live, onShown])
+  useEffect(() => {
+    if (!playing || playing.done) return
+    const timer = window.setTimeout(() => setPlaying((p) => (p === playing ? { ...p, done: true } : p)), playing.schedule.durationMs + 100)
+    return () => window.clearTimeout(timer)
+  }, [playing])
+
+  const busyState = useRef({ pending, cameraUntil: 0 })
+  useLayoutEffect(() => {
+    busyState.current = { pending, cameraUntil: current?.cameraUntil ?? 0 }
+  })
+  const busy = useCallback(() => busyState.current.pending || performance.now() < busyState.current.cameraUntil, [])
+
+  return {
+    states: pending && baseline ? baseline : nodeStates,
+    schedule: current && !current.done ? current.schedule : EMPTY_SCHEDULE,
+    waiting: pending,
+    busy,
+  }
 }
 
 function MapButton({ label, row, onClick, disabled = false, children }: { label: string; row: boolean; onClick: () => void; disabled?: boolean; children: ReactNode }) {

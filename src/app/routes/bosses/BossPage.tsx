@@ -14,7 +14,8 @@ import { BossPageView } from './BossPageView'
  * /bosses/:id — boss page (PRD P5-S2/S3; UX_SPEC §3.7). Pages exist for the bosses in
  * src/schemas/bossPages.ts (every registry boss); any other id gets the styled 404 with a link to
  * that node on the map when it is one (events and milestones: its focus card has the details). Loading → skeleton after 300 ms;
- * a failed chunk → ErrorState with Retry (shell alive). Progress is display only (P5-S4 adds marking).
+ * a failed chunk → ErrorState with Retry (shell alive). The header's control tracks this boss's defeat
+ * (P5-S4) in the shared progress store, so the page's gate badges and next steps follow it live.
  */
 const HEADING_ID = 'boss-page-title'
 

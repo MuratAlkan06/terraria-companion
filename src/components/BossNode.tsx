@@ -1,10 +1,11 @@
-import { CalendarDays, Flag } from 'lucide-react'
+import { CalendarDays, Check, Flag, Footprints, Lock } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router'
 import type { SpriteIndex } from '../data-access/types'
 import { cx } from './cx'
 import { WORLD_EVIL_LABEL, type MapNode, type NodeState } from './nodeMap/graph'
 import type { PlacedNode } from './nodeMap/layout'
+import type { NodeStatus, NodeUnlock } from './nodeMap/progressView'
 import { SpriteImg } from './SpriteImg'
 
 /**
@@ -19,9 +20,15 @@ import { SpriteImg } from './SpriteImg'
  *   (`wrap-normal` overrides the global `overflow-wrap: anywhere`) inside NODE_LABEL_BOX; the
  *   button's accessible name is always the full name.
  *
- * State hooks for the unlock cascade (UX_SPEC §12, P5-S4): `data-defeat-state` drives the ring
- * (stone = not attempted, gold = defeated, dashed = skipped) and `data-in-play` the dimming; both
- * transition on opacity/colour only, so reduced motion simply makes them instant.
+ * Progress (P5-S4, ./nodeMap/progressView): the ring fills gold with a check when defeated, turns
+ * dashed with a dimmed check when skipped; a locked node is subdued with a lock glyph; a recommended
+ * node gets a green border with the footprints glyph (the recommended-next icon); a reached
+ * milestone a gold border with a check. Every state has its glyph — never colour alone. The status
+ * in words is in the node's description (NodeMap).
+ *
+ * Unlock cascade (UX_SPEC §12): with `unlock`, the node plays its part after `delayMs` — the ring
+ * fills gold, the node comes up from its locked look while its lock glyph lifts away, a new
+ * recommendation's border and glyph come in. Reduced motion: the same, opacity/colour only.
  *
  * Hit area: the ::before layer reaches half-way into the gap around the node (`--hit-x/--hit-y`),
  * so taps land on the nearest node and neighbouring targets never overlap.
@@ -34,6 +41,10 @@ export interface BossNodeProps {
   inPlay: boolean
   selected: boolean
   state: NodeState | undefined
+  /** What the map shows for the node (defaults from `state`: not attempted = available). */
+  status?: NodeStatus
+  /** This node's part in a running unlock cascade. */
+  unlock?: NodeUnlock
   /** Id of the element describing the node (kind, stage, connections). */
   describedBy: string
   /** Id of the details card this button opens. */
@@ -69,8 +80,50 @@ const RING: Readonly<Record<'not-attempted' | NodeState, string>> = {
   skipped: 'border-dashed border-stone-500 bg-slot',
 }
 
-export function BossNode({ node, box, sprites, inPlay, selected, state, describedBy, controls, hit, onSelect, href }: BossNodeProps) {
+/** The status glyph in the node's corner (aria-hidden: the description says it in words). */
+const STATUS_GLYPH: Partial<Record<NodeStatus, { icon: typeof Lock; className: string }>> = {
+  defeated: { icon: Check, className: 'border-gold-300 bg-gold-400 text-night-950' },
+  reached: { icon: Check, className: 'border-gold-300 bg-gold-400 text-night-950' },
+  skipped: { icon: Check, className: 'border-stone-500 bg-stone-800 text-stone-300' },
+  recommended: { icon: Footprints, className: 'border-forest-300 bg-night-950 text-forest-300' },
+  locked: { icon: Lock, className: 'border-earth-600 bg-night-950 text-gate' },
+}
+
+function StatusGlyph({ status, kind, className, style, animated = false }: { status: NodeStatus; kind: MapNode['kind']; className?: string; style?: CSSProperties; animated?: boolean }) {
+  const glyph = STATUS_GLYPH[status]
+  if (!glyph) return null
+  const Icon = glyph.icon
+  return (
+    <span
+      aria-hidden="true"
+      data-status-glyph={status}
+      data-unlock={animated ? 'glyph' : undefined}
+      // Bosses: inside the top-right corner, clear of the ring and the world tab; markers: on the corner.
+      className={cx(
+        'pointer-events-none absolute grid size-4 place-items-center border',
+        kind === 'boss' ? 'top-0.5 right-0.5' : '-top-2 -right-2',
+        glyph.className,
+        className,
+      )}
+      style={style}
+    >
+      <Icon className="size-3" strokeWidth={3} />
+    </span>
+  )
+}
+
+/** The node's border colour for its status (the selection border wins). */
+function statusBorder(node: MapNode, status: NodeStatus, selected: boolean): string | false {
+  if (selected) return 'border-gold-400'
+  if (status === 'recommended') return 'border-forest-300'
+  if (node.kind === 'milestone' && status === 'reached') return 'border-gold-400'
+  return node.kind === 'boss' && 'border-panel-border'
+}
+
+export function BossNode({ node, box, sprites, inPlay, selected, state, status: given, unlock, describedBy, controls, hit, onSelect, href }: BossNodeProps) {
   const defeatState = state ?? 'not-attempted'
+  const status: NodeStatus = given ?? (state ?? 'available')
+  const delay = unlock ? `${unlock.delayMs}ms` : undefined
   const style = {
     left: box.x,
     top: box.y,
@@ -78,22 +131,26 @@ export function BossNode({ node, box, sprites, inPlay, selected, state, describe
     height: box.height,
     '--hit-x': `${hit.x}px`,
     '--hit-y': `${hit.y}px`,
+    // The border/background change of a new status waits for the node's turn in the cascade too.
+    ...(unlock ? { animationDelay: delay, transitionDelay: delay } : {}),
   } as CSSProperties
   const common = {
     'data-node-id': node.id,
     'data-kind': node.kind,
     'data-in-play': inPlay ? 'true' : 'false',
     'data-defeat-state': defeatState,
+    'data-status': status,
+    'data-unlock': unlock?.unlock ? 'node' : undefined,
     'aria-label': node.name,
     'aria-describedby': describedBy,
     style,
     className: cx(
       BASE,
       KIND_CLASSES[node.kind],
-      node.kind === 'boss' && (selected ? 'border-gold-400' : 'border-panel-border'),
-      node.kind !== 'boss' && selected && 'border-gold-400',
+      statusBorder(node, status, selected),
       selected && 'bg-night-700 shadow-pixel-drop',
-      !inPlay && 'border-dashed opacity-45',
+      !inPlay ? 'border-dashed opacity-45' : status === 'locked' && 'opacity-60',
+      unlock?.unlock && 'motion-safe:animate-unlock-node motion-reduce:animate-unlock-fade',
     ),
   }
   const content = (
@@ -102,7 +159,14 @@ export function BossNode({ node, box, sprites, inPlay, selected, state, describe
         <>
           <span
             aria-hidden="true"
-            className={cx('grid size-16 shrink-0 place-items-center border-2 transition-colors duration-(--dur-ui)', RING[defeatState])}
+            data-unlock={unlock?.ring ? 'ring' : undefined}
+            className={cx(
+              'grid size-16 shrink-0 place-items-center border-2 transition-colors duration-(--dur-ui)',
+              RING[defeatState],
+              defeatState === 'skipped' && 'opacity-70',
+              unlock?.ring && 'animate-ring-fill',
+            )}
+            style={unlock?.ring ? { animationDelay: delay } : undefined}
           >
             <SpriteImg src={node.boss?.sprite} sprites={sprites} placeholder="creature" box={SPRITE_BOX} />
           </span>
@@ -122,6 +186,24 @@ export function BossNode({ node, box, sprites, inPlay, selected, state, describe
           </span>
         </>
       )}
+      {/* While unlocking: the lock lifts away (fades in place under reduced motion), then the new glyph comes in. */}
+      {unlock?.unlock && status !== 'locked' ? (
+        <StatusGlyph
+          status="locked"
+          kind={node.kind}
+          animated
+          className="motion-safe:animate-lock-release motion-reduce:animate-lock-fade"
+          style={{ animationDelay: delay }}
+        />
+      ) : null}
+      <StatusGlyph
+        key={status}
+        status={status}
+        kind={node.kind}
+        animated={!!unlock && status !== 'locked'}
+        className={unlock && status !== 'locked' ? 'animate-unlock-glow' : undefined}
+        style={unlock && status !== 'locked' ? { animationDelay: delay } : undefined}
+      />
       {node.worldEvil ? (
         <span
           aria-hidden="true"

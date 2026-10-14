@@ -50,6 +50,8 @@ export interface MapLink {
 }
 
 export interface MapGraph {
+  /** The progression data the graph was built from (gate satisfaction, src/scoring/progress.ts). */
+  progression: { nodes: readonly ProgressionNode[]; edges: readonly ProgressionEdge[] }
   nodes: MapNode[]
   nodeById: ReadonlyMap<string, MapNode>
   /** Flow links: every edge type except alternative-route, parallel edges merged. */
@@ -142,6 +144,7 @@ export function buildMapGraph(
   const known = progression.edges.filter((e) => nodeById.has(e.from) && nodeById.has(e.to))
   const alt = known.filter((e) => e.type === 'alternative-route')
   return {
+    progression,
     nodes,
     nodeById,
     links: mergeLinks(known.filter((e) => e.type !== 'alternative-route')),

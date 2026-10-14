@@ -107,6 +107,15 @@ export const EDGE_STYLES: Readonly<Record<EdgeType, EdgeStyle>> = {
   },
 }
 
+/**
+ * A required gate once it's met (design review P5-S4 M3): the map swaps its padlock badge for a small
+ * check, so an opened line never reads as locked. The legend's row for that form.
+ */
+export const GATE_MET = {
+  label: 'Required gate, met',
+  description: 'Its gate is marked done: the padlock turns into a check.',
+} as const
+
 /** Sorts types by drawing precedence (unknown types never occur: EdgeType is a closed enum). */
 export function byPrecedence(types: Iterable<EdgeType>): EdgeType[] {
   return [...new Set(types)].sort((a, b) => EDGE_PRECEDENCE.indexOf(a) - EDGE_PRECEDENCE.indexOf(b))

@@ -16,22 +16,25 @@ import {
   type NodeState,
   type WorldEvil,
 } from '../../../components/nodeMap/graph'
+import { bossesToMark, mapProgress } from '../../../components/nodeMap/progressView'
 import { NoBreak } from '../../../components/NoBreak'
 import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { SpriteImg } from '../../../components/SpriteImg'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { SpriteIndex } from '../../../data-access/types'
 import { getField } from '../../../schemas/getField'
-import { DISPLAY_ONLY_NOTE, OPEN_PAGE_LABEL, STATE_LABEL } from './focusCardCopy'
+import { DefeatControl, NodeStatusTag } from './DefeatControl'
+import { lockedNote, MARKER_NOTE, OPEN_PAGE_LABEL, PROGRESS_LEGEND } from './focusCardCopy'
 
 /**
  * The map's compact focus card (PRD P5-S1 AC4; UX_SPEC §3.7, §4d). Nodes without a page open this
  * card; a boss with a page (P5-S2) is a link on the map, and when its card is shown (a `?node=` deep
  * link, or a jump from another card) the card's first action opens that page. Never a dead local
  * link. The card shows: name, kind, stage, the summon text with
- * its source, the node's progress state (display only: this map marks nothing), its typed
- * connections (each with its own wiki source, and a button that moves the map to the other node)
- * and the node's wiki article.
+ * its source, the node's progress — for a boss the three-state defeat control (P5-S4: marking a
+ * defeat here plays the map's unlock cascade behind the card); for a milestone or event its status,
+ * which follows the bosses that gate it — its typed connections (each with its own wiki source, and
+ * a button that moves the map to the other node) and the node's wiki article.
  *
  * Non-modal: the map stays usable behind it. Esc or the close button closes it; the page returns
  * focus to the node.
@@ -42,7 +45,8 @@ export interface BossFocusCardProps {
   nodeId: string
   sprites: SpriteIndex | null
   worldEvil: WorldEvil | null
-  state: NodeState | undefined
+  /** Tracked progress (tc.v1.progress): this node's state, and the gates around it. */
+  nodeStates: Readonly<Record<string, NodeState>>
   /** The node's boss page (P5-S2), when it has one: the card's first action links to it. */
   pageHref?: string
   onClose: () => void
@@ -123,7 +127,22 @@ function ConnectionList({ title, items, onJump, direction }: { title: string; it
   )
 }
 
-export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, state, pageHref, onClose, onJump, headingRef, rootRef, className }: BossFocusCardProps) {
+/** A milestone's or event's status: it follows the bosses that gate it (SCORING_SPEC §2.4). */
+function MarkerProgress({ graph, nodeId, worldEvil, nodeStates }: { graph: MapGraph; nodeId: string; worldEvil: WorldEvil | null; nodeStates: Readonly<Record<string, NodeState>> }) {
+  const progress = mapProgress(graph, nodeStates, worldEvil)
+  const status = progress.nodes.get(nodeId)
+  if (!status) return null
+  const gates = status === 'locked' ? bossesToMark(graph, progress, nodeId).map((g) => graph.nodeById.get(g)?.name ?? g) : []
+  return (
+    <Row term={PROGRESS_LEGEND}>
+      <NodeStatusTag status={status} size="sm" />
+      {gates.length > 0 ? <span className="block text-xs text-fg-muted">{lockedNote(gates)}</span> : null}
+      <span className="block text-xs text-fg-muted">{MARKER_NOTE}</span>
+    </Row>
+  )
+}
+
+export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, nodeStates, pageHref, onClose, onJump, headingRef, rootRef, className }: BossFocusCardProps) {
   const node = graph.nodeById.get(nodeId)
   if (!node) return null
   const record = node.boss ?? node.node
@@ -222,13 +241,9 @@ export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, state, pa
               )}
             </Row>
           ) : null}
-          <Row term="Your progress">
-            <span data-defeat-state={state ?? 'not-attempted'} className="font-semibold">
-              {STATE_LABEL[state ?? 'not-attempted']}
-            </span>
-            <span className="block text-xs text-fg-muted">{DISPLAY_ONLY_NOTE}</span>
-          </Row>
+          {node.kind === 'boss' ? null : <MarkerProgress graph={graph} nodeId={nodeId} worldEvil={worldEvil} nodeStates={nodeStates} />}
         </dl>
+        {node.kind === 'boss' ? <DefeatControl graph={graph} nodeId={nodeId} worldEvil={worldEvil} nodeStates={nodeStates} /> : null}
 
         <ConnectionList title="Comes after" items={before} onJump={onJump} direction="in" />
         <ConnectionList title="Either this or" items={alternatives} onJump={onJump} direction="alt" />

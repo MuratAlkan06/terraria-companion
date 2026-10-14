@@ -4,8 +4,8 @@
  *
  * Hand-written strict validator (same pattern as ./settings.ts and ./recent.ts) so the storage
  * module never pulls Zod into a bundle; progress.test.ts asserts parity with the Zod `ProgressV1`.
- * P5-S1 writes `worldEvil` (the map's world-evil toggle); `nodeStates` is read and preserved as
- * stored — this slice offers no way to change it.
+ * Written by src/app/progressStore.ts: `worldEvil` (the map's world-evil toggle, P5-S1) and
+ * `nodeStates` (defeat tracking on boss pages and map cards, P5-S4).
  */
 import type { DomainDef } from './types'
 
@@ -23,6 +23,9 @@ const WORLD_EVILS: readonly string[] = ['corruption', 'crimson']
 const NODE_STATES: readonly string[] = ['defeated', 'skipped']
 /** Mirrors `Slug` in src/schemas/common.ts. */
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/** A valid `nodeStates` key (a progression node slug). */
+export const isNodeSlug = (id: string): boolean => SLUG.test(id)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

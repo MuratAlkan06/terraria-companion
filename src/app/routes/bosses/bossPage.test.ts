@@ -61,6 +61,7 @@ import {
 } from './bossPageModel'
 import { BossPageView } from './BossPageView'
 import { createPrepChecklistStore, prepChecklistKey, prepEntryId } from './prepChecklistStore'
+import { createProgressStore } from '../../progressStore'
 
 const bosses = bossesJson as Boss[]
 const raw = progressionJson as { nodes: ProgressionNode[]; edges: ProgressionEdge[] }
@@ -246,11 +247,12 @@ describe('boss pages: every page (pre-Hardmode P5-S2, Wall of Flesh + Hardmode P
     expect(html).not.toMatch(/href="\/(items|accessories|armor)\//)
   })
 
-  it('a world-evil boss says which world it belongs to, and the page progress is display only', () => {
+  it('a world-evil boss says which world it belongs to; the header carries the defeat control (P5-S4)', () => {
     const html = render(boss('brain-of-cthulhu'))
     expect(html).toContain('Crimson worlds only')
-    expect(html).toContain('data-defeat-state="not-attempted"')
-    expect(html).toContain('Display only: defeats can’t be marked on this page.')
+    expect(section(html, 'header')).toContain('data-defeat-control="brain-of-cthulhu"')
+    expect(html).toMatch(/<input type="radio" data-defeat-option="not-attempted"[^>]*checked=""/)
+    expect(html).not.toContain('Display only')
   })
 
   it('event / milestone node ids and unknown ids are a NotFoundError (styled 404), never a half page', async () => {
@@ -997,5 +999,60 @@ describe('M5/M6: checklist bar and behavior tags', () => {
     expect(tags.length).toBe(boss('eye-of-cthulhu').attackPatternTags?.length)
     for (const cls of tags) expect(cls).not.toMatch(/\b(border|bg-|px-|py-)/)
     expect(html).toContain('>Behavior</h3>')
+  })
+})
+
+describe('P5-S4: tracked defeats drive the boss page live (UX_SPEC §8, §10.5)', () => {
+  const memory = (): StorageBackend => {
+    const map = new Map<string, string>()
+    return { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, String(v)), removeItem: (k) => void map.delete(k) }
+  }
+  const MECHS = ['the-twins', 'the-destroyer', 'skeletron-prime']
+
+  it('gate badges follow the shared store: marking the Wall of Flesh drops “After Wall of Flesh” on every page that shows it', () => {
+    const store = createProgressStore(memory())
+    // what BossPage does: the page renders from the store's node states (one subscription, every surface)
+    const page = (id: string) => render(boss(id), gearData, store.getState().progress.nodeStates)
+    for (const id of ['plantera', 'the-twins', 'queen-slime']) expect(page(id), id).toContain('data-gate="Wall of Flesh"')
+    store.getState().setNodeState('wall-of-flesh', 'defeated')
+    for (const id of ['plantera', 'the-twins', 'queen-slime']) expect(page(id), id).not.toContain('data-gate="Wall of Flesh"')
+    // un-marking brings it back
+    store.getState().setNodeState('wall-of-flesh', null)
+    expect(page('plantera')).toContain('data-gate="Wall of Flesh"')
+  })
+
+  it('a MILESTONE gate clears once its bosses are marked (src/scoring isNodeSatisfied — milestones are never marked themselves)', () => {
+    const b = structuredClone(boss('skeletron'))
+    b.suggestedEquipment = [{ class: 'melee', weapons: [1123], armorSetIds: [], accessories: [], buffs: [] }]
+    b._prov = { ...b._prov, unverifiedFields: b._prov.unverifiedFields.filter((f) => f !== 'suggestedEquipment'), editorialFields: [...b._prov.editorialFields, 'suggestedEquipment'] }
+    const weapon = { ...gearData.weapons.get(1123)!, gatedBy: { bosses: [], conditions: ['post-mechanical-bosses'], stage: 'mid-hm' as const } }
+    const data: GearData = { ...gearData, weapons: new Map([...gearData.weapons, [1123, weapon]]) }
+    const badge = 'data-gate="All mechanical bosses defeated"'
+    expect(render(b, data, {})).toContain(badge)
+    expect(render(b, data, Object.fromEntries(['wall-of-flesh', 'the-twins', 'the-destroyer'].map((id) => [id, 'defeated' as const])))).toContain(badge)
+    expect(render(b, data, Object.fromEntries(['wall-of-flesh', ...MECHS].map((id) => [id, 'defeated' as const])))).not.toContain(badge)
+  })
+
+  it('the Wall of Flesh page: its control, and the Hardmode pointer’s statuses updating with the mark', () => {
+    const before = render(boss('wall-of-flesh'))
+    expect(section(before, 'header')).toContain('data-defeat-control="wall-of-flesh"')
+    expect(section(before, 'header')).not.toContain('data-defeat-option="skipped"') // the gateway to Hardmode is never "skipped"
+    const pointer = (html: string) => section(html, 'next').slice(section(html, 'next').indexOf('data-step-opens="hardmode"'))
+    const status = (html: string, id: string) => new RegExp(`data-opens="${id}"[\\s\\S]*?data-node-status="([a-z]+)"`).exec(pointer(html))?.[1]
+    expect(status(before, 'the-twins')).toBe('locked')
+    expect(status(before, 'queen-slime')).toBe('locked')
+    expect(section(before, 'next')).toMatch(/data-step="hardmode"[\s\S]*?data-node-status="locked"/)
+    const after = render(boss('wall-of-flesh'), undefined, { 'wall-of-flesh': 'defeated' })
+    expect(section(after, 'header')).toMatch(/data-defeat-option="defeated"[^>]*checked=""/)
+    expect(section(after, 'next')).toMatch(/data-step="hardmode"[\s\S]*?data-node-status="reached"/)
+    for (const id of ['queen-slime', 'the-twins', 'the-destroyer', 'skeletron-prime', 'duke-fishron']) expect(status(after, id), id).toBe('recommended')
+  })
+
+  it('the three mechs open Plantera on its page too (locked note gone, status recommended in the mechs’ next steps)', () => {
+    const marks = (ids: string[]) => Object.fromEntries(ids.map((id) => [id, 'defeated' as const]))
+    expect(section(render(boss('plantera'), undefined, marks(['wall-of-flesh'])), 'header')).toContain('data-locked-note')
+    expect(section(render(boss('plantera'), undefined, marks(['wall-of-flesh', ...MECHS])), 'header')).not.toContain('data-locked-note')
+    const twins = section(render(boss('the-twins'), undefined, marks(['wall-of-flesh', ...MECHS])), 'next')
+    expect(twins).toMatch(/data-opens="plantera"[\s\S]*?data-node-status="recommended"/)
   })
 })

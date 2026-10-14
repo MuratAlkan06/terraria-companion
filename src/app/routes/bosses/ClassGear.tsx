@@ -6,7 +6,8 @@ import { cx } from '../../../components/cx'
 import { PixelPanel } from '../../../components/PixelPanel'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { ArmorSet, Boss, ConditionIndex, SpriteIndex } from '../../../data-access/types'
-import type { MapGraph, NodeState } from '../../../components/nodeMap/graph'
+import type { MapGraph, NodeState, WorldEvil } from '../../../components/nodeMap/graph'
+import { effectiveProgress, isNodeSatisfied } from '../../../scoring/progress'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { ItemCell, PanelHeading, TipList, type GateRef } from './BossBits'
 import { bossMapHref, bossPageHref } from './bossNav'
@@ -40,8 +41,12 @@ export interface ClassGearProps {
   /** Links the real weapons a quoted tip names (BossPageData.linkTip). */
   linkTip?: (text: string) => TipSegment[]
   sprites: SpriteIndex | null
-  /** Tracked progress: a gate marked defeated drops its GateBadge (UX_SPEC §8). */
+  /**
+   * Tracked progress: a satisfied gate drops its GateBadge, live (UX_SPEC §8, §10.5) — a boss marked
+   * defeated, a milestone once its bosses are (src/scoring/progress.ts, tracked defeats only).
+   */
   nodeStates: Readonly<Record<string, NodeState>>
+  worldEvil?: WorldEvil | null
   titleId: string
   /** Gear data injected directly (tests); the page loads it when the boss has gear entries. */
   gearData?: GearData
@@ -49,7 +54,7 @@ export interface ClassGearProps {
 
 const LINK = 'text-link underline decoration-1 underline-offset-4 hover:text-accent-strong'
 
-export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, sprites, nodeStates, titleId, gearData }: ClassGearProps) {
+export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, sprites, nodeStates, worldEvil = null, titleId, gearData }: ClassGearProps) {
   const [tab, setTab] = useState<GearClass>('melee')
   const gear = curatedList(boss, 'suggestedEquipment')
   const strategies = curatedList(boss, 'strategies')
@@ -112,7 +117,7 @@ export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, spri
           // findable in-page and render server-side.
           <Tabs.Content key={cls} value={cls} forceMount className="space-y-4 pt-4 data-[state=inactive]:hidden" data-class-panel={cls}>
             {gear.status === 'curated' ? (
-              <ClassGearSlots boss={boss} cls={cls} gaps={gaps} graph={graph} conditions={conditions} itemOf={itemOf} sprites={sprites} nodeStates={nodeStates} gearData={gearData} />
+              <ClassGearSlots boss={boss} cls={cls} gaps={gaps} graph={graph} conditions={conditions} itemOf={itemOf} sprites={sprites} nodeStates={nodeStates} worldEvil={worldEvil} gearData={gearData} />
             ) : null}
             <ClassTips cls={cls} tips={tips.byClass[cls]} unknown={strategies.status === 'unknown'} boss={boss} linkTip={linkTip} />
           </Tabs.Content>
@@ -180,6 +185,7 @@ function ClassGearSlots(props: {
   itemOf: (id: number) => ItemInfo
   sprites: SpriteIndex | null
   nodeStates: Readonly<Record<string, NodeState>>
+  worldEvil: WorldEvil | null
   gearData?: GearData
 }) {
   const resource = useResource('boss-gear', loadGearData, peekGearData)
@@ -222,12 +228,14 @@ function GearGroup({ label, children }: { label: string; children: ReactNode }) 
   )
 }
 
-function GearEntrySlots({ entry, data, graph, conditions, itemOf, sprites, nodeStates }: { entry: GearEntry; data: GearData; graph: MapGraph; conditions: ConditionIndex; itemOf: (id: number) => ItemInfo; sprites: SpriteIndex | null; nodeStates: Readonly<Record<string, NodeState>> }) {
+function GearEntrySlots({ entry, data, graph, conditions, itemOf, sprites, nodeStates, worldEvil }: { entry: GearEntry; data: GearData; graph: MapGraph; conditions: ConditionIndex; itemOf: (id: number) => ItemInfo; sprites: SpriteIndex | null; nodeStates: Readonly<Record<string, NodeState>>; worldEvil: WorldEvil | null }) {
+  const ep = effectiveProgress(graph.progression, { worldEvil, nodeStates })
+  const memo = new Map<string, boolean>()
   const gatesOf = (gatedBy: { bosses: string[]; conditions: string[] } | undefined): GateRef[] => {
     if (!gatedBy) return []
     const nodes = [...gatedBy.bosses, ...gatedBy.conditions.flatMap((c) => conditions.byId.get(c)?.satisfiedByNode ?? [])]
     return [...new Set(nodes)]
-      .filter((id) => nodeStates[id] !== 'defeated')
+      .filter((id) => !isNodeSatisfied(graph.progression, ep, id, memo))
       .map((id) => ({ id, name: graph.nodeById.get(id)?.name ?? id, to: bossPageHref(id) ?? bossMapHref(id) }))
   }
   const itemGates = (id: number) => gatesOf((data.weapons.get(id) ?? data.accessories.get(id) ?? data.armor.get(id))?.gatedBy)

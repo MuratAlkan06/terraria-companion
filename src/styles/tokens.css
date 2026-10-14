@@ -215,6 +215,36 @@
   --animate-twinkle: twinkle 3.3s steps(1, end) infinite;
   --animate-twinkle-slow: twinkle 5.1s steps(1, end) infinite;
   --animate-glow: glow 4.8s steps(1, end) infinite;
+  /* P5-S4 boss-branch unlock (UX_SPEC §12 signature moment): each element animates 200ms
+     ease-out-strong after its cascade delay (inline animation-delay, 50ms steps). The `from`-only
+     keyframes start at the locked look and end at the element's own (open) styles; `backwards`
+     holds the locked look through the delay. Reduced motion: the -fade forms only — opacity and
+     colour, no movement — with every delay 0 (index.css keeps their duration). */
+  --animate-unlock-node: unlock-node var(--dur-ui) var(--ease-out-strong) backwards;
+  --animate-unlock-fade: unlock-fade var(--dur-ui) var(--ease-out-strong) backwards;
+  --animate-unlock-glow: unlock-glow var(--dur-ui) var(--ease-out-strong) backwards;
+  --animate-ring-fill: ring-fill var(--dur-ui) var(--ease-out-strong) backwards;
+  --animate-lock-release: lock-release var(--dur-ui) var(--ease-out-strong) both;
+  --animate-lock-fade: lock-fade var(--dur-ui) var(--ease-out-strong) both;
+
+  @keyframes unlock-node {
+    from { opacity: 0.45; transform: scale(0.9); }
+  }
+  @keyframes unlock-fade {
+    from { opacity: 0.3; }
+  }
+  @keyframes unlock-glow {
+    from { opacity: 0; }
+  }
+  @keyframes ring-fill {
+    from { border-color: var(--color-stone-600); background-color: var(--color-slot); }
+  }
+  @keyframes lock-release {
+    to { opacity: 0; transform: translateY(-6px) scale(0.75); }
+  }
+  @keyframes lock-fade {
+    to { opacity: 0; }
+  }
 
   @keyframes sheet-in {
     from { transform: translateY(100%); }

@@ -82,6 +82,12 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Exception (UX_SPEC §12): the boss-map unlock cascade stays an opacity-only fade under reduced
+     motion — its reduced form has no movement and no stagger (tokens.css, unlock-*). */
+  [data-unlock] {
+    animation-duration: var(--dur-ui) !important;
+  }
 }
 
 /* Pixel-art rendering helper (ADR D4). */

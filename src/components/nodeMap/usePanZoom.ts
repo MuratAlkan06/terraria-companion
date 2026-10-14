@@ -36,6 +36,15 @@ export interface PanZoom {
   animated: boolean
   /** The uncovered part of the map box (screen px). */
   viewport: Size
+  /** The whole map box (screen px). */
+  box: Size
+  /** The view right now (`view` is as of the last render; this includes changes made since). */
+  current: () => View
+  /**
+   * Move to a view computed elsewhere (the unlock cascade's framing, ./cascadeCamera) as given: like
+   * revealClear's, the bounds stretch to include it (it may sit past them to clear a control).
+   */
+  go: (view: View, options?: { animate?: boolean }) => void
   /** True once the map box has been measured. */
   ready: boolean
   dragging: boolean
@@ -260,10 +269,16 @@ export function usePanZoom(content: Size, limits: ZoomLimits, inset: Inset = NO_
     [apply],
   )
 
+  const current = useCallback(() => viewRef.current, [])
+  const go = useCallback((next: View, options: { animate?: boolean } = {}) => apply(next, options.animate ?? true, next), [apply])
+
   return {
     view,
     animated,
     viewport,
+    box,
+    current,
+    go,
     ready: box.width > 0 && box.height > 0,
     dragging,
     surfaceRef: setElement,

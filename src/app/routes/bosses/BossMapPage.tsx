@@ -7,6 +7,7 @@ import { buildMapGraph, edgeLegendForms, frontierId, layoutInputs, WORLD_EVIL_LA
 import { layoutGraph } from '../../../components/nodeMap/layout'
 import { INITIAL_ZOOM, MAP_LAYOUT_OPTIONS, POINTER_MIN_ZOOM, tapFloorZoom } from '../../../components/nodeMap/mapConfig'
 import type { Inset } from '../../../components/nodeMap/panZoom'
+import { mapProgress, newlyOpened } from '../../../components/nodeMap/progressView'
 import { PixelLoader } from '../../../components/PixelLoader'
 import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { ErrorState } from '../../../components/States'
@@ -19,21 +20,27 @@ import { useSearchParams } from 'react-router'
 import { BossFocusCard } from './BossFocusCard'
 import { loadBossMapData, peekBossMapData, type BossMapData } from './bossMapData'
 import { bossPageHref, MAP_NODE_PARAM } from './bossNav'
+import { cascadeUncoverAnnouncement } from './focusCardCopy'
+import { MapOptionsMenu, ResetProgressFlow } from './MapOptionsMenu'
 
 /**
  * /bosses — Boss Node Map v1 (PRD P5-S1; UX_SPEC §3.7, §4d, §7, §9).
  *
  * - The progression tree (NodeMap): a layered layout computed from the typed edges, stage bands in
  *   game order, either/or fork for the world evils; vertical on phones/tablets, horizontal from lg.
- * - MapToolbar: the world-evil choice (persisted to tc.v1.progress.worldEvil) and the legend toggle.
- *   The legend docks beside the map from md, and overlays it (collapsed by default) on phones.
+ * - MapToolbar: the world-evil choice (persisted to tc.v1.progress.worldEvil), the legend toggle and
+ *   the overflow menu with "Reset progress…" (P5-S4 AC3: ConfirmDialog → 6s Undo toast). The legend
+ *   docks beside the map from md, and overlays it (collapsed by default) on phones, where its toggle
+ *   and the overflow menu share the map's bottom-left corner (the toolbar row has no room at 375px).
  * - A boss with a page (P5-S2: pre-Hardmode, src/schemas/bossPages.ts) is a link to that page; any
- *   other node opens its focus card: beside the map from lg, along its bottom edge below. Nothing
- *   here marks a defeat (P5-S4) — the card says so.
+ *   other node opens its focus card: beside the map from lg, along its bottom edge below. A boss's
+ *   card (reached by `?node=`) carries the defeat control (P5-S4).
+ * - Defeat tracking (P5-S4): every node and line is drawn in its tracked status; a defeat marked in a
+ *   card — or on a boss page since the map was last shown (progressStore.shownNodeStates) — plays the
+ *   unlock cascade (UX_SPEC §12).
  * - `?node=<id>` (a boss page's "show on the map" links): the map opens centred on that node with its
  *   card open (for a node with a page, the card links back to it).
- * - No "What Should I Do Next?" panel (P5-S5) and no reset-progress control (P5-S4): not shipped,
- *   so absent (UX_SPEC §3.2 rule).
+ * - No "What Should I Do Next?" panel (P5-S5): not shipped, so absent (UX_SPEC §3.2 rule).
  */
 const TITLE_ID = 'boss-map-title'
 const DETAILS_ID = 'boss-map-details'
@@ -155,7 +162,10 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
 
   const worldEvil = useProgressStore((s) => s.progress.worldEvil)
   const nodeStates = useProgressStore((s) => s.progress.nodeStates)
+  const shownNodeStates = useProgressStore((s) => s.shownNodeStates)
+  const markNodeStatesShown = useProgressStore((s) => s.markNodeStatesShown)
   const setWorldEvil = useProgressStore((s) => s.setWorldEvil)
+  const unsaved = useProgressStore((s) => s.persistError)
   const startId = useMemo(() => frontierId(layout.layers.flat(), nodeStates), [layout, nodeStates])
 
   const [legendOpen, setLegendOpen] = useState(legendDocked)
@@ -171,6 +181,12 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
   const legendTitleId = useId()
   const [cardElement, setCardElement] = useState<HTMLElement | null>(null)
   const cardInset = useCardInset(cardElement, horizontal)
+  const [resetOpen, setResetOpen] = useState(false)
+  // Where the reset's undo toast renders: right after the options button (toolbar or map corner).
+  const [toastHost, setToastHost] = useState<HTMLElement | null>(null)
+  const optionsRef = useRef<HTMLButtonElement>(null)
+  const openReset = useCallback(() => setResetOpen(true), [])
+  const returnToOptions = useCallback(() => optionsRef.current, [])
 
   // The card's heading takes focus whenever the card opens or switches node.
   useEffect(() => {
@@ -195,6 +211,20 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
     if (id) mapRef.current?.focus(id)
   }, [selectedId])
   const onJump = useCallback((id: string) => setSelection({ id, via: 'jump' }), [])
+  // The unlock cascade can't fit beside the card (design review P5-S4 H1): the card closes — it was
+  // where the mark was made, or a deep link's — and says so politely; focus inside it goes to its node.
+  const [announcement, setAnnouncement] = useState('')
+  const onCascadeUncover = useCallback(() => {
+    const id = selectedId
+    if (!id) return
+    const progressBefore = mapProgress(graph, shownNodeStates, worldEvil)
+    const opened = newlyOpened(graph, progressBefore, mapProgress(graph, nodeStates, worldEvil)).map((o) => graph.nodeById.get(o)?.name ?? o)
+    const marked = shownNodeStates[id] !== nodeStates[id] ? { name: graph.nodeById.get(id)?.name ?? id, state: nodeStates[id] ?? null } : null
+    setAnnouncement(cascadeUncoverAnnouncement(marked, opened, !unsaved))
+    const focusInCard = cardElement?.contains(document.activeElement) ?? false
+    setSelection(null)
+    if (focusInCard) mapRef.current?.focus(id)
+  }, [selectedId, graph, shownNodeStates, nodeStates, worldEvil, unsaved, cardElement])
   // Changing the world evil re-routes the either/or fork: bring the pair into view to show it.
   const onWorldEvil = useCallback(
     (value: WorldEvil | null) => {
@@ -226,11 +256,9 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
       aria-expanded={legendOpen}
       aria-controls={legendOpen ? legendId : undefined}
       onClick={() => setLegendOpen((open) => !open)}
-      // Over the map on phones: the map's stage labels keep clear of it.
-      data-map-overlay={legendDocked ? undefined : ''}
       className={cx(
         'group inline-flex min-h-tap items-center gap-2 border-2 border-panel-border bg-panel px-3 text-sm font-semibold text-fg shadow-pixel hover:bg-night-700',
-        !legendDocked && 'absolute bottom-2 left-2 z-(--z-hud) shadow-pixel-drop',
+        !legendDocked && 'shadow-pixel-drop',
       )}
     >
       Legend
@@ -242,8 +270,15 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
     <>
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6">
         <WorldEvilToggle value={worldEvil} onChange={onWorldEvil} />
-        {legendDocked ? legendToggle : null}
+        {legendDocked ? (
+          <>
+            {legendToggle}
+            <MapOptionsMenu onReset={openReset} triggerRef={optionsRef} className="ml-auto" />
+            <div ref={setToastHost} className="contents" />
+          </>
+        ) : null}
       </div>
+      <ResetProgressFlow open={resetOpen} onOpenChange={setResetOpen} returnFocus={returnToOptions} toastHost={toastHost} />
 
       <div className="flex min-h-0 flex-1 border-t-2 border-panel-border">
         {legendOpen && legendDocked ? (
@@ -264,6 +299,11 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
             sprites={data.sprites}
             worldEvil={worldEvil}
             nodeStates={nodeStates}
+            cascadeBaseline={shownNodeStates}
+            onCascadeShown={markNodeStatesShown}
+            onCascadeUncover={onCascadeUncover}
+            // The card is open but not measured yet: a cascade waits to see how much map it leaves.
+            holdCascade={selectedId !== null && cardInset === undefined}
             selectedId={selectedId}
             detailsId={DETAILS_ID}
             minZoom={minZoom}
@@ -275,7 +315,14 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
             nodeHref={nodeHref}
             initialFocusId={initialFocus}
           />
-          {legendDocked ? null : legendToggle}
+          {legendDocked ? null : (
+            // Over the map on phones: the map's stage labels keep clear of it, its strip is reserved.
+            <div data-map-overlay="" className="absolute bottom-2 left-2 z-(--z-hud) flex gap-2">
+              {legendToggle}
+              <MapOptionsMenu onReset={openReset} triggerRef={optionsRef} className="shadow-pixel-drop" />
+            </div>
+          )}
+          {legendDocked ? null : <div ref={setToastHost} className="contents" />}
           {legendOpen && !legendDocked ? (
             <div
               id={legendId}
@@ -293,7 +340,7 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
               nodeId={selectedId}
               sprites={data.sprites}
               worldEvil={worldEvil}
-              state={nodeStates[selectedId]}
+              nodeStates={nodeStates}
               pageHref={pageOf(graph, selectedId)}
               onClose={onClose}
               onJump={onJump}
@@ -308,6 +355,9 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
           ) : null}
         </div>
       </div>
+      <p role="status" className="sr-only" data-map-announcer="">
+        {announcement}
+      </p>
     </>
   )
 }

@@ -30,6 +30,8 @@ export interface ScenePath {
 
 export interface SceneBadge {
   key: string
+  /** The link whose types it shows. */
+  linkId: string
   x: number
   y: number
   types: EdgeType[]
@@ -123,7 +125,7 @@ export function buildScene(graph: MapGraph, layout: GraphLayout, worldEvil: Worl
       const inPlay = source ? isNodeActive(source, worldEvil) : true
       paths.push({ key: `trunk:${link.id}`, d: edgePathData(points, layout.orientation), type: link.primary, inPlay, marker: false, role: 'trunk', linkId: link.id })
       const mid = lastSegmentMidpoint(points)
-      badges.push({ key: `badge:${link.id}`, ...mid, types: link.types, inPlay })
+      badges.push({ key: `badge:${link.id}`, linkId: link.id, ...mid, types: link.types, inPlay })
     }
     const incomingType = byPrecedence(incoming.map((l) => l.primary))[0]
     for (const branch of forkBranches(graph, group, incomingType, worldEvil)) {
@@ -146,7 +148,7 @@ export function buildScene(graph: MapGraph, layout: GraphLayout, worldEvil: Worl
     if (!route) continue
     const inPlay = isLinkActive(graph, link, worldEvil)
     paths.push({ key: `link:${link.id}`, d: edgePathData(route.points, layout.orientation), type: link.primary, inPlay, marker: true, role: 'link', linkId: link.id })
-    badges.push({ key: `badge:${link.id}`, ...lastSegmentMidpoint(route.points), types: link.types, inPlay })
+    badges.push({ key: `badge:${link.id}`, linkId: link.id, ...lastSegmentMidpoint(route.points), types: link.types, inPlay })
   }
 
   return { paths, badges, orChips }
