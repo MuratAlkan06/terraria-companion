@@ -29,6 +29,13 @@
  *   P3-S6/S7) — it heads that readout's tip.
  * - `timed-test` / `dps-graph`: how the standardized test's result and the per-second graph are
  *   measured (PRD P3-S3 AC2–AC4); they replace `dps-while-attacking` at the head of their own tips.
+ * - Summons (PRD P3-S9 / P3-S10): `dps-with-summons` replaces `dps-while-attacking` while minions or
+ *   sentries are involved (they attack all the time, so the live estimate divides by the time since the
+ *   first one appeared — labSession.ts); `summon-hit-rate` heads a summon staff's hits/sec readout;
+ *   `target-reach` is the dummy distance for whips and summons (the projectile copy of
+ *   `target-distance` would not describe them); `minion-loadout` explains the minions out beside a whip.
+ *   The engine's own whip and summon entries come right after the modeling choices, before its generic
+ *   ones (design review M6).
  * - Every engine approximation is shown verbatim (its copy is already in plain words).
  */
 import type { Archetype, Weapon } from '../schemas'
@@ -57,6 +64,29 @@ export const LAB_ASSUMPTIONS = {
     id: 'target-distance',
     title: `Dummy ${RANGED_TARGET_X_TILES} tiles away`,
     detail: `For weapons that fire projectiles, the Infinite Dummy’s centre stands ${RANGED_TARGET_X_TILES} tiles in front of you (melee weapons test at point-blank), so shots visibly travel before they land. Spread shots can miss at this range, as they would in-game from there. The distance is a Lab choice.`,
+  },
+  'target-reach': {
+    id: 'target-reach',
+    title: `Dummy ${RANGED_TARGET_X_TILES} tiles away`,
+    detail: `For whips, minions and sentries the Infinite Dummy’s centre stands ${RANGED_TARGET_X_TILES} tiles in front of you, as for weapons that fire projectiles (melee weapons test at point-blank): inside every whip’s range, with room for summons to reach it. The distance is a Lab choice.`,
+  },
+  'minion-loadout': {
+    id: 'minion-loadout',
+    title: 'Minion loadout: minions out beside the whip',
+    detail:
+      'The minion loadout is a Lab test setup: with a whip equipped, the chosen minion staff’s minions are out from the start — as many as your minion slots hold — and come back fresh with every restart, so the whip’s tags can boost them. In-game you summon them yourself before switching to the whip. Reset clears the loadout.',
+  },
+  'dps-with-summons': {
+    id: 'dps-with-summons',
+    title: 'Divided by the time since the first summon',
+    detail:
+      'Minions and sentries attack all the time, not only while you attack, so once one is out, estimated DPS = total damage ÷ the time since the first one appeared (or the time spent in whole attacks, if that is longer). Before any summon it divides by the time spent attacking.',
+  },
+  'summon-hit-rate': {
+    id: 'summon-hit-rate',
+    title: 'Summon hits per second',
+    detail:
+      'A summon staff attacks through what it summons, so the Lab counts their hits, not your uses of the staff: Hits/sec = hits ÷ the time since the first summon appeared (the same time estimated DPS divides by). With Multiple Dummies it counts the hits on every dummy.',
   },
   'target-row': {
     id: 'target-row',
@@ -111,10 +141,14 @@ const BY_ARCHETYPE: Partial<Record<Archetype, readonly LabAssumption[]>> = {
   'swing-melee': [LAB_ASSUMPTIONS['swing-reach-arc']],
 }
 
+/** Archetypes whose dummy distance is `target-reach` (a whip's sweep, summons) rather than a shot's `target-distance`. */
+const REACH_ARCHETYPES: readonly Archetype[] = ['whip', 'minion-sentry']
+
 function archetypeAssumptions(archetype: Archetype): readonly LabAssumption[] {
+  const distance = REACH_ARCHETYPES.includes(archetype) ? LAB_ASSUMPTIONS['target-reach'] : LAB_ASSUMPTIONS['target-distance']
   return [
     ...(BY_ARCHETYPE[archetype] ?? []),
-    ...(firesProjectiles(archetype) ? [LAB_ASSUMPTIONS['target-distance']] : []),
+    ...(firesProjectiles(archetype) ? [distance] : []),
     ...(archetype === 'bow-gun' ? [LAB_ASSUMPTIONS['ammo-effects']] : []),
   ]
 }
@@ -137,18 +171,41 @@ function statedThrustReach(weapon: Pick<Weapon, 'wikiUrl' | 'labBehavior'>, engi
   ]
 }
 
+/**
+ * The engine's whip and summon mechanics (how the whip swings and tags, slots, attacks, targeting, each
+ * AI class, sentry placement): listed right after the modeling choices, ahead of the generic engine
+ * entries (defense, knockback, …) that say nothing specific about a summoner's numbers (design review M6).
+ */
+const SUMMONER_IDS: ReadonlySet<string> = new Set([
+  'whip-swing',
+  'whip-tag',
+  'summon-slots',
+  'summon-attack',
+  'summon-target',
+  'minion-melee-contact',
+  'minion-ground-melee',
+  'minion-hover-strike',
+  'minion-ranged-shot',
+  'sentry-placement',
+])
+
 /** What else decides the list: the Lab's target (Multiple Dummies) and whether the weapon comes back to hand. */
 export interface LabAssumptionContext {
   target?: LabTarget
   /** WeaponSummary.returnsToHand: an attack lasts until the thrown weapon is back. */
   returnsToHand?: boolean
+  /** Minions or sentries are involved (a summon staff, or the minion loadout): the live DPS rule changes. */
+  summons?: boolean
+  /** The minion loadout is on (its minions are out beside the equipped weapon). */
+  loadout?: boolean
 }
 
 /**
  * The full list for an AssumptionsTip: modeling choices (the archetype's and the target's, then the
- * engine's convention labels — those carry a `ruling`) or the stated reach they replace, the HUD's
- * measurement rule (and, for a weapon that comes back, how long one of its attacks lasts), then every
- * other engine approximation for the equipped weapon, verbatim.
+ * engine's convention labels — those carry a `ruling`) or the stated reach they replace, the engine's
+ * whip and summon mechanics (`SUMMONER_IDS`), the HUD's measurement rule (and, for a weapon that comes
+ * back, how long one of its attacks lasts), then every other engine approximation for the equipped
+ * weapon, verbatim.
  */
 export function labAssumptionsFor(
   archetype: Archetype,
@@ -156,19 +213,22 @@ export function labAssumptionsFor(
   weapon: Pick<Weapon, 'wikiUrl' | 'labBehavior'>,
   context: LabAssumptionContext = {},
 ): LabAssumption[] {
+  const summoner = (a: Approximation) => !a.ruling && SUMMONER_IDS.has(a.id)
   return [
     ...archetypeAssumptions(archetype),
     ...(context.target?.kind === 'row' ? [LAB_ASSUMPTIONS['target-row']] : []),
+    ...(context.loadout ? [LAB_ASSUMPTIONS['minion-loadout']] : []),
     ...engine.filter((a) => a.ruling),
     ...statedThrustReach(weapon, engine),
-    LAB_ASSUMPTIONS['dps-while-attacking'],
+    ...engine.filter(summoner),
+    context.summons ? LAB_ASSUMPTIONS['dps-with-summons'] : LAB_ASSUMPTIONS['dps-while-attacking'],
     ...(context.returnsToHand ? [LAB_ASSUMPTIONS['attack-until-back']] : []),
-    ...engine.filter((a) => !a.ruling),
+    ...engine.filter((a) => !a.ruling && !summoner(a)),
   ]
 }
 
 /** The HUD numbers that carry an EstimateLabel. */
-export type LabEstimate = 'attacks-per-sec' | 'hits-per-sec' | 'estimated-dps' | 'timed-test-dps' | 'dps-graph'
+export type LabEstimate = 'attacks-per-sec' | 'hits-per-sec' | 'summon-hits-per-sec' | 'estimated-dps' | 'timed-test-dps' | 'dps-graph'
 
 /**
  * The measurement rule that heads each DPS estimate's tip — what the damage is divided by comes
@@ -177,10 +237,14 @@ export type LabEstimate = 'attacks-per-sec' | 'hits-per-sec' | 'estimated-dps' |
 const MEASURED_BY: Record<LabEstimate, LabAssumption> = {
   'attacks-per-sec': LAB_ASSUMPTIONS['attack-rate'],
   'hits-per-sec': LAB_ASSUMPTIONS['hit-rate'],
+  'summon-hits-per-sec': LAB_ASSUMPTIONS['summon-hit-rate'],
   'estimated-dps': LAB_ASSUMPTIONS['dps-while-attacking'],
   'timed-test-dps': LAB_ASSUMPTIONS['timed-test'],
   'dps-graph': LAB_ASSUMPTIONS['dps-graph'],
 }
+
+/** The live estimate's own measurement rules (one of them leads the list — `labAssumptionsFor`). */
+const LIVE_DPS_RULES: ReadonlySet<string> = new Set([LAB_ASSUMPTIONS['dps-while-attacking'].id, LAB_ASSUMPTIONS['dps-with-summons'].id])
 
 /**
  * Assumptions that decide the attack rate (design review M5): the rate rule itself, the 60 Hz
@@ -198,6 +262,27 @@ const CADENCE_IDS: ReadonlySet<string> = new Set(['fixed-tick', 'cadence', 'reus
 const HIT_RATE_IDS: ReadonlySet<string> = new Set([...CADENCE_IDS, 'yoyo-control', 'target-row'])
 
 /**
+ * What decides a summon staff's hit rate: the tick, how many summons the slots hold, how often each
+ * attacks (the stated or modeled rate — B63 P-2 / P-3 labels), whom they target, how its class attacks,
+ * where a sentry stands, and how many dummies there are.
+ */
+const SUMMON_RATE_IDS: ReadonlySet<string> = new Set([
+  'fixed-tick',
+  'no-equipment',
+  'summon-slots',
+  'summon-attack',
+  'summon-target',
+  'summon-average-rate',
+  'summon-hit-cap',
+  'minion-melee-contact',
+  'minion-ground-melee',
+  'minion-hover-strike',
+  'minion-ranged-shot',
+  'sentry-placement',
+  'target-row',
+])
+
+/**
  * The assumptions behind one HUD estimate, led by how it is measured: attacks/sec by `attack-rate`,
  * then only the cadence ones in the full list's order; a yoyo's hits/sec by `hit-rate`, then what
  * decides its hit rate. Each DPS figure depends on all of them: the live est. DPS led by
@@ -208,5 +293,8 @@ export function assumptionsForEstimate<A extends { id: string }>(all: readonly A
   const measured = MEASURED_BY[estimate]
   if (estimate === 'attacks-per-sec') return [measured, ...all.filter((a) => CADENCE_IDS.has(a.id))]
   if (estimate === 'hits-per-sec') return [measured, ...all.filter((a) => HIT_RATE_IDS.has(a.id))]
-  return [measured, ...all.filter((a) => a.id !== LAB_ASSUMPTIONS['dps-while-attacking'].id)]
+  if (estimate === 'summon-hits-per-sec') return [measured, ...all.filter((a) => SUMMON_RATE_IDS.has(a.id))]
+  // The live estimate is led by the rule the list carries (with summons: `dps-with-summons`).
+  const live = estimate === 'estimated-dps' ? all.find((a) => LIVE_DPS_RULES.has(a.id)) : undefined
+  return [live ?? measured, ...all.filter((a) => !LIVE_DPS_RULES.has(a.id))]
 }

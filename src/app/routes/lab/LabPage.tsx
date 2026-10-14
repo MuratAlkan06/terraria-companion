@@ -21,19 +21,28 @@ import type { Item, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
 import { createLabSession, type LabSession } from '../../../lab/labSession'
 import { LAB_WEAPON_PARAM } from '../../../lab/labLinks'
-import { ammoChoices, resolveAmmo, type LabTarget } from '../../../lab/labSetup'
-import { attackVerb, labStatus, resolveLabSelection, type LabNotice, type LabSelection } from '../../../lab/labWeapons'
-import type { LabSettings, TimedTestDuration } from '../../../sim'
+import { ammoChoices, DEFAULT_LAB_TARGET, resolveAmmo, type LabTarget } from '../../../lab/labSetup'
+import { attackVerb, labStatus, loadoutChoices, resolveLabSelection, type LabNotice, type LabSelection } from '../../../lab/labWeapons'
+import { DEFAULT_LAB_SETTINGS, type LabSettings, type TimedTestDuration } from '../../../sim'
 import { useSettingsStore } from '../../settingsStore'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
 import { ArenaCanvas } from './ArenaCanvas'
 import { DpsGraph } from './DpsGraph'
 import { graphOpenByDefault } from './dpsGraphModel'
-import { AmmoCounter, AttackHint, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts, TargetStrip } from './Hud'
+import { AmmoCounter, AttackHint, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts, SummonsPanel, TargetStrip } from './Hud'
+import { slotNumber } from './hudStyles'
 import { INITIAL_BROWSER_STATE, type LabBrowserState } from './browserModel'
 import { LabBrowser } from './LabBrowser'
-import { ammoLoadedAnnouncement, manaSettingAnnouncement, targetAnnouncement } from './settingsCopy'
+import {
+  ammoLoadedAnnouncement,
+  loadoutAnnouncement,
+  manaSettingAnnouncement,
+  replacedAnnouncement,
+  resetAnnouncement,
+  slotsAnnouncement,
+  targetAnnouncement,
+} from './settingsCopy'
 import { arenaSpriteUrl, loadLabData, peekLabData, type LabData } from './labData'
 import { DPS_GRAPH_ID, lockNoticeId, PANEL_SETTINGS, PANEL_WEAPONS, panelToggleId } from './labIds'
 import { LIMITATION_TITLE_ID, LimitationCard } from './LimitationCard'
@@ -59,6 +68,11 @@ import { useLabHud } from './useLabHud'
  * Infinite Dummy or Multiple Dummies), which, like the settings, carries over to the next weapon
  * until Reset restores the Infinite Dummy.
  *
+ * Summons (P3-S9 / P3-S10): a minion or sentry staff summons where the arena is clicked; with a whip
+ * equipped, the settings panel's MINION LOADOUT puts a minion staff's minions out beside it (kept for
+ * the visit like the ammo, carried to the next whip; a new session, as an ammo switch — the stats
+ * restart). Reset clears the loadout along with the settings (PRD P3-S9 AC4: every summon gone).
+ *
  * Desktop (≥ lg): weapon browser | arena (canvas + HTML HUD) | target & settings panel, both panels
  * collapsible. Tablet (md–lg): the arena in the centre and ONE side panel at a time, opened from a
  * two-button dock under it. Phone (< md): the arena on top (~55vh), corner HUD, the camera zoomed
@@ -77,7 +91,13 @@ type PanelKey = 'weapons' | 'settings'
 // its rows — design review P3-S2/S3).
 const DOCK: readonly { key: PanelKey; title: string; panelId: string; icon: LucideIcon; description: string }[] = [
   { key: 'weapons', title: 'Weapons', panelId: PANEL_WEAPONS, icon: Swords, description: 'Simulated weapons equip; others show why not.' },
-  { key: 'settings', title: 'Target & settings', panelId: PANEL_SETTINGS, icon: SlidersHorizontal, description: 'The target, ammo and mana, the test settings, and how to attack.' },
+  {
+    key: 'settings',
+    title: 'Target & settings',
+    panelId: PANEL_SETTINGS,
+    icon: SlidersHorizontal,
+    description: 'The target, ammo, mana and summons, the test settings, and how to attack.',
+  },
 ]
 
 /** Arena width (CSS px) below which the HUD switches to its compact corner layout. */
@@ -138,6 +158,8 @@ function LabWorkspace({ data, fullscreen, onToggleFullscreen }: WorkspaceProps) 
     const ammoClass = item.ammoStats?.ammoClass
     if (ammoClass) setAmmoPicks((prev) => ({ ...prev, [ammoClass]: item.id }))
   }, [])
+  // The minion loadout chosen for whips during this visit (null: none).
+  const [loadoutId, setLoadoutId] = useState<number | null>(null)
 
   const equip = useCallback(
     (id: number) => {
@@ -171,6 +193,8 @@ function LabWorkspace({ data, fullscreen, onToggleFullscreen }: WorkspaceProps) 
       targetRef={targetRef}
       ammoPicks={ammoPicks}
       onPickAmmo={pickAmmo}
+      loadoutId={loadoutId}
+      onLoadoutChange={setLoadoutId}
       fullscreen={fullscreen}
       onToggleFullscreen={onToggleFullscreen}
     />
@@ -184,24 +208,32 @@ interface StageProps extends WorkspaceProps {
   targetRef: RefObject<LabTarget | null>
   ammoPicks: Readonly<Record<string, number>>
   onPickAmmo: (item: Item) => void
+  /** The minion loadout chosen for whips (a minion staff's id), and its setter. */
+  loadoutId: number | null
+  onLoadoutChange: (id: number | null) => void
 }
 
 function LabStage({ selection, settingsRef, targetRef, ...rest }: StageProps) {
-  const { data, ammoPicks } = rest
+  const { data, ammoPicks, loadoutId } = rest
   const weapon = selection.weapon
   const choices = ammoChoices(weapon, data.setup)
   const ammo = resolveAmmo(weapon, data.setup, choices ? ammoPicks[choices.ammoClass] : null)
+  // The minion loadout applies beside a whip only (one of the minion staves the Lab equips).
+  const isWhip = weapon.labBehavior.kind === 'archetype' && weapon.labBehavior.params.archetype === 'whip'
+  const loadouts = useMemo(() => loadoutChoices(data.list), [data.list])
+  const loadout = isWhip && loadoutId !== null ? (loadouts.find((w) => w.id === loadoutId) ?? null) : null
   const created = useMemo(
     () =>
       createLabSession(weapon, {
         setup: data.setup,
         ammoId: ammo?.id ?? null,
+        loadout,
         ...(settingsRef.current ? { settings: settingsRef.current } : {}),
         ...(targetRef.current ? { target: targetRef.current } : {}),
       }),
-    // A new session per weapon and per loaded ammo only; settings changes go to the live session.
+    // A new session per weapon, per loaded ammo and per minion loadout only; settings changes go to the live session.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [weapon, ammo, data.setup],
+    [weapon, ammo, loadout, data.setup],
   )
   if (!created.ok) {
     // Unreachable for weapons that passed labStatus(); kept as a designed state, never a crash.
@@ -213,7 +245,7 @@ function LabStage({ selection, settingsRef, targetRef, ...rest }: StageProps) {
       </div>
     )
   }
-  return <LabView session={created.session} selection={selection} settingsRef={settingsRef} targetRef={targetRef} {...rest} />
+  return <LabView session={created.session} selection={selection} settingsRef={settingsRef} targetRef={targetRef} loadouts={loadouts} {...rest} />
 }
 
 const INTERACTIVE =
@@ -252,7 +284,20 @@ function useSpaceAttack(session: LabSession, enabled: boolean): void {
   }, [session, enabled])
 }
 
-function LabView({ session, selection, data, equip, settingsRef, targetRef, onPickAmmo, fullscreen, onToggleFullscreen }: StageProps & { session: LabSession }) {
+function LabView({
+  session,
+  selection,
+  data,
+  equip,
+  settingsRef,
+  targetRef,
+  onPickAmmo,
+  loadoutId,
+  onLoadoutChange,
+  loadouts,
+  fullscreen,
+  onToggleFullscreen,
+}: StageProps & { session: LabSession; loadouts: readonly Weapon[] }) {
   const hud = useLabHud(session)
   const wide = useBreakpoint('lg')
   const medium = useBreakpoint('md') && !wide
@@ -335,10 +380,16 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
     onPickAmmo(item)
     announce(ammoLoadedAnnouncement(item.name))
   }
-  // A mana setting restarts the stats (src/lab/labSession.ts): said like an ammo switch.
+  // A mana setting (or a slot setting with summons) restarts the stats (src/lab/labSession.ts): said like an ammo switch.
   const onSettingsChange = (patch: Partial<LabSettings>) => {
     const result = session.updateSettings(patch)
-    if (result.ok && result.restarted) announce(manaSettingAnnouncement(patch))
+    if (result.ok && result.restarted) announce(patch.minionSlots !== undefined || patch.sentrySlots !== undefined ? slotsAnnouncement(patch) : manaSettingAnnouncement(patch))
+  }
+  // A new minion loadout is a new session (like an ammo switch): the stats restart with its minions out.
+  const onLoadoutSelect = (next: Weapon | null) => {
+    if (locked || (next?.id ?? null) === (session.loadout?.id ?? null)) return
+    onLoadoutChange(next?.id ?? null)
+    announce(loadoutAnnouncement(next?.name ?? null))
   }
   // A new target restarts the stats (src/lab/labSession.ts `setTarget`): said like an ammo switch.
   const onTargetChange = (target: LabTarget) => {
@@ -346,9 +397,30 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
   }
   const onReset = () => {
     const stopped = hud.timedTest.status === 'running'
+    // A staff's summons that were out go with the reset (PRD P3-S9 AC4): said so.
+    const summonsCleared = (hud.summons?.count ?? 0) > 0
     session.reset()
-    announce(`${stopped ? 'Test stopped. ' : ''}Reset: stats, target and default settings restored — ${weapon.name} is ready.`)
+    // Reset clears the minion loadout too (every summon gone, PRD P3-S9 AC4): the next session starts
+    // from the defaults the reset just restored.
+    const loadoutCleared = loadoutId !== null
+    if (loadoutCleared) {
+      settingsRef.current = { ...DEFAULT_LAB_SETTINGS }
+      targetRef.current = DEFAULT_LAB_TARGET
+      onLoadoutChange(null)
+    }
+    announce(resetAnnouncement({ weaponName: weapon.name, stopped, summonsCleared, loadoutCleared }))
   }
+  // A summon with the slots full replaced the oldest (design review M1): said politely, with the slots.
+  const replaced = hud.summons?.replaced ?? 0
+  const replacedSeen = useRef(replaced)
+  useEffect(() => {
+    const before = replacedSeen.current
+    replacedSeen.current = replaced
+    const summons = hud.summons
+    if (summons && replaced > before) announce(replacedAnnouncement(summons.kind, replaced - before, slotNumber(summons.slotsUsed), summons.slots))
+    // Only a new replacement speaks (a reset or a new session counts from zero again, silently).
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaced])
   // Each step of a test replaces the control that had focus; focus follows (./timedTestFocus.ts).
   const focusAfter = (event: TimedTestFocusEvent) => {
     const id = timedTestFocusTarget(event)
@@ -448,6 +520,13 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
         locked={locked}
         verb={verb}
         ammo={choices ? { choices, selectedId: session.ammo?.id ?? null, onSelect: onAmmoSelect, sprites: data.sprites } : null}
+        summons={
+          session.summonKind
+            ? { kind: session.summonKind, loadout: null }
+            : session.whip
+              ? { kind: null, loadout: { choices: loadouts, selectedId: session.loadout?.id ?? null, onSelect: onLoadoutSelect, sprites: data.sprites } }
+              : null
+        }
       />,
     ),
   }
@@ -511,7 +590,10 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
           data-timed-test-status={hud.timedTest.status}
         >
           <p id="lab-arena-help" className="sr-only">
-            Hold Space to {verb} at the {hud.targets ? 'first of the dummies' : 'Infinite Dummy'}. Damage appears in the live stats
+            {session.summonKind
+              ? `Click the arena or press Space to ${session.summonKind === 'sentry' ? 'place a sentry' : 'summon a minion'}; it attacks the ${hud.targets ? 'dummies' : 'Infinite Dummy'} on its own.`
+              : `Hold Space to ${verb} at the ${hud.targets ? 'first of the dummies' : 'Infinite Dummy'}.`}{' '}
+            Damage appears in the live stats
             {hud.targets ? ', with the hits on each dummy' : ''}.
           </p>
           <ArenaCanvas session={session} spriteUrl={spriteUrl} insetTop={insetTop} insetBottom={insetBottom} floorPx={floorPx} framing={framing} />
@@ -523,6 +605,10 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
                 {/* Contextual resources (UX_SPEC §3.4): the ManaBar for mana weapons, the AmmoCounter for bows and guns. */}
                 {hud.mana ? <ManaBar mana={hud.mana} manaConsumed={hud.manaConsumed} compact={compact} inlineNotice={manaNotice === 'inline'} /> : null}
                 {session.ammo ? <AmmoCounter ammo={session.ammo} sprites={data.sprites} used={hud.ammoConsumed} compact={compact} /> : null}
+                {/* Summons vs slots, the whip's tags and damage by source (P3-S9 / P3-S10); compact: a strip at the bottom. */}
+                {compact ? null : (
+                  <SummonsPanel summons={hud.summons} tags={hud.tags} breakdown={hud.breakdown} whip={session.whip !== null} multipleDummies={hud.targets !== null} compact={compact} />
+                )}
               </div>
               {hasEstimates ? (
                 // Compact: the low-mana notice sits at the foot of this column, level with the ManaBar it points at.
@@ -535,6 +621,9 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
             <div ref={hudBottomRef} className="flex flex-col gap-2">
               {/* Multiple Dummies: the hits on each dummy (PRD P3-S6 AC2), above the graph and controls. */}
               {hud.targets ? <TargetStrip targets={hud.targets} compact={compact} /> : null}
+              {compact ? (
+                <SummonsPanel summons={hud.summons} tags={hud.tags} breakdown={hud.breakdown} whip={session.whip !== null} multipleDummies={hud.targets !== null} compact strip />
+              ) : null}
               {graphOpen && hasAssumptions(graphAssumptions) ? (
                 <div id={DPS_GRAPH_ID}>
                   <DpsGraph graph={hud.graph} assumptions={graphAssumptions} compact={compact} />
@@ -561,7 +650,7 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
               style={{ bottom: insetBottom || undefined }}
               data-attack-hint-shown={showHint ? 'true' : 'false'}
             >
-              <AttackHint touch={touch} verb={verb} steer={steer} />
+              <AttackHint touch={touch} verb={verb} steer={steer} summon={session.summonKind} />
             </div>
             {finished && hasAssumptions(testAssumptions) ? (
               // Above the bottom controls; may cover the frozen top readouts on a short arena. Taller than
@@ -578,6 +667,7 @@ function LabView({ session, selection, data, equip, settingsRef, targetRef, onPi
                   usesAmmo={session.ammo !== null}
                   usesMana={hud.weapon.manaCostPerUse > 0}
                   dummyIds={hud.targets ? hud.targets.dummies.map((d) => d.id) : null}
+                  sources={hud.summons ? { weapon: session.whip ? 'Whip' : session.summonKind ? null : 'Weapon', summons: hud.summons.kind === 'sentry' ? 'Sentry' : 'Minion' } : null}
                   assumptions={testAssumptions}
                   onRunAgain={onRunAgain}
                   onReset={onResultsReset}

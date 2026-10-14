@@ -14,6 +14,14 @@ export const testName = (durationSec: TimedTestDuration) => `${durationSec}-seco
 export const LIVE_DPS_LABEL = 'Est. DPS (while attacking)'
 /** The compact HUD's shorter visible label (screen readers get LIVE_DPS_LABEL). */
 export const LIVE_DPS_SHORT = 'Est. DPS (attacking)'
+/**
+ * With minions or sentries out (P3-S9/S10) the live estimate divides by the time since the first summon.
+ * Its number is everything dealt — a whip's own hits with its minions' — so the compact HUD's short label
+ * must never read as summons-only (design review P3-S9/S10 High: it said "(summons)"). "(since summon)"
+ * doesn't fit the phone's stats box on one line, so it says the figure counts the summons too.
+ */
+export const LIVE_DPS_SUMMON_LABEL = 'Est. DPS (since summoning)'
+export const LIVE_DPS_SUMMON_SHORT = 'Est. DPS (+summons)'
 export const testDpsLabel = (durationSec: TimedTestDuration) => `Est. DPS (over the ${durationSec}s test)`
 
 /** Why the weapon, target and settings can't change right now. */

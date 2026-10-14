@@ -1,4 +1,4 @@
-import { Check, Keyboard, MousePointerClick, Move, RotateCcw, Star, Timer } from 'lucide-react'
+import { Check, Keyboard, MousePointerClick, Move, RotateCcw, Star, Tag, Timer, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cx } from '../../../components/cx'
 import { PixelArt } from '../../../components/PixelArt'
@@ -6,12 +6,12 @@ import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
 import { SpriteImg } from '../../../components/SpriteImg'
-import type { Item, SpriteIndex } from '../../../data-access/types'
+import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
 import { buildDummy } from '../../../lab/art/arenaArt'
 import { ARENA_PALETTE } from '../../../lab/art/arenaPalette'
 import { ammoClassName, DEFAULT_LAB_TARGET, DEFAULT_ROW_COUNT, ROW_COUNTS, type AmmoChoices, type LabTarget } from '../../../lab/labSetup'
 import { getField } from '../../../schemas/getField'
-import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS, type InsufficientManaPolicy, type LabSettings, type RenderState } from '../../../sim'
+import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS, MAX_MINION_SLOTS, MAX_SENTRY_SLOTS, WHIP_TAG_DURATION_TICKS, type InsufficientManaPolicy, type LabSettings, type MinionAiClass, type RenderState } from '../../../sim'
 import { RangeCommit } from './rangeCommit'
 import { AMMO_EFFECTS_NOTE, LOW_MANA_POLICY_TITLE } from './settingsCopy'
 
@@ -38,6 +38,11 @@ export type SteerHint = 'yoyo' | 'beam' | null
  *   (test mode)" toggle (the HUD shows an amber chip while it is on, UX_SPEC §5.7). Changing any of
  *   them restarts the stats (src/lab/labSession.ts), announced like an ammo switch — the max-mana
  *   slider once per adjustment, when it settles (./rangeCommit.ts), not on every step.
+ * - Summons (PRD P3-S9 AC1, P3-S10; minion / sentry staves and whips): the slot settings — minion slots
+ *   1–11, sentry slots 1–6, the wiki's default 1 and gear maximums, standing in for gear — and, with a
+ *   whip, the MINION LOADOUT: a minion staff whose minions are out beside the whip (a labeled Lab test
+ *   setup, src/lab/labAssumptions.ts `minion-loadout`). Changing either restarts the stats; Reset clears
+ *   the loadout and restores one slot.
  * - ±15% damage variance on/off — the engine's own toggle.
  * The single Reset restores every default setting (the loaded ammo stays, like the weapon). While a
  * timed test runs, the panel is disabled by the page (inert, with a lock badge and the reason,
@@ -72,6 +77,23 @@ export interface AmmoPickerProps {
   sprites: SpriteIndex | null
 }
 
+/** The minion loadout picker (a whip is equipped): the minion staves the Lab equips, and the one chosen. */
+export interface LoadoutPickerProps {
+  choices: readonly Weapon[]
+  selectedId: number | null
+  onSelect: (weapon: Weapon | null) => void
+  sprites: SpriteIndex | null
+}
+
+/** Summon settings for a summon staff (`kind`) or a whip (`kind` null, with the loadout picker). */
+export interface SummonSettingsProps {
+  kind: 'minion' | 'sentry' | null
+  loadout: LoadoutPickerProps | null
+}
+
+export const MINION_SLOTS_SETTING = 'lab-setting-minion-slots'
+export const SENTRY_SLOTS_SETTING = 'lab-setting-sentry-slots'
+
 export interface TargetSettingsPanelProps {
   usesMana: boolean
   /** The first (primary) dummy, as the engine places it. */
@@ -90,6 +112,8 @@ export interface TargetSettingsPanelProps {
   verb?: string
   /** Bows and guns: the ammo picker. */
   ammo?: AmmoPickerProps | null
+  /** Summon staves and whips: the slot settings (and a whip's minion loadout). */
+  summons?: SummonSettingsProps | null
 }
 
 export function TargetSettingsPanel({
@@ -104,6 +128,7 @@ export function TargetSettingsPanel({
   locked,
   verb = 'swing',
   ammo = null,
+  summons = null,
 }: TargetSettingsPanelProps) {
   const dummyRows = useMemo(() => buildDummy(), [])
   const { width, height, defense } = dummy
@@ -153,6 +178,8 @@ export function TargetSettingsPanel({
 
       {usesMana ? <ManaSettings settings={settings} onSettingsChange={onSettingsChange} locked={locked} /> : null}
 
+      {summons ? <SummonSettings {...summons} settings={settings} onSettingsChange={onSettingsChange} locked={locked} /> : null}
+
       <section aria-labelledby="lab-settings-title" className="space-y-3" data-lab-settings="">
         <h3 id="lab-settings-title" className="text-xs font-semibold tracking-wide text-fg-muted uppercase">
           Test settings
@@ -173,7 +200,10 @@ export function TargetSettingsPanel({
         </div>
         <p className="flex gap-2 text-xs text-fg-muted">
           <RotateCcw aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent" />
-          <span>Reset restores the default settings, along with the test and the target{ammo ? '; the loaded ammo stays' : ''}.</span>
+          <span>
+            Reset restores the default settings, along with the test and the target{ammo ? '; the loaded ammo stays' : ''}
+            {summons?.loadout ? '; the minion loadout is cleared' : ''}.
+          </span>
         </p>
       </section>
 
@@ -182,10 +212,31 @@ export function TargetSettingsPanel({
           Controls
         </h3>
         <ul className="space-y-2 text-fg-muted">
-          <li className="flex gap-2">
-            <MousePointerClick aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
-            <span>Press and hold the arena (touch and hold on phones) to {verb} toward the pointer.</span>
-          </li>
+          {summons?.kind ? (
+            <li className="flex gap-2" data-summon-hint={summons.kind}>
+              <MousePointerClick aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>
+                {summons.kind === 'sentry'
+                  ? 'Click the arena (tap on phones) to place a sentry exactly there: it never moves and attacks dummies within its range.'
+                  : 'Click the arena (tap on phones) to summon a minion there: it attacks the dummies on its own.'}{' '}
+                Holding keeps summoning only while slots are free; with them full, a new click replaces the oldest.
+              </span>
+            </li>
+          ) : (
+            <li className="flex gap-2">
+              <MousePointerClick aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span>Press and hold the arena (touch and hold on phones) to {verb} toward the pointer.</span>
+            </li>
+          )}
+          {summons && !summons.kind ? (
+            <li className="flex gap-2" data-steer-hint="whip">
+              <Tag aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
+              <span>
+                Each dummy the whip strikes is tagged for {WHIP_TAG_DURATION_TICKS / 60} seconds: minion and sentry hits on it gain the whip’s tag damage,
+                and summons switch to the dummy struck last.
+              </span>
+            </li>
+          ) : null}
           {steer === 'yoyo' ? (
             <li className="flex gap-2" data-steer-hint="yoyo">
               <Move aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
@@ -200,7 +251,11 @@ export function TargetSettingsPanel({
           <li className="flex gap-2">
             <Keyboard aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
             <span>
-              Hold Space to {verb} at the {row ? 'first ' : ''}dummy{steer === 'yoyo' ? ' — the yoyo goes to it and stays while you hold' : ''}.
+              {summons?.kind === 'sentry'
+                ? 'Press Space to place a sentry 2 tiles in front of you.'
+                : summons?.kind === 'minion'
+                  ? 'Press Space to summon a minion beside you.'
+                  : `Hold Space to ${verb} at the ${row ? 'first ' : ''}dummy${steer === 'yoyo' ? ' — the yoyo goes to it and stays while you hold' : ''}.`}
             </span>
           </li>
           <li className="flex gap-2">
@@ -303,6 +358,142 @@ function TargetPicker({ target, onChange, locked }: { target: LabTarget; onChang
         <RotateCcw aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent" />
         <span>Changing the target restarts the stats. Reset brings back the Infinite Dummy.</span>
       </p>
+    </div>
+  )
+}
+
+/** Plain words for a minion's AI class (AMENDMENTS-013 B63 P-6), for the loadout rows. */
+const AI_CLASS_WORDS: Record<MinionAiClass, string> = {
+  'melee-contact': 'flies into enemies',
+  'ground-melee': 'fights on the ground',
+  'hover-strike': 'hovers and strikes',
+  'ranged-shot': 'shoots',
+}
+
+/**
+ * The summon settings: slots as a row of numbered radio cards (1 to the gear maximum, the wiki default
+ * marked), and with a whip the minion loadout picker under them — the slots first, so on a phone they
+ * aren't buried under the long staff list (design review nit). Each change restarts the stats (labSession.ts).
+ */
+function SummonSettings({ kind, loadout, settings, onSettingsChange, locked }: SummonSettingsProps & Pick<TargetSettingsPanelProps, 'settings' | 'onSettingsChange' | 'locked'>) {
+  const sentry = kind === 'sentry'
+  const max = sentry ? MAX_SENTRY_SLOTS : MAX_MINION_SLOTS
+  const value = sentry ? settings.sentrySlots : settings.minionSlots
+  const id = sentry ? SENTRY_SLOTS_SETTING : MINION_SLOTS_SETTING
+  const slotsHelp = APPROXIMATIONS['summon-slots']
+  return (
+    <section aria-labelledby="lab-summons-title" className="space-y-3" data-lab-setting="summons">
+      <h3 id="lab-summons-title" className="text-xs font-semibold tracking-wide text-fg-muted uppercase">
+        {loadout ? 'Minions' : 'Summons'}
+      </h3>
+      <fieldset className="min-w-0" data-lab-setting={sentry ? 'sentry-slots' : 'minion-slots'} aria-describedby={`${id}-help`}>
+        <legend className="mb-1.5 font-semibold">{sentry ? 'Sentry slots' : 'Minion slots'}</legend>
+        <div className="grid grid-cols-6 gap-1.5">
+          {Array.from({ length: max }, (_, i) => i + 1).map((n) => {
+            const optionId = `${id}-${n}`
+            const checked = value === n
+            return (
+              <div key={n} className="relative">
+                <input
+                  type="radio"
+                  id={optionId}
+                  name={id}
+                  value={n}
+                  checked={checked}
+                  disabled={locked}
+                  onChange={() => onSettingsChange(sentry ? { sentrySlots: n } : { minionSlots: n })}
+                  className="peer sr-only"
+                />
+                <label
+                  htmlFor={optionId}
+                  className={cx(
+                    RADIO_CARD,
+                    'justify-center px-0 font-semibold tabular-nums',
+                    checked ? 'border-gold-500 bg-night-800 text-accent' : 'border-panel-border bg-panel hover:border-border-strong',
+                  )}
+                >
+                  {n}
+                </label>
+              </div>
+            )
+          })}
+        </div>
+      </fieldset>
+      <p id={`${id}-help`} className="text-xs text-fg-muted">
+        The game gives one {sentry ? 'sentry' : 'minion'} slot by default (the default here too); gear raises it to {max}. Each {sentry ? 'sentry' : 'minion'} takes its
+        slot cost; with the slots full a new one replaces the oldest. Changing the slots restarts the stats.
+      </p>
+      {slotsHelp.sourceUrl ? <ProvenanceLink href={slotsHelp.sourceUrl} label="Minion-summoning weapons, on the wiki" className="text-xs" /> : null}
+      {loadout ? <LoadoutPicker {...loadout} locked={locked} /> : null}
+    </section>
+  )
+}
+
+/** The minion loadout (with a whip): none, or one of the minion staves the Lab equips — rows like the ammo picker's. */
+function LoadoutPicker({ choices, selectedId, onSelect, sprites, locked }: LoadoutPickerProps & { locked: boolean }) {
+  const helpId = 'lab-loadout-help'
+  return (
+    <fieldset className="min-w-0 space-y-1.5" aria-describedby={helpId} data-lab-setting="loadout">
+      <legend className="mb-1 font-semibold">Minion loadout (test setup)</legend>
+      <LoadoutRow weapon={null} checked={selectedId === null} onSelect={onSelect} sprites={sprites} locked={locked} />
+      {choices.map((w) => (
+        <LoadoutRow key={w.id} weapon={w} checked={w.id === selectedId} onSelect={onSelect} sprites={sprites} locked={locked} />
+      ))}
+      <p id={helpId} className="flex gap-2 text-xs text-fg-muted">
+        <Users aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent" />
+        <span>
+          A Lab test setup: the chosen staff’s minions are out from the start, as many as your minion slots hold, so the whip’s tags can boost them. In-game
+          you summon them before switching to the whip. Choosing one restarts the stats; Reset clears it.
+        </span>
+      </p>
+    </fieldset>
+  )
+}
+
+function LoadoutRow({ weapon, checked, onSelect, sprites, locked }: { weapon: Weapon | null; checked: boolean; onSelect: (w: Weapon | null) => void; sprites: SpriteIndex | null; locked: boolean }) {
+  const id = `lab-loadout-${weapon?.id ?? 'none'}`
+  const params = weapon?.labBehavior.kind === 'archetype' && weapon.labBehavior.params.archetype === 'minion-sentry' ? weapon.labBehavior.params : null
+  const rarityView = weapon ? getField(weapon, 'rarity') : null
+  const rarity = rarityView?.status === 'verified' ? asRarity(rarityView.value as number | string) : undefined
+  return (
+    <div className="relative" data-loadout-option={weapon?.id ?? 'none'}>
+      <input type="radio" id={id} name="lab-loadout" value={weapon?.id ?? ''} checked={checked} disabled={locked} onChange={() => onSelect(weapon)} className="peer sr-only" />
+      <label
+        htmlFor={id}
+        className={cx(
+          'flex min-h-tap items-center gap-2.5 border-2 px-2 py-1',
+          'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-focus-visible:outline-solid',
+          'peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+          checked ? 'border-gold-500 bg-night-800' : 'border-panel-border bg-panel hover:border-border-strong',
+        )}
+      >
+        {weapon ? (
+          <span className="grid size-8 shrink-0 place-items-center border-2 border-slot-border bg-slot">
+            <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={24} maxScale={1} />
+          </span>
+        ) : null}
+        <span className="flex min-w-0 flex-1 flex-col">
+          {weapon ? (
+            <RarityText rarity={rarity} className="text-sm leading-tight font-semibold">
+              {weapon.name}
+            </RarityText>
+          ) : (
+            <span className="text-sm leading-tight font-semibold">None</span>
+          )}
+          <span className="text-xs text-fg-muted">
+            {checked ? <span className="font-semibold text-accent">{weapon ? 'Out' : 'Selected'}</span> : null}
+            {params ? `${checked ? ' · ' : ''}${AI_CLASS_WORDS[params.aiClass]}, every ${params.attackRateTicks} ticks` : checked ? '' : 'The whip alone'}
+          </span>
+        </span>
+        {weapon ? (
+          <span className="shrink-0 text-right text-xs text-fg-muted tabular-nums">
+            <span className="font-semibold text-fg" data-loadout-damage={weapon.damage}>
+              {weapon.damage}
+            </span>{' '}
+            damage
+          </span>
+        ) : null}
+      </label>
     </div>
   )
 }

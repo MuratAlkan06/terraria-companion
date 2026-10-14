@@ -60,7 +60,7 @@ describe('AC2 + AC3: swings hit the dummy; the HUD updates live', () => {
     expect(hud.hits).toBe(hits.length)
     expect(hud.totalDamage).toBe(hits.reduce((sum, e) => sum + e.amount, 0))
     expect(hud.crits).toBe(hits.filter((e) => e.crit).length)
-    expect(hud.lastHit).toEqual({ amount: hits.at(-1)!.amount, crit: hits.at(-1)!.crit })
+    expect(hud.lastHit).toEqual({ amount: hits.at(-1)!.amount, crit: hits.at(-1)!.crit, source: 'weapon' })
     // Live: subscribers saw the total grow hit by hit, not only at the end.
     expect(new Set(updates).size).toBeGreaterThan(2)
     // Every hit lands on the dummy box (floating numbers spawn at the impact point).
@@ -219,7 +219,7 @@ describe('AC5: crits roll at the weapon’s crit chance and look distinct', () =
     for (let i = 0; i < 6000; i++) {
       const crit = damages(s.frame(FRAME_MS).events).find((e) => e.crit)
       if (crit) {
-        expect(s.getHud().lastHit).toEqual({ amount: crit.amount, crit: true })
+        expect(s.getHud().lastHit).toEqual({ amount: crit.amount, crit: true, source: 'weapon' })
         return
       }
     }

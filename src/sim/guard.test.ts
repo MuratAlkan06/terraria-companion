@@ -13,7 +13,9 @@ import {
   returningFixture,
   spearFixture,
   staffFixture,
+  summonFixture,
   swordFixture,
+  whipFixture,
 } from './testing/fixtures'
 
 const refusalOf = (r: ReturnType<typeof createLabSim>): SimRefusal => {
@@ -38,6 +40,9 @@ describe('fixtures are schema-conformant (real Zod schemas)', () => {
     ['yoyo', returningFixture({ variant: 'yoyo', throwRangeTiles: 8 })],
     ['channel beam', beamFixture({ mode: 'channel-beam', tickRateTicks: 6 })],
     ['pierce bolt', beamFixture({ mode: 'pierce-projectile', pierce: 'infinite', projectile: { velocityTps: 30 } })],
+    ['minion', summonFixture()],
+    ['sentry', summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', sentryRangeTiles: 20 })],
+    ['whip', whipFixture({ tagCritPct: 10 })],
     ['staff+dot+homing', staffFixture({}, {}, { dot: { buffId: 'fixture-burn', durationTicks: { minTicks: 60, maxTicks: 240 } }, homing: { strength: 0.2, acquisitionRangeTiles: 20 } })],
   ])('%s parses as Weapon', (_name, weapon) => {
     expect(Weapon.safeParse(weapon).success).toBe(true)
@@ -76,12 +81,46 @@ describe('honesty guard — NotSimulable, never a guess', () => {
     expect(notSimulable(weapon)).toMatchObject({ reason: 'custom-scenario', scenarioId: 'night-only' })
   })
 
-  it.each<ArchetypeParams>([
-    { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'hover-strike', attackRateTicks: 30 },
-    { archetype: 'whip', arcDegrees: 90, rangeTiles: 5, tagDamageFlat: 4 },
-    { archetype: 'explosive-aoe', blastRadiusTiles: 3, trigger: 'impact', falloff: 'none' },
-  ])('unimplemented archetype $archetype → archetype-not-implemented', (params) => {
-    expect(notSimulable(fixtureWeapon(params))).toMatchObject({ reason: 'archetype-not-implemented', archetype: params.archetype })
+  it.each<ArchetypeParams>([{ archetype: 'explosive-aoe', blastRadiusTiles: 3, trigger: 'impact', falloff: 'none' }])(
+    'unimplemented archetype $archetype → archetype-not-implemented',
+    (params) => {
+      expect(notSimulable(fixtureWeapon(params))).toMatchObject({ reason: 'archetype-not-implemented', archetype: params.archetype })
+    },
+  )
+
+  it('AMENDMENTS-013 B64: a summon weapon’s critPct is not applicable — absent, it is never required (whips, minions, sentries)', () => {
+    for (const weapon of [summonFixture(), summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', sentryRangeTiles: 20 }), whipFixture()]) {
+      expect(weapon.critPct, weapon.name).toBeUndefined()
+      expect(Weapon.safeParse(weapon).success, weapon.name).toBe(true)
+      expect(assessWeapon(weapon), weapon.name).toMatchObject({ simulable: true })
+      const created = createLabSim({ weapon })
+      if (!created.ok) throw new Error(`${weapon.name} refused: ${created.refusal.message}`)
+      expect(created.sim.weapon.critChancePct, weapon.name).toBe(0) // summon damage never crits (B17)
+    }
+    // every other class still requires it
+    expect(notSimulable(swordFixture({ critPct: undefined }))).toMatchObject({ reason: 'missing-required-field', fields: ['critPct'] })
+    expect(notSimulable(summonFixture({}, { damageClass: 'magic' }))).toMatchObject({ reason: 'missing-required-field', fields: ['critPct'] })
+    // a present value is still checked, and listed unverified still blocks (the pipeline's own rule)
+    expect(notSimulable(summonFixture({}, { critPct: 140 as number }))).toMatchObject({ reason: 'invalid-data', fields: ['critPct'] })
+    expect(notSimulable(summonFixture({}, { _prov: fixtureProv(['critPct']) }))).toMatchObject({ reason: 'unverified-required-field', fields: ['critPct'] })
+  })
+
+  it('minion-sentry / whip: homing is refused, and a contact summon with a projectile contradicts its class', () => {
+    const refusal = (w: Weapon) => refusalOf(createLabSim({ weapon: w }))
+    const homing = { homing: { strength: 0.2, acquisitionRangeTiles: 10 } }
+    expect(refusal(summonFixture({}, {}, homing))).toMatchObject({ reason: 'modifier-not-implemented', fields: ['labBehavior.modifiers.homing'] })
+    expect(refusal(whipFixture({}, {}, homing))).toMatchObject({ reason: 'modifier-not-implemented', fields: ['labBehavior.modifiers.homing'] })
+    expect(refusal(summonFixture({ aiClass: 'hover-strike', projectile: { velocityTps: 20 } }))).toMatchObject({ reason: 'invalid-data', fields: ['labBehavior.params.aiClass', 'labBehavior.params.projectile'] })
+    expect(createLabSim({ weapon: summonFixture({ aiClass: 'ranged-shot', projectile: { velocityTps: 20 } }) }).ok).toBe(true)
+  })
+
+  it('minion loadout: a simulable minion weapon beside a non-summon weapon; anything else is an invalid-loadout setup refusal', () => {
+    expect(createLabSim({ weapon: whipFixture(), minionLoadout: summonFixture() }).ok).toBe(true)
+    expect(refusalOf(createLabSim({ weapon: summonFixture(), minionLoadout: summonFixture() }))).toMatchObject({ kind: 'invalid-setup', reason: 'invalid-loadout' })
+    expect(refusalOf(createLabSim({ weapon: whipFixture(), minionLoadout: summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', sentryRangeTiles: 9 }) }))).toMatchObject({ reason: 'invalid-loadout' })
+    expect(refusalOf(createLabSim({ weapon: whipFixture(), minionLoadout: swordFixture() }))).toMatchObject({ reason: 'invalid-loadout' })
+    const unverified = summonFixture({}, { damage: undefined, _prov: fixtureProv(['damage']) })
+    expect(refusalOf(createLabSim({ weapon: whipFixture(), minionLoadout: unverified }))).toMatchObject({ kind: 'invalid-setup', reason: 'invalid-loadout', message: expect.stringContaining('unverified') })
   })
 
   it('returning: the velocity is required; a variant’s flight must be its documented one; homing and unhonorable hitsPerPass are refused', () => {

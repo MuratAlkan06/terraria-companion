@@ -8,17 +8,27 @@
  * Also mirrors the pipeline's downgrade rule: any `labBehavior.*` path or any
  * `simRequiredWeaponFields(archetype)` path listed as unverified blocks simulation.
  */
-import { getField, isCoveredBy, modelingConventionFor, simRequiredWeaponFields, type Archetype, type DamageClass, type Weapon } from '../schemas'
+import { getField, isCoveredBy, modelingConventionFor, simRequiredWeaponFields, type Archetype, type Buff, type DamageClass, type Weapon } from '../schemas'
 import { APPROXIMATIONS, COMMON_APPROXIMATIONS, CONVENTION_APPROXIMATIONS, type Approximation, type ApproximationId } from './approximations'
 import { TICKS_PER_SECOND } from './constants'
-import type { Behavior, ModifierRuntime } from './contracts'
+import type { Behavior, HitOwner, ModifierRuntime } from './contracts'
 import { critChancePct } from './damage'
 import { interpreterFor } from './interpreters'
 import { prepareModifiers, type ModifierKey } from './modifiers'
-import type { NotSimulable, SimRefusal, SimulabilityInput, WeaponSummary } from './types'
+import type { InvalidSetup, NotSimulable, SimRefusal, SimulabilityInput, WeaponSummary } from './types'
 
 /** Present (verified/editorial) for every archetype. useAnimationTicks = cadence (AMENDMENTS-004 B14). */
 export const COMMON_REQUIRED_FIELDS = ['damageClass', 'damage', 'critPct', 'useTimeTicks', 'useAnimationTicks'] as const
+
+/**
+ * AMENDMENTS-013 B64: `critPct` is NOT APPLICABLE to summon weapons — summon damage cannot crit (wiki
+ * Critical hit; AMENDMENTS-004 B17), so the pipeline emits it absent (not Unknown) for every whip,
+ * minion and sentry weapon. Requiring it would refuse all of them as missing; their crit chance is 0
+ * (`critChancePct`) whatever the record says. Every other class still requires it.
+ */
+export function requiredFieldsFor(weapon: Pick<Weapon, 'damageClass'>): readonly string[] {
+  return weapon.damageClass === 'summon' ? COMMON_REQUIRED_FIELDS.filter((f) => f !== 'critPct') : COMMON_REQUIRED_FIELDS
+}
 /** Absent ⇒ documented default (autoReuse false, no mana cost, no reuse delay); listed unverified ⇒ refuse. */
 export const OPTIONAL_SIM_FIELDS = ['autoReuse', 'manaCost', 'reuseDelayTicks'] as const
 
@@ -99,7 +109,7 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
   }
 
   const unverified = weapon._prov.unverifiedFields
-  const required = [...COMMON_REQUIRED_FIELDS, ...interpreter.requiredFields]
+  const required = [...requiredFieldsFor(weapon), ...interpreter.requiredFields]
   const blocking = new Set<string>()
   for (const path of unverified) {
     if (path === 'labBehavior' || path.startsWith('labBehavior.')) blocking.add(path)
@@ -126,7 +136,7 @@ export function assessWeapon(weapon: Weapon): WeaponAssessment {
 
   const invalid: string[] = []
   if (!isInt(weapon.damage, 0)) invalid.push('damage')
-  if (!isInt(weapon.critPct, 0, 100)) invalid.push('critPct')
+  if ((weapon.damageClass !== 'summon' || weapon.critPct !== undefined) && !isInt(weapon.critPct, 0, 100)) invalid.push('critPct')
   if (!isInt(weapon.useTimeTicks, 1)) invalid.push('useTimeTicks')
   if (!isInt(weapon.useAnimationTicks, 1)) invalid.push('useAnimationTicks')
   if (weapon.reuseDelayTicks !== undefined && !isInt(weapon.reuseDelayTicks, 1)) invalid.push('reuseDelayTicks')
@@ -191,7 +201,8 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
   const useTicks = animationTicksFor(weapon, useAnimationTicks)
   const reuseDelayTicks = weapon.reuseDelayTicks ?? 0
   const cadenceTicks = cadenceTicksFor(weapon, useAnimationTicks)
-  const crit = critChancePct(damageClass, weapon.critPct as number)
+  // B64: a summon weapon has no critPct (summon damage never crits; critChancePct gives it 0).
+  const crit = critChancePct(damageClass, weapon.critPct ?? 0)
   const manaCost = weapon.manaCost ?? 0
   // B49: every modeled param the weapon lists → its convention's engine label (assessWeapon checked they resolve).
   const conventions = (weapon._prov.modeledFields ?? []).flatMap((path) => {
@@ -231,5 +242,32 @@ export function prepareSimulation(input: SimulabilityInput): { ok: true; plan: S
   return {
     ok: true,
     plan: { weapon, behavior, modifiers: modifiers.runtimes, cadenceTicks, useTicks, reuseDelayTicks, activationTicks, critChancePct: crit, manaCost, summary, approximations },
+  }
+}
+
+/** The minion loadout, prepared (LabSimOptions.minionLoadout): what fills the slots, and whose hits they are. */
+export interface LoadoutPlan {
+  behavior: Behavior
+  /** The loadout weapon's crit chance (0: summon damage) and its on-hit modifiers (its DoT). */
+  owner: HitOwner
+  summary: WeaponSummary
+  approximations: Approximation[]
+}
+
+/**
+ * Prepares a minion loadout beside the equipped weapon's plan: the loadout weapon must be simulable on
+ * its own (same guard) and summon minions; the equipped weapon must not summon its own. Any failure is
+ * an `invalid-loadout` setup refusal naming why.
+ */
+export function prepareLoadout(weapon: Weapon, equipped: SimPlan, buffs?: readonly Buff[]): { ok: true; loadout: LoadoutPlan } | { ok: false; refusal: InvalidSetup } {
+  const invalid = (message: string) => ({ ok: false as const, refusal: { kind: 'invalid-setup' as const, reason: 'invalid-loadout' as const, message, fields: ['minionLoadout'] } })
+  if (equipped.behavior.archetype === 'minion-sentry') return invalid('The equipped weapon summons its own minions or sentries; a minion loadout goes alongside a weapon that does not.')
+  const prepared = prepareSimulation({ weapon, ...(buffs ? { buffs } : {}) })
+  if (!prepared.ok) return invalid(`${weapon.name} can't be the minion loadout: ${prepared.refusal.message}`)
+  const { plan } = prepared
+  if (!plan.behavior.fillSlots) return invalid(`${weapon.name} can't be the minion loadout: it doesn't summon minions.`)
+  return {
+    ok: true,
+    loadout: { behavior: plan.behavior, owner: { critChancePct: plan.critChancePct, modifiers: plan.modifiers }, summary: plan.summary, approximations: plan.approximations },
   }
 }

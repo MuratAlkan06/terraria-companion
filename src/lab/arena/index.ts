@@ -25,6 +25,16 @@
  *   along its chain — with a yoyo's string or a flail's chain drawn from the hand on the art-pixel
  *   grid. A held beam (P3-S6, the engine's `blade.kind === 'beam'`): a line of art pixels from the
  *   hand along the beam, a bright core with a glow cell either side.
+ * - Summons and whips (P3-S9 / P3-S10, ../summonVisuals.ts): each minion or sentry the engine has, as
+ *   original per-AI-class art (../art/arenaArt.ts `buildSummon`) where the engine has it, facing its
+ *   target; a shooting summon's instant shot as a short tracer; a whip as a leather line from the hand
+ *   to its range along the engine's sweep (bowed behind the swing) with its reach guide; a whip tag as
+ *   a tag icon over the dummy with a shrinking timer bar — filled over the dummy the summons attack,
+ *   hollow over any other tagged one. Minions of one kind on one dummy are fanned out sideways so each
+ *   shows; a summon that leaves (the oldest replaced) fades out where it was with a small puff (only the
+ *   fade under reduced motion). Summon hits are numbered in their own pale
+ *   blue; on a tagged dummy the tag's share follows as a green "+N" ("19+4": the hit untagged, plus
+ *   what the tag added — the HUD's tag bonus).
  * - Multiple Dummies (P3-S6): one view per engine dummy, rebuilt whenever the engine's row changes,
  *   each numbered under its feet (the primary target's number in gold) as the HUD's hit strip names
  *   them; scene framing widens to keep the whole row in view (../camera.ts `sceneXFor`).
@@ -37,7 +47,7 @@
 import { Application, BitmapFont, BitmapText, Container, Graphics, Sprite, TextureStyle, TilingSprite, type Texture } from 'pixi.js'
 import { PLACEHOLDER_PALETTE, PLACEHOLDER_ROWS, placeholderVariantFor } from '../../components/art/placeholderSprites'
 import type { BladePose, RenderState } from '../../sim'
-import { ARENA_LAYOUT, buildArenaBackdrop, buildDeepTile, buildDummy, buildPlayer, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette } from '../art/arenaArt'
+import { ARENA_LAYOUT, buildArenaBackdrop, buildDeepTile, buildDummy, buildPlayer, buildSummon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette, type SummonArt } from '../art/arenaArt'
 import { A, ARENA_PALETTE } from '../art/arenaPalette'
 import { bladeSpriteTransform, DEG, guideCells, heldWeaponVisual, holdStyleFor, interpolateBlade, streakCells, thrustVisual, trailSpan } from '../blade'
 import { actionBox, fitCamera, sceneXFor, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
@@ -45,6 +55,7 @@ import { DotNumberTicker, FloatLayout, floatPose, readsAsPartOfNumber, Recycling
 import { dotAnchor, numberZone } from '../numberZone'
 import type { LabSession } from '../labSession'
 import { bodyCells, ProjectileTracks, projectileStyleFor, toGamePx, trailCells, type ProjectileStyle, type ProjectileTone } from '../projectiles'
+import { agentPosition, despawnPose, despawnPuffCells, ShotTracers, StackSpread, summonFocus, sweepOf, tagMarker, tagMarkerStyle, whipCells } from '../summonVisuals'
 import { beamCells, dummySignature, handPoint, spinRotation, tetherCells, tetherFor, thrownPosition, thrownScale } from '../thrownVisuals'
 import { glowTexture, loadImageTexture, textureFromRows, tokenHex } from './textures'
 
@@ -91,15 +102,21 @@ export interface ArenaPerf {
 const DAMAGE_FONT = 'TcLabDamage'
 const CRIT_FONT = 'TcLabCrit'
 const DOT_FONT = 'TcLabDot'
+/** A minion's or sentry's hit (P3-S9): pale blue, so summon damage reads apart from the weapon's own. */
+const SUMMON_FONT = 'TcLabSummon'
+/** The whip tag's share of a summon hit (P3-S10): a green "+N" after the number. */
+const TAG_FONT = 'TcLabTag'
 /**
  * Outline width per font (CSS px). Half of it is drawn outside the glyph box that BitmapText
  * measures, so the layout pads each number's box by it: outlines never touch either.
  */
-const STROKE: Record<string, number> = { [DAMAGE_FONT]: 4, [CRIT_FONT]: 7, [DOT_FONT]: 3 }
+const STROKE: Record<string, number> = { [DAMAGE_FONT]: 4, [CRIT_FONT]: 7, [DOT_FONT]: 3, [SUMMON_FONT]: 4, [TAG_FONT]: 3 }
 /** Font size per kind of number (CSS px): crits larger, damage over time smaller (UX_SPEC §12). */
-const FONT_SIZE: Record<string, number> = { [DAMAGE_FONT]: 16, [CRIT_FONT]: 24, [DOT_FONT]: 12 }
-type NumberKind = 'normal' | 'crit' | 'dot'
-const FONT_FOR: Record<NumberKind, string> = { normal: DAMAGE_FONT, crit: CRIT_FONT, dot: DOT_FONT }
+const FONT_SIZE: Record<string, number> = { [DAMAGE_FONT]: 16, [CRIT_FONT]: 24, [DOT_FONT]: 12, [SUMMON_FONT]: 16, [TAG_FONT]: 12 }
+type NumberKind = 'normal' | 'crit' | 'dot' | 'summon'
+const FONT_FOR: Record<NumberKind, string> = { normal: DAMAGE_FONT, crit: CRIT_FONT, dot: DOT_FONT, summon: SUMMON_FONT }
+/** Space between a number and its tag suffix (CSS px). */
+const SUFFIX_GAP = 2
 const NUMBER_POOL = 48
 const FLASH_MS = 110
 /** Peak opacity of the white hit flash (kept low so fast weapons don't wash the dummy out). */
@@ -148,6 +165,22 @@ async function installFonts(): Promise<void> {
     textureStyle: { scaleMode: 'nearest' },
     style: { fontFamily: family, fontSize: FONT_SIZE[DOT_FONT], fill: tokenHex('var(--color-fg-muted)'), stroke: { color: shadow, width: STROKE[DOT_FONT], join: 'miter' } },
   })
+  BitmapFont.install({
+    name: SUMMON_FONT,
+    chars: [['0', '9']],
+    resolution,
+    padding: 6,
+    textureStyle: { scaleMode: 'nearest' },
+    style: { fontFamily: family, fontSize: FONT_SIZE[SUMMON_FONT], fill: tokenHex('var(--color-night-200)'), stroke: { color: shadow, width: STROKE[SUMMON_FONT], join: 'miter' } },
+  })
+  BitmapFont.install({
+    name: TAG_FONT,
+    chars: [['0', '9'], '+'],
+    resolution,
+    padding: 5,
+    textureStyle: { scaleMode: 'nearest' },
+    style: { fontFamily: family, fontSize: FONT_SIZE[TAG_FONT], fill: tokenHex('var(--color-success)'), stroke: { color: shadow, width: STROKE[TAG_FONT], join: 'miter' } },
+  })
   fontsInstalled = true
 }
 
@@ -161,6 +194,10 @@ interface FloatingNumber {
   offsetX: number
   offsetY: number
   crit: boolean
+  /** The whip tag's share of a summon hit ("+N", P3-S10), drawn after the number; null until first needed. */
+  suffix: BitmapText | null
+  /** Half the gap + suffix width (CSS px): the number shifts left by it so the pair stays centred. */
+  suffixShift: number
 }
 
 /** Damage numbers sit this far above the impact point (CSS px). */
@@ -226,6 +263,15 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     glows.addChild(light)
   }
 
+  const summonTextures = new Map<SummonArt, Texture>()
+  const summonTexture = (art: SummonArt): Texture => {
+    let texture = summonTextures.get(art)
+    if (!texture) summonTextures.set(art, (texture = own(textureFromRows(buildSummon(art), ARENA_PALETTE))))
+    return texture
+  }
+  const tagTexture = own(textureFromRows(buildTagIcon(), ARENA_PALETTE))
+  const tagHollowTexture = own(textureFromRows(buildTagIcon('outline'), ARENA_PALETTE))
+
   const dummyRows = buildDummy()
   const dummyTexture = own(textureFromRows(dummyRows, ARENA_PALETTE))
   const dummyFlashTexture = own(textureFromRows(silhouette(dummyRows, A.white), ARENA_PALETTE))
@@ -250,8 +296,15 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const thrown = new Sprite()
   thrown.anchor.set(0.5)
   thrown.visible = false
+  // P3-S9 / P3-S10: whip tags over the dummies, the summons, a whip's lash, summons' instant shots.
+  const tagLayer = new Container()
+  const summonLayer = new Container()
+  // The puff where a departing summon was (over the summons).
+  const puffs = new Graphics()
+  const lash = new Graphics()
+  const tracerLines = new Graphics()
 
-  world.addChild(deep, backdropSprite, glows, dummies, playerSprite, guide, trail, blade, held, beam, shots, tether, thrown)
+  world.addChild(deep, backdropSprite, glows, dummies, tagLayer, summonLayer, puffs, playerSprite, guide, trail, blade, held, beam, lash, shots, tracerLines, tether, thrown)
   // Multiple Dummies: each dummy's number under its feet, in screen space (crisp at any zoom), under the damage numbers.
   const dummyLabels = new Container()
   app.stage.addChildAt(dummyLabels, app.stage.getChildIndex(normalNumbers))
@@ -281,6 +334,13 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const beamCore = tokenHex('var(--color-white)')
   const beamGlow = tokenHex('var(--color-night-200)')
   const primaryLabel = tokenHex('var(--color-gold-300)')
+  // A whip's leather lash and its bright tip; a summon's shot; a tag's timer bar (tokens).
+  const lashColor = tokenHex('var(--color-earth-400)')
+  const lashTip = tokenHex('var(--color-gold-200)')
+  const tracerColor = tokenHex('var(--color-night-200)')
+  const tagBarColor = tokenHex('var(--color-success)')
+  const tagBarBack = tokenHex('var(--color-night-950)')
+  const puffColor = tokenHex('var(--color-stone-200)')
   const shotTones: Record<ProjectileStyle, Partial<Record<ProjectileTone, number>> & { trail: number; trailAlpha: number }> = {
     arrow: { tip: tokenHex('var(--color-stone-200)'), shaft: tokenHex('var(--color-earth-400)'), fletch: tokenHex('var(--color-white)'), trail: tokenHex('var(--color-stone-300)'), trailAlpha: 0.35 },
     bullet: { core: tokenHex('var(--color-white)'), glow: tokenHex('var(--color-gold-300)'), trail: tokenHex('var(--color-gold-400)'), trailAlpha: 0.6 },
@@ -350,12 +410,26 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     text.anchor.set(0.5, 1)
     text.visible = false
     normalNumbers.addChild(text)
-    return { text, font: DAMAGE_FONT, bornAt: 0, x: 0, y: 0, offsetX: 0, offsetY: 0, crit: false }
+    return { text, font: DAMAGE_FONT, bornAt: 0, x: 0, y: 0, offsetX: 0, offsetY: 0, crit: false, suffix: null, suffixShift: 0 }
   })
   const retireNumber = (n: FloatingNumber) => {
     n.text.visible = false
+    if (n.suffix) n.suffix.visible = false
     numbers.release(n)
     layout.remove(n)
+  }
+  // Summons: one sprite per engine agent (by id); tag markers per dummy; summons' instant-shot tracers.
+  const summonSprites = new Map<number, Sprite>()
+  const tagViews = new Map<string, { icon: Sprite; bar: Graphics }>()
+  const tracers = new ShotTracers()
+  // Minions sharing a spot, fanned out sideways (steady from frame to frame).
+  const spread = new StackSpread()
+  // Summons that left (dismissed), fading out where they were drawn last (game px, mirrored scale).
+  let departing: { sprite: Sprite; bornAt: number; x: number; y: number; scaleX: number; scaleY: number }[] = []
+  const clearDeparting = () => {
+    for (const d of departing) d.sprite.destroy()
+    departing = []
+    puffs.clear()
   }
   let lastSwingEnd = { at: -Infinity, facing: 1 as 1 | -1 }
   const tracks = new ProjectileTracks()
@@ -365,7 +439,10 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   let heldUntil = -Infinity
 
   const clearEffects = () => {
-    for (const n of numbers.active) n.text.visible = false
+    for (const n of numbers.active) {
+      n.text.visible = false
+      if (n.suffix) n.suffix.visible = false
+    }
     numbers.releaseAll()
     layout.clear()
     tracks.clear()
@@ -373,6 +450,14 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     shots.clear()
     beam.clear()
     tether.clear()
+    lash.clear()
+    tracers.clear()
+    tracerLines.clear()
+    clearDeparting()
+    // A new world numbers its summons from 1 again: never reuse a sprite (and its art) from the last one.
+    for (const sprite of summonSprites.values()) sprite.destroy()
+    summonSprites.clear()
+    spread.clear()
     thrown.visible = false
     held.visible = false
     heldUntil = -Infinity
@@ -387,7 +472,9 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const buildDummies = (s: LabSession) => {
     dummies.removeChildren().forEach((c) => c.destroy({ children: true }))
     dummyLabels.removeChildren().forEach((c) => c.destroy())
+    tagLayer.removeChildren().forEach((c) => c.destroy())
     dummyViews.clear()
+    tagViews.clear()
     const list = s.sim.renderState().dummies
     builtDummies = dummySignature(list)
     for (const [i, d] of list.entries()) {
@@ -412,6 +499,133 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
         dummyLabels.addChild(label)
       }
       dummyViews.set(d.id, { root, flash, hitAt: -Infinity, dir: 1, label, x: d.x })
+      // The whip tag marker over its head (hidden until a whip tags it).
+      const icon = new Sprite(tagTexture)
+      icon.anchor.set(0.5, 1)
+      icon.scale.set(GAME_PX_PER_ART_PX)
+      icon.visible = false
+      const bar = new Graphics()
+      tagLayer.addChild(icon, bar)
+      tagViews.set(d.id, { icon, bar })
+    }
+  }
+
+  /**
+   * Whip tags (P3-S10 AC1): the tag icon over each tagged dummy's head — filled over the dummy the
+   * summons attack, hollow over another (`tagMarkerStyle`) — and under it a timer bar — the share of
+   * the tag's 4 seconds still left — on the art-pixel grid.
+   */
+  const drawTags = (state: RenderState) => {
+    const focus = summonFocus(state.agents)
+    for (const d of state.dummies) {
+      const view = tagViews.get(d.id)
+      if (!view) continue
+      const marker = tagMarker(d)
+      view.bar.clear()
+      view.icon.visible = marker !== null
+      if (!marker) continue
+      view.icon.texture = tagMarkerStyle(d.id, focus) === 'filled' ? tagTexture : tagHollowTexture
+      const px = GAME_PX_PER_ART_PX
+      const barW = 8 * px
+      const bottom = marker.y * GAME_PX_PER_TILE
+      view.icon.position.set(marker.x * GAME_PX_PER_TILE, bottom - 2 * px)
+      const left = Math.round(marker.x * GAME_PX_PER_TILE - barW / 2)
+      view.bar.rect(left - px, bottom - px, barW + 2 * px, px * 2).fill({ color: tagBarBack, alpha: 0.85 })
+      const filled = Math.max(px, Math.round((barW * marker.left) / px) * px)
+      view.bar.rect(left, bottom - px / 2, filled, px).fill({ color: tagBarColor, alpha: 1 })
+    }
+  }
+
+  /**
+   * Minions and sentries where the engine has them (interpolated), per-class art facing their target —
+   * minions of one kind on one dummy fanned out sideways (`offsets`, tiles: ../summonVisuals.ts `StackSpread`).
+   */
+  const drawSummons = (state: RenderState, alpha: number, offsets: ReadonlyMap<number, number>) => {
+    const live = new Set<number>()
+    for (const a of state.agents) {
+      live.add(a.id)
+      let sprite = summonSprites.get(a.id)
+      if (!sprite) {
+        sprite = new Sprite(summonTexture(a.kind === 'sentry' ? 'sentry' : a.aiClass))
+        sprite.anchor.set(0.5)
+        summonLayer.addChild(sprite)
+        summonSprites.set(a.id, sprite)
+      }
+      const at = agentPosition(a, alpha)
+      sprite.position.set((at.x + (offsets.get(a.id) ?? 0)) * GAME_PX_PER_TILE, at.y * GAME_PX_PER_TILE)
+      sprite.scale.set(a.facing * GAME_PX_PER_ART_PX, GAME_PX_PER_ART_PX)
+    }
+    for (const [id, sprite] of summonSprites) {
+      if (live.has(id)) continue
+      sprite.destroy()
+      summonSprites.delete(id)
+    }
+  }
+
+  /** A summon the engine dismissed (the oldest replaced): its sprite stays where it was drawn last, to fade out there. */
+  const depart = (agentId: number, now: number) => {
+    const sprite = summonSprites.get(agentId)
+    if (!sprite) return
+    summonSprites.delete(agentId)
+    departing.push({ sprite, bornAt: now, x: sprite.position.x, y: sprite.position.y, scaleX: sprite.scale.x, scaleY: sprite.scale.y })
+  }
+
+  /** Departing summons: fading (rising and shrinking a little, unless reduced motion), with a puff of four pixels. */
+  const drawDeparting = (now: number, reduced: boolean) => {
+    puffs.clear()
+    if (departing.length === 0) return
+    const px = GAME_PX_PER_ART_PX
+    departing = departing.filter((d) => {
+      const age = now - d.bornAt
+      const pose = despawnPose(age, reduced)
+      if (!pose) {
+        d.sprite.destroy()
+        return false
+      }
+      d.sprite.alpha = pose.alpha
+      d.sprite.position.set(d.x, d.y + pose.dy * GAME_PX_PER_TILE)
+      d.sprite.scale.set(d.scaleX * pose.scale, d.scaleY * pose.scale)
+      const cells = despawnPuffCells({ x: d.x, y: d.y }, age, reduced, px, 5 * px, 10 * px)
+      for (const [x, y] of cells) puffs.rect(x, y, px, px)
+      if (cells.length > 0) puffs.fill({ color: puffColor, alpha: 0.85 * pose.alpha })
+      return true
+    })
+  }
+
+  /** Summons' instant shots: a fading one-art-pixel line from the summon to where the shot landed. */
+  const drawTracers = (now: number) => {
+    tracerLines.clear()
+    const px = GAME_PX_PER_ART_PX
+    for (const t of tracers.visuals(now)) {
+      const cells = streakCells(toGamePx(t.from), toGamePx(t.to), px)
+      if (cells.length === 0) continue
+      for (const [x, y] of cells) tracerLines.rect(x, y, px, px)
+      tracerLines.fill({ color: tracerColor, alpha: 0.8 * t.alpha })
+    }
+  }
+
+  /**
+   * A whip (engine `blade.kind === 'whip'`): the lash from the hand to the tip at the whip's range along
+   * the sweep, bowed behind it, with a bright tip — minus any cell beside a live damage number — and
+   * the reach guide at its range (fading after the swing, as a sword's).
+   */
+  const drawWhip = (pose: BladePose | null, facing: 1 | -1, alpha: number, now: number, rangeTiles: number, arcDegrees: number) => {
+    lash.clear()
+    guide.clear()
+    const r = rangeTiles * GAME_PX_PER_TILE
+    const px = GAME_PX_PER_ART_PX
+    if (pose && pose.kind === 'whip') {
+      const { angle } = interpolateBlade(pose, alpha)
+      const { line, tip } = whipCells(handPoint(facing), angle, r, sweepOf(pose), px)
+      const clear = cellsClearOfNumbers(line)
+      for (const [x, y] of clear) lash.rect(x, y, px, px)
+      if (clear.length > 0) lash.fill({ color: lashColor, alpha: 1 })
+      lash.rect(tip[0] - px / 2, tip[1] - px / 2, px * 2, px * 2).fill({ color: lashTip, alpha: 1 })
+      lastSwingEnd = { at: now, facing }
+      drawGuide(guide, guideCellsClearOfNumbers(facing, arcDegrees, r), guideColor, guideShadow, GUIDE_ALPHA)
+    } else {
+      const since = now - lastSwingEnd.at
+      if (since < GUIDE_FADE_MS) drawGuide(guide, guideCellsClearOfNumbers(lastSwingEnd.facing, arcDegrees, r), guideColor, guideShadow, GUIDE_ALPHA * (1 - since / GUIDE_FADE_MS))
     }
   }
 
@@ -489,7 +703,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   host.addEventListener('contextmenu', onContextMenu)
 
   // ---------------------------------------------------------------------------- frame
-  const spawnNumber = (event: { amount: number; x: number; y: number; dummyId: string }, kind: NumberKind, now: number, reduced: boolean, state: RenderState) => {
+  const spawnNumber = (event: { amount: number; x: number; y: number; dummyId: string; tagBonus?: number }, kind: NumberKind, now: number, reduced: boolean, state: RenderState) => {
     // Numbers stay with their dummy (../numberZone.ts); damage over time rises from above its bullseye.
     const dummy = state.dummies.find((d) => d.id === event.dummyId)
     const from = dummy && kind === 'dot' ? dotAnchor(dummy) : event
@@ -503,13 +717,29 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       n.text.style.fontSize = FONT_SIZE[font]
       n.font = font
     }
-    n.text.text = String(event.amount)
+    // A summon hit on a whip-tagged dummy: the hit as it would be untagged, then the tag's share ("19+4").
+    const bonus = event.tagBonus !== undefined && event.tagBonus > 0 ? event.tagBonus : 0
+    n.text.text = String(event.amount - bonus)
     n.text.scale.set(1)
     n.text.visible = true
     n.bornAt = now
     n.x = from.x
     n.y = from.y
     n.crit = crit
+    let suffixW = 0
+    if (bonus > 0) {
+      if (!n.suffix) {
+        n.suffix = new BitmapText({ text: '', style: { fontFamily: TAG_FONT, fontSize: FONT_SIZE[TAG_FONT] } })
+        n.suffix.anchor.set(0, 1)
+      }
+      n.suffix.text = `+${bonus}`
+      n.suffix.scale.set(1)
+      n.suffix.visible = true
+      suffixW = n.suffix.getLocalBounds().width + SUFFIX_GAP
+    } else if (n.suffix) {
+      n.suffix.visible = false
+    }
+    n.suffixShift = suffixW / 2
     // Measured, rendered size at scale 1, plus the outline drawn outside it → a spot whose box
     // never meets a live number's box. The box is anchored where the outline ends (½ stroke below
     // the text's own anchor); the returned offset moves both alike.
@@ -523,7 +753,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       n,
       now,
       at,
-      { w: bounds.width + stroke, h: bounds.height + stroke },
+      { w: bounds.width + suffixW + stroke, h: bounds.height + stroke },
       crit,
       reduced,
       { left: 0, top: insetTop, right: fit.cssWidth, bottom: fit.cssHeight - insetBottom },
@@ -534,7 +764,9 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     n.offsetX = placed.dx
     n.offsetY = placed.dy
     // Crits on the crit layer (always above normal hits); newest on top within a layer.
-    ;(crit ? critNumbers : normalNumbers).addChild(n.text)
+    const layer = crit ? critNumbers : normalNumbers
+    layer.addChild(n.text)
+    if (n.suffix && bonus > 0) layer.addChild(n.suffix)
   }
 
   /**
@@ -719,6 +951,10 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     shots.clear()
     beam.clear()
     tether.clear()
+    lash.clear()
+    tracers.clear()
+    tracerLines.clear()
+    clearDeparting()
     lastSwingEnd = { at: -Infinity, facing: 1 }
   }
 
@@ -737,6 +973,8 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       buildDummies(s)
       refit()
     }
+    // Minions sharing a spot, fanned out sideways (their shots leave from where they are drawn).
+    const offsets = spread.update(state.agents, state.dummies, state.player.x, app.ticker.deltaMS, reduced)
 
     for (const event of events) {
       if (event.type === 'damage') {
@@ -745,8 +983,14 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
           dotNumbers.add(event)
           continue
         }
+        const summonHit = event.source === 'minion' || event.source === 'sentry'
         if (!s.returning) tracks.impact(event)
-        spawnNumber(event, event.crit ? 'crit' : 'normal', now, reduced, state)
+        // A summon's instant shot (no projectile of its own): a tracer from the summon to the hit.
+        if (summonHit && !event.sourceId.startsWith('proj:')) {
+          const agent = state.agents.find((a) => `${a.kind}:${a.id}` === event.sourceId)
+          if (agent && agent.aiClass === 'ranged-shot') tracers.add({ x: agent.x + (offsets.get(agent.id) ?? 0), y: agent.y }, event, now)
+        }
+        spawnNumber(event, event.crit ? 'crit' : summonHit ? 'summon' : 'normal', now, reduced, state)
         const view = dummyViews.get(event.dummyId)
         if (view) {
           view.hitAt = now
@@ -759,6 +1003,8 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
         if (!s.returning) tracks.despawn(event)
       } else if (event.type === 'use-start') {
         heldUntil = event.tick + event.durationTicks
+      } else if (event.type === 'dismiss') {
+        depart(event.agentId, now)
       }
     }
     // A finished test shows the DoT it dealt up to the last tick.
@@ -779,23 +1025,35 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
         continue
       }
       const p = worldToScreen(fit, n.x, n.y)
-      n.text.position.set(Math.round(p.x + n.offsetX), Math.round(p.y - NUMBER_LIFT_PX + n.offsetY + pose.dy))
+      n.text.position.set(Math.round(p.x + n.offsetX - n.suffixShift * pose.scale), Math.round(p.y - NUMBER_LIFT_PX + n.offsetY + pose.dy))
       n.text.alpha = pose.alpha
       n.text.scale.set(pose.scale)
+      if (n.suffix?.visible) {
+        // the tag's "+N" right after the number, on its baseline
+        const half = (n.text.getLocalBounds().width / 2) * pose.scale
+        n.suffix.position.set(Math.round(n.text.position.x + half + SUFFIX_GAP), n.text.position.y)
+        n.suffix.alpha = pose.alpha
+        n.suffix.scale.set(pose.scale)
+      }
     }
     placeDummyLabels()
+    drawTags(state)
+    drawSummons(state, finished ? 1 : alpha, offsets)
+    drawDeparting(now, reduced)
 
     playerSprite.scale.set(state.facing * GAME_PX_PER_ART_PX, GAME_PX_PER_ART_PX)
     // A finished test halts the engine mid-attack: no frozen blade, shot, trail or reach guide.
     if (finished) clearAttack()
     else {
       if (s.swing) drawSwing(state.blade, state.facing, alpha, now, s.swing.reachTiles, s.swing.arcDegrees)
+      else if (s.whip) drawWhip(state.blade, state.facing, alpha, now, s.whip.rangeTiles, s.whip.arcDegrees)
       else if (s.returning) drawThrown(state, alpha, s.returning.variant)
       else if (s.firesProjectiles) drawHeld(state)
       else drawThrust(state.blade?.kind === 'thrust' ? state.blade : null, state.facing, alpha, s.reachTiles)
       if (s.beam) drawBeam(state.blade, state.facing)
       // Any projectile the engine runs. Render time trails the sim by one tick, like the blade.
       drawShots(state.tick - 1 + alpha, now)
+      drawTracers(now)
     }
     perf.frames++
     record(perf.frameMs, app.ticker.deltaMS)

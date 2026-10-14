@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createLabSim, dummyRow, mulberry32, type LabSim, type LabSimOptions, type SimSnapshot, type TimedTestDuration, type TimedTestResult } from './index'
-import { ammoFixture, beamFixture, bowFixture, dotBuffFixture, returningFixture, staffFixture, swordFixture } from './testing/fixtures'
+import { ammoFixture, beamFixture, bowFixture, dotBuffFixture, returningFixture, staffFixture, summonFixture, swordFixture, whipFixture } from './testing/fixtures'
 
 const SCENARIOS: Record<string, () => LabSimOptions> = {
   'sword (variance + crits)': () => ({ weapon: swordFixture({ autoReuse: true, critPct: 6 }), seed: 11 }),
@@ -70,6 +70,33 @@ const SCENARIOS: Record<string, () => LabSimOptions> = {
     weapon: beamFixture({ mode: 'channel-beam', tickRateTicks: 7 }, { critPct: 4, useTimeTicks: 18, useAnimationTicks: 18, reuseDelayTicks: 4 }),
     dummies: dummyRow(3, 4),
     seed: 65,
+  }),
+  // P3-S9 / P3-S10 (pinned 2026-10-14): summons fill their slots under the held attack, then attack on their own.
+  'minion (ground-melee, two slots, row)': () => ({
+    weapon: summonFixture({ aiClass: 'ground-melee', attackRateTicks: 12 }, { damage: 9 }),
+    settings: { minionSlots: 2 },
+    dummies: dummyRow(2, 6),
+    seed: 66,
+  }),
+  'sentry (ranged-shot, range, armored row)': () => ({
+    weapon: summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', attackRateTicks: 20, sentryRangeTiles: 6.5 }, { damage: 25 }),
+    settings: { sentrySlots: 2 },
+    dummies: dummyRow(3, 4).map((d, i) => (i === 0 ? { ...d, defense: 6 } : d)),
+    seed: 67,
+  }),
+  'ranged minion (projectile, pierce)': () => ({
+    weapon: summonFixture({ aiClass: 'ranged-shot', attackRateTicks: 25, projectile: { velocityTps: 24, pierce: 1 } }, { damage: 15 }),
+    settings: { minionSlots: 2 },
+    dummies: dummyRow(3, 6),
+    seed: 69,
+  }),
+  'whip + minion loadout (tags, tag crit, falloff, minion DoT)': () => ({
+    weapon: whipFixture({ rangeTiles: 14, tagDamageFlat: 6, tagCritPct: 10, falloffPerTarget: 0.3 }, { damage: 20 }),
+    minionLoadout: summonFixture({ aiClass: 'hover-strike', attackRateTicks: 15 }, { damage: 12 }, { dot: { buffId: 'fixture-burn', chancePct: 50, durationTicks: { minTicks: 60, maxTicks: 120 } } }),
+    buffs: [dotBuffFixture(3)],
+    settings: { minionSlots: 3 },
+    dummies: dummyRow(3, 5),
+    seed: 68,
   }),
 }
 
@@ -233,6 +260,9 @@ describe('seeded reproducibility', () => {
  * - The five P3-S6 / P3-S7 scenarios (returning variants, piercing-beam modes): pinned 2026-10-13 as
  *   new scenarios; the kernel hooks they use (ready gate, guided projectiles, persistent hit sources)
  *   left the five earlier fingerprints unchanged — README changelog.
+ * - The four P3-S9 / P3-S10 scenarios (minion, sentry, ranged minion with a projectile, whip + minion
+ *   loadout): pinned 2026-10-14 as new scenarios; the kernel's summon, tag and loadout hooks left all
+ *   ten earlier fingerprints unchanged — README changelog.
  */
 const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
   'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
@@ -245,6 +275,10 @@ const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; cri
   'yoyo (tethered dwell at the auto-aim point)': { total: 3288, dot: 0, hits: 180, crits: 15, uses: 1, digest: '2bfbdb43' },
   'pierce bolt (pierce 2 vs an armored row of 4, slow-cast)': { total: 2576, dot: 0, hits: 129, crits: 8, uses: 44, digest: 'f5383fcd' },
   'channel beam (tick rate across uses, reuse delay)': { total: 15858, dot: 0, hits: 738, crits: 54, uses: 82, digest: 'c0eea291' },
+  'minion (ground-melee, two slots, row)': { total: 2622, dot: 0, hits: 295, crits: 0, uses: 2, digest: '8e35ff66' },
+  'sentry (ranged-shot, range, armored row)': { total: 3967, dot: 0, hits: 177, crits: 0, uses: 2, digest: '4fbff848' },
+  'ranged minion (projectile, pierce)': { total: 4173, dot: 0, hits: 280, crits: 0, uses: 2, digest: '3830f899' },
+  'whip + minion loadout (tags, tag crit, falloff, minion DoT)': { total: 9644, dot: 89, hits: 537, crits: 33, uses: 60, digest: '12a71806' },
 }
 
 describe('timed-test controller (P3-S3 AC3)', () => {

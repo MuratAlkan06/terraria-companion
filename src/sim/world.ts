@@ -4,17 +4,33 @@
  * Tick order (fixed — part of the determinism contract):
  *   1. resolve aim/facing from the latched input
  *   2. use cycle: end finished use (its reuse delay starts) → start a new one if attacking, the
- *      reuse delay has passed and the behavior is ready (a returning weapon is back) (mana gate) →
- *      activation (every activationTicks) → behavior.tickUse (melee hit detection, a held beam)
- *   3. projectiles in spawn order: guide steer (a returning weapon; `caught` removes it) or
+ *      reuse delay has passed and the behavior is ready (a returning weapon is back; a summon weapon
+ *      has room or a new press) (mana gate) → activation (every activationTicks) → behavior.tickUse
+ *      (melee hit detection, a held beam, a whip's sweep and tags)
+ *   3. summons (minions, sentries) in summon order: brain step — target → attack when due → move
+ *   4. projectiles in spawn order: guide steer (a returning weapon; `caught` removes it) or
  *      modifier steer → gravity → swept move/collide (a guide may stop the move at a hit) →
  *      age/lifetime → bounds
- *   4. debuffs: DoT accrual → duration countdown → expiry
- *   5. mana regeneration
- *   6. stats.endTick(); tick++
- * All randomness comes from the single seeded stream, drawn only inside these steps.
+ *   5. debuffs: DoT accrual → duration countdown → expiry; then whip tags: countdown → expiry
+ *   6. mana regeneration
+ *   7. stats.endTick(); tick++
+ * All randomness comes from the single seeded stream, drawn only inside these steps (and, for the
+ * minion loadout's summons, once when the world is created — they draw nothing).
  */
-import type { ActiveUse, Behavior, DummyState, HitSource, KernelApi, ModifierRuntime, ProjectileLaunch, ProjectileState } from './contracts'
+import type {
+  ActiveUse,
+  AgentSpawn,
+  AgentState,
+  Behavior,
+  DummyState,
+  HitOwner,
+  HitSource,
+  KernelApi,
+  ModifierRuntime,
+  ProjectileLaunch,
+  ProjectileState,
+  WhipTag,
+} from './contracts'
 import {
   DEFAULT_DUMMY_HEIGHT_TILES,
   DEFAULT_DUMMY_WIDTH_TILES,
@@ -27,12 +43,29 @@ import {
   MAX_PENDING_EVENTS,
   TICKS_PER_SECOND,
 } from './constants'
-import { rollHit } from './damage'
+import { applyDefense, applyVariancePct, rollHit } from './damage'
 import { Digest } from './digest'
 import { aabbCenter, aabbFromCenter, angleTo, segmentAabbEntry } from './geometry'
 import { mulberry32, type Rng } from './rng'
 import { StatsAccumulator } from './stats'
-import type { ArenaBounds, BladePose, DummySpec, LabInput, LabSettings, ManaState, RenderState, SimEvent, Vec2 } from './types'
+import type { ArenaBounds, BladePose, DummySpec, LabInput, LabSettings, ManaState, RenderState, SimEvent, SummonKind, SummonsState, Vec2 } from './types'
+
+/** Slot sums are compared with this slack (fractional slot costs, e.g. 0.5). */
+const SLOT_EPSILON = 1e-9
+
+/** Total slot cost of the summons of `kind` in `agents`. */
+export function slotsUsed(agents: readonly AgentState[], kind: SummonKind): number {
+  let used = 0
+  for (const a of agents) if (a.kind === kind) used += a.slotCost
+  return used
+}
+
+/** The slots `settings` give summons of `kind`. */
+export const slotCapacity = (settings: Readonly<LabSettings>, kind: SummonKind): number => (kind === 'minion' ? settings.minionSlots : settings.sentrySlots)
+
+/** Whether `cost` more fits in the `kind` slots now. */
+export const fitsSlots = (k: Pick<KernelApi, 'agents' | 'settings'>, kind: SummonKind, cost: number): boolean =>
+  slotsUsed(k.agents, kind) + cost <= slotCapacity(k.settings, kind) + SLOT_EPSILON
 
 /** Distributive Omit so each SimEvent arm keeps its own fields. */
 type EventInput = SimEvent extends infer E ? (E extends SimEvent ? Omit<E, 'tick' | 'seq'> : never) : never
@@ -53,6 +86,8 @@ export interface WorldConfig {
   critChancePct: number
   /** Mana cost per use; 0 ⇒ the weapon has no mana pool. */
   manaCost: number
+  /** The minion loadout (P3-S10): its behavior fills the minion slots when the world is created. */
+  loadout?: { behavior: Behavior; owner: HitOwner } | null
 }
 
 interface ManaPool {
@@ -87,6 +122,13 @@ export class World implements KernelApi {
   private readonly digest = new Digest()
   /** Hit sources that outlive single uses (`persistentSource`), per world. */
   private readonly persistent = new Map<string, HitSource>()
+  /** Minions and sentries, oldest first. */
+  private summons: AgentState[] = []
+  private nextAgentId = 1
+  /** The dummy a whip struck last (summons focus it). */
+  private focus: number | null = null
+  /** Attack released since the last use started (a new press may re-summon with the slots full). */
+  private released = true
 
   constructor(cfg: WorldConfig) {
     this.cfg = cfg
@@ -98,12 +140,15 @@ export class World implements KernelApi {
       box: aabbFromCenter(d.x, d.y, d.widthTiles ?? DEFAULT_DUMMY_WIDTH_TILES, d.heightTiles ?? DEFAULT_DUMMY_HEIGHT_TILES),
       defense: d.defense ?? 0,
       debuffs: [],
+      tag: null,
     }))
     this.stats = new StatsAccumulator(this.dummies.map((d) => d.id))
     const cooldowns = cfg.modifiers.flatMap((m) => (m.hitCooldownTicks === undefined ? [] : [m.hitCooldownTicks]))
     this.hitCooldown = cooldowns.length > 0 ? Math.min(...cooldowns) : null
     this.mana = cfg.manaCost > 0 ? { current: this.settings.maxMana, max: this.settings.maxMana, regenAcc: 0 } : null
     this.resolveAim()
+    // The minion loadout is out from the start (as many minions as the slots hold).
+    if (cfg.loadout) cfg.loadout.behavior.fillSlots?.(this, cfg.loadout.owner)
   }
 
   // -------------------------------------------------------------------------------------------
@@ -112,8 +157,10 @@ export class World implements KernelApi {
   step(): void {
     this.resolveAim()
     this.stepUse()
+    this.stepAgents()
     this.stepProjectiles()
     this.stepDebuffs()
+    this.stepTags()
     this.stepMana()
     this.stats.endTick()
     this.tick++
@@ -132,7 +179,10 @@ export class World implements KernelApi {
       this.readyAt = this.use.startTick + this.use.durationTicks + this.cfg.reuseDelayTicks
       this.use = null
     }
-    if (!this.input.attacking) this.blocked = false
+    if (!this.input.attacking) {
+      this.blocked = false
+      this.released = true
+    }
     if (!this.use && this.input.attacking && this.tick >= this.readyAt && (this.cfg.behavior.ready?.(this) ?? true)) this.tryStartUse()
     const use = this.use
     if (!use) return
@@ -162,6 +212,7 @@ export class World implements KernelApi {
       }
     }
     this.blocked = false
+    this.released = false
     // slow-cast stretches the use itself; the reuse delay after it is not scaled (README "Cadence")
     const durationTicks = slowCast ? Math.max(1, Math.floor(this.cfg.useTicks * INSUFFICIENT_MANA_USE_TIME_MULTIPLIER)) : this.cfg.useTicks
     const activationTicks = slowCast
@@ -183,6 +234,15 @@ export class World implements KernelApi {
     this.emit({ type: 'use-start', useIndex: index, durationTicks, slowCast })
   }
 
+  /** Each summon's brain, oldest first (a brain never summons or dismisses). */
+  private stepAgents(): void {
+    for (const a of this.summons) {
+      a.prevX = a.x
+      a.prevY = a.y
+      a.brain.step(this, a)
+    }
+  }
+
   private stepProjectiles(): void {
     if (this.projectiles.length === 0) return
     const { arena } = this.cfg
@@ -197,7 +257,8 @@ export class World implements KernelApi {
           continue
         }
       } else {
-        for (const m of this.cfg.modifiers) m.steer?.(this, p)
+        // A loadout summon's shot is steered by its own weapon's modifiers, never the equipped one's.
+        for (const m of p.source.owner?.modifiers ?? this.cfg.modifiers) m.steer?.(this, p)
       }
       if (p.gravity && p.age >= GRAVITY_DELAY_TICKS) p.vy = Math.min(p.vy + GRAVITY_TILES_PER_TICK2, MAX_FALL_TILES_PER_TICK)
       const nx = p.x + p.vx
@@ -266,6 +327,18 @@ export class World implements KernelApi {
     }
   }
 
+  /** Whip tags count down; one applied at tick t lasts its whole duration (ticks t … t + duration − 1). */
+  private stepTags(): void {
+    for (const dummy of this.dummies) {
+      const tag = dummy.tag
+      if (!tag) continue
+      tag.remainingTicks--
+      if (tag.remainingTicks > 0) continue
+      dummy.tag = null
+      this.emit({ type: 'tag-expired', dummyId: dummy.id })
+    }
+  }
+
   /** VERIFIED 1.4.5.7+ formula (constants.ts); the Lab player stands still, no regen bonuses. */
   private stepMana(): void {
     const pool = this.mana
@@ -303,8 +376,25 @@ export class World implements KernelApi {
     return this.projectiles
   }
 
+  get autoAim(): boolean {
+    return this.input.aim === null
+  }
+
+  get freshPress(): boolean {
+    return this.released
+  }
+
+  get agents(): readonly AgentState[] {
+    return this.summons
+  }
+
+  get focusIndex(): number | null {
+    return this.focus
+  }
+
   spawnProjectile(launch: ProjectileLaunch): void {
     const id = this.nextProjectileId++
+    const summon = launch.summon
     this.projectiles.push({
       id,
       x: launch.x,
@@ -317,7 +407,10 @@ export class World implements KernelApi {
       hitsLeft: launch.pierce === Infinity ? Infinity : 1 + launch.pierce,
       gravity: launch.gravity,
       lifetimeTicks: launch.lifetimeTicks,
-      source: this.hitSource(`proj:${id}`, 'projectile', launch.damage, launch.hitCooldownTicks),
+      source: summon
+        ? // A summon's shot: its own kind (tag bonus) and owner; paced by its brain, one hit per dummy.
+          { key: `proj:${id}`, kind: summon.kind, baseDamage: launch.damage, cooldownTicks: launch.hitCooldownTicks ?? null, immuneUntil: new Map(), ...(summon.owner ? { owner: summon.owner } : {}) }
+        : this.hitSource(`proj:${id}`, 'projectile', launch.damage, launch.hitCooldownTicks),
       spriteKey: launch.spriteKey,
       ...(launch.guide ? { guide: launch.guide } : {}),
     })
@@ -325,15 +418,73 @@ export class World implements KernelApi {
     this.emit({ type: 'projectile-spawn', projectileId: id, x: launch.x, y: launch.y, vx: launch.vx * TICKS_PER_SECOND, vy: launch.vy * TICKS_PER_SECOND })
   }
 
-  strike(source: HitSource, dummy: DummyState, at: Vec2): boolean {
+  strike(source: HitSource, dummy: DummyState, at: Vec2, damage: number = source.baseDamage): boolean {
     const until = source.immuneUntil.get(dummy.index)
     if (until !== undefined && this.tick < until) return false
     source.immuneUntil.set(dummy.index, source.cooldownTicks === null ? Infinity : this.tick + source.cooldownTicks)
-    const roll = rollHit(this.rng, source.baseDamage, dummy.defense, this.cfg.critChancePct, this.settings.damageVariance)
-    this.stats.damage(dummy.id, roll.amount, roll.crit, source.kind, this.tick)
-    this.emit({ type: 'damage', source: source.kind, sourceId: source.key, dummyId: dummy.id, amount: roll.amount, crit: roll.crit, x: at.x, y: at.y })
-    for (const m of this.cfg.modifiers) m.afterStrike?.(this, source, dummy)
+    const owner = source.owner
+    // A whip's tag counts for summon hits only (wiki Whips: "When minions or sentries attack tagged
+    // enemies…"): its damage joins the hit's base damage before variance and defense (Lab choice), and
+    // its crit chance is the hit's — summon damage has none of its own (B17; "the only way summons can
+    // deal critical hits").
+    const tag = source.kind === 'minion' || source.kind === 'sentry' ? dummy.tag : null
+    const critPct = tag && tag.critPct !== null ? tag.critPct : owner ? owner.critChancePct : this.cfg.critChancePct
+    const roll = rollHit(this.rng, tag ? damage + tag.damageFlat : damage, dummy.defense, critPct, this.settings.damageVariance)
+    // The tag's share: everything above what the same roll deals untagged (no tag damage, no crit).
+    const tagBonus = tag ? roll.amount - applyDefense(this.settings.damageVariance ? applyVariancePct(damage, roll.variancePct) : damage, dummy.defense) : undefined
+    this.stats.damage(dummy.id, roll.amount, roll.crit, source.kind, this.tick, tagBonus ?? 0)
+    this.emit({
+      type: 'damage',
+      source: source.kind,
+      sourceId: source.key,
+      dummyId: dummy.id,
+      amount: roll.amount,
+      crit: roll.crit,
+      x: at.x,
+      y: at.y,
+      ...(tagBonus === undefined ? {} : { tagBonus }),
+    })
+    for (const m of owner?.modifiers ?? this.cfg.modifiers) m.afterStrike?.(this, source, dummy)
     return true
+  }
+
+  summon(spawn: AgentSpawn): AgentState {
+    const id = this.nextAgentId++
+    const agent: AgentState = {
+      id,
+      kind: spawn.kind,
+      slotCost: spawn.slotCost,
+      aiClass: spawn.aiClass,
+      loadout: spawn.loadout,
+      spawnTick: this.tick,
+      x: spawn.x,
+      y: spawn.y,
+      prevX: spawn.x,
+      prevY: spawn.y,
+      facing: this.facing,
+      targetIndex: null,
+      lastAttackTick: -1,
+      source: { key: `${spawn.kind}:${id}`, kind: spawn.kind, baseDamage: spawn.baseDamage, cooldownTicks: spawn.cooldownTicks, immuneUntil: new Map(), ...(spawn.owner ? { owner: spawn.owner } : {}) },
+      brain: spawn.brain,
+    }
+    this.summons.push(agent)
+    this.emit({ type: 'summon', agentId: id, kind: spawn.kind, x: spawn.x, y: spawn.y, loadout: spawn.loadout })
+    return agent
+  }
+
+  dismiss(agent: AgentState, reason: 'replaced' | 'slots'): void {
+    const at = this.summons.indexOf(agent)
+    if (at < 0) return
+    this.summons.splice(at, 1)
+    this.emit({ type: 'dismiss', agentId: agent.id, kind: agent.kind, reason })
+  }
+
+  tagDummy(dummy: DummyState, tag: WhipTag): void {
+    const refreshed = dummy.tag !== null
+    dummy.tag = { damageFlat: tag.damageFlat, critPct: tag.critPct, durationTicks: tag.durationTicks, remainingTicks: tag.durationTicks }
+    // wiki Whips: "The last enemy hit by a whip will be targeted by the player's minions and sentries".
+    this.focus = dummy.index
+    this.emit({ type: 'tag-applied', dummyId: dummy.id, durationTicks: tag.durationTicks, refreshed })
   }
 
   persistentSource(key: string, kind: HitSource['kind'], baseDamage: number, cooldownTicks: number | null): HitSource {
@@ -370,10 +521,32 @@ export class World implements KernelApi {
       this.mana.max = next.maxMana
       this.mana.current = Math.min(this.mana.current, next.maxMana)
     }
+    // Fewer slots than summons out: the oldest leave first (in-game they are "randomly chosen to be
+    // dismissed" — wiki Minion-summoning weapons; the Lab's order keeps runs reproducible).
+    for (const kind of ['minion', 'sentry'] as const) {
+      let used = slotsUsed(this.summons, kind)
+      for (const a of this.summons.filter((s) => s.kind === kind)) {
+        if (used <= slotCapacity(next, kind) + SLOT_EPSILON) break
+        this.dismiss(a, 'slots')
+        used -= a.slotCost
+      }
+    }
   }
 
   manaState(): ManaState | null {
     return this.mana ? { current: this.mana.current, max: this.mana.max, ignoreMana: this.settings.ignoreMana } : null
+  }
+
+  summonsState(): SummonsState {
+    const count = (kind: SummonKind) => this.summons.filter((a) => a.kind === kind).length
+    return {
+      minions: count('minion'),
+      minionSlotsUsed: slotsUsed(this.summons, 'minion'),
+      minionSlots: this.settings.minionSlots,
+      sentries: count('sentry'),
+      sentrySlotsUsed: slotsUsed(this.summons, 'sentry'),
+      sentrySlots: this.settings.sentrySlots,
+    }
   }
 
   eventDigest(): string {
@@ -403,6 +576,7 @@ export class World implements KernelApi {
           height: d.box.maxY - d.box.minY,
           defense: d.defense,
           debuffs: d.debuffs.map((b) => ({ buffId: b.buffId, remainingTicks: b.remainingTicks })),
+          tag: d.tag ? { remainingTicks: d.tag.remainingTicks, durationTicks: d.tag.durationTicks, damageFlat: d.tag.damageFlat, critPct: d.tag.critPct } : null,
         }
       }),
       projectiles: this.projectiles.map((p) => ({
@@ -416,6 +590,19 @@ export class World implements KernelApi {
         ...(p.spriteKey === undefined ? {} : { spriteKey: p.spriteKey }),
       })),
       blade: this.bladePose(),
+      agents: this.summons.map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        aiClass: a.aiClass,
+        x: a.x,
+        y: a.y,
+        prevX: a.prevX,
+        prevY: a.prevY,
+        facing: a.facing,
+        targetId: a.targetIndex === null ? null : (this.dummies[a.targetIndex]?.id ?? null),
+        lastAttackTick: a.lastAttackTick,
+        loadout: a.loadout,
+      })),
     }
   }
 

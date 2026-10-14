@@ -147,6 +147,12 @@ export interface ResultsSummaryProps {
    * numbers apart. Null or absent: one dummy.
    */
   dummyIds?: readonly string[] | null
+  /**
+   * Damage by source (PRD P3-S9 AC3, P3-S10 AC3: the summoner loop): what to call the weapon's own hits
+   * (null: a summon staff, which has none) and its summons' — the total's split, with the whip tag's
+   * share of the summons' damage. Null or absent: no summons involved.
+   */
+  sources?: { weapon: string | null; summons: string } | null
   /** The test result's AssumptionsTip (labAssumptions 'timed-test-dps'). */
   assumptions: Assumptions
   onRunAgain: () => void
@@ -154,7 +160,19 @@ export interface ResultsSummaryProps {
   compact: boolean
 }
 
-export function ResultsSummary({ result, weaponName, appliesDot, usesAmmo = false, usesMana = false, dummyIds = null, assumptions, onRunAgain, onReset, compact }: ResultsSummaryProps) {
+export function ResultsSummary({
+  result,
+  weaponName,
+  appliesDot,
+  usesAmmo = false,
+  usesMana = false,
+  dummyIds = null,
+  sources = null,
+  assumptions,
+  onRunAgain,
+  onReset,
+  compact,
+}: ResultsSummaryProps) {
   const reducedMotion = useReducedMotion()
   const dps = useCountUp(result.estimatedDps, 300, !reducedMotion)
   const counting = dps !== result.estimatedDps
@@ -211,8 +229,32 @@ export function ResultsSummary({ result, weaponName, appliesDot, usesAmmo = fals
           <Row label="Total damage">
             <span data-result="total">{formatInt(result.totalDamage)}</span>
           </Row>
-          {/* The two parts of the total, nested under it (indented on a rule, a size smaller). */}
-          {appliesDot ? (
+          {/* The parts of the total, nested under it (indented on a rule, a size smaller): by source with
+              summons (the weapon's own hits, the summons' with the tag's share, DoT), else direct / DoT. */}
+          {sources ? (
+            <>
+              {sources.weapon ? (
+                <Row label={`${sources.weapon} damage`} nested>
+                  <span data-result="weapon-damage">{formatInt(result.breakdown.weaponDamage)}</span>
+                </Row>
+              ) : null}
+              <Row label={`${sources.summons} damage`} nested>
+                <span data-result="summon-damage">{formatInt(result.breakdown.summonDamage)}</span>
+              </Row>
+              {sources.weapon ? (
+                <Row label="of which tag bonus" srLabel={`of the ${sources.summons.toLowerCase()} damage, added by the whip tag`} nested>
+                  <span className="text-success" data-result="tag-bonus">
+                    +{formatInt(result.breakdown.tagBonusDamage)}
+                  </span>
+                </Row>
+              ) : null}
+              {result.breakdown.dotDamage > 0 ? (
+                <Row label="DoT damage" srLabel="Damage over time (DoT)" nested>
+                  <span data-result="dot">{formatInt(result.breakdown.dotDamage)}</span>
+                </Row>
+              ) : null}
+            </>
+          ) : appliesDot ? (
             <>
               <Row label="Direct damage" nested>
                 <span data-result="direct">{formatInt(result.directDamage)}</span>

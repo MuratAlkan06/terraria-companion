@@ -8,14 +8,18 @@ import {
   DEFAULT_DUMMY_X_TILES,
   DEFAULT_DUMMY_Y_TILES,
   DEFAULT_MAX_MANA,
+  DEFAULT_MINION_SLOTS,
+  DEFAULT_SENTRY_SLOTS,
   DUMMY_ROW_SPACING_TILES,
+  MAX_MINION_SLOTS,
+  MAX_SENTRY_SLOTS,
   TICKS_PER_SECOND,
   TIMED_TEST_DURATIONS,
   timedTestTicks,
   type TimedTestDuration,
 } from './constants'
 import { FixedStepClock } from './clock'
-import { prepareSimulation, type SimPlan } from './guard'
+import { prepareLoadout, prepareSimulation, type LoadoutPlan, type SimPlan } from './guard'
 import { toSeed } from './rng'
 import type {
   AdvanceResult,
@@ -47,6 +51,8 @@ export const DEFAULT_LAB_SETTINGS: Readonly<LabSettings> = Object.freeze({
   insufficientMana: 'slow-cast', // AMENDMENTS-008 B35: the pinned 1.4.5.8 game rule (40% attack speed)
   homingEnabled: true,
   damageVariance: true,
+  minionSlots: DEFAULT_MINION_SLOTS,
+  sentrySlots: DEFAULT_SENTRY_SLOTS,
 })
 
 export const DEFAULT_DUMMY: Readonly<DummySpec> = Object.freeze({ id: 'dummy-0', x: DEFAULT_DUMMY_X_TILES, y: DEFAULT_DUMMY_Y_TILES })
@@ -71,6 +77,8 @@ export function validateSettings(s: LabSettings): string | null {
   if (s.insufficientMana !== 'block' && s.insufficientMana !== 'slow-cast') return 'insufficientMana must be "block" or "slow-cast"'
   if (typeof s.homingEnabled !== 'boolean') return 'homingEnabled must be a boolean'
   if (typeof s.damageVariance !== 'boolean') return 'damageVariance must be a boolean'
+  if (!Number.isInteger(s.minionSlots) || s.minionSlots < 1 || s.minionSlots > MAX_MINION_SLOTS) return `minionSlots must be an integer in 1..${MAX_MINION_SLOTS}`
+  if (!Number.isInteger(s.sentrySlots) || s.sentrySlots < 1 || s.sentrySlots > MAX_SENTRY_SLOTS) return `sentrySlots must be an integer in 1..${MAX_SENTRY_SLOTS}`
   return null
 }
 
@@ -109,7 +117,13 @@ export function createLabSim(options: LabSimOptions): CreateLabSimResult {
   const arena = { ...(options.arena ?? DEFAULT_ARENA) }
   const arenaError = validateArena(arena)
   if (arenaError) return invalid('invalid-arena', arenaError)
-  return { ok: true, sim: new Sim(prepared.plan, toSeed(options.seed ?? DEFAULT_SEED), settings, dummies, arena) }
+  let loadout: LoadoutPlan | null = null
+  if (options.minionLoadout) {
+    const loadoutPrepared = prepareLoadout(options.minionLoadout, prepared.plan, options.buffs)
+    if (!loadoutPrepared.ok) return { ok: false, refusal: loadoutPrepared.refusal }
+    loadout = loadoutPrepared.loadout
+  }
+  return { ok: true, sim: new Sim(prepared.plan, loadout, toSeed(options.seed ?? DEFAULT_SEED), settings, dummies, arena) }
 }
 
 interface TestState {
@@ -129,11 +143,13 @@ class Sim implements LabSim {
   private settings: LabSettings
   private test: TestState = { ...IDLE_TEST }
   private readonly plan: SimPlan
+  private readonly loadoutPlan: LoadoutPlan | null
   private dummies: readonly DummySpec[]
   private readonly arena: ArenaBounds
 
-  constructor(plan: SimPlan, seed: number, settings: LabSettings, dummies: readonly DummySpec[], arena: ArenaBounds) {
+  constructor(plan: SimPlan, loadout: LoadoutPlan | null, seed: number, settings: LabSettings, dummies: readonly DummySpec[], arena: ArenaBounds) {
     this.plan = plan
+    this.loadoutPlan = loadout
     this.seed = seed
     this.settings = settings
     this.dummies = dummies
@@ -145,8 +161,14 @@ class Sim implements LabSim {
     return { ...this.plan.summary }
   }
 
+  get loadout() {
+    return this.loadoutPlan ? { ...this.loadoutPlan.summary } : null
+  }
+
   get approximations() {
-    return this.plan.approximations.map((a) => ({ ...a }))
+    const own = this.plan.approximations
+    const extra = (this.loadoutPlan?.approximations ?? []).filter((a) => !own.some((b) => b.id === a.id))
+    return [...own, ...extra].map((a) => ({ ...a }))
   }
 
   private newWorld(): World {
@@ -162,6 +184,7 @@ class Sim implements LabSim {
       activationTicks: this.plan.activationTicks,
       critChancePct: this.plan.critChancePct,
       manaCost: this.plan.manaCost,
+      loadout: this.loadoutPlan ? { behavior: this.loadoutPlan.behavior, owner: this.loadoutPlan.owner } : null,
     })
   }
 
@@ -274,6 +297,7 @@ class Sim implements LabSim {
         debuffsApplied: s.debuffsApplied,
         dpsSeries: s.dpsSeries,
         perDummy: s.perDummy,
+        breakdown: s.breakdown,
         eventDigest: this.world.eventDigest(),
       },
     }
@@ -292,6 +316,7 @@ class Sim implements LabSim {
             ...t.result,
             dpsSeries: [...t.result.dpsSeries],
             perDummy: Object.fromEntries(Object.entries(t.result.perDummy).map(([id, d]) => [id, { ...d }])),
+            breakdown: { ...t.result.breakdown },
           }
         : null,
     }
@@ -304,6 +329,7 @@ class Sim implements LabSim {
       weapon: this.weapon,
       stats: this.world.stats.snapshot(),
       mana: this.world.manaState(),
+      summons: this.world.summonsState(),
       timedTest: this.timedTestState(),
       settings: { ...this.settings },
       eventDigest: this.world.eventDigest(),

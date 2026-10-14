@@ -34,6 +34,8 @@ Tiles (16 px at 1×), ticks (60/s), velocities in tiles/second at every public b
 Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — point-blank.
 Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMMY_ROW_SPACING_TILES`
 (3) apart, ids `dummy-0…` nearest first; the first is the primary target (auto-aim's dummy).
+Summons (PRD P3-S9) are world agents with positions in the same space; the "ground" a ground minion
+stands on is its target dummy's foot line (the sim has no terrain).
 
 ## API surface
 
@@ -43,9 +45,9 @@ Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMM
 | `assessWeapon(weapon)` → `{ simulable: true, archetype, requiresAmmoClass, requiresBuffIds } \| { simulable: false, refusal }` | Weapon-only verdict (no ammo/buffs needed). Use it for the in-Lab browser's "simulated vs limitation" badge (P3-S2) and the coverage report (P3-S13). |
 | `cadenceTicksFor(weapon, useAnimationTicks)` | The effective ticks per attack, incl. the weapon's reuse delay (see "Cadence"). |
 | `APPROXIMATIONS`, `sim.approximations` | Plain-language assumptions; `sim.approximations` is the subset for the equipped weapon — render it verbatim in the AssumptionsTip paired with every EstimateLabel. Modeling-convention entries carry a `ruling` (see "Modeling conventions"). |
-| `IMPLEMENTED_ARCHETYPES` | `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`. |
+| `IMPLEMENTED_ARCHETYPES` | `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`, `minion-sentry`, `whip`. |
 | `dummyRow(count, firstX?, spacingTiles?)`, `DUMMY_ROW_SPACING_TILES` | Multiple Dummies: a row of standard dummies (see "Units and coordinates"). |
-| `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `mulberry32` | Constants / utilities. |
+| `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `MAX_MINION_SLOTS`, `MAX_SENTRY_SLOTS`, `WHIP_TAG_DURATION_TICKS`, `mulberry32` | Constants / utilities. |
 | `type *` from `./types` | All public types (`LabSim`, `SimSnapshot`, `SimEvent`, `RenderState`, `SimRefusal`, …). |
 
 ### `LabSimOptions`
@@ -59,6 +61,7 @@ Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMM
 | `dummies?` | `DummySpec[]` — `{ id?, x, y, widthTiles?, heightTiles?, defense? }` (boss-sized = bigger box, armored = `defense`). |
 | `settings?` | Partial `LabSettings` (below). |
 | `arena?` | Projectile despawn bounds (must contain the origin). |
+| `minionLoadout?` | P3-S10 summoner loop: a MINION summon weapon whose minions are out beside the equipped (non-summon) weapon — every world starts with as many as the minion slots hold (`Behavior.fillSlots`); their hits use the loadout weapon's crit (0) and modifiers (its DoT). Not simulable, a sentry weapon, or beside a summon weapon → `invalid-setup` / `invalid-loadout`. |
 
 `LabSettings` (defaults in `DEFAULT_LAB_SETTINGS`):
 
@@ -70,6 +73,8 @@ Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMM
 | `insufficientMana` | `'slow-cast'` | `'slow-cast'` (AMENDMENTS-008 B35): the pinned 1.4.5.8 game rule — since 1.4.5.7 a magic weapon without enough mana still casts, at 40% attack speed (use time × 2.5; [wiki Mana](https://terraria.wiki.gg/wiki/Mana)); paying nothing on such casts is a labeled assumption. `'block'`: the labeled "stop at zero" test setting — casting stops until mana covers the cost. |
 | `homingEnabled` | `true` | P3-S8 AC2 toggle. |
 | `damageVariance` | `true` | Wiki ±15% per-hit variance; `false` gives constant per-hit numbers. |
+| `minionSlots` | `1` | 1..`MAX_MINION_SLOTS` (11). VERIFIED default and maximum ([wiki Minion-summoning weapons](https://terraria.wiki.gg/wiki/Minion-summoning_weapons)); stands in for gear until P3-S14. Lowered mid-world: the oldest minions leave first (in-game: random). |
+| `sentrySlots` | `1` | 1..`MAX_SENTRY_SLOTS` (6), VERIFIED ([wiki Sentry-summoning weapons](https://terraria.wiki.gg/wiki/Sentry-summoning_weapons)). |
 
 ### `LabSim` methods
 
@@ -87,6 +92,7 @@ Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMM
 | `renderState()` | Positions for the renderer (`alpha` included). |
 | `drainEvents()` | Pending events, oldest first; clears the queue. |
 | `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, `returnsToHand` (a returning weapon: an attack lasts until it is back), … for the EquippedBar. |
+| `loadout` | The minion loadout's `WeaponSummary`, else `null`. `approximations` lists the weapon's, then the loadout's (deduplicated). |
 
 ### HUD mapping (UX_SPEC §3.4)
 
@@ -102,24 +108,32 @@ Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMM
 | AmmoCounter | `stats.ammoConsumed` |
 | TimedTestControl | `snapshot().timedTest` (`status`, `remainingSec`, `result`) — announce `finished` via `aria-live` |
 | Multiple dummies (primary = first dummy vs all) | `stats.perDummy[id]`; a finished test's `result.perDummy` |
+| Summons vs slots (P3-S9) | `snapshot().summons` (`minions`, `minionSlotsUsed`, `minionSlots`, `sentries`, …); positions `renderState().agents` |
+| Damage by source (P3-S9 AC3, P3-S10 AC2/AC3) | `stats.breakdown` / `result.breakdown`: `weaponDamage` (+ hits) + `summonDamage` (+ hits) + `dotDamage` = total; `tagBonusDamage` ⊂ `summonDamage` |
+| Whip tags (P3-S10 AC1) | `renderState().dummies[].tag` (`remainingTicks`, `durationTicks`, `damageFlat`, `critPct`); events `tag-applied` / `tag-expired` |
 
 ### Events (`SimEvent`, deterministic log)
 
 `use-start`, `use-blocked` (`block` setting only; once per out-of-mana streak), `projectile-spawn`,
 `projectile-despawn` (`pierce-exhausted` / `lifetime` / `out-of-bounds` / `returned` — a returning
 weapon caught: the next attack may start on the following tick), `damage`
-(`source: 'melee' | 'projectile' | 'dot'`, `sourceId` `use:<n>` / `proj:<id>` / `beam` / `buff:<id>`,
-`amount`, `crit`, `x`, `y` = impact point; crits render larger, DoT smaller), `debuff-applied`
-(`refreshed`), `debuff-expired`. Every event has `tick` and `seq`. `snapshot().eventDigest` is an
-FNV-1a fingerprint of the whole stream since the last reset.
+(`source: 'melee' | 'projectile' | 'dot' | 'minion' | 'sentry'`, `sourceId` `use:<n>` / `proj:<id>` /
+`beam` / `buff:<id>` / `minion:<agentId>` / `sentry:<agentId>`, `amount`, `crit`, `x`, `y` = impact
+point, and on a summon's hit on a whip-tagged dummy `tagBonus` — see "Summons and whips"; crits render
+larger, DoT smaller), `debuff-applied` (`refreshed`), `debuff-expired`, `summon` (`agentId`, `kind`,
+`x`, `y`, `loadout`), `dismiss` (`replaced` / `slots`), `tag-applied` (`refreshed`), `tag-expired`.
+Every event has `tick` and `seq`. `snapshot().eventDigest` is an FNV-1a fingerprint of the whole
+stream since the last reset.
 
 ### Render state
 
 `renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, size, defense, active
 debuffs), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`; a returning
-weapon in flight is its one projectile), and `blade` (`swing` | `thrust` | `beam`: `prevAngle → angle`,
-`prevLength → length`, radians, 0 = +x, π/2 = down; a `beam` runs from the player along `angle` for
-`length` tiles while the attack is held). Interpolate with `alpha`.
+weapon in flight is its one projectile), `blade` (`swing` | `thrust` | `beam` | `whip`: `prevAngle →
+angle`, `prevLength → length`, radians, 0 = +x, π/2 = down; a `beam` runs from the player along
+`angle` for `length` tiles while the attack is held; a `whip`'s `length` is its range), each dummy's
+whip `tag`, and `agents` (minions and sentries, oldest first: `kind`, `aiClass`, `prevX/prevY → x/y`,
+`facing`, `targetId`, `lastAttackTick`, `loadout`). Interpolate with `alpha`.
 
 ## Refusals (render, don't guess)
 
@@ -129,17 +143,19 @@ weapon in flight is its one projectile), and `blade` (`swing` | `thrust` | `beam
 |---|---|
 | `limitation` | LimitationCard from `refusal.limitation` (`inGameBehavior`, `reason`, `sourceUrl`). |
 | `custom-scenario` | Custom-scenario banner (`scenarioId`). |
-| `archetype-not-implemented` | Not-simulated card (minion-sentry, whip, explosive-aoe). |
-| `modifier-not-implemented` | bounce / chain (the registry stubs throw `NotImplementedError`; the guard turns that into this result); homing on a returning weapon or a held beam (their flight / line ignores steering — refused, never ignored). |
+| `archetype-not-implemented` | Not-simulated card (explosive-aoe). |
+| `modifier-not-implemented` | bounce / chain (the registry stubs throw `NotImplementedError`; the guard turns that into this result); homing on a returning weapon, a held beam, a whip or a summon (their flight / line / sweep / attack ignores steering — refused, never ignored). |
 | `missing-required-field` / `unverified-required-field` | `fields` lists dot-paths. Normally unreachable: the pipeline downgrades such weapons to limitations (§2.1 rule 3); this is defense in depth. |
 | `invalid-data` | Contradictory or malformed values. |
 | `dependency-data-unavailable` | The chosen ammo or referenced buff lacks verified data (e.g. ammo with no damage value). |
 
 `refusal.kind === 'invalid-setup'` → user-fixable: `ammo-required`, `ammo-incompatible`,
-`buff-registry-required`, `invalid-settings`, `invalid-dummy`, `invalid-arena`.
+`buff-registry-required`, `invalid-settings`, `invalid-dummy`, `invalid-arena`, `invalid-loadout`.
 
-Required weapon fields for every archetype: `damageClass`, `damage`, `critPct`,
-`useTimeTicks`, `useAnimationTicks`; plus `shootSpeedTps` (bow-gun, returning, and piercing-beam
+Required weapon fields for every archetype: `damageClass`, `damage`, `critPct` (NOT for summon-class
+weapons — AMENDMENTS-013 B64: summon damage cannot crit, B17, so the pipeline emits no `critPct` for
+any whip, minion or sentry weapon; a present value is still checked, a listed-unverified one still
+blocks), `useTimeTicks`, `useAnimationTicks`; plus `shootSpeedTps` (bow-gun, returning, and piercing-beam
 `pierce-projectile` params without a projectile spec) and `manaCost` (magic-bolt). `autoReuse`/`manaCost`/`reuseDelayTicks` may be absent (defaults: false / no cost /
 no cooldown) but block if listed unverified. Any `labBehavior.*` path or
 `simRequiredWeaponFields(archetype)` path listed unverified blocks (mirrors the pipeline rule). A
@@ -179,7 +195,8 @@ a modeled value is never silent).
 Order (wiki Damage): **variance → defense → crit**.
 - Variance: ×0.85–1.15, rounded half-to-even ([Damage](https://terraria.wiki.gg/wiki/Damage)); drawn in whole percent steps.
 - Defense: `⌊damage − defense/2⌋`, minimum 1, no difficulty scaling for enemies ([Defense](https://terraria.wiki.gg/wiki/Defense)). Armor penetration and per-difficulty multipliers: out of scope.
-- Crit: `4% + weapon critPct` for melee/ranged/magic, ×2 after defense; summon and classless never crit ([Critical hit](https://terraria.wiki.gg/wiki/Critical_hit); AMENDMENTS-004 B17). `BASE_CRIT_PCT = 4` is a labeled constant.
+- Crit: `4% + weapon critPct` for melee/ranged/magic, ×2 after defense; summon and classless never crit ([Critical hit](https://terraria.wiki.gg/wiki/Critical_hit); AMENDMENTS-004 B17) — except a minion's or sentry's hit on a dummy tagged by a whip with a tag critical strike chance ([Whips](https://terraria.wiki.gg/wiki/Whips): "the only way summons can deal critical hits"). `BASE_CRIT_PCT = 4` is a labeled constant.
+- Whip tag on a summon hit: the tag damage joins the hit's base damage BEFORE variance and defense (the wiki says only that it "is added to the damage dealt" — a labeled Lab choice, `whip-tag`); its crit chance is the hit's. `tagBonus` = the hit's amount minus what the same variance roll deals without the tag (no tag damage, no crit) — exact integer attribution.
 - Bow/gun: weapon damage + ammo damage (wiki Damage).
 - Per-projectile percentage (`ProjectileSpec.damageMultiplierPct`, AMENDMENTS-010 B48(b)): the
   projectile's base damage is ⌊damage × pct / 100⌋ before variance — rounded down as in the wiki's
@@ -201,15 +218,19 @@ Order (wiki Damage): **variance → defense → crit**.
 
 ## Extending
 
-- **New archetype** (minion-sentry, whip, explosive-aoe): add `interpreters/<name>.ts` implementing
+- **New archetype** (explosive-aoe): add `interpreters/<name>.ts` implementing
   `ArchetypeInterpreter` (`prepare` → `Behavior` with `activate` / optional `tickUse` / `ready` /
-  `blade`), register it in `interpreters/index.ts` — which also flips the pipeline's recorded
-  "params complete, pending interpreter" weapons on the next `npm run pipeline:build`
+  `blade` / `fillSlots`), register it in `interpreters/index.ts` — which also flips the pipeline's
+  recorded "params complete, pending interpreter" weapons on the next `npm run pipeline:build`
   (AMENDMENTS-013 B61). The kernel does not switch on archetype; its generic hooks are a use gate
   (`Behavior.ready`), guided projectiles (`ProjectileLaunch.guide`: steer / stop at a hit / `caught`),
-  per-world persistent hit sources (`KernelApi.persistentSource`), and `attacking` / `arena` /
-  `activeProjectiles` on `KernelApi`. A `Behavior` is shared by every world a sim builds (reset makes a
-  new world): it keeps no per-world state of its own.
+  per-world persistent hit sources (`KernelApi.persistentSource`), `attacking` / `arena` /
+  `activeProjectiles` / `autoAim` / `freshPress` on `KernelApi`, and (P3-S9/S10) persistent AGENTS
+  (`summon` / `dismiss` / `agents`, each stepped by its own `AgentBrain` after the use cycle), a
+  per-hit damage override (`strike(…, damage)`), hit OWNERS (`HitSource.owner`: another weapon's crit
+  and modifiers — the minion loadout's) and whip TAGS (`tagDummy`, `focusIndex`). A `Behavior` is
+  shared by every world a sim builds (reset makes a new world): it keeps no per-world state of its own
+  (per-agent state lives in its brain, per-use state may be keyed by the `ActiveUse`).
 - **New modifier** (bounce, chain): replace the throwing stub in `modifiers.ts` with a
   `ModifierRuntime` using the hooks in `contracts.ts`. Bounce/chain will likely need one more hook
   (projectile-hit → redirect); add it to `ModifierRuntime` and call it from the projectile step.
@@ -252,6 +273,13 @@ See `approximations.ts` for the user-facing copy. Summary (✓ = rule verified o
 | flail-launch | ✓/◇ | Extends until it strikes or reaches its length, then retracts ✓ (wiki Flails); retract speed = extend speed ◇ ("slightly faster", no number); the struck dummy isn't hit again on the way back ◇. |
 | yoyo-control | ✓/◇ | Re-hits every 10 ticks ✓ (wiki Yoyos); follows the aim within its reach at the weapon velocity, stays out while held ◇; spin-time limit, bouncing and its own acceleration not modeled. |
 | beam-geometry | ◇ | A line from the player toward the current aim to the arena edge, through every dummy; one hit per dummy per `tickRateTicks`; off while released and during a cooldown. |
+| whip-swing | ✓/◇ | A line of `rangeTiles` sweeps the arc once per use, one hit per dummy per swing; each further dummy takes the wiki multihit penalty off the previous hit, rounded down ✓ (a 0-damage dummy isn't hit); never crits ✓; segmented hitbox not modeled ◇. |
+| whip-tag | ✓/◇ | 4 s tag ✓ ([Whips](https://terraria.wiki.gg/wiki/Whips), `WHIP_TAG_DURATION_TICKS`), refreshed by a new strike; tag damage on minion/sentry hits ✓ added before variance/defense ◇; tag crit chance ✓; summons focus the last whipped dummy ✓; no whip stacking, no minion tag multipliers ◇. |
+| summon-slots | ✓/◇ | 1 minion / 1 sentry slot by default ✓, slot cost; a full summon replaces the OLDEST ◇; a held attack summons only into free slots ◇ (a new press replaces). |
+| summon-attack | ◇ | One attack per `attackRateTicks`, every attack lands, first one interval after appearing, rhythm kept on target switches; movement drawn, not simulated. A minion appears at the aim point (auto-aim: beside the player). |
+| summon-target | ✓/◇ | The last whipped dummy ✓ (a sentry: if in range), else the nearest to the player (a sentry: to itself, within range) ◇. |
+| minion-melee-contact / -ground-melee / -hover-strike / -ranged-shot | ◇ | The B63 P-6 classes' Lab models (minionSentry.ts header); a ranged shot without a data speed lands the tick it is fired. |
+| sentry-placement | ◇ | Exactly at the aim point (auto-aim: 2 tiles ahead), never moves; attacks dummies whose centre is within `sentryRangeTiles`; the 10-minute lifetime is not modeled. |
 
 ## Modeling conventions (AMENDMENTS-010 B44 / B46 / B47, AMENDMENTS-013 B63, record marker B49)
 
@@ -277,8 +305,9 @@ to no convention and is refused — it can never pick up the wrong label (`model
 | summon-hit-cap | B63 P-3 | minion-sentry `attackRateTicks` (an UPPER BOUND) — shared path: entry `…attackRateTicks#summon-hit-cap` | `summon-hit-cap` |
 | square-blast-radius | B63 P-5 | explosive-aoe `blastRadiusTiles` (inscribed circle of a stated square area) | `square-blast-radius` |
 
-The four B63 labels surface once the whip / minion-sentry / explosive-aoe interpreters ship (P3-S9–
-S11); until then those weapons are emitted as limitations (B61).
+The whip and summon-rate B63 labels surface with the whip / minion-sentry interpreters (P3-S9 / P3-S10,
+2026-10-14); `square-blast-radius` once the explosive-aoe interpreter ships (P3-S11) — until then those
+weapons are emitted as limitations (B61).
 
 The pipeline applies B46 only where the weapon's article states no range. Where it states one, that
 range is the thrust `reachTiles` (AMENDMENTS-012 B56): extracted wiki data, not listed in
@@ -314,6 +343,26 @@ attack is held, a line from the player toward the current aim to the arena edge 
 once per `tickRateTicks` (a per-world hit source, so the cadence runs on across uses); mana per use as
 any weapon; damage × `projectile.damageMultiplierPct` when a projectile spec is given.
 
+**minion-sentry** (P3-S9) — a use summons ONE agent: `variant` `minion` (at the aim point; auto-aim:
+beside the player) or `sentry` (exactly at the aim point, stationary; auto-aim: 2 tiles ahead).
+`slotCost` counts against `minionSlots` / `sentrySlots`; full slots → the oldest of that kind is
+dismissed (`replaced`); a cost above all the slots summons nothing. `Behavior.ready` lets a HELD attack
+summon only into free slots — a new press (`KernelApi.freshPress`) may replace (otherwise Space or a
+timed test would replace the minion every use and it would never attack). `attackRateTicks` = one
+attack per that many ticks (stated, or B63 P-2 average / P-3 hit cap — labeled from `modeledFields`),
+first one interval after it appears. `aiClass` (B63 P-6) picks the Lab model; `ranged-shot` shoots
+(instant without a `projectile`; with `projectile.velocityTps` a kernel projectile of the summon's
+kind), the contact classes strike by touch (a contact class with a `projectile` is `invalid-data`).
+`sentryRangeTiles` = targeting radius to a dummy's centre. Damage = weapon damage × the projectile's
+`damageMultiplierPct` when given; crit 0 (summon class, B64) except through a whip tag.
+
+**whip** (P3-S10) — a line of `rangeTiles` sweeps `arcDegrees` (B63 P-1: 180°, centred in front of
+the player — `swingAngle`) once per use; each dummy at most once per swing; the n-th dummy hit takes
+`falloffPerTarget` off the previous hit n times, each step rounded down (integer basis points); a
+0-damage dummy is neither hit nor tagged. Each landed hit tags the dummy for `WHIP_TAG_DURATION_TICKS`
+(wiki: 4 s; the params carry no duration, so Constellation's 8 s would need a schema field — it is a
+reviewed limitation) with `tagDamageFlat` / `tagCritPct`, and makes it the summons' focus.
+
 ## Resolved questions
 
 1. **`simRequiredWeaponFields` predated B14** (omitted `useAnimationTicks` and melee `autoReuse`).
@@ -327,6 +376,26 @@ any weapon; damage × `projectile.damageMultiplierPct` when a projectile spec is
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
 `determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+
+- **2026-10-14: minion-sentry + whip interpreters, summons, whip tags, minion loadout, B64 (PRD P3-S9 /
+  P3-S10).** New interpreters `minion-sentry` and `whip`, registered (the B61 flip: `pipeline:build`
+  emits the 10 recorded minion staves and 6 whips — simulable 118 → 134). Guard: `critPct` is not
+  required for summon-class weapons (AMENDMENTS-013 B64). Kernel hooks, inert for every earlier
+  archetype: agents (`summon` / `dismiss` / `agents`, stepped after the use cycle), `autoAim`,
+  `freshPress`, `strike(…, damage)`, `HitSource.owner`, whip tags (`tagDummy`, `focusIndex`, a tag
+  countdown after the debuffs). API: `LabSettings.minionSlots` / `sentrySlots`,
+  `LabSimOptions.minionLoadout`, `LabSim.loadout`, `snapshot().summons`, `stats.breakdown` /
+  `result.breakdown`, `renderState().agents` and `dummies[].tag`, blade kind `whip`, damage sources
+  `minion` / `sentry` with `tagBonus`, events `summon` / `dismiss` / `tag-applied` / `tag-expired`,
+  setup refusal `invalid-loadout`. New approximations `whip-swing`, `whip-tag`, `summon-slots`,
+  `summon-attack`, `summon-target`, `minion-melee-contact`, `minion-ground-melee`,
+  `minion-hover-strike`, `minion-ranged-shot`, `sentry-placement`; `crit-base` copy names the tag-crit
+  exception. Fingerprints: the ten earlier scenarios are **unchanged** (proved by the unchanged pins).
+  New scenarios pinned: minion (ground-melee, two slots, row) `{ total: 2622, dot: 0, hits: 295,
+  crits: 0, uses: 2, digest: '8e35ff66' }`; sentry (ranged-shot, range, armored row) `{ 3967, 0, 177,
+  0, 2, '4fbff848' }`; ranged minion (projectile, pierce) `{ 4173, 0, 280, 0, 2, '3830f899' }`; whip +
+  minion loadout (tags, tag crit, falloff, minion DoT) `{ 9644, 89, 537, 33, 60, '12a71806' }` — its
+  crits are all tagged summon hits (summon damage never crits otherwise).
 
 - **2026-10-13: returning + piercing-beam interpreters, Multiple Dummies (PRD P3-S6 / P3-S7).**
   New interpreters `returning` (boomerang / launched flail / yoyo variants) and `piercing-beam`

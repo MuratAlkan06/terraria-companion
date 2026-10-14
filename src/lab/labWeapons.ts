@@ -72,6 +72,15 @@ export function labWeapons(weapons: Iterable<Weapon>, setup: LabSetup): Weapon[]
 }
 
 /**
+ * The minion loadout's choices (PRD P3-S10, beside a whip): every equippable MINION staff (the engine's
+ * `minionLoadout` takes minions, not sentries), in picker order. From the data — a staff that gains
+ * params joins the list with no UI change.
+ */
+export function loadoutChoices(list: readonly Weapon[]): Weapon[] {
+  return list.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'minion-sentry' && w.labBehavior.params.variant === 'minion')
+}
+
+/**
  * Equipped when the URL names no weapon (or one the Lab can't equip): the weakest equippable
  * weapon by base damage — a starter weapon of whatever archetype the data makes weakest (since
  * bows equip, the Wooden Bow) — chosen from the data, never a hard-coded id.
@@ -139,6 +148,8 @@ const ARCHETYPE_NOUNS: Partial<Record<Archetype, string>> = {
   'magic-bolt': 'bolt-casting magic weapons',
   returning: 'boomerangs, launched flails and yoyos',
   'piercing-beam': 'piercing shots and held beams',
+  'minion-sentry': 'minion and sentry staves',
+  whip: 'whips',
 }
 
 /**
@@ -155,6 +166,8 @@ const ATTACK_VERBS: Partial<Record<Archetype, string>> = {
   'magic-bolt': 'cast',
   returning: 'throw',
   'piercing-beam': 'fire',
+  'minion-sentry': 'summon',
+  whip: 'whip',
 }
 
 /** The verb the Lab's instructions use for the equipped weapon's attack ("Hold Space to swing"). */
@@ -190,7 +203,7 @@ export function notSimulatedReason(status: Exclude<LabStatus, { kind: 'equippabl
 
 /** One behavior stat the EquippedBar shows beside damage, use time and crit (from the archetype params). */
 export interface BehaviorFact {
-  key: 'range' | 'flight' | 'hit-rate' | 'pierce'
+  key: 'range' | 'flight' | 'hit-rate' | 'pierce' | 'slots' | 'tag'
   label: string
   /** Compact HUD label. */
   short: string
@@ -211,7 +224,8 @@ const FLIGHT: Record<'boomerang' | 'flail' | 'yoyo', { value: string; shortValue
 /**
  * The equipped weapon's behavior stats from its params (PRD P3-S7 AC2 "projectile count/behavior";
  * P3-S6 pierce count and beam tick rate): a returning weapon's throw range and flight, a held beam's
- * hit interval, a projectile's pierce (extra dummies after the first, B37). Nothing per weapon.
+ * hit interval, a projectile's pierce (extra dummies after the first, B37); a summon's slot cost,
+ * attack interval and (sentry) range (P3-S9); a whip's range and tag (P3-S10). Nothing per weapon.
  */
 export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact[] {
   const lab = weapon.labBehavior
@@ -233,6 +247,23 @@ export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact
       return pierce(p.projectile.pierce)
     case 'swing-melee':
       return pierce(p.emitted?.pierce)
+    case 'minion-sentry':
+      return [
+        { key: 'slots', label: 'Slots', short: 'Slot', value: `${tiles(p.slotCost)} ${p.variant} slot${p.slotCost === 1 ? '' : 's'}`, shortValue: tiles(p.slotCost) },
+        { key: 'hit-rate', label: 'Attacks every', short: 'Atk', value: `${p.attackRateTicks} ticks`, shortValue: `${p.attackRateTicks}t` },
+        ...(p.sentryRangeTiles === undefined ? [] : [{ key: 'range' as const, label: 'Range', short: 'Rng', value: `${tiles(p.sentryRangeTiles)} tiles`, shortValue: `${tiles(p.sentryRangeTiles)}t` }]),
+      ]
+    case 'whip':
+      return [
+        { key: 'range', label: 'Range', short: 'Rng', value: `${tiles(p.rangeTiles)} tiles`, shortValue: `${tiles(p.rangeTiles)}t` },
+        {
+          key: 'tag',
+          label: 'Tag',
+          short: 'Tag',
+          value: `+${p.tagDamageFlat} damage${p.tagCritPct ? `, ${p.tagCritPct}% crit` : ''}`,
+          shortValue: `+${p.tagDamageFlat}${p.tagCritPct ? ` ${p.tagCritPct}%` : ''}`,
+        },
+      ]
     default:
       return []
   }

@@ -727,8 +727,8 @@ describe('remaining-archetype families: buildLabParams', () => {
   const YOYO_PARAMS = { archetype: 'returning', variant: 'yoyo', throwRangeTiles: 8.125, returnMode: 'tethered', control: 'cursor-follow' }
 
   it('PENDING INTERPRETER: complete params are recorded, the weapon is emitted as a limitation naming what the Lab does not model', () => {
-    // B61 flip: P3-S6/S7 registered returning + piercing-beam; whip, minion-sentry and explosive-aoe stay pending (P3-S9–S11)
-    expect(PENDING_FAMILIES.filter((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toEqual(['returning', 'piercing-beam'])
+    // B61 flip: P3-S6/S7 registered returning + piercing-beam, P3-S9/S10 minion-sentry + whip; explosive-aoe stays pending (P3-S11)
+    expect(PENDING_FAMILIES.filter((f) => IMPLEMENTED_ARCHETYPES.includes(f))).toEqual(['returning', 'whip', 'minion-sentry', 'piercing-beam'])
     const out = buildLabParams({ ...fixture([yoyoSpec()], [], YOYO_PROJ), ...pendingWithout('returning') })
     expect(out.decisions[0]).toMatchObject({ family: 'returning', variant: 'yoyo', method: 'derived', pending: true, reasonKey: 'pending-interpreter', params: YOYO_PARAMS })
     expect(out.decisions[0].derivation.join(' ')).toContain('the item infobox "Reach" row')
@@ -803,7 +803,7 @@ describe('remaining-archetype families: buildLabParams', () => {
   const whipInput = (range = '11', tag = '4') => withArticles(fixture([{ w: WHIP, stats: { useStyle: 1, shoot: 841, noMelee: true }, html: page(4672, 'The Leather Whip is a whip.') }], [whipEntry], { 841: { name: 'Leather Whip' } }), [whipsPage(range, tag)])
 
   it('whip: range / tag damage / tag crit / multihit penalty are stated (list table + tooltip); the arc is the B63 P-1 convention (180° forward, modeled)', () => {
-    const out = buildLabParams(whipInput())
+    const out = buildLabParams({ ...whipInput(), ...pendingWithout('whip') })
     expect(buildLabParams({ ...whipInput(), overlay: LabParamsOverlay.parse({ overlay: 'lab-params', authoredAt: '2026-10-13', notes: [], entries: [] }) }).decisions[0]).toMatchObject({ reasonKey: 'flagged', reason: expect.stringContaining('creates other projectiles or entities') })
     expect(out.decisions[0]).toMatchObject({
       family: 'whip',
@@ -824,6 +824,19 @@ describe('remaining-archetype families: buildLabParams', () => {
     // tooltip vs table disagreement: withheld, named as such (the arc stays modeled)
     const clash = buildLabParams(whipInput('11', '5'))
     expect(clash.decisions[0]).toMatchObject({ reasonKey: 'incomplete', missing: ['tagDamageFlat'], conflicts: ['tagDamageFlat'], modeled: ['labBehavior.params.arcDegrees'] })
+    expect(clash.weapons[0].labBehavior).toMatchObject({ reason: 'Not simulated: the wiki sources disagree on its tag damage.' }) // whips are simulated: no family sentence
+  })
+
+  it('B61 flip (P3-S10): with the real registry and the real guard, the recorded whip params are emitted and simulate (B64: a summon weapon needs no critPct)', () => {
+    const out = buildLabParams(whipInput())
+    expect(out.weapons[0].critPct).toBeUndefined()
+    expect(out.weapons[0].labBehavior).toEqual({ kind: 'archetype', params: { archetype: 'whip', arcDegrees: 180, rangeTiles: 11, tagDamageFlat: 4, tagCritPct: 10, falloffPerTarget: 0.5 } })
+    expect(out.weapons[0]._prov.modeledFields).toEqual(['labBehavior.params.arcDegrees'])
+    expect(out.decisions[0]).toMatchObject({ method: 'overlay', archetype: 'whip' })
+    expect(out.decisions[0].pending).toBeUndefined()
+    expect(assessWeapon(out.weapons[0])).toMatchObject({ simulable: true, archetype: 'whip' })
+    const created = createLabSim({ weapon: out.weapons[0] })
+    expect(created.ok && created.sim.approximations.map((a) => a.id)).toEqual(expect.arrayContaining(['whip-arc', 'whip-swing', 'whip-tag']))
   })
 
   const minionW = (over: Partial<Weapon> = {}) => weapon(1309, 'Slime Staff', { tags: ['minion-summon-items'], damageClass: 'summon', critPct: undefined, ...over })
@@ -837,9 +850,14 @@ describe('remaining-archetype families: buildLabParams', () => {
     const bare = buildLabParams(fixture([spec], [], SLIME_PROJ))
     expect(bare.decisions[0]).toMatchObject({ variant: 'minion', reasonKey: 'incomplete', partial: { slotCost: 1, attackRateTicks: 30 }, missing: ['aiClass'] })
     expect(bare.decisions[0].modeled).toBeUndefined() // 0.5 s = 30 whole ticks, not an average: game data
-    const out = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, lead)], SLIME_PROJ))
+    const out = buildLabParams({ ...fixture([spec], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, lead)], SLIME_PROJ), ...pendingWithout('minion-sentry') })
     expect(out.decisions[0]).toMatchObject({ method: 'overlay', pending: true, params: { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'ground-melee', attackRateTicks: 30 } })
     expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model summoned minions." })
+    // B61 flip (P3-S9): the real registry + guard emit the same params, simulable (B64: no critPct needed)
+    const flipped = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, lead)], SLIME_PROJ))
+    expect(flipped.weapons[0].labBehavior).toEqual({ kind: 'archetype', params: { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'ground-melee', attackRateTicks: 30 } })
+    expect(assessWeapon(flipped.weapons[0])).toMatchObject({ simulable: true, archetype: 'minion-sentry' })
+    expect(createLabSim({ weapon: flipped.weapons[0] }).ok).toBe(true)
     expect(() => buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ranged-shot' }, lead)], SLIME_PROJ))).toThrow(/ranged-shot behavior/)
     const avg = 'It bounces towards enemies, dealing contact damage. It attacks once every 0.5 seconds on average.'
     expect(() => buildLabParams(fixture([{ ...spec, html: minionHtml(avg) }], [minionEntry({ aiClass: 'ground-melee', attackRateTicks: 30 }, avg)], SLIME_PROJ))).toThrow(
@@ -851,7 +869,7 @@ describe('remaining-archetype families: buildLabParams', () => {
     const lead = 'It bounces towards enemies, dealing contact damage. The Baby Slime attacks with an average rate of fire of once every 1.13 seconds.'
     const spec = { w: minionW(), stats: { useStyle: 1, shoot: 266 }, html: minionHtml(lead) }
     const input = () => fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, lead)], SLIME_PROJ)
-    const out = buildLabParams(input())
+    const out = buildLabParams({ ...input(), ...pendingWithout('minion-sentry') })
     expect(out.decisions[0]).toMatchObject({ pending: true, params: { aiClass: 'ground-melee', attackRateTicks: 68 }, modeled: ['labBehavior.params.attackRateTicks#summon-average-rate'] })
     expect(out.decisions[0].derivation.join(' ')).toContain('1.13 s × 60 rounded half-to-even (modeling convention AMENDMENTS-013 B63 P-2')
     // P-2 and P-3 share the path: the entry names its convention; an unqualified entry never resolves (no wrong label)
@@ -867,8 +885,13 @@ describe('remaining-archetype families: buildLabParams', () => {
     const capHtml = 'The Baby Slime minion applies 12 ticks<sup class="reference"><a href="#cite_note-6">[6]</a></sup> of static invincibility frames upon hitting an enemy.'
     const quote = 'It bounces towards enemies, dealing contact damage.'
     const spec = { w: minionW(), stats: { useStyle: 1, shoot: 266 }, html: minionHtml(`${quote} ${capHtml}`) }
-    const out = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, quote)], SLIME_PROJ))
+    const out = buildLabParams({ ...fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, quote)], SLIME_PROJ), ...pendingWithout('minion-sentry') })
     expect(out.decisions[0]).toMatchObject({ pending: true, params: { aiClass: 'ground-melee', attackRateTicks: 12 }, modeled: ['labBehavior.params.attackRateTicks#summon-hit-cap'] })
+    // emitted (B61 flip), the upper bound carries its labeled caveat into the Lab's assumptions (B63 P-3)
+    const emitted = buildLabParams(fixture([spec], [minionEntry({ aiClass: 'ground-melee' }, quote)], SLIME_PROJ)).weapons[0]
+    expect(emitted._prov.modeledFields).toEqual(['labBehavior.params.attackRateTicks#summon-hit-cap'])
+    const hitCap = createLabSim({ weapon: emitted })
+    expect(hitCap.ok && hitCap.sim.approximations.find((a) => a.id === 'summon-hit-cap')?.detail).toContain('maximum rate; actual depends on minion AI pathing')
     expect(out.decisions[0].derivation.join(' ')).toContain('an UPPER BOUND — maximum rate; actual depends on minion AI pathing')
     expect(modelingConventionFor('minion-sentry', 'labBehavior.params.attackRateTicks#summon-hit-cap')).toMatchObject({ ruling: 'AMENDMENTS-013 B63 P-3' })
     expect(CONTACT_AI_CLASSES).toEqual(['melee-contact', 'ground-melee', 'hover-strike'])
@@ -890,7 +913,10 @@ describe('remaining-archetype families: buildLabParams', () => {
     const entry: LabParamsEntry = { itemId: 1572, name: 'Staff of the Frost Hydra', decision: 'archetype', archetype: 'minion-sentry', aiClass: 'ranged-shot', attackRateTicks: 60, evidence: [{ page: 'Staff of the Frost Hydra', quote: lead }], why: 'test' }
     const out = buildLabParams(fixture([spec], [entry], { 308: { name: 'Frost Hydra', sentry: true } }))
     expect(out.decisions[0]).toMatchObject({ variant: 'sentry', reasonKey: 'incomplete', missing: ['sentryRangeTiles'], partial: { slotCost: 1, attackRateTicks: 60 }, candidates: { sentryRangeTiles: expect.stringContaining('Manhattan distance 62.5') } })
-    expect(out.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model stationary sentries. The wiki states no targeting radius for it." })
+    // sentries are simulated (P3-S9): the card names only what is missing
+    expect(out.weapons[0].labBehavior).toMatchObject({ reason: 'Not simulated: the wiki states no targeting radius for it.' })
+    const pending = buildLabParams({ ...fixture([spec], [entry], { 308: { name: 'Frost Hydra', sentry: true } }), ...pendingWithout('minion-sentry') })
+    expect(pending.weapons[0].labBehavior).toMatchObject({ reason: "The Lab doesn't model stationary sentries. The wiki states no targeting radius for it." })
     expect(() => buildLabParams(fixture([spec], [{ ...entry, sentryRangeTiles: 62.5 }], { 308: { name: 'Frost Hydra', sentry: true } }))).toThrow(/Manhattan distance is not a radius/)
   })
 
@@ -1011,7 +1037,7 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
     }
   })
 
-  it('B49: every modeled param resolves to a ratified convention; swing always lists its own, thrust its B46 reach unless stated (B56); nothing else is modeled', () => {
+  it('B49: every modeled param resolves to a ratified convention; swing and whip always list their own, thrust its B46 reach unless stated (B56), a summon at most its rate (B63 P-2 / P-3); nothing else is modeled', () => {
     for (const w of weapons) {
       const modeled = w._prov.modeledFields ?? []
       if (w.labBehavior.kind !== 'archetype') {
@@ -1019,8 +1045,10 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
         continue
       }
       const archetype = w.labBehavior.params.archetype
-      for (const path of modeled) expect(modelingConventionFor(archetype, path)?.ruling, `${w.name} ${path}`).toMatch(/^AMENDMENTS-010 B4[467]$/)
+      for (const path of modeled) expect(modelingConventionFor(archetype, path)?.ruling, `${w.name} ${path}`).toMatch(/^AMENDMENTS-010 B4[467]$|^AMENDMENTS-013 B63 P-[123]$/)
       if (archetype === 'swing-melee') expect(modeled).toEqual(['labBehavior.params.arcDegrees', 'labBehavior.params.reachTiles'])
+      if (archetype === 'whip') expect(modeled, w.name).toEqual(['labBehavior.params.arcDegrees']) // B63 P-1, every whip
+      if (archetype === 'minion-sentry') expect([[], ['labBehavior.params.attackRateTicks#summon-average-rate'], ['labBehavior.params.attackRateTicks#summon-hit-cap']], w.name).toContainEqual(modeled)
       if (archetype === 'thrust') expect([[], ['labBehavior.params.reachTiles']], w.name).toContainEqual(modeled) // [] = the article-stated range (B56)
       if (archetype === 'bow-gun' && modeled.length > 0) expect(w.labBehavior.params.spreadDegrees, w.name).toBe(10)
     }
@@ -1051,9 +1079,11 @@ describe.runIf(emitted)('emitted Lab params (src/data) honor the sim guard contr
       }
       if (lab.kind === 'limitation') expect(lab.reason, w.name).not.toMatch(/\byet\b|\bsoon\b|will be|coming|parameters have not been assigned/i)
     }
-    // the B61 flip: registering the returning interpreter emitted its recorded params (P3-S7)
-    expect(emitted).toBe(members.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === 'returning').length)
-    expect(emitted).toBeGreaterThan(0)
+    // the B61 flip: registering an interpreter emitted that family's recorded params (returning P3-S7; minion-sentry + whip P3-S9/S10)
+    for (const archetype of ['returning', 'minion-sentry', 'whip'] as const) {
+      expect(members.some((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.params.archetype === archetype), archetype).toBe(true)
+    }
+    expect(emitted).toBe(members.filter((w) => w.labBehavior.kind === 'archetype').length)
   })
 
   it('AMENDMENTS-013 B67: no emitted limitation reason makes a forward promise — family, reviewed, specific and the default card alike', () => {

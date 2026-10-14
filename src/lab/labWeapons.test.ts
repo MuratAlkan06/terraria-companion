@@ -39,9 +39,9 @@ const equippableByEngine = weapons.filter((w) => {
   return ammoOptions.some((ammo) => createLabSim({ weapon: w, buffs: LAB_SETUP.buffs, ...(ammo ? { ammo } : {}) }).ok)
 })
 
-describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 magic bolts, P3-S6/S7 beams and returning weapons)', () => {
+describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 magic bolts, P3-S6/S7 beams and returning weapons, P3-S9/S10 summons and whips)', () => {
   it('the Lab equips every archetype the engine implements', () => {
-    expect(LAB_ARCHETYPES).toEqual(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'piercing-beam'])
+    expect(LAB_ARCHETYPES).toEqual(['swing-melee', 'thrust', 'bow-gun', 'magic-bolt', 'returning', 'piercing-beam', 'minion-sentry', 'whip'])
     expect([...LAB_ARCHETYPES].sort()).toEqual([...IMPLEMENTED_ARCHETYPES].sort())
   })
 
@@ -50,8 +50,9 @@ describe('what the Lab equips (P3-S1 swords, B47 thrust, P3-S4 bows/guns, P3-S5 
     expect(list).toHaveLength(equippableByEngine.length)
     // AMENDMENTS-010 B44: 35 broadswords are simulable under the ratified geometry convention.
     expect(list.filter((w) => isArchetype(w, 'swing-melee')).length).toBeGreaterThanOrEqual(35)
-    // P3-S4 / P3-S5 / P3-S7: bows, guns and repeaters, magic bolts and returning weapons equip (every one in today's data).
-    for (const archetype of ['bow-gun', 'magic-bolt', 'returning']) {
+    // P3-S4 / P3-S5 / P3-S7 / P3-S9 / P3-S10: bows, guns and repeaters, magic bolts, returning weapons,
+    // minion staves (the Imp Staff's On Fire! with the buff registry) and whips equip (every one in today's data).
+    for (const archetype of ['bow-gun', 'magic-bolt', 'returning', 'minion-sentry', 'whip']) {
       const engine = weapons.filter((w) => isArchetype(w, archetype) && assessWeapon(w).simulable)
       expect(engine.length, archetype).toBeGreaterThan(0)
       expect(list.filter((w) => isArchetype(w, archetype)), archetype).toHaveLength(engine.length)
@@ -189,7 +190,7 @@ describe('/lab?weapon=:id deep links (UX_SPEC §10.11)', () => {
 
   it('names what the Lab simulates in plain words (a serial comma: a noun may contain "and")', () => {
     expect(labScopeNouns()).toBe(
-      'swung melee weapons, thrusting weapons, bows and guns, bolt-casting magic weapons, boomerangs, launched flails and yoyos, and piercing shots and held beams',
+      'swung melee weapons, thrusting weapons, bows and guns, bolt-casting magic weapons, boomerangs, launched flails and yoyos, piercing shots and held beams, minion and sentry staves, and whips',
     )
     expect(labScopeNouns(['swing-melee', 'thrust'])).toBe('swung melee weapons and thrusting weapons')
   })

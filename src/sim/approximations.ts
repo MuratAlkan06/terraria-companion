@@ -11,8 +11,9 @@
  * the guard maps each listed entry to its convention (src/schemas MODELING_CONVENTIONS — a path two
  * conventions share is qualified `<path>#<convention id>`) and adds the entry below that carries the
  * same `ruling`. B44 (swing arc/reach) is labeled by the Lab UI's own `swing-reach-arc` assumption
- * (src/lab), so the engine does not add a second copy of it. The B63 labels surface once the whip /
- * minion-sentry / explosive-aoe interpreters ship (until then those weapons are limitations).
+ * (src/lab), so the engine does not add a second copy of it. The B63 whip / summon-rate labels surface
+ * with the whip and minion-sentry interpreters (P3-S9 / P3-S10); `square-blast-radius` once the
+ * explosive-aoe interpreter ships (until then those weapons are limitations).
  */
 import type { ModelingConvention } from '../schemas'
 
@@ -55,6 +56,16 @@ export type ApproximationId =
   | 'summon-average-rate'
   | 'summon-hit-cap'
   | 'square-blast-radius'
+  | 'whip-swing'
+  | 'whip-tag'
+  | 'summon-slots'
+  | 'summon-attack'
+  | 'summon-target'
+  | 'minion-melee-contact'
+  | 'minion-ground-melee'
+  | 'minion-hover-strike'
+  | 'minion-ranged-shot'
+  | 'sentry-placement'
 
 export interface Approximation {
   id: ApproximationId
@@ -78,7 +89,7 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     id: 'crit-base',
     title: 'Crit chance = 4% + weapon bonus',
     detail:
-      'Melee, ranged and magic hits crit at 4% base plus the weapon crit bonus; crits deal double damage after defense. Summon and classless damage never crit. No other crit sources are applied.',
+      'Melee, ranged and magic hits crit at 4% base plus the weapon crit bonus; crits deal double damage after defense. Summon and classless damage never crit — except minion and sentry hits on a dummy tagged by a whip with a tag critical strike chance. No other crit sources are applied.',
     sourceUrl: `${WIKI}Critical_hit`,
   },
   defense: {
@@ -313,6 +324,73 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     detail:
       'The wiki states this explosive damages a square area (the same distance horizontally and vertically). The Lab uses the circle that fits inside that square (radius = half the side), so it never overstates the area: enemies in the corners of the square are not hit. This is a Lab modeling choice, not game data.',
     ruling: 'AMENDMENTS-013 B63 P-5',
+  },
+  // P3-S10: whips
+  'whip-swing': {
+    id: 'whip-swing',
+    title: 'Whip swing: a sweeping line, one hit per dummy',
+    detail:
+      "The whip is modeled as a line as long as its range (the wiki's whip range) sweeping its arc once per swing, hitting each dummy at most once per swing. Each further dummy hit in the same swing takes the wiki's multihit penalty off the previous hit's damage, rounded down — a dummy it would deal no damage to is not hit. Whip hits never crit (summon damage). The real whip's curved, segmented hitbox is not modeled.",
+    sourceUrl: `${WIKI}Whips`,
+  },
+  'whip-tag': {
+    id: 'whip-tag',
+    title: 'Whip tag: 4 seconds of bonus damage for your summons',
+    detail:
+      "Each dummy the whip strikes is tagged for 4 seconds, as the wiki states — a new strike restarts the 4 seconds — and your minions and sentries switch to the dummy struck last. While a dummy is tagged, every minion or sentry hit on it deals the whip's tag damage on top and, for a whip with a tag critical strike chance, crits at that chance: the only way summon damage crits. The Lab adds the tag damage before the ±15% variance and defense (the wiki says only that it is added); the tag bonus it shows is what the tag added to each hit. Not modeled: several whips' tags at once (whip stacking), minion-specific tag multipliers, and whip effects beyond tag damage and crit chance.",
+    sourceUrl: `${WIKI}Whips`,
+  },
+  // P3-S9: minions and sentries (the AI-class models follow the AMENDMENTS-013 B63 P-6 definitions)
+  'summon-slots': {
+    id: 'summon-slots',
+    title: 'Summon slots: 1 minion and 1 sentry by default',
+    detail:
+      'By default you can have one minion and one sentry out, as the wiki states; the slot settings stand in for gear that adds more (up to 11 minion and 6 sentry slots). Each summon takes its slot cost. Summoning with the slots full replaces the oldest summon (the wiki says a new summon replaces one; which one is a Lab choice). Holding attack keeps summoning only while slots are free — press again to replace one.',
+    sourceUrl: `${WIKI}Minion-summoning_weapons`,
+  },
+  'summon-attack': {
+    id: 'summon-attack',
+    title: 'Summons attack on a fixed rhythm',
+    detail:
+      'A minion appears where you click (with Space or in a timed test, beside you). Each minion or sentry attacks once per its attack interval and every attack lands — no misses, no chasing. Its first attack comes one interval after it appears, and it keeps its rhythm when it switches targets. How it moves is drawn, not simulated: no speed, no pathing.',
+  },
+  'summon-target': {
+    id: 'summon-target',
+    title: 'Summons attack the dummy your whip struck last',
+    detail:
+      'Minions and sentries attack the dummy your whip struck last — the wiki: the last enemy hit by a whip is targeted by your minions and sentries — otherwise the dummy nearest to you (for a sentry, the one nearest to it within its range).',
+    sourceUrl: `${WIKI}Whips`,
+  },
+  'minion-melee-contact': {
+    id: 'minion-melee-contact',
+    title: 'Flying contact minion (Lab model)',
+    detail:
+      'This minion flies, charges or dashes into enemies, damaging them by contact. The Lab loops it above the dummy and through it, hitting once per attack interval as it passes.',
+  },
+  'minion-ground-melee': {
+    id: 'minion-ground-melee',
+    title: 'Ground minion (Lab model)',
+    detail:
+      'This minion moves along the ground and hits enemies up close. The Lab keeps it on the ground beside the dummy, hopping into it once per attack interval.',
+  },
+  'minion-hover-strike': {
+    id: 'minion-hover-strike',
+    title: 'Hovering striker (Lab model)',
+    detail:
+      'This minion flies or hovers next to enemies and strikes them at close range. The Lab holds it beside the dummy, lunging in to strike once per attack interval.',
+  },
+  'minion-ranged-shot': {
+    id: 'minion-ranged-shot',
+    title: 'Shooting summon (Lab model)',
+    detail:
+      "This summon damages enemies with projectiles it shoots. The Lab fires once per attack interval — a minion from where it hovers near you, a sentry from where it stands — and the shot lands the moment it is fired (the wiki gives no shot speed for it), unless the weapon's data gives its projectile a speed.",
+  },
+  'sentry-placement': {
+    id: 'sentry-placement',
+    title: 'Sentry: stays where you place it',
+    detail:
+      'A sentry appears exactly where you click (with Space or in a timed test, 2 tiles in front of you) and never moves — in-game most sentries settle on the ground. It attacks only dummies whose centre is within its range. The 10-minute sentry lifetime is not modeled.',
+    sourceUrl: `${WIKI}Sentry-summoning_weapons`,
   },
 }
 

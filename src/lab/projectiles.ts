@@ -231,7 +231,8 @@ export class ProjectileTracks {
 
   /** A projectile's hit (`sourceId` `proj:<id>`): its last one is where it stops if its pierce runs out. */
   impact(e: Damage): void {
-    if (e.source !== 'projectile') return
+    // Any projectile's hit — a summon's shot too (P3-S9: its source is the summon's kind).
+    if (!e.sourceId.startsWith('proj:')) return
     const id = Number(e.sourceId.slice('proj:'.length))
     const track = this.tracks.get(id)
     if (track) track.impact = { x: e.x, y: e.y }

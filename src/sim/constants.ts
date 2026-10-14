@@ -62,6 +62,26 @@ export const DUMMY_ROW_SPACING_TILES = 3
  */
 export const YOYO_HIT_COOLDOWN_TICKS = 10
 
+/**
+ * Summon slots — VERIFIED (wiki Minion-summoning weapons, rev 1032993): "By default, a player can only
+ * have a single minion summoned at once"; gear raises "the maximum number of minions … up to 11
+ * (including the default minion slot)". Sentry-summoning weapons (rev 1033011): "By default, a player
+ * can only have a single sentry summoned at once"; raised "to 6 (including the default sentry slot)".
+ * The Lab's slot settings range over these (`LabSettings.minionSlots` / `sentrySlots`).
+ */
+export const DEFAULT_MINION_SLOTS = 1
+export const MAX_MINION_SLOTS = 11
+export const DEFAULT_SENTRY_SLOTS = 1
+export const MAX_SENTRY_SLOTS = 6
+
+/**
+ * Whip tag duration — VERIFIED (wiki Whips, rev 1033416): "All whips inflict a special tag effect on
+ * struck enemies for 4 seconds (8 seconds for Constellation)". The whip params carry no duration, so
+ * every whip gets the 4 s; Constellation is a reviewed limitation (it would need a schema field —
+ * README "Summons and whips"). Approximation id `whip-tag`.
+ */
+export const WHIP_TAG_DURATION_TICKS = 4 * 60
+
 /** A guided (returning) projectile counts as back at the target point within this distance (tiles). */
 export const ARRIVE_EPSILON_TILES = 1e-9
 

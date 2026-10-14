@@ -3,9 +3,10 @@
  * All damage values are integers, so totals are exact and bit-identical across runs.
  */
 import { MAX_DPS_SERIES_SECONDS, TICKS_PER_SECOND } from './constants'
-import type { DamageSourceKind, DummyStats, StatsSnapshot } from './types'
+import type { DamageBreakdown, DamageSourceKind, DummyStats, StatsSnapshot } from './types'
 
 const emptyDummy = (): DummyStats => ({ damage: 0, directDamage: 0, dotDamage: 0, hits: 0, crits: 0 })
+const emptyBreakdown = (): DamageBreakdown => ({ weaponDamage: 0, weaponHits: 0, summonDamage: 0, summonHits: 0, tagBonusDamage: 0, dotDamage: 0 })
 
 export class StatsAccumulator {
   private ticks = 0
@@ -28,6 +29,7 @@ export class StatsAccumulator {
   private seriesStartSecond = 0
   private currentSecondDamage = 0
   private perDummy = new Map<string, DummyStats>()
+  private breakdown = emptyBreakdown()
   private readonly dummyIds: readonly string[]
 
   constructor(dummyIds: readonly string[]) {
@@ -56,12 +58,25 @@ export class StatsAccumulator {
     this.seriesStartSecond = 0
     this.currentSecondDamage = 0
     this.perDummy = new Map(this.dummyIds.map((id) => [id, emptyDummy()]))
+    this.breakdown = emptyBreakdown()
   }
 
-  damage(dummyId: string, amount: number, crit: boolean, source: DamageSourceKind, tick: number): void {
+  /** `tagBonus`: the part of a summon hit a whip tag added (README "Summons"). */
+  damage(dummyId: string, amount: number, crit: boolean, source: DamageSourceKind, tick: number, tagBonus = 0): void {
     const d = this.perDummy.get(dummyId) ?? emptyDummy()
     this.perDummy.set(dummyId, d)
     d.damage += amount
+    const b = this.breakdown
+    if (source === 'minion' || source === 'sentry') {
+      b.summonDamage += amount
+      b.summonHits++
+      b.tagBonusDamage += tagBonus
+    } else if (source === 'dot') {
+      b.dotDamage += amount
+    } else {
+      b.weaponDamage += amount
+      b.weaponHits++
+    }
     if (source === 'dot') {
       this.dotDamage += amount
       d.dotDamage += amount
@@ -148,6 +163,7 @@ export class StatsAccumulator {
       seriesStartSecond: this.seriesStartSecond,
       currentSecondDamage: this.currentSecondDamage,
       perDummy,
+      breakdown: { ...this.breakdown },
     }
   }
 }

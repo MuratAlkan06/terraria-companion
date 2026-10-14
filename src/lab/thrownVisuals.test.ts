@@ -99,8 +99,8 @@ describe('Multiple Dummies framing (P3-S6)', () => {
   })
 
   it('the arena rebuilds its dummy views whenever the engine’s row changes', () => {
-    const one = dummySignature([{ id: 'dummy-0', x: 6, y: 0, width: 2, height: 3, defense: 0, debuffs: [] }])
-    const two = dummySignature(dummyRow(2, 6).map((d) => ({ id: d.id as string, x: d.x, y: d.y, width: 2, height: 3, defense: 0, debuffs: [] })))
+    const one = dummySignature([{ id: 'dummy-0', x: 6, y: 0, width: 2, height: 3, defense: 0, debuffs: [], tag: null }])
+    const two = dummySignature(dummyRow(2, 6).map((d) => ({ id: d.id as string, x: d.x, y: d.y, width: 2, height: 3, defense: 0, debuffs: [], tag: null })))
     expect(one).not.toBe(two)
     expect(two).toContain('dummy-1@9,0,2x3')
   })

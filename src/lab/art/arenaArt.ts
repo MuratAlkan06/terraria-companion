@@ -307,3 +307,78 @@ export function buildPlayer(): string[] {
 export function silhouette(rows: readonly string[], ch: string): string[] {
   return rows.map((row) => row.replace(/[^.]/g, ch))
 }
+
+/**
+ * Summons (PRD P3-S9) — ORIGINAL generic art, one silhouette per AI class (AMENDMENTS-013 B63 P-6) so
+ * each class reads differently at a glance, plus a sentry turret; none is a game sprite (the Lab has no
+ * minion art). Facing right; the renderer mirrors them. About a tile each (8 art px = 1 tile).
+ */
+export type SummonArt = 'melee-contact' | 'ground-melee' | 'hover-strike' | 'ranged-shot' | 'sentry'
+
+export function buildSummon(art: SummonArt): string[] {
+  switch (art) {
+    case 'melee-contact': {
+      // a small winged flyer: spread wings, round body, one bright eye forward
+      const c = new PixelCanvas(11, 7)
+      c.rect(0, 1, 1, 2, A.n400).rect(1, 2, 2, 2, A.n400).rect(2, 3, 2, 1, A.n200)
+      c.rect(10, 1, 1, 2, A.n400).rect(8, 2, 2, 2, A.n400).rect(7, 3, 2, 1, A.n200)
+      c.rect(4, 2, 3, 4, A.n400).rect(4, 2, 3, 1, A.n200).set(6, 3, A.white).set(5, 6, A.g400)
+      return c.outline(A.n950).rows()
+    }
+    case 'ground-melee': {
+      // a hopping blob with two eyes, lit from above
+      const c = new PixelCanvas(10, 7)
+      c.rect(3, 0, 4, 1, A.f300).rect(2, 1, 6, 1, A.f400).rect(1, 2, 8, 1, A.f400).rect(0, 3, 10, 3, A.f500).rect(1, 6, 8, 1, A.f600)
+      c.set(3, 1, A.f300).set(2, 2, A.f300)
+      c.set(5, 3, A.n950).set(8, 3, A.n950).set(5, 4, A.white).set(8, 4, A.white)
+      return c.outline(A.n950).rows()
+    }
+    case 'hover-strike': {
+      // a hovering blade pointing forward, its hilt glowing
+      const c = new PixelCanvas(12, 5)
+      c.rect(0, 1, 1, 3, A.g500).rect(1, 2, 2, 1, A.e600).rect(3, 0, 1, 5, A.g400)
+      c.rect(4, 1, 6, 3, A.s200).rect(4, 1, 6, 1, A.white).rect(10, 2, 1, 1, A.s200).rect(4, 3, 6, 1, A.s400)
+      return c.outline(A.n950).rows()
+    }
+    case 'ranged-shot': {
+      // a floating orb with a gold lens facing forward and two fins; it hovers in the night sky, so past
+      // its dark outline a pale rim keeps it readable there (design review M4)
+      const c = new PixelCanvas(13, 13)
+      const o = 2
+      c.rect(o + 2, o + 1, 5, 7, A.n600).rect(o + 1, o + 2, 7, 5, A.n600).rect(o + 2, o + 2, 3, 2, A.n400)
+      c.rect(o + 5, o + 3, 3, 3, A.g400).set(o + 6, o + 4, A.white).set(o + 7, o + 3, A.g300)
+      c.set(o, o, A.n400).set(o + 1, o + 1, A.n400).set(o, o + 8, A.n400).set(o + 1, o + 7, A.n400)
+      return c.outline(A.n950).outline(A.n200).rows()
+    }
+    case 'sentry': {
+      // a turret on a tripod: stone housing, gold muzzle forward
+      const c = new PixelCanvas(13, 14)
+      c.rect(2, 3, 7, 6, A.s500).rect(2, 3, 7, 1, A.s300).rect(2, 8, 7, 1, A.s700).rect(3, 4, 2, 2, A.s400)
+      c.rect(9, 5, 3, 2, A.g500).rect(9, 5, 3, 1, A.g300).set(12, 5, A.g200)
+      c.rect(5, 9, 1, 2, A.e600).line(5, 11, 2, 13, A.e600).line(5, 11, 8, 13, A.e600).rect(4, 13, 3, 1, A.e700)
+      return c.outline(A.n950).rows()
+    }
+  }
+}
+
+/**
+ * The whip tag marker's icon (PRD P3-S10 AC1): a luggage tag with its eyelet — a shape, not a colour.
+ * `outline`: the same tag HOLLOW — only its one-pixel edge lit, dark inside — for a tagged dummy the
+ * summons are not attacking (design review M2: filled vs hollow, never colour alone).
+ */
+export function buildTagIcon(style: 'filled' | 'outline' = 'filled'): string[] {
+  const c = new PixelCanvas(8, 6)
+  c.rect(2, 0, 6, 6, A.f300).rect(1, 1, 1, 4, A.f300).rect(0, 2, 1, 2, A.f300)
+  if (style === 'outline') {
+    const body = c.rows()
+    const lit = (x: number, y: number) => (body[y]?.[x] ?? '.') !== '.'
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) if (lit(x, y) && lit(x - 1, y) && lit(x + 1, y) && lit(x, y - 1) && lit(x, y + 1)) c.set(x, y, A.n950)
+    }
+    return c.outline(A.n950).rows()
+  }
+  c.rect(2, 0, 6, 1, A.f400).rect(3, 4, 5, 1, A.f400)
+  c.set(2, 2, A.n950).set(2, 3, A.n950)
+  c.rect(4, 2, 3, 1, A.f500)
+  return c.outline(A.n950).rows()
+}

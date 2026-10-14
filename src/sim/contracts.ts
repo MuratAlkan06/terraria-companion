@@ -10,19 +10,43 @@ import type { Archetype, ArchetypeParams, Buff, Item, Weapon } from '../schemas'
 import type { ApproximationId } from './approximations'
 import type { Aabb } from './geometry'
 import type { Rng } from './rng'
-import type { ArenaBounds, BladePose, LabSettings, SimRefusal, Vec2 } from './types'
+import type { ArenaBounds, BladePose, LabSettings, MinionAiClass, SimRefusal, SummonKind, Vec2 } from './types'
 
 /** Anything that can damage a dummy, with its own local-immunity bookkeeping. */
 export interface HitSource {
-  /** `use:<n>` (melee), `proj:<id>`, or a persistent source's key (`beam`). */
+  /** `use:<n>` (melee), `proj:<id>`, a persistent source's key (`beam`), or a summon's (`minion:<id>`). */
   readonly key: string
-  readonly kind: 'melee' | 'projectile'
+  /** `minion` / `sentry`: a summon's hit — it takes a whip tag's bonus (P3-S10). */
+  readonly kind: 'melee' | 'projectile' | SummonKind
   /** Damage before variance/defense/crit. */
   readonly baseDamage: number
   /** null ⇒ hits each dummy at most once for the source's lifetime; else re-hit cooldown (multiHit). */
   readonly cooldownTicks: number | null
   /** dummy index → first tick a new hit is allowed. */
   readonly immuneUntil: Map<number, number>
+  /**
+   * Whose hit it is, when not the equipped weapon's: its crit chance and on-hit modifiers (the minion
+   * loadout's summons — P3-S10). Absent: the equipped weapon's (the world's own).
+   */
+  readonly owner?: HitOwner
+}
+
+/** The weapon behind a hit: its crit chance (0 for summon damage, B17) and its on-hit modifiers (DoT). */
+export interface HitOwner {
+  readonly critChancePct: number
+  readonly modifiers: readonly ModifierRuntime[]
+}
+
+/** A whip's tag on a dummy (wiki Whips: tag damage, tag critical strike chance, for 4 seconds). */
+export interface WhipTag {
+  readonly damageFlat: number
+  /** Tag critical strike chance (%), or null when the whip has none. */
+  readonly critPct: number | null
+  readonly durationTicks: number
+}
+
+export interface TagState extends WhipTag {
+  remainingTicks: number
 }
 
 export interface DebuffState {
@@ -40,6 +64,55 @@ export interface DummyState {
   readonly defense: number
   /** Sorted by buffId (deterministic iteration). */
   debuffs: DebuffState[]
+  /** A whip's tag (one whip, one tag: a new strike refreshes it), else null. */
+  tag: TagState | null
+}
+
+/**
+ * A persistent autonomous summon (P3-S9: a minion or a sentry), stepped once per tick in summon order
+ * by its `brain` (world.ts header). Created by an interpreter through `KernelApi.summon`, kept until a
+ * replacement, a lowered slot setting, or the next reset.
+ */
+export interface AgentState {
+  readonly id: number
+  readonly kind: SummonKind
+  readonly slotCost: number
+  readonly aiClass: MinionAiClass
+  /** The minion loadout's (P3-S10), else the equipped weapon summoned it. */
+  readonly loadout: boolean
+  readonly spawnTick: number
+  x: number
+  y: number
+  prevX: number
+  prevY: number
+  facing: 1 | -1
+  /** Index of the dummy it attacks now, or null. */
+  targetIndex: number | null
+  /** World tick of its latest attack (-1: none yet). */
+  lastAttackTick: number
+  /** Its hit source (`minion:<id>` / `sentry:<id>`, kind = `kind`), persistent for its lifetime. */
+  readonly source: HitSource
+  readonly brain: AgentBrain
+}
+
+/** A summon's behavior (per agent, so it may keep that agent's own state, like a projectile's guide). */
+export interface AgentBrain {
+  /** Once per tick, after the use cycle: pick a target, attack when due, move (sets `x` / `y`). */
+  step(k: KernelApi, agent: AgentState): void
+}
+
+export interface AgentSpawn {
+  kind: SummonKind
+  slotCost: number
+  aiClass: MinionAiClass
+  x: number
+  y: number
+  baseDamage: number
+  /** Its re-hit cooldown per dummy (the attack interval: its schedule, not immunity, paces it). */
+  cooldownTicks: number
+  owner?: HitOwner
+  loadout: boolean
+  brain: AgentBrain
 }
 
 export interface ProjectileShape {
@@ -64,6 +137,8 @@ export interface ProjectileLaunch extends ProjectileShape {
   hitCooldownTicks?: number
   /** Flight control for a projectile that doesn't fly straight (a returning weapon). */
   guide?: ProjectileGuide
+  /** A summon's shot (a ranged minion or sentry with a projectile): its kind and owner. Absent: the weapon's. */
+  summon?: { kind: SummonKind; owner?: HitOwner }
 }
 
 export interface ProjectileState {
@@ -128,9 +203,21 @@ export interface KernelApi {
   readonly arena: Readonly<ArenaBounds>
   /** Projectiles in flight, in spawn order. */
   readonly activeProjectiles: readonly ProjectileState[]
+  /** The aim is the auto-aim (no pointer aim: Space, a timed test) — `aim` is then the first dummy's centre. */
+  readonly autoAim: boolean
+  /** Attack has been released since the last use started (or no use started yet): this is a new press. */
+  readonly freshPress: boolean
+  /** Minions and sentries out now, oldest first. */
+  readonly agents: readonly AgentState[]
+  /** The dummy a whip struck last (summons focus it — wiki Whips), or null. */
+  readonly focusIndex: number | null
   spawnProjectile(launch: ProjectileLaunch): void
-  /** Applies a direct hit (immunity → variance → defense → crit → stats/events → modifier hooks). */
-  strike(source: HitSource, dummy: DummyState, at: Vec2): boolean
+  /**
+   * Applies a direct hit (immunity → variance → defense → crit → stats/events → modifier hooks).
+   * `damage` overrides the source's base damage for this hit (a whip's multihit penalty). A summon's
+   * hit on a tagged dummy adds the tag (damage before variance; its crit chance) — README "Summons".
+   */
+  strike(source: HitSource, dummy: DummyState, at: Vec2, damage?: number): boolean
   /**
    * This world's hit source for `key`, created on first use and kept until the next reset — for a
    * damage source that outlives single uses (a held beam's per-dummy hit interval).
@@ -138,6 +225,12 @@ export interface KernelApi {
   persistentSource(key: string, kind: HitSource['kind'], baseDamage: number, cooldownTicks: number | null): HitSource
   consumeAmmo(count: number): void
   applyDebuff(dummy: DummyState, buffId: string, dps: number, durationTicks: number): void
+  /** A new minion / sentry (event `summon`); its brain steps from the next agent step on. */
+  summon(spawn: AgentSpawn): AgentState
+  /** Removes a summon (event `dismiss`). */
+  dismiss(agent: AgentState, reason: 'replaced' | 'slots'): void
+  /** Tags (or re-tags) `dummy` with a whip's tag and makes it the summons' focus (event `tag-applied`). */
+  tagDummy(dummy: DummyState, tag: WhipTag): void
 }
 
 /**
@@ -160,6 +253,11 @@ export interface Behavior {
   ready?(k: KernelApi): boolean
   /** Melee / beam pose for the renderer at the end of the use's current tick. */
   blade?(use: ActiveUse, k: KernelApi): BladePose | null
+  /**
+   * A minion summon weapon used as the minion loadout (P3-S10): summon its minions — as many as the
+   * free slots hold, never replacing one — owned by `owner` (the loadout weapon's crit and modifiers).
+   */
+  fillSlots?(k: KernelApi, owner: HitOwner): void
 }
 
 export type PrepareResult = { ok: true; behavior: Behavior } | { ok: false; refusal: SimRefusal }

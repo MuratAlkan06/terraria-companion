@@ -121,6 +121,41 @@ export const beamFixture = (params: Omit<BeamParams, 'archetype'>, overrides: Pa
     modifiers,
   )
 
+type SummonParams = Extract<ArchetypeParams, { archetype: 'minion-sentry' }>
+type WhipParams = Extract<ArchetypeParams, { archetype: 'whip' }>
+
+/**
+ * A summon weapon shaped like the pipeline emits them (AMENDMENTS-013 B64): summon class, NO critPct
+ * (not applicable), autoReuse, use 36 + reuse delay 2. Default: a ground-melee minion, 1 slot, every 12
+ * ticks. A sentry needs `sentryRangeTiles` (schema: present iff sentry).
+ */
+export const summonFixture = (params: Partial<SummonParams> = {}, overrides: Partial<Weapon> = {}, modifiers?: LabModifiers): Weapon =>
+  fixtureWeapon(
+    { archetype: 'minion-sentry', variant: 'minion', slotCost: 1, aiClass: 'ground-melee', attackRateTicks: 12, ...params } as ArchetypeParams,
+    {
+      id: 900_007,
+      name: params.variant === 'sentry' ? 'Fixture Sentry Staff' : 'Fixture Minion Staff',
+      slug: params.variant === 'sentry' ? 'fixture-sentry-staff' : 'fixture-minion-staff',
+      damageClass: 'summon',
+      critPct: undefined,
+      damage: 10,
+      useTimeTicks: 36,
+      useAnimationTicks: 36,
+      reuseDelayTicks: 2,
+      autoReuse: true,
+      ...overrides,
+    },
+    modifiers,
+  )
+
+/** A whip as the pipeline emits them: summon class, no critPct, use time 30, arc 180° (B63 P-1). Default range 11, tag 4, falloff 0.5. */
+export const whipFixture = (params: Partial<WhipParams> = {}, overrides: Partial<Weapon> = {}, modifiers?: LabModifiers): Weapon =>
+  fixtureWeapon(
+    { archetype: 'whip', arcDegrees: 180, rangeTiles: 11, tagDamageFlat: 4, falloffPerTarget: 0.5, ...params } as ArchetypeParams,
+    { id: 900_008, name: 'Fixture Whip', slug: 'fixture-whip', damageClass: 'summon', critPct: undefined, damage: 14, useTimeTicks: 30, useAnimationTicks: 30, autoReuse: false, ...overrides },
+    modifiers,
+  )
+
 export function ammoFixture(ammoStats: Partial<NonNullable<Item['ammoStats']>> = {}, overrides: Partial<Item> = {}): Item {
   return {
     id: 900_100,

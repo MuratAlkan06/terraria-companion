@@ -43,6 +43,16 @@
  * for longer than the slowest attack seen, so a regen-funded cast cycle never blinks it — or the
  * session restarts. Changing a mana setting restarts the session's stats, pool and dummy with the
  * new settings, like switching ammo (`updateSettings` → `restarted`).
+ *
+ * Summons (PRD P3-S9 / P3-S10): a minion or sentry staff's attack summons at the pointer (the engine
+ * keeps them, attacking on their own); a whip may have a MINION LOADOUT beside it (`loadout`: a minion
+ * staff whose minions are out from the start — the engine's `minionLoadout`). Minions and sentries
+ * attack all the time, so once one is out, est. DPS (and a staff's hits/sec) divide by the time since
+ * the first one appeared, or the attack time if longer (`dps-with-summons`). The HUD reports the summons
+ * against their slots, the dummies they attack now and how many were replaced (the oldest, for a new one
+ * with the slots full), damage by source (the weapon's own hits, the summons', the whip tag's share,
+ * DoT), who dealt the latest hit, and the dummies the whip has tagged with their time left. Changing a slot setting restarts the
+ * stats while summons are involved (a fresh world, the loadout summoned again), as a mana setting does.
  */
 import type { Buff, Item, Weapon } from '../schemas'
 import {
@@ -50,6 +60,7 @@ import {
   DEFAULT_LAB_SETTINGS,
   TICKS_PER_SECOND,
   timedTestTicks,
+  type DamageBreakdown,
   type InsufficientManaPolicy,
   type LabSettings,
   type LabSim,
@@ -58,6 +69,7 @@ import {
   type SimEvent,
   type SimRefusal,
   type SimSnapshot,
+  type SummonKind,
   type TimedTestDuration,
   type TimedTestResult,
   type TimedTestStatus,
@@ -126,6 +138,37 @@ export interface LabDummyHud {
   estimatedDps: number
 }
 
+/** Summons out vs their slots (PRD P3-S9 AC1): a staff's own kind, or the minion loadout's minions. */
+export interface LabSummonsHud {
+  /** `weapon`: the equipped staff summons them; `loadout`: the minion loadout beside a whip. */
+  source: 'weapon' | 'loadout'
+  kind: SummonKind
+  /** How many are out, and the slots they take of the slots there are. */
+  count: number
+  slotsUsed: number
+  slots: number
+  /** The minion loadout weapon's name (source `loadout`), else null. */
+  loadoutName: string | null
+  /**
+   * Summons replaced since the last reset: each one the oldest, gone for a new summon with the slots
+   * full (the engine's `dismiss` reason `replaced`) — the UI announces each new one (design review M1).
+   */
+  replaced: number
+  /**
+   * The dummies the summons attack now (1-based row numbers, ascending, each once; the engine's
+   * per-summon `targetId`) — empty while none has a target (design review M2).
+   */
+  targets: readonly number[]
+}
+
+/** A dummy the whip has tagged (PRD P3-S10 AC1), with the tag's time left. */
+export interface LabTagHud {
+  dummyId: string
+  /** 1-based position in the row (the arena's label), 1 for the single dummy. */
+  number: number
+  remainingSec: number
+}
+
 /** Multiple Dummies: every dummy's numbers, and the primary target's (PRD P3-S6 AC2/AC4). */
 export interface LabTargetsHud {
   /** Nearest first; the first is the primary target. */
@@ -133,9 +176,13 @@ export interface LabTargetsHud {
   primary: LabDummyHud
 }
 
+/** Who dealt a hit: the equipped weapon itself, or one of the summons. */
+export type LabHitSource = 'weapon' | SummonKind
+
 export interface LabHudState {
   weapon: WeaponSummary
-  lastHit: { amount: number; crit: boolean } | null
+  /** The latest direct hit (the engine's `stats.lastHit`) and who dealt it (whip vs minion in a mixed run). */
+  lastHit: { amount: number; crit: boolean; source: LabHitSource } | null
   totalDamage: number
   directDamage: number
   dotDamage: number
@@ -156,9 +203,10 @@ export interface LabHudState {
   /**
    * The rate the HUD shows: `attacks`, or `hits` for a tethered weapon (a yoyo) — one throw is one
    * attack that lasts as long as it is held out, hitting all the while, so its attacks/sec (≈ 1 ÷ the
-   * hold) says nothing about how fast it lands hits (design review P3-S6/S7).
+   * hold) says nothing about how fast it lands hits (design review P3-S6/S7) — or `summon-hits` for a
+   * summon staff (its summons attack; the staff's uses only summon them).
    */
-  rateReadout: 'attacks' | 'hits'
+  rateReadout: 'attacks' | 'hits' | 'summon-hits'
   /** Total damage ÷ seconds spent in whole attack cycles (use time + cooldown) since the last reset. */
   estimatedDps: number
   /** Seconds of whole attack cycles (use time + cooldown) counted since the last reset. */
@@ -172,6 +220,12 @@ export interface LabHudState {
   target: LabTarget
   /** Per-dummy numbers while the target is Multiple Dummies, else null (one dummy: the totals are its numbers). */
   targets: LabTargetsHud | null
+  /** Summons vs slots — a summon staff, or a whip's minion loadout — else null. */
+  summons: LabSummonsHud | null
+  /** Damage by source (weapon / summons / tag bonus / DoT) for a whip or summons, else null. */
+  breakdown: DamageBreakdown | null
+  /** Dummies the whip has tagged now, nearest first (empty without a whip). */
+  tags: readonly LabTagHud[]
   /** A timed test is running: the weapon, target and settings can't change (UX_SPEC §5.7). */
   locked: boolean
 }
@@ -201,6 +255,11 @@ export interface LabSessionOptions {
   ammoId?: number | null
   /** The target to start with (e.g. carried over from the previously equipped weapon); default the Infinite Dummy. */
   target?: LabTarget
+  /**
+   * The minion loadout (PRD P3-S10): a minion staff whose minions are out beside the equipped weapon
+   * (the Lab offers it beside a whip). Null / absent: none.
+   */
+  loadout?: Weapon | null
 }
 
 export type CreateLabSessionResult = { ok: true; session: LabSession } | { ok: false; refusal: SimRefusal }
@@ -208,7 +267,10 @@ export type CreateLabSessionResult = { ok: true; session: LabSession } | { ok: f
 /** The test settings that decide how a mana weapon's casts are paid: changing one restarts the stats. */
 export const MANA_SETTING_KEYS = ['maxMana', 'insufficientMana', 'manaRegen', 'ignoreMana'] as const satisfies readonly (keyof LabSettings)[]
 
-/** `restarted`: a mana setting of a mana weapon changed, so the stats, pool and dummy started over. */
+/** The slot settings: changing one restarts the stats while summons are involved (a staff, or a loadout). */
+export const SLOT_SETTING_KEYS = ['minionSlots', 'sentrySlots'] as const satisfies readonly (keyof LabSettings)[]
+
+/** `restarted`: a mana setting of a mana weapon (or a slot setting with summons) changed, so the stats, pool and dummy started over. */
 export type LabSettingsUpdateResult = Exclude<SettingsUpdateResult, { ok: true }> | (Extract<SettingsUpdateResult, { ok: true }> & { restarted: boolean })
 
 function randomSeed(): number {
@@ -224,6 +286,7 @@ export function createLabSession(weapon: Weapon, options: LabSessionOptions = {}
   const lab = weapon.labBehavior
   const target = options.target && isLabTarget(options.target) ? options.target : DEFAULT_LAB_TARGET
   const dummies = lab.kind === 'archetype' ? labDummiesFor(lab.params.archetype, target) : undefined
+  const loadout = options.loadout ?? null
   const created = createLabSim({
     weapon,
     seed: nextSeed(),
@@ -231,9 +294,10 @@ export function createLabSession(weapon: Weapon, options: LabSessionOptions = {}
     ...(ammo ? { ammo } : {}),
     ...(setup ? { buffs: setup.buffs } : {}),
     ...(dummies ? { dummies } : {}),
+    ...(loadout ? { minionLoadout: loadout } : {}),
   })
   if (!created.ok) return { ok: false, refusal: created.refusal }
-  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? [], target) }
+  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? [], target, loadout) }
 }
 
 /** A finished (or running) timed test: what "Run again" replays. */
@@ -250,6 +314,8 @@ const COUNTDOWN_STEP_TICKS = TICKS_PER_SECOND / 10
 const MANA_STEP_TICKS = TICKS_PER_SECOND / 10
 /** HUD refresh while a weapon that comes back is still out: every tenth of a second. */
 const OUT_STEP_TICKS = TICKS_PER_SECOND / 10
+/** HUD refresh while a whip tag runs (its time left): every tenth of a second. */
+const TAG_STEP_TICKS = TICKS_PER_SECOND / 10
 /** The low-mana warning clears once the pool has covered the cost this long (at least; see the header). */
 export const MANA_WARNING_CLEAR_TICKS = TICKS_PER_SECOND
 /** The live attacks/sec counts this many of the latest attacks. */
@@ -283,6 +349,12 @@ export class LabSession {
   readonly tethered: boolean
   /** A held beam (piercing-beam channel mode: the engine's `blade.kind === 'beam'`). */
   readonly beam: boolean
+  /** A whip (P3-S10): the arena draws its sweep at its range (the engine's `blade.kind === 'whip'`). */
+  readonly whip: { arcDegrees: number; rangeTiles: number } | null
+  /** A summon staff (P3-S9): what one use summons, else null. */
+  readonly summonKind: SummonKind | null
+  /** The minion loadout (a minion staff whose minions are out beside a whip), else null. */
+  readonly loadout: Weapon | null
 
   private readonly nextSeed: () => number
   private readonly held: Record<InputSource, boolean> = { pointer: false, key: false }
@@ -305,12 +377,28 @@ export class LabSession {
   private out: { start: number; nominal: number; credited: number } | null = null
   private target: LabTarget
   private dummyIds: string[]
+  /** Session tick the first summon of this world appeared (null: none yet) — the summon-time denominator. */
+  private summonSince: number | null = null
+  /** Tagged dummies → the world tick their tag ends (applied tick + duration). */
+  private tagEnds = new Map<string, number>()
+  /** Summons replaced (oldest out, slots full) since the last reset. */
+  private summonsReplaced = 0
+  /** Who dealt the latest direct hit (the engine's `stats.lastHit` has no source). */
+  private lastHitSource: LabHitSource = 'weapon'
   private assumptionList: { target: LabTarget; list: readonly LabAssumption[] } | null = null
   private hud: LabHudState
   private readonly listeners = new Set<() => void>()
   private readonly resetListeners = new Set<() => void>()
 
-  constructor(weapon: Weapon, sim: LabSim, nextSeed: () => number, ammo: Item | null = null, buffs: readonly Buff[] = [], target: LabTarget = DEFAULT_LAB_TARGET) {
+  constructor(
+    weapon: Weapon,
+    sim: LabSim,
+    nextSeed: () => number,
+    ammo: Item | null = null,
+    buffs: readonly Buff[] = [],
+    target: LabTarget = DEFAULT_LAB_TARGET,
+    loadout: Weapon | null = null,
+  ) {
     this.weapon = weapon
     this.sim = sim
     this.nextSeed = nextSeed
@@ -325,6 +413,9 @@ export class LabSession {
     this.returning = params?.archetype === 'returning' ? { variant: params.variant, throwRangeTiles: params.throwRangeTiles } : null
     this.tethered = params?.archetype === 'returning' && params.returnMode === 'tethered'
     this.beam = params?.archetype === 'piercing-beam' && params.mode === 'channel-beam'
+    this.whip = params?.archetype === 'whip' ? { arcDegrees: params.arcDegrees, rangeTiles: params.rangeTiles } : null
+    this.summonKind = params?.archetype === 'minion-sentry' ? params.variant : null
+    this.loadout = sim.loadout ? loadout : null
     this.firesProjectiles = firesProjectiles(this.summary.archetype)
     this.frameTiles = this.firesProjectiles ? RANGED_FRAME_TILES : this.reachTiles
     this.target = target
@@ -332,10 +423,20 @@ export class LabSession {
     this.hud = this.computeHud(sim.snapshot())
   }
 
+  /** Summons are involved: a summon staff, or the minion loadout. */
+  get hasSummons(): boolean {
+    return this.summonKind !== null || this.loadout !== null
+  }
+
   /** The AssumptionsTip list for the equipped weapon and the current target. */
   get assumptions(): readonly LabAssumption[] {
     if (!this.assumptionList || !sameTarget(this.assumptionList.target, this.target)) {
-      const list = labAssumptionsFor(this.summary.archetype, this.sim.approximations, this.weapon, { target: this.target, returnsToHand: this.summary.returnsToHand })
+      const list = labAssumptionsFor(this.summary.archetype, this.sim.approximations, this.weapon, {
+        target: this.target,
+        returnsToHand: this.summary.returnsToHand,
+        summons: this.hasSummons,
+        loadout: this.loadout !== null,
+      })
       this.assumptionList = { target: this.target, list }
     }
     return this.assumptionList.list
@@ -417,8 +518,26 @@ export class LabSession {
         // A cast stopped for mana.
         this.raiseManaWarning()
         changed = true
-      } else if (e.type === 'damage' || e.type === 'projectile-spawn') {
-        // Hits and shots (ammo used) change the HUD.
+      } else if (e.type === 'damage') {
+        // The latest direct hit's source, as the engine's `lastHit` counts it (damage over time is no hit).
+        if (e.source !== 'dot') this.lastHitSource = e.source === 'minion' || e.source === 'sentry' ? e.source : 'weapon'
+        changed = true
+      } else if (e.type === 'dismiss') {
+        // A summon leaving changes the count; the oldest replaced by a new one is announced.
+        if (e.reason === 'replaced') this.summonsReplaced++
+        changed = true
+      } else if (e.type === 'projectile-spawn') {
+        // Shots (ammo used) change the HUD.
+        changed = true
+      } else if (e.type === 'summon') {
+        // From the first summon on, every tick counts toward the summons' time (`dps-with-summons`).
+        this.summonSince ??= e.tick
+        changed = true
+      } else if (e.type === 'tag-applied') {
+        this.tagEnds.set(e.dummyId, e.tick + e.durationTicks)
+        changed = true
+      } else if (e.type === 'tag-expired') {
+        this.tagEnds.delete(e.dummyId)
         changed = true
       }
     }
@@ -430,6 +549,8 @@ export class LabSession {
       if (this.extendOut(this.ticks) && Math.floor(before / OUT_STEP_TICKS) !== Math.floor(this.ticks / OUT_STEP_TICKS)) changed = true
       // The DPS graph gains a bar each whole second (idle seconds too).
       if (Math.floor(before / TICKS_PER_SECOND) !== Math.floor(this.ticks / TICKS_PER_SECOND)) changed = true
+      // A whip tag's time left, a tenth of a second at a time; summons keep est. DPS moving between hits.
+      if ((this.tagEnds.size > 0 || this.summonSince !== null) && Math.floor(before / TAG_STEP_TICKS) !== Math.floor(this.ticks / TAG_STEP_TICKS)) changed = true
       // A running test steps its countdown ring, and publishes the moment it finishes.
       if (this.run && before < this.run.ticksTotal) {
         if (Math.floor(before / COUNTDOWN_STEP_TICKS) !== Math.floor(this.ticks / COUNTDOWN_STEP_TICKS) || this.ticks >= this.run.ticksTotal) changed = true
@@ -475,13 +596,15 @@ export class LabSession {
   /**
    * Change test settings (refused while a timed test runs). A mana setting of a mana weapon decides
    * how every cast is paid, so changing one starts the stats over — a fresh pool at the new settings,
-   * a fresh seed, a clean dummy — as switching ammo does (design review P3-S4/S5 M6).
+   * a fresh seed, a clean dummy — as switching ammo does (design review P3-S4/S5 M6). So does a slot
+   * setting while summons are involved: the summons start over (a minion loadout fills the new slots).
    */
   updateSettings(patch: Partial<LabSettings>): LabSettingsUpdateResult {
     const before = this.hud.settings
     const result = this.sim.updateSettings(patch)
     if (!result.ok) return result
-    const restarted = this.hud.mana !== null && MANA_SETTING_KEYS.some((key) => before[key] !== result.settings[key])
+    const changed = (keys: readonly (keyof LabSettings)[]) => keys.some((key) => before[key] !== result.settings[key])
+    const restarted = (this.hud.mana !== null && changed(MANA_SETTING_KEYS)) || (this.hasSummons && changed(SLOT_SETTING_KEYS))
     if (restarted) this.restart()
     else this.publish()
     return { ...result, restarted }
@@ -520,6 +643,10 @@ export class LabSession {
 
   private clearSessionCounters(): void {
     this.out = null
+    this.summonSince = null
+    this.tagEnds.clear()
+    this.summonsReplaced = 0
+    this.lastHitSource = 'weapon'
     this.busyTicks = 0
     this.recentAttackTicks = []
     this.slowestAttackTicks = 0
@@ -662,11 +789,41 @@ export class LabSession {
     return { dummies, primary: dummies[0] }
   }
 
-  private computeHud({ stats, timedTest, settings, mana }: SimSnapshot): LabHudState {
-    const attackSeconds = this.busyTicks / TICKS_PER_SECOND
+  /** The summons vs their slots: the staff's own kind, or the loadout's minions; null without summons. */
+  private summonsHud(summons: SimSnapshot['summons']): LabSummonsHud | null {
+    if (!this.hasSummons) return null
+    const kind: SummonKind = this.summonKind ?? 'minion'
+    const minion = kind === 'minion'
+    // The row numbers of the dummies the summons attack now (nearest first, as the arena numbers them).
+    const targeted = new Set(this.sim.renderState().agents.map((a) => a.targetId))
+    const targets = this.dummyIds.flatMap((id, i) => (targeted.has(id) ? [i + 1] : []))
+    return {
+      source: this.summonKind ? 'weapon' : 'loadout',
+      kind,
+      count: minion ? summons.minions : summons.sentries,
+      slotsUsed: minion ? summons.minionSlotsUsed : summons.sentrySlotsUsed,
+      slots: minion ? summons.minionSlots : summons.sentrySlots,
+      loadoutName: this.summonKind ? null : (this.loadout?.name ?? null),
+      replaced: this.summonsReplaced,
+      targets,
+    }
+  }
+
+  private tagsHud(): LabTagHud[] {
+    if (this.tagEnds.size === 0) return []
+    return this.dummyIds.flatMap((id, i) => {
+      const end = this.tagEnds.get(id)
+      return end === undefined ? [] : [{ dummyId: id, number: i + 1, remainingSec: Math.max(0, end - this.ticks) / TICKS_PER_SECOND }]
+    })
+  }
+
+  private computeHud({ stats, timedTest, settings, mana, summons }: SimSnapshot): LabHudState {
+    // With summons out, every tick since the first one appeared is attack time (`dps-with-summons`).
+    const summonTicks = this.summonSince === null ? 0 : this.ticks - this.summonSince
+    const attackSeconds = Math.max(this.busyTicks, summonTicks) / TICKS_PER_SECOND
     return {
       weapon: this.summary,
-      lastHit: stats.lastHit ? { amount: stats.lastHit.amount, crit: stats.lastHit.crit } : null,
+      lastHit: stats.lastHit ? { amount: stats.lastHit.amount, crit: stats.lastHit.crit, source: this.lastHitSource } : null,
       totalDamage: stats.totalDamage,
       directDamage: stats.directDamage,
       dotDamage: stats.dotDamage,
@@ -677,7 +834,7 @@ export class LabSession {
       mana: this.manaHud(mana, settings),
       attacksPerSec: this.liveAttackRate(),
       hitsPerSec: attackSeconds > 0 ? stats.hits / attackSeconds : 0,
-      rateReadout: this.tethered ? 'hits' : 'attacks',
+      rateReadout: this.summonKind ? 'summon-hits' : this.tethered ? 'hits' : 'attacks',
       estimatedDps: attackSeconds > 0 ? stats.totalDamage / attackSeconds : 0,
       attackSeconds,
       resets: this.resets,
@@ -697,6 +854,9 @@ export class LabSession {
       settings,
       target: this.target,
       targets: this.targetsHud(stats, attackSeconds),
+      summons: this.summonsHud(summons),
+      breakdown: this.hasSummons || this.whip ? stats.breakdown : null,
+      tags: this.tagsHud(),
       locked: timedTest.status === 'running',
     }
   }

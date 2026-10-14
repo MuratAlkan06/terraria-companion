@@ -6,3 +6,5 @@ export const HUD_PANEL = `pointer-events-auto ${HUD_SURFACE}`
 export const formatInt = (n: number) => Math.round(n).toLocaleString('en-US')
 export const format1 = (n: number) => n.toFixed(1)
 export const format2 = (n: number) => n.toFixed(2)
+/** "1/1" — slots may be fractional (a 0.5-slot minion): at most two decimals. */
+export const slotNumber = (n: number) => String(Number(n.toFixed(2)))

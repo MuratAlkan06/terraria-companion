@@ -1,4 +1,4 @@
-import { ChartColumn, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail, Star } from 'lucide-react'
+import { ChartColumn, Crosshair, FlaskConical, Maximize, Minimize, MousePointerClick, OctagonPause, RotateCcw, Snail, Star, Tag, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { hasAssumptions, type Assumptions } from '../../../components/assumptions'
 import { buttonClass } from '../../../components/buttonStyles'
@@ -11,12 +11,12 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import { Toggletip } from '../../../components/Toggletip'
 import type { Item, SpriteIndex, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import type { LabHudState, LabManaHud, LabTargetsHud } from '../../../lab/labSession'
+import type { LabHitSource, LabHudState, LabManaHud, LabSummonsHud, LabTagHud, LabTargetsHud } from '../../../lab/labSession'
 import { behaviorFacts } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS } from '../../../sim'
-import { format1, format2, formatInt, HUD_PANEL, HUD_SURFACE } from './hudStyles'
-import { LIVE_DPS_LABEL, LIVE_DPS_SHORT } from './timedTestCopy'
+import { format1, format2, formatInt, HUD_PANEL, HUD_SURFACE, slotNumber } from './hudStyles'
+import { LIVE_DPS_LABEL, LIVE_DPS_SHORT, LIVE_DPS_SUMMON_LABEL, LIVE_DPS_SUMMON_SHORT } from './timedTestCopy'
 
 /**
  * HudOverlay (UX_SPEC §3.4) — HTML over the canvas; the canvas itself is aria-hidden, so every
@@ -90,17 +90,31 @@ function Fact({ label, short, compact, data, children }: { label: string; short:
   )
 }
 
+/** Who dealt a hit, in a word (the whip's own hits are the "whip"). */
+const hitSourceWord = (source: LabHitSource, hud: LabHudState) => (source === 'weapon' ? (hud.weapon.archetype === 'whip' ? 'whip' : 'weapon') : source)
+
 export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; assumptions: Assumptions; compact: boolean }) {
   const last = hud.lastHit
+  // A mixed run (a whip with the minion loadout): the per-hit label says whose hit it was — "Whip hit",
+  // "Minion hit" (design review nit). In the label, not beside the number: a minion's "CRIT" badge
+  // already fills the compact column, and the box must not grow with it.
+  const hitSource = hud.summons?.source === 'loadout' && last ? hitSourceWord(last.source, hud) : null
+  const perHitShown = hitSource ? `${hitSource.charAt(0).toUpperCase()}${hitSource.slice(1)} hit` : undefined
   // Each tip lists what its own number depends on: attacks/sec only the cadence assumptions (a yoyo's
-  // hits/sec what decides its hit rate); est. DPS all of them, led by what it divides by.
-  const hitRate = hud.rateReadout === 'hits'
-  const cadence = assumptionsForEstimate(assumptions, hitRate ? 'hits-per-sec' : 'attacks-per-sec')
+  // hits/sec what decides its hit rate, a summon staff's what decides its summons'); est. DPS all of
+  // them, led by what it divides by.
+  const hitRate = hud.rateReadout !== 'attacks'
+  const summonRate = hud.rateReadout === 'summon-hits'
+  const cadence = assumptionsForEstimate(assumptions, summonRate ? 'summon-hits-per-sec' : hitRate ? 'hits-per-sec' : 'attacks-per-sec')
   const rateAssumptions = hasAssumptions(cadence) ? cadence : assumptions
   const dps = assumptionsForEstimate(assumptions, 'estimated-dps')
   const dpsAssumptions = hasAssumptions(dps) ? dps : assumptions
   // Multiple Dummies (PRD P3-S6 AC4): the totals are over all dummies; the primary target's own numbers sit apart.
   const targets = hud.targets
+  // With summons out the live estimate divides by the time since the first summon (`dps-with-summons`).
+  const dpsLabel = hud.summons ? LIVE_DPS_SUMMON_LABEL : LIVE_DPS_LABEL
+  const dpsShort = hud.summons ? LIVE_DPS_SUMMON_SHORT : LIVE_DPS_SHORT
+  const dpsContext = hud.summons ? 'estimated DPS since summoning' : 'estimated DPS while attacking'
   return (
     <section aria-label="Live stats" className={cx(PANEL, compact ? 'p-2' : 'p-3')} data-stat-readouts="" data-stat-scope={targets ? 'all-dummies' : 'one-dummy'}>
       {hud.mana?.ignoreMana ? <TestModeChip className={compact ? 'mb-1.5' : 'mb-2'} /> : null}
@@ -117,9 +131,9 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
           compact ? 'grid-cols-[minmax(5.25rem,auto)_minmax(4.25rem,auto)] gap-x-2' : 'min-w-52 grid-cols-[auto_auto] gap-x-3',
         )}
       >
-        <Readout label="Per hit" compact={compact}>
+        <Readout label={hitSource ? `Per hit, from the ${hitSource}` : 'Per hit'} visibleLabel={perHitShown} short={perHitShown} compact={compact}>
           {last ? (
-            <span data-stat="per-hit" className="inline-flex items-center gap-1">
+            <span data-stat="per-hit" data-source={hitSource ? last.source : undefined} className="inline-flex items-center gap-1">
               {formatInt(last.amount)}
               {last.crit ? (
                 <span className="border-2 border-gold-300 px-1 text-xs leading-4 font-bold tracking-wide text-gold-300 uppercase">
@@ -148,12 +162,13 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
             ({formatInt(hud.crits)} crit{hud.crits === 1 ? '' : 's'})
           </span>
         </Readout>
-        {/* A yoyo (tethered) is one attack for as long as it is out, hitting all the while: its rate is hits/sec. */}
+        {/* A yoyo (tethered) is one attack for as long as it is out, hitting all the while: its rate is
+            hits/sec. A summon staff attacks through its summons: theirs. */}
         {hitRate ? (
-          <Readout label="Hits/sec" short="Hits/s" compact={compact}>
+          <Readout label={summonRate ? 'Summon hits/sec' : 'Hits/sec'} short="Hits/s" compact={compact}>
             <span className="inline-flex items-center gap-1">
               <span data-stat="hits-per-sec">{format2(hud.hitsPerSec)}</span>
-              <EstimateLabel assumptions={rateAssumptions} context="hits per second" />
+              <EstimateLabel assumptions={rateAssumptions} context={summonRate ? 'summon hits per second' : 'hits per second'} />
             </span>
           </Readout>
         ) : (
@@ -165,22 +180,22 @@ export function StatReadouts({ hud, assumptions, compact }: { hud: LabHudState; 
           </Readout>
         )}
         <Readout
-          label={targets ? `${LIVE_DPS_LABEL}, all dummies` : LIVE_DPS_LABEL}
-          visibleLabel={targets && !compact ? LIVE_DPS_LABEL : undefined}
-          short={targets ? 'DPS, all' : LIVE_DPS_SHORT}
+          label={targets ? `${dpsLabel}, all dummies` : dpsLabel}
+          visibleLabel={targets && !compact ? dpsLabel : undefined}
+          short={targets ? 'DPS, all' : dpsShort}
           compact={compact}
           wide={compact && !targets}
         >
           <span className="inline-flex items-center gap-1">
             <span data-stat="dps">{format1(hud.estimatedDps)}</span>
-            <EstimateLabel assumptions={dpsAssumptions} context={targets ? 'estimated DPS while attacking, all dummies' : 'estimated DPS while attacking'} />
+            <EstimateLabel assumptions={dpsAssumptions} context={targets ? `${dpsContext}, all dummies` : dpsContext} />
           </span>
         </Readout>
         {targets ? (
-          <Readout label={`${LIVE_DPS_LABEL}, primary target`} visibleLabel={compact ? undefined : 'Primary target'} short="DPS, #1" compact={compact} nested={!compact}>
+          <Readout label={`${dpsLabel}, primary target`} visibleLabel={compact ? undefined : 'Primary target'} short="DPS, #1" compact={compact} nested={!compact}>
             <span className="inline-flex items-center gap-1">
               <span data-stat="primary-dps">{format1(targets.primary.estimatedDps)}</span>
-              <EstimateLabel assumptions={dpsAssumptions} context="estimated DPS while attacking, primary target" />
+              <EstimateLabel assumptions={dpsAssumptions} context={`${dpsContext}, primary target`} />
             </span>
           </Readout>
         ) : null}
@@ -282,6 +297,139 @@ export function TargetStrip({ targets, compact }: { targets: LabTargetsHud; comp
   )
 }
 
+/** "#1, #3" on screen, "dummies 1 and 3" for screen readers. */
+const dummyList = (numbers: readonly number[]) => ({
+  shown: numbers.map((n) => `#${n}`).join(', '),
+  spoken: numbers.length === 1 ? `dummy ${numbers[0]}` : `dummies ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`,
+})
+
+/**
+ * SummonsPanel (PRD P3-S9 AC1/AC3, P3-S10 AC1–AC3), readout-only, under the EquippedBar: how many
+ * minions / sentries are out against their slots (a staff's own, or the minion loadout's beside a whip),
+ * with Multiple Dummies which dummy they attack now (design review M2; a sentry with none in its range
+ * says so), which dummies the whip has tagged and the tag's time left — an icon and words, never colour
+ * alone — and, when a whip and summons both deal damage, the split by source: the whip's own hits, the
+ * summons' hits, and the share of those the tag added (UX: "per-source damage attribution"). `strip`:
+ * the compact HUD's version — one wrapping row in the bottom HUD area (like the per-dummy strip), so the
+ * top row stays short enough for the phone camera.
+ */
+export function SummonsPanel({
+  summons,
+  tags,
+  breakdown,
+  whip,
+  multipleDummies = false,
+  compact,
+  strip = false,
+}: {
+  summons: LabSummonsHud | null
+  tags: readonly LabTagHud[]
+  breakdown: LabHudState['breakdown']
+  /** A whip is equipped: the tag row shows (with "no dummy tagged" while none is). */
+  whip: boolean
+  /** The target is Multiple Dummies: which one the summons attack is worth saying. */
+  multipleDummies?: boolean
+  compact: boolean
+  strip?: boolean
+}) {
+  if (!summons && !whip) return null
+  const noun = summons ? (summons.kind === 'minion' ? 'Minions' : 'Sentries') : ''
+  const split = whip && summons && breakdown
+  // The summons' target: with a row, which dummy; a sentry with no dummy in its range, that it has none.
+  const attacking =
+    summons && summons.count > 0
+      ? summons.targets.length > 0
+        ? multipleDummies
+          ? dummyList(summons.targets)
+          : null
+        : summons.kind === 'sentry'
+          ? 'none'
+          : null
+      : null
+  return (
+    <section
+      aria-label="Summons and whip tags"
+      className={cx(HUD_SURFACE, 'pointer-events-none text-xs', strip ? 'flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 p-1' : cx('w-full max-w-64', compact ? 'p-1.5' : 'p-2'))}
+      data-summons-panel={strip ? 'strip' : 'column'}
+    >
+      {summons ? (
+        <p className="flex items-center gap-1.5 text-fg-muted tabular-nums" data-summon-count={summons.count} data-summon-slots={summons.slots}>
+          <Users aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+          <span>
+            <span className="font-semibold text-fg">{noun}</span>{' '}
+            <span className="font-semibold text-fg" data-stat="summon-count">
+              {summons.count}
+            </span>
+            {' · slots '}
+            <span className="font-semibold text-fg" data-stat="summon-slots">
+              {slotNumber(summons.slotsUsed)}/{summons.slots}
+            </span>
+            {summons.loadoutName && !strip ? (
+              <span className={cx('text-fg-muted', compact ? 'block' : '')} data-summon-loadout="">
+                {compact ? '' : ' · '}
+                {summons.loadoutName}
+              </span>
+            ) : null}
+          </span>
+        </p>
+      ) : null}
+      {attacking ? (
+        <p className={cx('flex items-center gap-1.5 text-fg-muted tabular-nums', !strip && 'mt-1')} data-summon-attacking={attacking === 'none' ? 'none' : summons?.targets.join(',')}>
+          <Crosshair aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+          {attacking === 'none' ? (
+            <span>No dummy in range</span>
+          ) : (
+            <span>
+              <span className="font-semibold text-fg">Attacking</span> <span aria-hidden="true">{attacking.shown}</span>
+              <span className="sr-only">{attacking.spoken}</span>
+            </span>
+          )}
+        </p>
+      ) : null}
+      {whip ? (
+        <p className={cx('flex items-center gap-1.5 text-fg-muted tabular-nums', summons && !strip && 'mt-1')} data-whip-tags={tags.length}>
+          <Tag aria-hidden="true" className="size-3.5 shrink-0 text-success" />
+          {tags.length === 0 ? (
+            <span>No dummy tagged</span>
+          ) : (
+            <span>
+              <span className="font-semibold text-fg">Tagged</span>{' '}
+              {tags.map((t, i) => (
+                <span key={t.dummyId} data-tag-dummy={t.number}>
+                  {i > 0 ? ', ' : ''}
+                  <span aria-hidden="true">#{t.number}</span>
+                  <span className="sr-only">dummy {t.number}</span> <span className="font-semibold text-fg">{t.remainingSec.toFixed(1)}s</span>
+                  <span className="sr-only"> left</span>
+                </span>
+              ))}
+            </span>
+          )}
+        </p>
+      ) : null}
+      {split ? (
+        <dl className={cx('flex flex-wrap gap-x-2.5 text-fg-muted tabular-nums', !strip && 'mt-1')} data-damage-split="">
+          <Fact label="Whip damage" short="Whip" compact={compact} data="whip-damage">
+            <span data-stat="weapon-damage">{formatInt(breakdown.weaponDamage)}</span>
+          </Fact>
+          <Fact label="Minion damage" short="Minions" compact={compact} data="summon-damage">
+            <span data-stat="summon-damage">{formatInt(breakdown.summonDamage)}</span>
+          </Fact>
+          <Fact label="Tag bonus" short="Tag" compact={compact} data="tag-bonus">
+            <span className="text-success" data-stat="tag-bonus">
+              +{formatInt(breakdown.tagBonusDamage)}
+            </span>
+          </Fact>
+          {breakdown.dotDamage > 0 ? (
+            <Fact label="Damage over time" short="DoT" compact={compact} data="dot-damage">
+              <span data-stat="dot-damage">{formatInt(breakdown.dotDamage)}</span>
+            </Fact>
+          ) : null}
+        </dl>
+      ) : null}
+    </section>
+  )
+}
+
 /** The single Reset's accessible name: what one press restores (PRD P3-S2 AC3). */
 export const RESET_LABEL = 'Reset the test, target and settings'
 
@@ -345,12 +493,30 @@ export function HudControls({
  * First-use hint; gone once the first attack of the session starts. `verb`: "swing", "thrust"…;
  * `steer`: a weapon that follows the pointer while held (a yoyo, a held beam) says so.
  */
-export function AttackHint({ touch, verb = 'swing', steer = null }: { touch: boolean; verb?: string; steer?: 'yoyo' | 'beam' | null }) {
+export function AttackHint({
+  touch,
+  verb = 'swing',
+  steer = null,
+  summon = null,
+}: {
+  touch: boolean
+  verb?: string
+  steer?: 'yoyo' | 'beam' | null
+  /** A summon staff: one press summons where you click (P3-S9) — a minion, or a sentry that stays there. */
+  summon?: 'minion' | 'sentry' | null
+}) {
   const follow = steer ? (touch ? ' — drag to steer it' : ' — move to steer it') : ''
+  const what = summon === 'sentry' ? 'place a sentry' : 'summon a minion'
   return (
     <p className={cx(PANEL, 'pointer-events-none flex items-center gap-2 px-2 py-1 text-xs text-fg md:text-sm')} data-attack-hint="">
       <MousePointerClick aria-hidden="true" className="size-4 shrink-0 text-accent" />
-      {touch ? `Touch and hold the arena to ${verb}${follow}` : `Press and hold to ${verb}${follow} · or hold Space`}
+      {summon
+        ? touch
+          ? `Tap the arena to ${what} there`
+          : `Click the arena to ${what} there · or press Space`
+        : touch
+          ? `Touch and hold the arena to ${verb}${follow}`
+          : `Press and hold to ${verb}${follow} · or hold Space`}
     </p>
   )
 }

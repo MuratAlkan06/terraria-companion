@@ -2,7 +2,7 @@
  * Public types of the Weapon Lab simulation core (ADR-001 D5 layer 1). Pure data — no renderer,
  * DOM, or framework types. Schema types (Weapon, Item, Buff, …) come from `src/schemas` (frozen).
  */
-import type { Archetype, Buff, Item, Weapon } from '../schemas'
+import type { Archetype, ArchetypeParams, Buff, Item, Weapon } from '../schemas'
 import type { Approximation } from './approximations'
 import type { TimedTestDuration } from './constants'
 
@@ -50,6 +50,14 @@ export interface LabSettings {
   homingEnabled: boolean
   /** ±15% damage variance (wiki); off makes per-hit damage constant. */
   damageVariance: boolean
+  /**
+   * Minion slots (PRD P3-S9 AC1): VERIFIED default 1 — "By default, a player can only have a single
+   * minion summoned at once" — raised by gear "up to 11" (wiki Minion-summoning weapons). A test setting
+   * until equipment lands (P3-S14).
+   */
+  minionSlots: number
+  /** Sentry slots: VERIFIED default 1, "raised to 6" by gear (wiki Sentry-summoning weapons). */
+  sentrySlots: number
 }
 
 export interface LabInput {
@@ -70,6 +78,12 @@ export interface LabSimOptions {
   dummies?: readonly DummySpec[]
   settings?: Partial<LabSettings>
   arena?: ArenaBounds
+  /**
+   * Minion loadout (PRD P3-S10 AC2/AC3, the summoner loop): a MINION summon weapon whose minions are
+   * out alongside the equipped (non-summon) weapon — every world starts with as many of them as the
+   * minion slots hold (README "Summons"). Absent: none.
+   */
+  minionLoadout?: Weapon
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -112,6 +126,8 @@ export type InvalidSetupReason =
   | 'invalid-settings'
   | 'invalid-dummy'
   | 'invalid-arena'
+  /** `minionLoadout` is not a simulable minion weapon, or the equipped weapon summons its own. */
+  | 'invalid-loadout'
 
 /** The weapon is simulable but the provided setup (ammo, buffs, settings, dummies) is not usable. */
 export interface InvalidSetup {
@@ -132,7 +148,10 @@ interface EventBase {
   seq: number
 }
 
-export type DamageSourceKind = 'melee' | 'projectile' | 'dot'
+/** `minion` / `sentry`: a summon's hit (PRD P3-S9 AC3) — never the equipped weapon's own. */
+export type DamageSourceKind = 'melee' | 'projectile' | 'dot' | 'minion' | 'sentry'
+
+export type SummonKind = 'minion' | 'sentry'
 
 export type SimEvent =
   | (EventBase & { type: 'use-start'; useIndex: number; durationTicks: number; slowCast: boolean })
@@ -147,16 +166,31 @@ export type SimEvent =
   | (EventBase & {
       type: 'damage'
       source: DamageSourceKind
-      /** `use:<n>` for melee, `proj:<id>` for projectiles, `beam` for a held beam, `buff:<buffId>` for DoT. */
+      /**
+       * `use:<n>` for melee (a swing, a thrust, a whip), `proj:<id>` for projectiles, `beam` for a held
+       * beam, `buff:<buffId>` for DoT, `minion:<agentId>` / `sentry:<agentId>` for a summon's hit.
+       */
       sourceId: string
       dummyId: string
       amount: number
       crit: boolean
       x: number
       y: number
+      /**
+       * Summon hits on a whip-tagged dummy only: the part of `amount` the tag added — `amount` minus what
+       * the same roll deals untagged (tag damage, and a crit only the tag's crit chance allows).
+       */
+      tagBonus?: number
     })
   | (EventBase & { type: 'debuff-applied'; dummyId: string; buffId: string; durationTicks: number; refreshed: boolean })
   | (EventBase & { type: 'debuff-expired'; dummyId: string; buffId: string })
+  /** A minion or sentry appears (`loadout`: the minion loadout's, summoned with the world). */
+  | (EventBase & { type: 'summon'; agentId: number; kind: SummonKind; x: number; y: number; loadout: boolean })
+  /** A summon leaves: `replaced` by a new summon with the slots full, or `slots` lowered below it. */
+  | (EventBase & { type: 'dismiss'; agentId: number; kind: SummonKind; reason: 'replaced' | 'slots' })
+  /** A whip strike tags a dummy (PRD P3-S10 AC1); `refreshed`: it was tagged already. */
+  | (EventBase & { type: 'tag-applied'; dummyId: string; durationTicks: number; refreshed: boolean })
+  | (EventBase & { type: 'tag-expired'; dummyId: string })
 
 export type SimEventType = SimEvent['type']
 
@@ -169,6 +203,23 @@ export interface DummyStats {
   dotDamage: number
   hits: number
   crits: number
+}
+
+/**
+ * Damage by source (PRD P3-S9 AC3, P3-S10 AC2/AC3): the equipped weapon's own hits vs its summons'
+ * (minions and sentries), the part of those the whip tag added, and damage over time.
+ * weaponDamage + summonDamage + dotDamage = totalDamage; tagBonusDamage is part of summonDamage.
+ */
+export interface DamageBreakdown {
+  /** The equipped weapon's own hits: a swing, thrust, shot, beam or whip. */
+  weaponDamage: number
+  weaponHits: number
+  /** Minion and sentry hits (the minion loadout's included), tag bonus included. */
+  summonDamage: number
+  summonHits: number
+  /** The part of summon damage the whip tag added (each hit's `tagBonus`). */
+  tagBonusDamage: number
+  dotDamage: number
 }
 
 export interface StatsSnapshot {
@@ -207,6 +258,7 @@ export interface StatsSnapshot {
   /** Damage so far in the current, incomplete second. */
   currentSecondDamage: number
   perDummy: Record<string, DummyStats>
+  breakdown: DamageBreakdown
 }
 
 export interface WeaponSummary {
@@ -255,6 +307,8 @@ export interface TimedTestResult {
   dpsSeries: number[]
   /** Per-dummy totals of the run (the primary target is the first dummy; Multiple Dummies). */
   perDummy: Record<string, DummyStats>
+  /** Damage by source over the run (weapon vs summons vs tag bonus vs DoT). */
+  breakdown: DamageBreakdown
   /** FNV-1a digest of the full event log of the run (determinism fingerprint). */
   eventDigest: string
 }
@@ -276,6 +330,17 @@ export interface ManaState {
   ignoreMana: boolean
 }
 
+/** Summons out now vs the slots (PRD P3-S9 AC1 "respects slot count settings"). */
+export interface SummonsState {
+  minions: number
+  /** Sum of the minions' slot costs. */
+  minionSlotsUsed: number
+  minionSlots: number
+  sentries: number
+  sentrySlotsUsed: number
+  sentrySlots: number
+}
+
 export interface SimSnapshot {
   /** World tick since creation / last reset. */
   tick: number
@@ -284,6 +349,7 @@ export interface SimSnapshot {
   stats: StatsSnapshot
   /** Null for weapons without a mana cost. */
   mana: ManaState | null
+  summons: SummonsState
   timedTest: TimedTestState
   settings: LabSettings
   /** FNV-1a digest of every event emitted since the last reset (hex). */
@@ -295,8 +361,11 @@ export interface SimSnapshot {
 // Render state (renderer interpolates prev → current with `alpha`)
 
 export interface BladePose {
-  /** `beam`: a held beam (piercing-beam channel mode) — a line from the player along `angle`. */
-  kind: 'swing' | 'thrust' | 'beam'
+  /**
+   * `beam`: a held beam (piercing-beam channel mode) — a line from the player along `angle`. `whip`: a
+   * whip sweeping its arc (P3-S10), `length` = its range.
+   */
+  kind: 'swing' | 'thrust' | 'beam' | 'whip'
   /** Radians, world space (0 = +x, π/2 = down). */
   angle: number
   prevAngle: number
@@ -321,10 +390,32 @@ export interface RenderState {
     height: number
     defense: number
     debuffs: Array<{ buffId: string; remainingTicks: number }>
+    /** A whip's tag on it (P3-S10 AC1), else null. */
+    tag: { remainingTicks: number; durationTicks: number; damageFlat: number; critPct: number | null } | null
   }>
   projectiles: Array<{ id: number; x: number; y: number; prevX: number; prevY: number; vx: number; vy: number; spriteKey?: string }>
   blade: BladePose | null
+  /** Minions and sentries, oldest first (P3-S9). Positions interpolate prev → current like projectiles. */
+  agents: Array<{
+    id: number
+    kind: SummonKind
+    aiClass: MinionAiClass
+    x: number
+    y: number
+    prevX: number
+    prevY: number
+    facing: 1 | -1
+    /** The dummy it attacks now, or null (none in range / none at all). */
+    targetId: string | null
+    /** World tick of its latest attack (-1: none yet). */
+    lastAttackTick: number
+    /** One of the minion loadout's (else the equipped weapon summoned it). */
+    loadout: boolean
+  }>
 }
+
+/** DATA_SCHEMA_SPEC §2.4 minion-sentry `aiClass` (AMENDMENTS-013 B63 P-6 taxonomy). */
+export type MinionAiClass = Extract<ArchetypeParams, { archetype: 'minion-sentry' }>['aiClass']
 
 export type SettingsUpdateResult =
   | { ok: true; settings: LabSettings }
@@ -343,6 +434,9 @@ export interface AdvanceResult {
 /** The headless engine handle the Lab UI drives (see README). */
 export interface LabSim {
   readonly weapon: WeaponSummary
+  /** The minion loadout's weapon (LabSimOptions.minionLoadout), else null. */
+  readonly loadout: WeaponSummary | null
+  /** The equipped weapon's assumptions, then the minion loadout's (deduplicated). */
   readonly approximations: readonly Approximation[]
   /** Feed a wall-clock frame delta (ms); runs whole fixed ticks, keeps the remainder. */
   advance(dtMs: number): AdvanceResult

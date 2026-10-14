@@ -9,9 +9,12 @@ export { APPROXIMATIONS, type Approximation, type ApproximationId } from './appr
 export {
   BASE_CRIT_PCT,
   DUMMY_ROW_SPACING_TILES,
+  MAX_MINION_SLOTS,
+  MAX_SENTRY_SLOTS,
   TICKS_PER_SECOND,
   TIMED_TEST_DURATIONS,
   timedTestTicks,
+  WHIP_TAG_DURATION_TICKS,
   type TimedTestDuration,
 } from './constants'
 export { mulberry32, type Rng } from './rng'
