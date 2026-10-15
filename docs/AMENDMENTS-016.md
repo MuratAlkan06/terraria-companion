@@ -99,3 +99,71 @@ RATIFIED: per-way gate rules as documented in planRouteGates.ts (vendor/chest/fi
 
 ## B120 — Feature B approval nits (queued to planner next-touch)
 Availability-notice singular/plural at the last sentence + "Mostly Unknown" title at exactly half; Stinger-style tree "Obtainable now" vs chooser all-ways-Unknown tension (both follow B119's conservative per-way rule — consider a tree-badge footnote); the builder per-piece plan link's doubled announcement.
+
+## B121 — B58 parity sweep executed
+Scope: every spec-parity promise ("rides per B58", "amended accordingly", "… parity rides") in AMENDMENTS-015 B85–B98 and AMENDMENTS-016 B99–B120, plus the orchestrator-named majors. Docs-only (2026-10-15): no src/** file was written; no git used. Owning docs now match built reality as these amendments record it — facts cross-checked read-only against src (e.g. §9.2's F1 7/7 and F5 4/4 recomputed on the shipped data). Each changed section carries inline B-numbers and an "Amendment history" line; PRD ACs stay verbatim with indented "Amended" notes. No honesty rule was weakened; where spec text and an amendment conflicted, the amendment's text was adopted and cited.
+
+**Promise ledger — 20 found, 20 delivered, 0 deferred:**
+- [x] 1. B85(b) classless crit NOT APPLICABLE ("B17 amended accordingly") → SCORING §2.2, §5.1; DATA_SCHEMA §2.4.
+- [x] 2. B87 cascade constants → UX §12.
+- [x] 3. B89 recommender rules → UX §3.7 (+ SCORING §2.4 scope line; PRD P5-S5 note).
+- [x] 4. B90(e) healLife/healMana, classes[], 11 StatKinds, 9 conditions; SCORING §2.3 rows → DATA_SCHEMA §2.3, §2.5, §2.6, §2.9; SCORING §2.1, §2.3, §4.5, §6 F5, §8.5.
+- [x] 5. B95 new copy ids (+ §9.2 golden) → SCORING §6, §9.2.
+- [x] 6. B96(b) /readiness desktop nav → UX §2.
+- [x] 7. B97 SCORING B69/Q6 + UX nav → SCORING §2.4, §3 rule 5, §6, §7; UX §2.
+- [x] 8. B99(b) Compare desktop nav → UX §2.
+- [x] 9. B99(d) compare-adapted ammo wording (§2.2) → SCORING §2.2; UX §3.6.
+- [x] 10. B100 dummy-roster UX parity → UX §1 (`?target=` queued), §3.4.
+- [x] 11. B101(a) in-cell qualifier (§2.2) → SCORING §2.2; UX §3.6; PRD P4-S1.
+- [x] 12. B102 qualifier derivations (§2.2) → SCORING §2.2; UX §3.6.
+- [x] 13. B107 DATA_SCHEMA §8a v2 (rides B106) → DATA_SCHEMA §8a, §8b.
+- [x] 14. B111 R6 rail absent ("UX §3.2 amended accordingly") → UX §3.2, §5.2; PRD P4-S4.
+- [x] 15. B112 sprite field / manifest split / item core / derived marks + Items nav → DATA_SCHEMA §2.1 (modeledFields + rule 6), §2.7, §2.10, §5, §8c; UX §1, §2, §3.10.
+- [x] 16. B114 SCORING §5.3 + UX bar/tick → SCORING §5.3, §5.4, §5.5 (new); UX §3.5; PRD P4-S3, P4-S4.
+- [x] 17. B116 E_LAB_COVERAGE + homing placement + PRD S8 note → DATA_SCHEMA §6, §7a rule 16; UX §3.4; PRD P3-S8.
+- [x] 18. B117 SCORING §2.4 note + plan schema §8a → SCORING §2.4; DATA_SCHEMA §8a.
+- [x] 19. B117 Builds desktop More entry (ruled; queued to the next nav touch) → UX §2 records the ruling and today's phone-only state (the nav change itself is src work).
+- [x] 20. B119 UX §3.9/§5.6 + SCORING parity → UX §3.9, §5.6; SCORING §2.5 (new).
+
+**Sections updated:**
+- [x] SCORING_SPEC.md — banner; §2.1; §2.2; §2.3; §2.4; §2.5 (new, per-way gating); §3 (rule 1 scope, rule 5, disclosure); §4 (inputs, 4.4, 4.5, 4.8); §5.1; §5.3; §5.4; §5.5 (new, bar references); §6 (precedence, copy ids, readings, F2, F5, Improve ranking); §7; §8.5; §9.1; §9.2; §10; §11.
+- [x] DATA_SCHEMA_SPEC.md — banner; §2.1; §2.3; §2.4; §2.5; §2.6; §2.7; §2.9; §2.10; §5; §6; §7a (rules 14–16); §7b; §8a; §8b; §8c.
+- [x] UX_SPEC.md — banner; §1; §2; §3.2; §3.4; §3.5; §3.6; §3.7; §3.8; §3.9; §3.10; §5.2; §5.6; §6; §12.
+- [x] PRD.md — banner; P3-S8; P3-S13; P4-S1; P4-S2; P4-S3; P4-S4; P5-S4; P5-S5; P5-S7; P6-S5; P6-S6; §9 Feature A; §9 Feature B; §13.
+- [x] AMENDMENTS-001.md — A3 supersession pointer (append-only; text unchanged).
+- ADR-001.md — untouched (no in-range promise names it).
+
+**Orchestrator-named majors also covered:** readiness (§2.4 countsInWorld-Both, §9.2, owned-gated, §6 precedence — B94–B97); builder (§5.3 share-scaling + signed difference, §4.4 empty-beats-zero + registry, §4.8 Surprise, bar references/ticks, SavedBuild v2); compare (§2.2 qualifier, COMPARE_MAX, "Not compared here", crit row B103); encyclopedia (manifest split, shards/core, derived quantities, search sprite field, Items nav, E_LAB_COVERAGE, B105); planner (Feature B AC semantics, plan schema, per-way gates, §3.9 strip, §5.6 quarantine copy); P3 close-out (S13 gate in PRD + A3 pointer; S8 homing); nav entries; B104 "17" → 19 categories (DATA_SCHEMA §2.6); UX §3.2 rail-absent.
+
+**Incidental pre-B85 coherence (already binding; carried so an in-range edit reads correctly):** A1 `critPct` optional (§2.4); B1 DropQuantity union (§2.7); A5 `enemy` type + B31 `wikiUrl` (§2.10); B49/B72(b) `modeledFields` (§2.1 — closes part of B58's own debt).
+
+**Outside this sweep's range — still unconsolidated (pre-B85):** B58 itself — `damageMultiplierPct` (B48(b)) and `reuseDelayTicks` (B48(a)) in DATA_SCHEMA §2.4; B74(c) `--edge-early` token (UX §11); B74(d) `tc.v1.progress` in ADR D6's key list; B75 UX §3.4/§3.7 supplements; B83(a)/(b) per-class Unknown + stricter curation gate (with their B90(a)/(b) refinements; `E_BOSS_CURATION` in DATA_SCHEMA §6). Older "amended accordingly" items also outstanding: B8/B40 SourceKind (§2.1), B6 `E_DERIVED_MISMATCH` (§6), A7 `checklists` in §4b's DomainKey line. Export/import stubs (UX §4(f), DATA_SCHEMA §4b) belong to the concurrent slice and were not touched.
+
+**Open questions (need a ruling):**
+- Q1. A3's ≥80%-per-floor-archetype target: B115 retires the ≥60% target and redefines the gate, but doesn't name the 80% target; the shipped gate does not enforce it. Was it retired too, or is it still binding?
+- Q2. PRD P3-S13 AC1's visible coverage-report page (UX §1 `/lab/coverage`; footer link per A8) has not shipped, and B115/B116 don't address it. Is it still owed, or retired along with the gate re-ruling? (gaps.json carries the counts — 149 archetype / 0 custom scenario / 339 limitation / 0 unhandled — so AC2's "≥ 2 custom scenarios" also reads 0 there.)
+- Q3. PRD P4-S4 AC1 says "two or more loadouts side by side", but Step 4 compares the draft with ONE saved build (B111 R4 ratified that surface without ruling on N). Is two the intended reading?
+
+## B122 — B121 open-question rulings
+Q1 RULED: A3's ≥80%-per-floor-archetype target is retired with B115's rationale — the enforced contract is the floor + per-weapon goldens + typed-reason completeness; percentage aspirations pressure dishonest parameter invention. PRD/A3 notes updated at next docs touch.
+Q2 RULED: the dedicated /lab/coverage page is retired as duplicative — the Lab's "488 · 149 simulated · 339 not" line, per-weapon limitation cards, and typed refusals deliver AC1's substance at the point of use. The AC2 "≥2 custom scenarios" question is FLAGGED to the release gate: the overseer reads P3-S13 AC2 with full context and returns a verdict (ship-blocking or retire-with-reason) — not silently dropped.
+Q3 RULED: P4-S4 AC1's "two or more loadouts" is satisfied by draft-vs-saved (two); N-way saved-build comparison is out of v1 scope.
+Also ratified: the sweep's §9.1/B87 reading choices; the opportunistic carry-ins (A1/B1/A5/B31/B49/B72(b), modeledFields spec'd). The B121 out-of-range debt list (B58 remainder, B74(c)(d), B75, B83/B90 curation codes, B8/B40, B6, A7 checklists key) stands as the release gate's doc-debt checklist.
+
+## B123 — P7-S2 rulings
+(a) RULED: the readable per-build text export (ADR D6 / UX flow (f): readable header + #code: line) is OWED — it ships as follow-up slice P7-S2b, not waived; the JSON backup satisfies the whole-data portion of P7-S2 only.
+(b)-(g) RATIFIED: import validation via the load-path validators (parity-pinned to Zod — an import passes exactly when a load would); quarantine notices persist across reloads until resolved; the shell-level notice for previously-silent domains; merge rules (local wins on conflict; settings/readiness keep-local default; recent capped at 20 with the cut counted; conflicted merges keep the set-aside copy); unreadable domains always set aside on apply; /settings/data via More sheet + footer (no desktop header entry — the footer serves desktop).
+(h) RULED: the header proposal is ADOPTED — Home leaves the header links (the logo covers it, UX §2 agrees); Weapons · Lab · Bosses inline, matching the tab bar; rides P7-S2b's nav touch. Backup-wrapper + §5.6/§1/§2/§3.1/ADR-D6 spec parity rides P7-S2b per B58.
+
+## B124 — P7-S2b rulings
+RATIFIED: the FNV-1a checksum on build codes (damaged-not-misread); Step 4 exporting the CURRENT draft (saved or not — honest, the header carries the date); the inline import panel over a dialog; Loadout sort-order move for the B123(h) header.
+RULED: ADR D6's "falls back to name resolution" is RETIRED — the #code: line is the machine contract and the readable block is for humans; parsing prose lines invites silent misreads, the opposite of the damage-refusal guarantee. ADR updated accordingly at the slice's own docs touch (already noted as open there — close it citing B124).
+NOTED: two read-only git commands by the agent (harmless, briefs stand); clipboard verified by mocked tests + Chromium success signal only (the read-back permission hangs headless — Safari/VoiceOver remain for the cross-browser sweep).
+
+## B125 — P7 data-batch review rulings
+(a) H1: the restore headline counts only parts whose CONTENT changed (empty merges and identical rewrites are not "changed"); when anything was set aside, the headline leads with that; Try-restore summaries follow the same rule.
+(b) M1: set-aside copies record and display their ORIGIN (imported file name + date vs local damage) so a file's bad part never reads as local damage. (c) M2: the final report repeats every skipped part (complete record). (d) M3: replace-confirms state both sides ("your 2 here are deleted; the file's 1 takes their place"). (e) M4: close ADR D6's name-resolution line citing B124 (retired, code-only by design).
+(f) Nits ride where cheap: destructive styling on Discard; "Nothing saved" rows acknowledging their set-aside copy; Try-restore choice counts; the stray-space accessible names; the More-sheet Builds description mentioning export/import; duplicate-name cards noted as preview-warned (accepted).
+
+## B126 — B125 fix-round ratifications
+RATIFIED: unchanged parts are NOT rewritten (keeps "nothing changed" literally true; an older-format copy upgrades at its next real write — acceptable); the file-origin wrapper for imported set-asides with bare-copy backward compat; trash-icon destructive treatment (red reserved for fills per contrast); the beyond-brief advance notice on merges that would leave the copy set aside. Doc parity owed (DATA_SCHEMA set-aside origin format; UX §5.6 origin display) joins the release gate's doc-debt checklist per B122.
