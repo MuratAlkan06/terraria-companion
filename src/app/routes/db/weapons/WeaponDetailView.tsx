@@ -1,5 +1,7 @@
-import { ChevronDown, FlaskConical } from 'lucide-react'
+import { ChevronDown, Columns3, FlaskConical } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
+import { buttonClass } from '../../../../components/buttonStyles'
 import { FavoriteStar } from '../../../../components/FavoriteStar'
 import { PartiallyVerifiedBadge } from '../../../../components/PartiallyVerifiedBadge'
 import { PixelPanel } from '../../../../components/PixelPanel'
@@ -14,6 +16,8 @@ import type { SpriteIndex, Weapon } from '../../../../data-access/types'
 import { offersLab } from '../../../../lab/labLinks'
 import type { DamageClass } from '../../../../schemas'
 import { getField, type FieldView } from '../../../../schemas/getField'
+import { hasRoute } from '../../../routes'
+import { compareHref } from '../compare/compareLinks'
 import { ClassBadge } from './WeaponBits'
 import { BASE_CRIT_PCT, labBlurb, sourceTitle, stageLabel, weaponStatRows } from './weaponDisplay'
 import { weaponPageUnknowns } from './weaponUnknowns'
@@ -131,10 +135,27 @@ function DetailHeader({
           <ProvenanceLink href={weapon.wikiUrl} srContext={`for ${weapon.name}`} />
           <PartiallyVerifiedBadge items={unknowns} />
         </div>
-        {/* ActionRow (UX_SPEC §3.3): renders nothing when no action applies to this weapon. */}
-        <SendToLabButton weapon={weapon} className="w-full md:w-auto" />
+        {/* ActionRow (UX_SPEC §3.3): SendToLabButton · "Compare"; each present only when it applies. */}
+        <div className="flex flex-col gap-2 empty:hidden md:flex-row md:flex-wrap">
+          <SendToLabButton weapon={weapon} className="w-full md:w-auto" />
+          <CompareLink weapon={weapon} className="w-full md:w-auto" />
+        </div>
       </div>
     </PixelPanel>
+  )
+}
+
+/**
+ * "Compare" (UX_SPEC §3.3 ActionRow; PRD P4-S1): opens the comparison with this weapon in it
+ * (`/compare?w=:id`). Absent until the compare route ships — never a dead button.
+ */
+function CompareLink({ weapon, className }: { weapon: Weapon; className?: string }) {
+  if (!hasRoute('compare')) return null
+  return (
+    <Link to={compareHref([weapon.id])} className={buttonClass('secondary', className)} data-compare-link={weapon.id}>
+      <Columns3 aria-hidden="true" className="size-5" />
+      Compare<span className="sr-only"> {weapon.name} with other weapons</span>
+    </Link>
   )
 }
 

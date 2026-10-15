@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { BookOpen, ClipboardList, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { BookOpen, ClipboardList, Columns3, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -24,6 +24,8 @@ const chunkBosses = () => import('./routes/bosses/chunk-bosses')
 const chunkGuides = () => import('./routes/guides/chunk-guides')
 /** The Boss Readiness Checker (`chunk-readiness`, UX_SPEC §1): Feature A, P5-S6/S7. */
 const chunkReadiness = () => import('./routes/bosses/readiness/chunk-readiness')
+/** The weapon comparison (`chunk-compare`, UX_SPEC §1): P4-S1. */
+const chunkCompare = () => import('./routes/db/compare/chunk-compare')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -100,6 +102,21 @@ export const APP_ROUTES: readonly AppRoute[] = [
     id: 'boss-detail',
     path: '/bosses/:id',
     Component: lazy(() => chunkBosses().then((m) => ({ default: m.BossPage }))),
+  },
+  {
+    // P4-S1: 2–3 weapons side by side; `?w=4956,757,1308` restores a comparison (UX_SPEC §1, §10.11). Entry
+    // points: every weapon page's "Compare" (UX_SPEC §3.3), the phone "More" sheet (UX_SPEC §2) and — AMENDMENTS-016
+    // B99b, B96b parity — the header's desktop "More" menu (after Bosses, before Readiness: the sheet's order).
+    id: 'compare',
+    path: '/compare',
+    Component: lazy(() => chunkCompare().then((m) => ({ default: m.ComparePage }))),
+    nav: {
+      label: 'Compare',
+      icon: Columns3,
+      surfaces: ['header', 'more'],
+      order: 35,
+      description: 'Two or three weapons side by side',
+    },
   },
   {
     // P5-S6/S7 (Feature A): `?boss=:id&class=&difficulty=` prefill (UX_SPEC §1); entry points on boss pages + map cards.
