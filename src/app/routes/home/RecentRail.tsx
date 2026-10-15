@@ -56,7 +56,7 @@ function RecentList({ items, sprites }: { items: readonly RecentWeapon[]; sprite
   return (
     // Bleeds to the screen edges below md so cards scroll out from under the page padding. The
     // 4px (`1`) inner room keeps the focus ring (2px + 2px offset) from being clipped by the scroller.
-    <ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pt-1 pb-3 md:-mx-1 md:scroll-px-1 md:px-1">
+    <ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pt-1 pb-3 scheme-dark [scrollbar-color:var(--color-stone-600)_transparent] md:-mx-1 md:scroll-px-1 md:px-1">
       {items.map(({ ref, weapon }) => {
         const rarity = asRarity(weapon.rarity)
         return (

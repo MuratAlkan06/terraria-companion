@@ -15,13 +15,13 @@ import { FeaturedRow } from './home/FeaturedRow'
 import { HomeHero } from './home/HomeHero'
 import { loadHomeData, peekHomeData } from './home/homeData'
 import { RecentRail } from './home/RecentRail'
+import { SavedBuildsRail } from './home/SavedBuildsRail'
 
 /**
- * Homepage v2 (PRD P1-S2 → P2-S5; UX_SPEC §3.2): pixel-art hero with the site identity, the
- * full stage selector, today's featured weapon + boss, the "Recently viewed" rail, and a short
- * "what this is" row. Primary actions (e.g. "Test Weapons" → /lab) and the saved-builds rail
- * arrive with their target features (P3–P4); until then they are absent, never disabled
- * placeholders (A8).
+ * Homepage v2 (PRD P1-S2 → P2-S5, P4-S4; UX_SPEC §3.2): pixel-art hero with the site identity, the
+ * full stage selector, today's featured weapon + boss, the "Recently viewed" rail, the saved-builds
+ * rail (P4-S4 AC4 — present once a build is saved in this browser) and a short "what this is" row.
+ * Primary actions exist once their target features ship — absent, never disabled placeholders (A8).
  */
 export default function HomePage() {
   useDocumentTitle()
@@ -35,6 +35,7 @@ export default function HomePage() {
         <StageSection />
         <FeaturedRow home={home} />
         <RecentRail home={home} />
+        <SavedBuildsRail home={home} />
         <AboutSection />
       </div>
     </>

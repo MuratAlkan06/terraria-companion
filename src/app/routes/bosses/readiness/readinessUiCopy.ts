@@ -179,6 +179,22 @@ export const PICKER_WHAT = {
   potion: 'potions',
 } as const
 
+/* Import a saved build (AMENDMENTS-016 B106 queue: the loadout → readiness direction) */
+export const IMPORT_LABEL = 'Import a saved build'
+export const IMPORT_HINT = 'Puts a saved build’s slots, class, difficulty and stage in this setup. Availability here still follows the bosses marked on the map, not the build’s stage.'
+export const IMPORT_PICK = 'Choose a saved build'
+export const IMPORT = 'Import'
+export const imported = (name: string): string =>
+  `Loaded “${name}” from your saved builds: its slots, class, difficulty and stage. Availability here follows the bosses marked on the map, not the stage the build was made for.`
+export const importedBoss = (boss: string): string => `The boss is set to ${boss}, the one the build was made for.`
+export const IMPORT_MISSING = 'The saved build this link names isn’t in this browser, so nothing was loaded.'
+export const IMPORT_REPLACE_TITLE = 'Replace your readiness setup?'
+export const importReplaceBody = (name: string): string => `This puts the slots, class, difficulty and stage of “${name}” in place of the loadout entered here.`
+export const IMPORT_REPLACE_KEEP = 'The saved build itself isn’t changed. Boss progress, checklists and favorites are not affected.'
+export const IMPORT_REPLACE = 'Replace setup'
+export const IMPORT_KEEP = 'Keep my setup'
+export const IMPORT_DISMISS = 'Dismiss'
+
 /* Entry points (boss page, map card) */
 export const bossCta = (boss: string): string => `Check readiness for ${boss}`
 export const BOSS_CTA_NOTE = 'See what in your gear makes this fight easier or harder, factor by factor.'

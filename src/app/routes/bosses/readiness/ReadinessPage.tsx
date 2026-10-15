@@ -1,4 +1,4 @@
-import { CircleAlert } from 'lucide-react'
+import { CircleAlert, FolderInput, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../../../../components/ConfirmDialog'
@@ -8,7 +8,9 @@ import { improveSuggestions } from '../../../../scoring/improve'
 import { effectiveProgress, isNodeSatisfied, type TrackedProgress } from '../../../../scoring/progress'
 import { analyzeReadiness, loadoutEntries } from '../../../../scoring/readiness'
 import { DEMON_HEART_GATE_NODE, SLOT_COUNT } from '../../../../scoring/constants'
+import type { SavedBuild } from '../../../../storage/builds'
 import { READINESS_CLASSES, READINESS_DIFFICULTIES, type ReadinessClass, type ReadinessDifficulty } from '../../../../storage/readiness'
+import { useBuildsStore } from '../../../buildsStore'
 import { useProgressStore } from '../../../progressStore'
 import { useReadinessStore } from '../../../readinessStore'
 import { getStageInfo } from '../../../stages'
@@ -18,7 +20,9 @@ import { prepEntries } from '../bossPageModel'
 import { prepChecklistKey, usePrepChecklistStore } from '../prepChecklistStore'
 import { recommend } from '../recommend'
 import { AnalysisPane } from './AnalysisPane'
+import { importReplacesLoadout, readinessImportFromBuild } from './buildImport'
 import { loadReadinessData, peekReadinessData, type ReadinessPageData } from './readinessData'
+import { BUILD_PARAM } from './readinessLinks'
 import { engineInput, hasAnyItem, markedDefeats, staleReason, targetKey, targetLabel, type PickerTarget } from './readinessUi'
 import * as copy from './readinessUiCopy'
 import { SetupPane } from './SetupPane'
@@ -32,6 +36,10 @@ import { SlotPicker } from './SlotPicker'
  * from the shared progress store (B69/Q9) with the progress module's own world-evil rule (B96a: under
  * "Both" a marked evil boss counts, as on the map), so marking a boss on the map updates the setup's
  * slot badges at once and marks a shown analysis out of date.
+ * `?build=<id>` (the builder's "Analyze this build", AMENDMENTS-016 B106 queue) and the setup's own
+ * "Import a saved build" load a saved build's slots, class, difficulty and stage (and its target boss)
+ * — asking first when that would replace a loadout entered here — and say what was loaded; the
+ * checker's own rules stay (tracked defeats only, its own assumptions).
  */
 export const PAGE_TITLE_ID = 'readiness-title'
 
@@ -66,6 +74,7 @@ const isDifficulty = (v: string | null): v is ReadinessDifficulty => v !== null 
 export function ReadinessView({ page }: { page: ReadinessPageData }) {
   const store = useReadinessStore()
   const { setup, snapshot } = store
+  const savedBuilds = useBuildsStore((s) => s.builds)
   const progress = useProgressStore((s) => s.progress)
   const prepByKey = usePrepChecklistStore((s) => s.byKey)
   const tracked: TrackedProgress = progress
@@ -86,6 +95,30 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
   const [improveOpen, setImproveOpen] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [announcement, setAnnouncement] = useState('')
+  /** A saved build waiting for "Replace setup" (it would replace a loadout entered here). */
+  const [pendingImport, setPendingImport] = useState<SavedBuild | null>(null)
+  /** What the last import loaded (a visible notice; the live region says it too). */
+  const [importNotice, setImportNotice] = useState<string | null>(null)
+  const isBoss = (id: string) => page.engine.bosses.has(id)
+  const applyImport = (build: SavedBuild) => {
+    const values = readinessImportFromBuild(build, isBoss)
+    store.importLoadout(values)
+    const boss = values.bossId ? page.engine.bosses.get(values.bossId)?.name : undefined
+    const notice = boss ? `${copy.imported(build.name)} ${copy.importedBoss(boss)}` : copy.imported(build.name)
+    setErrors({ boss: false, empty: false })
+    setImportNotice(notice)
+    setAnnouncement(notice)
+  }
+  const requestImport = (buildId: string) => {
+    const build = useBuildsStore.getState().builds.find((b) => b.buildId === buildId)
+    if (!build) {
+      setImportNotice(copy.IMPORT_MISSING)
+      setAnnouncement(copy.IMPORT_MISSING)
+      return
+    }
+    if (importReplacesLoadout(useReadinessStore.getState().setup, readinessImportFromBuild(build, isBoss))) setPendingImport(build)
+    else applyImport(build)
+  }
   const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(null)
   const slots = useRef(new Map<string, HTMLElement>())
   /** The element that opened the picker, and the slot it fills (focus returns there on close). */
@@ -103,12 +136,16 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
   }
 
   // Deep-link prefill (UX_SPEC §1, §10.11): applied once, then cleared from the URL (the store keeps it).
+  // `?build=` imports a saved build (asking first when it would replace a loadout entered here).
   useEffect(() => {
     const boss = searchParams.get('boss')
     const cls = searchParams.get('class')
     const difficulty = searchParams.get('difficulty')
-    if (boss === null && cls === null && difficulty === null) return
-    store.prefill({ ...(boss && page.engine.bosses.has(boss) ? { bossId: boss } : {}), ...(isClass(cls) ? { cls } : {}), ...(isDifficulty(difficulty) ? { difficulty } : {}) })
+    const build = searchParams.get(BUILD_PARAM)
+    if (boss === null && cls === null && difficulty === null && build === null) return
+    if (boss !== null || cls !== null || difficulty !== null)
+      store.prefill({ ...(boss && page.engine.bosses.has(boss) ? { bossId: boss } : {}), ...(isClass(cls) ? { cls } : {}), ...(isDifficulty(difficulty) ? { difficulty } : {}) })
+    if (build !== null) requestImport(build)
     setSearchParams({}, { replace: true })
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -210,8 +247,25 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
           {copy.PERSIST_ERROR_NOTICE}
         </p>
       ) : null}
+      {importNotice ? (
+        <div className="flex items-start gap-2 border-l-4 border-gold-600 bg-night-900 py-1 pr-1 pl-3 text-sm" data-import-notice="">
+          <FolderInput aria-hidden="true" className="mt-2.5 size-4 shrink-0 text-accent" />
+          <p className="min-w-0 flex-1 py-2 leading-snug">{importNotice}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setImportNotice(null)
+              document.getElementById(ids.loadout)?.focus()
+            }}
+            aria-label={copy.IMPORT_DISMISS}
+            className="grid min-h-tap min-w-tap shrink-0 place-items-center text-fg-muted hover:text-fg"
+          >
+            <X aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+      ) : null}
       {/* md+: whichever pane is shorter follows the longer one (SetupPane / AnalysisPane), so neither column sits empty. */}
-      <div className="grid gap-4 md:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] md:items-start lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] md:items-start lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-6">
         <SetupPane
           page={page}
           setup={setup}
@@ -236,6 +290,8 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
           onClear={() => setConfirmClear(true)}
           registerSlot={registerSlot}
           ids={ids}
+          savedBuilds={savedBuilds}
+          onImport={requestImport}
         />
         <AnalysisPane
           page={page}
@@ -281,6 +337,21 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
         returnFocus={() => document.getElementById(PAGE_TITLE_ID)}
       >
         <p>{copy.CLEAR_KEEP}</p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={pendingImport !== null}
+        onOpenChange={(open) => !open && setPendingImport(null)}
+        title={copy.IMPORT_REPLACE_TITLE}
+        description={pendingImport ? copy.importReplaceBody(pendingImport.name) : ''}
+        confirmLabel={copy.IMPORT_REPLACE}
+        cancelLabel={copy.IMPORT_KEEP}
+        onConfirm={() => {
+          if (pendingImport) applyImport(pendingImport)
+          setPendingImport(null)
+        }}
+        returnFocus={() => document.getElementById(`${ids.loadout}-import`) ?? document.getElementById(ids.loadout)}
+      >
+        <p>{copy.IMPORT_REPLACE_KEEP}</p>
       </ConfirmDialog>
       <p role="status" className="sr-only">
         {announcement}

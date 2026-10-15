@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { ErrorState, SkeletonPanel } from '../../../components/States'
 import { effectiveProgress } from '../../../scoring/progress'
 import { recommendLoadout, type Pin, type SlotId, type SlotOption, type AltView } from '../../../scoring/recommend'
+import { profileReferences } from '../../../scoring/references'
 import type { SavedBuild } from '../../../storage/builds'
 import { useBuildsStore } from '../../buildsStore'
 import { useProgressStore } from '../../progressStore'
@@ -13,10 +14,15 @@ import { getStageInfo, type Stage } from '../../stages'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
 import { loadReadinessData, peekReadinessData, type ReadinessPageData } from '../bosses/readiness/readinessData'
+import { BuildsView } from './BuildsView'
 import { InputsStep, type InputField } from './InputsStep'
+import { runSavedBuild } from './loadoutCompare'
 import * as copy from './loadoutCopy'
+import { SurpriseBanner } from './LoadoutBits'
 import {
+  BUILDS_HEADING_ID,
   blocksLeave,
+  COMPARISON_ID,
   defaultBuildName,
   draftFrom,
   effectiveInputs,
@@ -24,6 +30,7 @@ import {
   hasUnsavedChanges,
   LOADOUT_PATH,
   loadoutSearch,
+  newSeed,
   parseLoadoutSearch,
   pinCount,
   slotLabel,
@@ -48,19 +55,21 @@ import { WhyStep } from './WhyStep'
 import type { LoadoutClass } from '../../../schemas'
 
 /**
- * /loadout — the Loadout Builder (PRD P4-S2; UX_SPEC §1, §3.5, §4(c), §6, §7; SCORING_SPEC §4).
- * A four-step wizard — 1 Inputs · 2 Loadout · 3 Why it works · 4 Save — over ONE engine run
+ * /loadout — the Loadout Builder (PRD P4-S2…S4; UX_SPEC §1, §3.5, §4(c), §6, §7; SCORING_SPEC §4, §5).
+ * A four-step wizard — 1 Inputs · 2 Loadout · 3 Why it works · 4 Compare & Save — over ONE engine run
  * (src/scoring/recommend.ts) recomputed from the URL on every change: the URL is the draft (inputs,
- * step, swaps, the saved build being edited), so reloads, back / forward and shared links restore it.
- * Availability is tracked ∪ virtual (the selected stage contributes virtual defeats, B69/Q9), read live
- * from the boss map's store. Saved builds persist to tc.v1.builds (quarantine on unreadable data).
- * AMENDMENTS-016 B108: a rebuild that resets fixed picks is warned before and said visibly after (H1);
- * leaving the builder with unsaved changes to a saved build asks first (H5, UX_SPEC §6).
+ * step, swaps, the saved build being edited, a Surprise Me seed, the build compared with), so reloads,
+ * back / forward and shared links restore it. Availability is tracked ∪ virtual (the selected stage
+ * contributes virtual defeats, B69/Q9), read live from the boss map's store. Saved builds persist to
+ * tc.v1.builds (quarantine on unreadable data); `?view=builds` lists them (UX_SPEC §1 /builds, as a
+ * builder sub-view). AMENDMENTS-016 B108: a rebuild that resets fixed picks is warned before and said
+ * visibly after (H1); leaving the builder with unsaved changes to a saved build asks first (H5, UX_SPEC §6).
  */
 export const PAGE_TITLE_ID = 'loadout-title'
 
 export default function LoadoutPage() {
-  useDocumentTitle(copy.DOC_TITLE)
+  const location = useLocation()
+  useDocumentTitle(new URLSearchParams(location.search).get('view') === 'builds' ? copy.BUILDS_DOC_TITLE : copy.DOC_TITLE)
   const resource = useResource('readiness-data', loadReadinessData, peekReadinessData)
   const showSkeleton = useDelayedFlag(resource.status === 'loading')
   return (
@@ -94,9 +103,23 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
   const parsed = useMemo(() => parseLoadoutSearch(params, (id) => page.engine.bosses.has(id)), [params, page])
   const state = parsed.state
   const eff = useMemo(() => effectiveInputs(state, selectedStage), [state, selectedStage])
-  const input = useMemo(() => engineInput(eff, progress, state.pins), [eff, progress, state.pins])
-  const result = useMemo(() => recommendLoadout(input, page.engine, { stageName: getStageInfo(eff.stage).label }), [input, page, eff.stage])
+  const input = useMemo(() => engineInput(eff, progress, state.pins, state.surprise), [eff, progress, state.pins, state.surprise])
+  const stageName = getStageInfo(eff.stage).label
+  const result = useMemo(() => recommendLoadout(input, page.engine, { stageName }), [input, page, stageName])
   const ep = useMemo(() => effectiveProgress(page.engine.graph, progress, eff.stage), [page, progress, eff.stage])
+  // P4-S3 AC2 (AMENDMENTS-016 B113a): the Step 3 bars' references — read from the stage, class, difficulty,
+  // target boss and progress only (never the goal, a pick or a draw), so swaps don't recompute them — only on Step 3
+  const { stage: refStage, cls: refCls, difficulty: refDifficulty, bossId: refBoss } = input
+  const references = useMemo(
+    () => (state.step === 3 && !state.view ? profileReferences({ stage: refStage, cls: refCls, difficulty: refDifficulty, bossId: refBoss, progress }, page.engine, { stageName }) : undefined),
+    [state.step, state.view, refStage, refCls, refDifficulty, refBoss, progress, page, stageName],
+  )
+  // P4-S4: the saved build beside the draft (Step 4), scored as saved
+  const vsBuild = state.vs ? builds.builds.find((b) => b.buildId === state.vs) : undefined
+  const savedRun = useMemo(
+    () => (state.step === 4 && !state.view && vsBuild ? runSavedBuild(vsBuild, page.engine, progress, { stageName: getStageInfo(vsBuild.stage).label }) : undefined),
+    [state.step, state.view, vsBuild, page, progress],
+  )
 
   const [announcement, setAnnouncement] = useState('')
   const [linkNotices, setLinkNotices] = useState<string[]>([])
@@ -134,13 +157,25 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [editing?.buildId, location.search])
 
-  // Step changes move focus to the step's heading (UX_SPEC §9: focus follows navigation).
-  const lastStep = useRef(state.step)
+  // Step changes (and the builds view opening or closing) move focus to the new heading (UX_SPEC §9: focus follows navigation).
+  const lastStep = useRef(`${state.step}:${state.view ?? ''}`)
   useEffect(() => {
-    if (lastStep.current === state.step) return
-    lastStep.current = state.step
-    document.getElementById(stepHeadingId(state.step))?.focus()
-  }, [state.step])
+    const at = `${state.step}:${state.view ?? ''}`
+    if (lastStep.current === at) return
+    lastStep.current = at
+    document.getElementById(state.view === 'builds' ? BUILDS_HEADING_ID : stepHeadingId(state.step))?.focus()
+  }, [state.step, state.view])
+
+  // A saved build's "Compare" (further down the step) opens the comparison above it: focus moves there.
+  const [focusComparison, setFocusComparison] = useState(false)
+  useEffect(() => {
+    if (!focusComparison) return
+    const el = document.getElementById(COMPARISON_ID)
+    if (!el) return
+    el.focus({ preventScroll: true })
+    el.scrollIntoView({ block: 'start', behavior: 'auto' })
+    setFocusComparison(false)
+  }, [focusComparison, location.search, savedRun])
 
   // "Use this" / "Back to the recommendation" remove their own button: focus lands on the slot's card instead.
   const [focusSlot, setFocusSlot] = useState<SlotId | null>(null)
@@ -175,9 +210,40 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
   const label = (slot: SlotId) => slotLabel(slot, result.slots.find((s) => s.id === slot)?.demonHeart)
   const pinOf = (o: { id: number; pieces?: readonly [number, number, number] }): Pin => (o.pieces ? { kind: 'armor', helmet: o.pieces[0] || null, chest: o.pieces[1] || null, legs: o.pieces[2] || null } : { kind: 'item', id: o.id })
 
+  // P4-S4 AC3 Surprise Me (SCORING_SPEC §4.8): a new seed draws every slot; fixed picks are replaced —
+  // warned beside the button before, said visibly after (the B108 H1 pattern). Swaps afterwards pin on top.
+  const [drawn, setDrawn] = useState<{ text: string; search: string } | null>(null)
+  const drawSurprise = () => {
+    const reset = pinCount(state.pins)
+    const next: LoadoutState = { ...state, pins: {}, surprise: newSeed() }
+    go(next)
+    const text = copy.surpriseDrawn(reset)
+    setAnnouncement(text)
+    setDrawn({ text, search: loadoutSearch(next) })
+  }
+  const drawnNotice = drawn && drawn.search === location.search ? drawn.text : null
+  const clearSurprise = () => {
+    const { surprise: _seed, ...rest } = state
+    go(rest)
+    setAnnouncement(copy.surpriseCleared)
+  }
+  const compareWith = (buildId: string | undefined, focus = false) => {
+    const { vs: _vs, ...rest } = state
+    go(buildId ? { ...rest, vs: buildId } : rest)
+    const name = buildId ? builds.builds.find((b) => b.buildId === buildId)?.name : undefined
+    setAnnouncement(name ? copy.comparing(name) : copy.COMPARE_STOPPED)
+    if (buildId && focus) setFocusComparison(true)
+  }
+
+  /** The builds view's way back: the same draft, the wizard again. */
+  const builderHref = (() => {
+    const { view: _view, ...rest } = state
+    return `${LOADOUT_PATH}${loadoutSearch(rest)}`
+  })()
+
   const unsaved = editing ? hasUnsavedChanges(editing, eff, result, state.pins) : false
   const mainId = result.loadout.mainWeapon
-  const headingId = stepHeadingId(state.step)
+  const headingId = state.view === 'builds' ? BUILDS_HEADING_ID : stepHeadingId(state.step)
 
   // UX_SPEC §6 / B108 H5: leaving the builder with unsaved changes to a saved build asks first — in-app
   // navigation through a ConfirmDialog (only a change of path: steps, swaps, Back / Forward inside the
@@ -230,6 +296,19 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
           </ul>
         </div>
       ) : null}
+      {state.view === 'builds' ? (
+        <BuildsView
+          page={page}
+          builds={builds.builds}
+          loadStatus={builds.loadStatus}
+          persistError={builds.persistError}
+          headingId={BUILDS_HEADING_ID}
+          backHref={builderHref}
+          openHref={(b) => `${LOADOUT_PATH}${loadoutSearch(stateFromBuild(b, page.engine))}`}
+          onDelete={setConfirmDelete}
+        />
+      ) : (
+        <>
       <StepNav step={state.step} hrefFor={hrefFor} />
       <section aria-labelledby={headingId} className="space-y-4" data-step={state.step}>
         <div className="space-y-1">
@@ -243,6 +322,7 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
             </p>
           ) : null}
         </div>
+        {state.step !== 1 && state.surprise !== undefined ? <SurpriseBanner fixedPicks={swaps} onDrawAgain={drawSurprise} onBack={clearSurprise} /> : null}
         {state.step === 1 ? (
           <InputsStep
             page={page}
@@ -285,12 +365,14 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
               setFocusSlot(slot)
             }}
             onResetAll={() => {
-              go({ ...state, pins: {} })
+              // every slot back to the recommendation: the fixed picks and a Surprise Me draw
+              const { surprise: _seed, ...rest } = state
+              go({ ...rest, pins: {} })
               setAnnouncement(copy.allReset)
             }}
           />
         ) : state.step === 3 ? (
-          <WhyStep page={page} result={result} eff={eff} />
+          <WhyStep page={page} result={result} eff={eff} {...(references ? { references } : {})} />
         ) : (
           <SaveStep
             builds={builds.builds}
@@ -314,11 +396,22 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
               setAnnouncement(copy.savedAnnounce(draft.name))
             }}
             onDelete={setConfirmDelete}
+            compare={{
+              page,
+              draft: { result, pins: state.pins, eff },
+              ...(savedRun ? { saved: savedRun } : {}),
+              vsMissing: state.vs !== undefined && !vsBuild,
+              onCompare: (buildId) => compareWith(buildId, true),
+            }}
+            surprise={{ fixedPicks: swaps, drawn: drawnNotice, seeHref: hrefFor(2), onSurprise: drawSurprise }}
+            buildsHref={`${LOADOUT_PATH}${loadoutSearch({ ...state, view: 'builds' })}`}
           />
         )}
         {/* Step 1 ends in its own "Build my loadout" call to action. */}
         {state.step !== 1 ? <StepFooter step={state.step} hrefFor={hrefFor} /> : null}
       </section>
+        </>
+      )}
       <SwapSheet
         open={swapSlot !== null}
         onOpenChange={(open) => !open && setSwapSlot(null)}
@@ -371,9 +464,10 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
         onConfirm={() => {
           if (!confirmDelete) return
           builds.remove(confirmDelete.buildId)
-          if (state.build === confirmDelete.buildId) {
-            const { build: _b, ...rest } = state
-            go(rest)
+          // the draft no longer edits it, nor compares with it
+          if (state.build === confirmDelete.buildId || state.vs === confirmDelete.buildId) {
+            const { build: _b, vs: _vs, ...rest } = state
+            go({ ...rest, ...(state.build && state.build !== confirmDelete.buildId ? { build: state.build } : {}), ...(state.vs && state.vs !== confirmDelete.buildId ? { vs: state.vs } : {}) })
           }
           setAnnouncement(copy.deleted(confirmDelete.name))
           setConfirmDelete(null)

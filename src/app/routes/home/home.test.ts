@@ -5,26 +5,36 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import manifest from '../../../../public/sprites/manifest.json'
 import { CURATED_EXPLANATION } from '../../../components/CuratedLabel'
 import { createDataAccess, loadBosses, loadList } from '../../../data-access'
-import type { Boss, SpriteIndex, Weapon, WeaponListRecord } from '../../../data-access/types'
+import type { AccessoryListRecord, ArmorListRecord, Boss, SpriteIndex, Weapon, WeaponListRecord } from '../../../data-access/types'
+import accessoriesListJson from '../../../data/accessories.list.json'
+import armorListJson from '../../../data/armor.list.json'
 import bossesJson from '../../../data/bosses.json'
 import weaponsDetailJson from '../../../data/weapons.detail.json'
 import weaponsListJson from '../../../data/weapons.list.json'
 import { getField } from '../../../schemas/getField'
-import type { StorageBackend } from '../../../storage'
+import { auditCopy } from '../../../scoring/copyAudit'
+import { saveDomain, type StorageBackend } from '../../../storage'
+import type { SavedBuild } from '../../../storage/builds'
+import { createBuildsStore } from '../../buildsStore'
 import { APP_ROUTES, pathFor } from '../../routes'
 import HomePage from '../HomePage'
 import { FeaturedRow, MAX_UPSCALE } from './FeaturedRow'
 import { heroActions } from './heroActions'
 import {
   featuredWeaponPool,
+  loadBuildPreviewData,
   localDayNumber,
   pickFeaturedBoss,
   pickFeaturedWeapon,
   pickForDay,
+  previewItems,
   readRecentEntries,
   resolveRecent,
   type HomeData,
+  type HomeResource,
 } from './homeData'
+import { SavedBuildsSection } from './SavedBuildsRail'
+import { RAIL_ALL, RAIL_EMPTY_BUILD, RAIL_QUARANTINE, RAIL_TITLE, railItems, railMeta, railPreview, railSaved } from './savedBuildsRailCopy'
 
 const weapons = weaponsListJson as WeaponListRecord[]
 const bosses = bossesJson as Boss[]
@@ -272,7 +282,8 @@ describe('HomePage render (SSR markup)', () => {
     // P5-S5: the /bosses route lists its `recommend` feature, so the button opens the panel there
     expect(actions).toMatch(/<a [^>]*href="\/bosses\?recommend=1"[^>]*>.*What Should I Do Next\?<\/a>/s)
     expect(actions).not.toMatch(/disabled/)
-    // The saved-builds rail and /builds are P4-S4: absent (PRD P1-S2 AC3).
+    // P4-S4: the saved-builds rail shows only once a build is saved in this browser — none here, so absent
+    // (and there is no /builds route: the list is the builder's `?view=builds`).
     expect(html).not.toMatch(/saved builds/i)
     expect(html).not.toMatch(/href="\/builds/)
   })
@@ -345,5 +356,98 @@ describe('featured card sprites: thumbnails and the upscale cap (AMENDMENTS-009 
     const html = renderRow({ weapons: [small], weaponsById, bosses: [], sprites })
     expect(html).toContain(`href="/weapons/${small.id}"`)
     expect(html).toContain(`<img src="${f.path}" alt="" style="width:${f.width * 3}px;height:${f.height * 3}px"`)
+  })
+})
+
+describe('saved-builds rail (PRD P4-S4 AC4; UX_SPEC §3.2 SavedBuildsRail)', () => {
+  const armorList = armorListJson as ArmorListRecord[]
+  const accessoryList = accessoriesListJson as AccessoryListRecord[]
+  const [w1, w2] = featuredWeaponPool(weapons)
+  const helmet = armorList.find((a) => a.slot === 'head' && a.sprite)!
+  const acc = accessoryList.find((a) => a.sprite)!
+  const slots = (o: Partial<SavedBuild['slots']> = {}): SavedBuild['slots'] => ({ mainWeapon: null, altWeapon: null, helmet: null, chest: null, legs: null, accessories: [null, null, null, null, null, null, null], ammo: [], buffs: [], summon: null, ...o })
+  const older: SavedBuild = { buildId: 'b-rail-0001', name: 'Older melee', createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-01T10:00:00.000Z', stage: 'early-prehm', class: 'melee', difficulty: 'classic', slots: slots({ mainWeapon: w1.id }) }
+  const newer: SavedBuild = {
+    buildId: 'b-rail-0002',
+    name: 'Newer ranged',
+    createdAt: '2026-10-12T10:00:00.000Z',
+    updatedAt: '2026-10-12T10:00:00.000Z',
+    stage: 'early-hm',
+    class: 'ranged',
+    difficulty: 'expert',
+    goal: 'boss',
+    // an ammo id with no light list record: counted, no square
+    slots: slots({ mainWeapon: w2.id, helmet: helmet.id, accessories: [acc.id, null, null, null, null, null, null], ammo: [97] }),
+  }
+  const ready: HomeResource = { status: 'ready', data: { weapons, weaponsById, bosses, sprites: null }, retry: () => {} }
+  const renderRail = (builds: SavedBuild[], quarantined = false) =>
+    renderToStaticMarkup(createElement(MemoryRouter, null, createElement(SavedBuildsSection, { builds, quarantined, home: ready })))
+
+  beforeAll(async () => {
+    await loadBuildPreviewData()
+  })
+  /**
+   * The homepage as a fresh page load: storage seeded first, then the app modules imported anew, so the
+   * builds store hydrates from it (the store hydrates once, at import — PRD P4-S4 AC4 "survive reload").
+   */
+  async function freshHome(seed: Record<string, string>): Promise<string> {
+    vi.resetModules()
+    vi.stubGlobal('localStorage', memoryBackend(seed))
+    vi.stubGlobal('window', { location: { search: '' } })
+    try {
+      const [{ default: Home }, router] = await Promise.all([import('../HomePage'), import('react-router')])
+      return renderToStaticMarkup(createElement(router.MemoryRouter, null, createElement(Home)))
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  }
+  const stored = (builds: SavedBuild[]) => {
+    const backend = memoryBackend()
+    saveDomain('builds', { builds }, backend)
+    return { 'tc.v1.builds': backend.getItem('tc.v1.builds') as string }
+  }
+
+  it('appears on the homepage once a build is saved (a fresh load reads it back), after "Recently viewed", newest first; each card opens its build; the full list is one link away', async () => {
+    const html = await freshHome(stored([older, newer]))
+    expect(html).toContain('data-saved-builds-rail')
+    expect(html.indexOf(RAIL_TITLE)).toBeGreaterThan(html.indexOf('Recently viewed'))
+    expect([...html.matchAll(/data-rail-build="([^"]+)"/g)].map((m) => m[1])).toEqual(['b-rail-0002', 'b-rail-0001'])
+    expect(html).toContain('href="/loadout?build=b-rail-0002"')
+    expect(html).toContain('href="/loadout?view=builds"')
+    expect(html).toContain(railMeta(newer))
+    expect(railMeta(newer)).toBe('Ranged · Early Hardmode · Expert Mode · Boss fight')
+  })
+
+  it('absent with no builds; with unreadable builds it says so (UX_SPEC §5.6, never silent)', async () => {
+    expect(await freshHome({})).not.toContain('data-saved-builds-rail')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const q = await freshHome({ 'tc.v1.builds': '{oops' })
+    warn.mockRestore()
+    expect(q).toContain('data-saved-builds-rail')
+    expect(q).toContain(RAIL_QUARANTINE)
+  })
+
+  it('a mini equip preview of the build as saved: weapons, armor and accessories by name and sprite; ammo and potions counted', () => {
+    const html = renderRail([newer])
+    const card = /data-rail-build="b-rail-0002"[\s\S]*?<\/article>/.exec(html)?.[0] ?? ''
+    expect(card).toContain(`aria-label="${railPreview('Newer ranged')}"`)
+    const squares = [...card.matchAll(/role="img" aria-label="([^"]+)"/g)].map((m) => m[1])
+    expect(squares).toEqual([w2.name, helmet.name, acc.name])
+    expect(card).toContain(railItems(4))
+    expect(previewItems([w2.id, 97], weaponsById, { armor: new Map(), accessories: new Map() }).map((p) => p.id)).toEqual([w2.id])
+  })
+
+  it('survives reload: a build saved through the store reads back from storage, and the rail lists it', () => {
+    const backend = memoryBackend()
+    const { buildId: _id, createdAt: _c, updatedAt: _u, ...draft } = newer
+    createBuildsStore(backend, () => 'b-rail-0100').getState().create(draft, new Date('2026-10-14T09:00:00.000Z'))
+    const reloaded = createBuildsStore(backend).getState()
+    expect(reloaded.loadStatus).toBe('loaded')
+    expect(reloaded.builds.map((b) => b.buildId)).toEqual(['b-rail-0100'])
+    expect(renderRail(reloaded.builds)).toContain('data-rail-build="b-rail-0100"')
+  })
+
+  it('copy audit: no outcome, odds or forward-promise wording', () => {
+    for (const t of [RAIL_TITLE, RAIL_ALL, RAIL_QUARANTINE, RAIL_EMPTY_BUILD, railItems(1), railItems(3), railSaved('Oct 14, 2026'), railPreview('X'), railMeta(older)]) expect(auditCopy(t), t).toBeUndefined()
   })
 })

@@ -10,14 +10,18 @@
  */
 import { asRarity } from '../../../components/rarity'
 import {
+  loadAccessoryList,
+  loadArmorList,
   loadBosses,
   loadList,
   loadSpriteIndex,
+  peekAccessoryList,
+  peekArmorList,
   peekBosses,
   peekList,
   peekSpriteIndex,
 } from '../../../data-access'
-import type { Boss, SpriteIndex, WeaponListRecord } from '../../../data-access/types'
+import type { AccessoryListRecord, ArmorListRecord, Boss, SpriteIndex, WeaponListRecord } from '../../../data-access/types'
 import { loadDomain, type StorageBackend } from '../../../storage'
 import type { RecentEntry } from '../../../storage/recent'
 import type { ResourceState } from '../../useResource'
@@ -149,4 +153,54 @@ export function peekHomeData(): HomeData | undefined {
   const weapons = peekList('weapons')
   const bosses = peekBosses()
   return weapons && bosses ? homeData(weapons, bosses, peekSpriteIndex() ?? null) : undefined
+}
+
+// ---------------------------------------------------------------------------------------------
+// Saved-builds rail (PRD P4-S4 AC4; UX_SPEC §3.2 SavedBuildsRail)
+
+/**
+ * The armor and accessory list records the rail's previews read (names + sprites; weapons come from
+ * the home data). Loaded only when the rail shows — when builds exist. Ammo and potions have no light
+ * list (items.list is the whole encyclopedia), so the rail counts them without a square.
+ */
+export interface BuildPreviewData {
+  armor: ReadonlyMap<number, ArmorListRecord>
+  accessories: ReadonlyMap<number, AccessoryListRecord>
+}
+
+const previewData = (armor: readonly ArmorListRecord[], accessories: readonly AccessoryListRecord[]): BuildPreviewData => ({
+  armor: new Map(armor.map((a) => [a.id, a])),
+  accessories: new Map(accessories.map((a) => [a.id, a])),
+})
+
+export async function loadBuildPreviewData(): Promise<BuildPreviewData> {
+  const [armor, accessories] = await Promise.all([loadArmorList(), loadAccessoryList()])
+  return previewData(armor, accessories)
+}
+
+export function peekBuildPreviewData(): BuildPreviewData | undefined {
+  const armor = peekArmorList()
+  const accessories = peekAccessoryList()
+  return armor && accessories ? previewData(armor, accessories) : undefined
+}
+
+/** One square of a build's preview: an item with a light list record (weapon, armor, accessory). */
+export interface PreviewItem {
+  id: number
+  name: string
+  sprite?: string
+  rarity?: number | string
+  damageClass?: string
+}
+
+/** The previewable items of a build (in `ids` order); ammo and potions — no light record — are left to the count. */
+export function previewItems(ids: readonly number[], weapons: ReadonlyMap<number, WeaponListRecord>, data: BuildPreviewData): PreviewItem[] {
+  const out: PreviewItem[] = []
+  for (const id of ids) {
+    const w = weapons.get(id)
+    const r = w ?? data.armor.get(id) ?? data.accessories.get(id)
+    if (!r) continue
+    out.push({ id, name: r.name, ...(r.sprite ? { sprite: r.sprite } : {}), ...(r.rarity !== undefined ? { rarity: r.rarity } : {}), ...(w?.damageClass ? { damageClass: w.damageClass } : {}) })
+  }
+  return out
 }

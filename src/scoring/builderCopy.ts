@@ -70,16 +70,22 @@ export interface PoolSize {
  * "the 40 melee weapons verified obtainable at your progress + 1 owned (unverified)": owned gear with
  * Unknown availability is never folded into the verified count.
  */
-export function poolPhrase(n: PoolSize, one: string, many: string, verifiedWords: string | readonly Segment[] = 'verified obtainable at your progress'): Segment[] {
+export function poolPhrase(n: PoolSize, one: string, many: string, verifiedWords: string | readonly Segment[] | ((count: number) => string) = 'verified obtainable at your progress'): Segment[] {
   if (n.verified === 0 && n.owned > 0) return s`the ${whole(n.owned)} owned (unverified) ${plural(n.owned, one, many)}`
-  const base = s`the ${count(n.verified, one, many)} ${verifiedWords}`
+  const words = typeof verifiedWords === 'function' ? verifiedWords(n.verified) : verifiedWords
+  const base = s`the ${count(n.verified, one, many)} ${words}`
   return n.owned > 0 ? s`${base} + ${whole(n.owned)} owned (unverified)` : base
 }
+
+/** AMENDMENTS-016 B113(e): the verb agrees with the count ("the 1 buff potion … that grants"). */
+const buffWords = (n: number) => `verified obtainable at your progress that ${n === 1 ? 'grants' : 'grant'} a buff not already in this loadout`
 
 // --- per-pick rationale (1–2 lines, SCORING_SPEC §4.1–4.5) ------------------------------------------
 
 /** B108 H2: the alt's relation to a pinned main that scores below it. */
 const altAbovePin = 'It scores above your pick, which holds the main slot.'
+/** B110: a pinned main without a score — nothing to compare the alt with. */
+const altUnscoredPin = 'Your pick’s score is Unknown.'
 
 export const rationale = {
   /** §4.1: "Highest estimated damage output of the N {class} weapons verified obtainable at your progress (est.)". */
@@ -104,6 +110,17 @@ export const rationale = {
     abovePin
       ? s`Highest estimated damage per second; no other kind of weapon is verified obtainable at your progress. ${altAbovePin}`
       : s`Next-highest estimated damage per second; no other kind of weapon is verified obtainable at your progress.`,
+  /**
+   * AMENDMENTS-016 B110 (queued nit): beside a pinned main whose score is Unknown the alt can't be
+   * "next-highest" after it, nor said to outscore it — the line compares nothing with the pick.
+   */
+  altTypeUnscoredPin: (kind: string | undefined) =>
+    kind
+      ? s`Highest estimated damage per second from a different kind of weapon than your main one — this one is ${kind}. ${altUnscoredPin}`
+      : s`Highest estimated damage per second from a different kind of weapon than your main one. ${altUnscoredPin}`,
+  altSameTypeUnscoredPin: () => s`Highest estimated damage per second; no other kind of weapon is verified obtainable at your progress. ${altUnscoredPin}`,
+  /** SCORING_SPEC §4.8 Surprise Me: a slot drawn at random from its legal pool — never ranked, never "the" pick. */
+  random: (pool: readonly Segment[]) => s`Drawn at random by Surprise Me from ${pool} — not ranked by score.`,
   altHybrid: (weaponClass: string) => s`Highest estimated damage per second among the other classes’ weapons (this one is ${weaponClass}).`,
   /** §4.3 */
   armor: (n: PoolSize, goal: Goal) => s`Highest armor score under the ${GOAL_WORD[goal]} weights of ${poolPhrase(n, 'set', 'sets', 'for your class verified obtainable at your progress')}.`,
@@ -130,7 +147,7 @@ export const rationale = {
   ammo: (n: PoolSize, ammoType: string, weapon: Segment) =>
     s`Highest damage of ${poolPhrase(n, 'kind', 'kinds', s`of ammo your ${weapon} fires (${ammoType}) verified obtainable at your progress`)}.`,
   /** §4.5 buffs. */
-  buff: (n: PoolSize) => s`Most counted points for your class of ${poolPhrase(n, 'buff potion', 'buff potions', 'verified obtainable at your progress that grant a buff not already in this loadout')}.`,
+  buff: (n: PoolSize) => s`Most counted points for your class of ${poolPhrase(n, 'buff potion', 'buff potions', buffWords)}.`,
   /** §4.5 summon: by damage, not DPP. */
   summon: (n: PoolSize) => s`Highest base damage of ${poolPhrase(n, 'minion staff', 'minion staffs')}. Its attack rate varies by minion AI — not estimated.`,
   /** B69/Q2: owned upgrades unknown → eligible. */
@@ -147,6 +164,22 @@ export const rationale = {
   /** Ties (the §4.6 total order decided): shown as alternatives. Accessories rank an unscored effect first (§4.4). */
   tied: (others: readonly Segment[][], accessory = false) =>
     s`Same score as ${list(others, 'and')}; a fixed tie-break order (${accessory ? 'an unscored effect first, then ' : ''}fewer boss gates, lower rarity, lower item ID) put this one first.`,
+}
+
+/** §4.8: the legal list a Surprise Me pick was drawn from, in words ("the 40 melee weapons verified obtainable at your progress"). */
+export const drawnFrom = {
+  main: (n: PoolSize, cls: LoadoutClass) => (cls === 'summon' ? poolPhrase(n, 'whip', 'whips') : poolPhrase(n, `${classWord(cls)} weapon`, `${classWord(cls)} weapons`)),
+  alt: (n: PoolSize, cls: LoadoutClass) =>
+    cls === 'hybrid'
+      ? poolPhrase(n, 'weapon of another class', 'weapons of another class')
+      : cls === 'summon'
+        ? poolPhrase(n, 'other whip', 'other whips')
+        : poolPhrase(n, `other ${classWord(cls)} weapon`, `other ${classWord(cls)} weapons`),
+  armor: (n: PoolSize) => poolPhrase(n, 'set', 'sets', 'for your class verified obtainable at your progress'),
+  accessory: (n: PoolSize) => poolPhrase(n, 'accessory', 'accessories', 'verified obtainable at your progress and still free for this slot'),
+  ammo: (n: PoolSize, ammoType: string, weapon: Segment) => poolPhrase(n, 'kind', 'kinds', s`of ammo your ${weapon} fires (${ammoType}) verified obtainable at your progress`),
+  buff: (n: PoolSize) => poolPhrase(n, 'buff potion', 'buff potions', buffWords),
+  summon: (n: PoolSize) => poolPhrase(n, 'minion staff', 'minion staffs'),
 }
 
 // --- empty slots ("No verified option at this stage", UX_SPEC flow (c)) --------------------------------
@@ -341,7 +374,8 @@ export const profileAssumption = {
   survivability: (): AssumptionText => ({
     id: 'profile-survivability',
     title: 'An editorial blend',
-    detail: 'Defense + 2 × damage reduction % + 2 × life regeneration + 0.25 × max life, with this site’s editorial weights. Healing, dodges and immunities aren’t counted.',
+    detail:
+      'Defense + 2 × damage reduction % + 2 × life regeneration + 0.25 × max life, with this site’s editorial weights. Only life regeneration stated as a number counts; effects worded in the wiki text (“Slowly regenerates life”) are named under the figure, not scored. Healing, dodges and immunities aren’t counted.',
   }),
   synergy: (): AssumptionText => ({
     id: 'profile-synergy',
@@ -349,6 +383,29 @@ export const profileAssumption = {
     detail: 'The share of this loadout’s counted stat points (by size) that apply to your class, out of 100. Effects that aren’t scored don’t enter it.',
   }),
   weights: (version: number): AssumptionText => ({ id: 'profile-weights', title: `Weights v${version} — editorial constants`, detail: 'Points per stat are this site’s editorial choices; they aren’t game data.' }),
+}
+
+/**
+ * The Step 3 bars' reference figures (PRD P4-S3 AC2; AMENDMENTS-016 B113a): the highest figure the search
+ * finds among gear verified obtainable at the user's stage — never "the best", never the loadout itself.
+ */
+export const referenceAssumption = {
+  found: (stageWord: string, damage: boolean): AssumptionText => ({
+    id: 'reference-found',
+    title: 'The highest found at your stage',
+    detail:
+      `Found by trying the gear verified obtainable at ${stageWord} for your class and difficulty, with the builder’s own slots and rules (one armor set, no repeated accessory, one pair of wings, up to 3 potions with different buffs). ` +
+      'Your goal, your picks, Surprise Me and gear you marked owned don’t change it; gear behind a boss outside your progress doesn’t count. ' +
+      (damage
+        ? 'Each weapon is tried with gear chosen for it step by step, so a hand-picked loadout can occasionally go past it.'
+        : 'A loadout with gear you own or fixed outside that pool can go past it.'),
+  }),
+  gear: (parts: readonly string[]): AssumptionText => ({ id: 'reference-gear', title: 'The gear that reaches it', detail: `${parts.join(' ')} Swapping these into your loadout fills the bar.` }),
+  weapon: (name: string, ammo?: string) => (ammo ? `Weapon: ${name}, firing ${ammo}.` : `Weapon: ${name}.`),
+  armor: (name: string) => `Armor: ${name}.`,
+  accessories: (names: readonly string[]) => `Accessories: ${names.join(', ')}.`,
+  potions: (names: readonly string[]) => `Potions: ${names.join(', ')}.`,
+  formula: (formulaText: string): AssumptionText => ({ id: 'reference-formula', title: 'Its numbers', detail: `${formulaText}.` }),
 }
 
 /** Build-level assumptions (Step 3 lists them; SCORING_SPEC §2.4, B69). */
@@ -442,7 +499,7 @@ export const profileCopy = {
   defense: (pieces: string, flat: string, total: string) => `${pieces} from armor pieces + ${flat} from effects = ${total}`,
   mobility: (move: string, flight: string, total: string) => `${move} movement speed points + ${flight} flight points = ${total}`,
   survivability: (defense: string, dr: string, regen: string, life: string, total: string) =>
-    `${defense} defense + 2 × ${dr}% damage reduction + 2 × ${regen} life regeneration + 0.25 × ${life} max life = ${total}`,
+    `${defense} defense + 2 × ${dr}% damage reduction + 2 × ${regen} counted life regeneration + 0.25 × ${life} max life = ${total}`,
   synergy: (matched: string, total: string, value: string) => `${matched} of ${total} counted stat points apply to your class: ${value} of 100`,
   damageReduction: (pct: number) => `Damage reduction ${pct}% is listed apart, not merged into defense.`,
   excluded: {
@@ -463,4 +520,61 @@ export const profileCopy = {
   setActive: (name: string) => `Set bonus active: ${name}`,
   mismatch: (item: string, phrases: readonly string[]) => `${item}: ${phrases.join(', ')}`,
   points: (n: number) => oneDecimal(n),
+}
+
+// --- goal fit across compared builds (SCORING_SPEC §5.3, §5.4; PRD P4-S4 AC1/AC2) ---------------------------
+
+/**
+ * The comparison's wording: a goal fit exists only across ≥ 2 builds and only relative to them — it is
+ * never a rating of a loadout on its own, and nothing here names one build as ahead of another.
+ */
+export const comparisonCopy = {
+  /** A build's weighted sum — only inside "How was this scored?" (AMENDMENTS-016 B113b). */
+  fitLabel: 'Weighted sum',
+  /** "100 × 35 ÷ (35 + 20) = 63.6": a figure's share of the compared builds' figures (B113b — no build pinned at 100). */
+  share: (raw: string, parts: readonly string[], value: string) => `100 × ${raw} ÷ (${parts.join(' + ')}) = ${value}`,
+  /** Every build has 0 of it: its share would divide by 0 (flagged, §5.3). */
+  zeroMax: (label: string) => `${label}: 0 in every compared build, so each gets 0.`,
+  /** Symmetric exclusion (§5.3): uncomputable for one build ⇒ left out for all. */
+  dropped: (label: string) => `${label}: left out for every build, because it can’t be computed for at least one of them.`,
+  /** "(0.25 × 63.6 + 0.2 × 45.1) ÷ 0.45 = 55.4". */
+  fitFormula: (terms: readonly { weight: string; scaled: string }[], weightSum: string, total: string) =>
+    `(${terms.map((t) => `${t.weight} × ${t.scaled}`).join(' + ')}) ÷ ${weightSum} = ${total}`,
+  /** B113b: the two weighted sums' difference, worded with the builds' names ("58.8 (saved) − 41.2 (this draft) = +17.6"). */
+  differenceFormula: (second: string, secondName: string, first: string, firstName: string, signed: string) => `${second} (${secondName}) − ${first} (${firstName}) = ${signed}`,
+  same: 'same',
+  firstBuild: 'first build',
+  secondBuild: 'second build',
+  noFit: 'No figure can be computed for every build, so there is no difference to state.',
+  estimateContext: (goal: string) => `difference under the ${goal} weights, between these two builds only`,
+}
+
+/** AssumptionsTip content of a goal-fit difference (SCORING_SPEC §5.3, §5.4; AMENDMENTS-016 B113b). */
+export const comparisonAssumption = {
+  relative: (): AssumptionText => ({
+    id: 'fit-relative',
+    title: 'Between these two builds only',
+    detail:
+      'Each figure is split between the two builds in proportion to their values (their two shares add up to 100), weighted by the goal and added up per build; the difference is one sum minus the other. Beside another build, the same loadout gets another difference; on its own it has none.',
+  }),
+  weights: (goal: Goal, version: number): AssumptionText => ({
+    id: 'fit-weights',
+    title: `The ${GOAL_WORD[goal]} weights, v${version}`,
+    detail: 'The goal weights are this site’s editorial choices, versioned so a change is always visible. They aren’t game data.',
+  }),
+  figures: (): AssumptionText => ({
+    id: 'fit-figures',
+    title: 'The figures are estimates',
+    detail: 'Every figure behind it is the loadout profile’s own estimate, with the same assumptions: no target defense, potions taken as active, effects that aren’t scored left out.',
+  }),
+  formula: (text: string): AssumptionText => ({ id: 'fit-formula', title: 'This build’s numbers', detail: `${text}.` }),
+}
+
+/** What each piece of gear adds (PRD P4-S3 AC1 "each item's contribution"; SCORING_SPEC §2.3 points). */
+export const contributionCopy = {
+  defense: (n: string) => `${n} defense`,
+  points: (n: string, word: string) => `${n} ${word} points`,
+  otherClass: (n: string) => `${n} points for another class, not counted`,
+  unscored: (n: number) => (n === 1 ? '1 effect not scored' : `${whole(n)} effects not scored`),
+  nothing: 'adds no counted points',
 }

@@ -53,6 +53,12 @@ export interface ReadinessState {
   removeFromList: (list: ListSlot, index: number) => void
   /** Deep-link prefill (`/readiness?boss=&class=&difficulty=`): one save. */
   prefill: (values: { bossId?: string; cls?: ReadinessClass; difficulty?: ReadinessDifficulty }) => void
+  /**
+   * A saved build's import (AMENDMENTS-016 B106 queue; `/readiness?build=` or the setup's import):
+   * stage, difficulty, class and loadout replaced in one save; the boss only when given. An analysis
+   * shown keeps its snapshot and goes out of date unless the inputs match it (the usual edit rule).
+   */
+  importLoadout: (values: { bossId?: string; stage: Stage; difficulty: ReadinessDifficulty; cls: ReadinessClass; loadout: ReadinessLoadout }) => void
   /** Records the snapshot for the current setup + tracked progress and stamps analyzedAt. */
   analyze: (progress: TrackedProgress, now?: Date) => void
   /**
@@ -128,6 +134,8 @@ export function createReadinessStore(backend?: StorageBackend | null, defaultSta
       removeFromList: (list, index) => edit(withLoadout((l) => ({ ...l, [list]: l[list].filter((_, i) => i !== index) })), 'Loadout'),
       prefill: ({ bossId, cls, difficulty }) =>
         edit((s) => ({ ...s, ...(bossId !== undefined ? { bossId } : {}), ...(cls ? { class: cls } : {}), ...(difficulty ? { difficulty } : {}) }), 'Boss choice'),
+      importLoadout: ({ bossId, stage, difficulty, cls, loadout }) =>
+        edit((s) => normalize({ ...s, ...(bossId !== undefined ? { bossId } : {}), stage, difficulty, class: cls, loadout: { ...loadout, accessories: [...loadout.accessories], ammo: [...loadout.ammo], buffs: [...loadout.buffs] } }), 'Imported build'),
       analyze: (progress, now = new Date()) => {
         const at = now.toISOString()
         const setup = { ...get().setup, analyzedAt: at }

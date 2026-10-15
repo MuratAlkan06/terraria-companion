@@ -1,6 +1,7 @@
-import { RotateCcw, TriangleAlert, X } from 'lucide-react'
-import { useRef, type ReactNode } from 'react'
+import { Dices, RotateCcw, TriangleAlert, X } from 'lucide-react'
+import { useId, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { buttonClass } from '../../../components/buttonStyles'
 import { ConditionChip } from '../../../components/ConditionChip'
 import { cx } from '../../../components/cx'
 import { EstimateLabel } from '../../../components/EstimateLabel'
@@ -189,6 +190,34 @@ function focusAfter(el: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+/**
+ * P4-S4 AC3 (SCORING_SPEC §4.8): while the draft is a Surprise Me draw, steps 2–4 say so — random, not
+ * ranked — with "Draw again" (warned when it would replace fixed picks) and "Back to the recommendation"
+ * (the draw goes; the user's own fixed picks stay).
+ */
+export function SurpriseBanner({ fixedPicks, onDrawAgain, onBack }: { fixedPicks: number; onDrawAgain: () => void; onBack: () => void }) {
+  const id = useId()
+  return (
+    <div className="space-y-2 border-l-4 border-dashed border-gold-600 bg-night-900 px-3 py-2 text-sm" data-surprise-banner="">
+      <p className="flex items-start gap-2">
+        <Dices aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
+        <span>{copy.SURPRISE_BANNER}</span>
+      </p>
+      {fixedPicks > 0 ? <FixedPicksWarning id={`${id}warning`} text={copy.surpriseWarning(fixedPicks)} /> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onDrawAgain} aria-describedby={fixedPicks > 0 ? `${id}warning` : undefined} className={buttonClass('secondary', 'min-h-tap px-3 text-sm')} data-surprise-again="">
+          <Dices aria-hidden="true" className="size-4" />
+          {copy.SURPRISE_AGAIN}
+        </button>
+        <button type="button" onClick={onBack} className="inline-flex min-h-tap items-center gap-1.5 px-1 text-sm font-semibold text-link hover:text-accent-strong" data-surprise-back="">
+          <RotateCcw aria-hidden="true" className="size-4" />
+          {copy.SURPRISE_BACK}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** B108 M9: an ammo weapon's estimate without ammo, said in the row (not only in its AssumptionsTip). */
 export function NoAmmoLine({ score }: { score: PickScore | undefined }) {
   if (!score?.noAmmo) return null
@@ -196,6 +225,25 @@ export function NoAmmoLine({ score }: { score: PickScore | undefined }) {
     <p className="text-xs text-fg-muted" data-no-ammo="">
       {copy.NO_AMMO}
     </p>
+  )
+}
+
+/**
+ * A profile bar (PRD P4-S3 AC2, P4-S4 AC1). Decorative: the figure, its est. chip and the scale are
+ * said in text beside it (the ProgressBar pattern). AMENDMENTS-016 B113a: a Step 3 bar marks its
+ * reference with a `tick` (0–1) standing out above and below the bar — at the end unless the figure goes
+ * past it, when the bar runs to the figure and the tick sits inside; the text says so (never colour or
+ * length alone). `tone` tells two compared builds' bars apart; their rows are labelled in text too.
+ */
+export function ProfileBar({ fill, tick, past = false, tone = 'draft', className }: { fill: number; tick?: number; past?: boolean; tone?: 'draft' | 'saved'; className?: string }) {
+  return (
+    <span aria-hidden="true" className={cx('relative block h-2.5 border border-panel-border bg-night-950', className)} data-bar={fill.toFixed(3)} {...(past ? { 'data-bar-past': '' } : {})}>
+      <span
+        className={cx('block h-full origin-left transition-transform duration-(--dur-ui) ease-out-strong motion-reduce:transition-none', tone === 'saved' ? 'bg-night-200' : 'bg-gold-400')}
+        style={{ transform: `scaleX(${fill})` }}
+      />
+      {tick !== undefined ? <span className="absolute inset-y-[-4px] w-1 -translate-x-1/2 bg-fg" style={{ left: `${tick * 100}%` }} data-bar-tick={tick.toFixed(3)} /> : null}
+    </span>
   )
 }
 

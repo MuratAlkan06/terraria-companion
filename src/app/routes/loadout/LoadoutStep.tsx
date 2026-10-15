@@ -262,11 +262,17 @@ function SlotCard(props: LoadoutStepProps & { slot: SlotResult; highlighted: boo
           <h4 id={`${bodyId}label`} className={LABEL}>
             {label}
           </h4>
-          {s.quota ? <span className="border border-stone-600 px-1 text-[0.6875rem] leading-4 font-semibold text-fg-muted">{copy.quotaTag(s.fallback ? copy.FALLBACK_TAG : copy.QUOTA_CHIP[s.quota])}</span> : null}
+          {/* a Surprise Me draw ignores the slot's category (§4.8), so its card names none */}
+          {s.quota && !s.random ? <span className="border border-stone-600 px-1 text-[0.6875rem] leading-4 font-semibold text-fg-muted">{copy.quotaTag(s.fallback ? copy.FALLBACK_TAG : copy.QUOTA_CHIP[s.quota])}</span> : null}
           {s.demonHeart && s.state !== 'locked' ? (
             <AssumptionChip label={copy.DEMON_HEART_CHIP} title={buildAssumption.demonHeart(DEMON_HEART_SOURCE).title} detail={buildAssumption.demonHeart(DEMON_HEART_SOURCE).detail} sourceUrl={DEMON_HEART_SOURCE} />
           ) : null}
           {pick?.source === 'pinned' ? <span className="border border-gold-600 px-1 text-[0.6875rem] leading-4 font-semibold text-accent" data-pinned="">{copy.YOUR_PICK}</span> : null}
+          {pick?.source === 'random' ? (
+            <span className="border border-dashed border-gold-600 px-1 text-[0.6875rem] leading-4 font-semibold text-accent" data-random="">
+              {copy.RANDOM_TAG}
+            </span>
+          ) : null}
           {pick?.zeroPoints ? <ZeroPointsTag /> : null}
         </div>
         {pick ? (
@@ -415,14 +421,15 @@ function PickBreakdown({ pick }: { pick: PickView }) {
 
 /**
  * The next-highest candidates (ties marked); "Use this" swaps one into the slot. Under a pinned pick
- * (B108 H2) the list is "other candidates", and any scoring above the pick is marked so.
+ * (B108 H2) the list is "other candidates", and any scoring above the pick is marked so — likewise
+ * under a Surprise Me draw, which wasn't ranked (never "next-highest").
  */
 export function Alternatives(props: LoadoutStepProps & { slot: SlotResult; label: string }) {
   const { slot: s, page, label } = props
-  const pinned = s.pick?.source === 'pinned'
+  const source = s.pick?.source
   return (
     <div>
-      <p className={LABEL}>{pinned ? copy.ALTERNATIVES_PINNED : copy.ALTERNATIVES}</p>
+      <p className={LABEL}>{source === 'pinned' || source === 'random' ? copy.ALTERNATIVES_PINNED : copy.ALTERNATIVES}</p>
       {s.alternatives.length === 0 ? (
         <p className="mt-1 text-fg-muted">{copy.NO_ALTERNATIVES}</p>
       ) : (

@@ -17,7 +17,8 @@ export const LOAD_ERROR = 'Couldn’t load the loadout builder'
 
 /* Steps (UX_SPEC §3.5 StepWizard) */
 export const STEPS_LABEL = 'Builder steps'
-export const STEP_NAMES = { 1: 'Inputs', 2: 'Loadout', 3: 'Why it works', 4: 'Save' } as const
+/** UX_SPEC §3.5: step 4 is "Compare & Save" (P4-S4; P4-S2 shipped it as "Save", B106). */
+export const STEP_NAMES = { 1: 'Inputs', 2: 'Loadout', 3: 'Why it works', 4: 'Compare & Save' } as const
 export const stepOf = (n: number, total: number) => `Step ${n} of ${total}`
 export const NEXT = 'Next'
 export const BACK = 'Back'
@@ -243,6 +244,132 @@ export const PERSIST_ERROR_NOTICE = 'Couldn’t save to this browser’s storage
 export const NEXT_STEPS = 'Take it further'
 export const COMPARE_WEAPONS = 'Compare these weapons'
 export const COMPARE_HINT = 'Side by side with their stats and estimates.'
+export const ALL_BUILDS = 'All saved builds'
+export const COMPARE_THIS = 'Compare'
+export const compareThisSr = (name: string) => `Compare this draft with ${name}`
+/** The readiness checker's import (B106 queue: loadout → readiness). */
+export const ANALYZE_BUILD = 'Analyze this build'
+export const ANALYZE = 'Analyze'
+export const analyzeBuildSr = (name: string) => `Analyze ${name} in the readiness checker`
+export const ANALYZE_HINT = 'Opens the readiness checker with the saved build’s slots, class and difficulty. It reads only the bosses marked on the map — not the build’s stage — as the checker always does.'
+export const ANALYZE_SAVED_VERSION = 'It gets the saved version: save your changes first to include them.'
+export const ANALYZE_SAVE_FIRST = 'Save this loadout to analyze it in the readiness checker.'
+
+/* Step 4 — compare with a saved build (PRD P4-S4 AC1/AC2; SCORING_SPEC §5.3) */
+export const COMPARE_TITLE = 'Compare with a saved build'
+export const COMPARE_INTRO =
+  'This draft beside one of your saved builds, both scored against the current data and the bosses marked on the map. Differences are listed, not judged: neither column is the right one.'
+export const COMPARE_PICK_LABEL = 'Saved build'
+export const COMPARE_PICK_NONE = 'Choose a saved build'
+export const COMPARE_SHOW = 'Show side by side'
+export const COMPARE_CLEAR = 'Stop comparing'
+export const COMPARE_NO_BUILDS = 'No saved builds in this browser to compare with. Save this one, and a later draft can sit beside it.'
+export const COMPARE_MISSING = 'The saved build this link compares with isn’t in this browser.'
+export const COMPARE_EDITING = 'This is the build you’re editing: its saved version is beside your draft.'
+export const DRAFT_COLUMN = 'This draft'
+export const PROFILE_COMPARE_TITLE = 'Profile'
+export const PROFILE_COMPARE_NOTE =
+  'Each bar runs to the higher of the two figures (class synergy: to 100), so the bars show how these two builds differ — not how far either could go.'
+export const deltaLine = (text: string) => `Draft − saved: ${text}`
+export const DELTA_SAME = 'same'
+export const DELTA_NONE = 'not comparable'
+export const SET_BONUS_ROW = 'Set bonus'
+export const SET_NONE = 'None active'
+export const FIT_TITLE = 'Goal fit for these two builds'
+export const FIT_GOAL_LABEL = 'Weigh the figures for'
+/** AMENDMENTS-016 B113b: one signed difference, never a score per build up front. */
+export const FIT_NOTE =
+  'A goal’s weights fold the five figures into one difference between these two builds: each figure is split between them in proportion to their values, then weighted and added up per build. It says which way the figures lean under that goal, and by how much — not which build to use.'
+/** "Under Survivability weights: saved +24.4" (the "Draft − saved" grammar's sides, B113b). */
+export const fitUnder = (goal: string) => `Under ${goal} weights:`
+export const FIT_SIDE = { draft: 'draft', saved: 'saved' } as const
+export const fitLeaning = (side: string, text: string) => `${side} +${text}`
+export const FIT_SAME = 'same'
+export const FIT_COLUMNS = { figure: 'Figure', scaled: 'Share of the two (%)', weight: 'Weight', adds: 'Adds' } as const
+export const FIT_LEFT_OUT = 'left out'
+export const fitSum = (sum: string) => `Weighted sum: ${sum}`
+export const FIT_DIFFERENCE = 'The difference'
+export const COMPARE_DRAFT_WHO = 'this draft'
+/** A compared figure's est. chip: what it estimates, and whose. */
+export const COMPARE_WHAT = { edo: 'estimated damage per second', defense: 'defense total', mobility: 'mobility points', survivability: 'survivability points', synergy: 'class synergy' } as const
+export const compareContext = (what: string, who: string) => `${what} of ${who}`
+export const fitDropped = (labels: string) => `Left out for both builds: ${labels} — it can’t be computed for one of them.`
+export const FIT_FOOTER = (version: number) => `Weights v${version} — editorial constants.`
+export const SLOTS_TITLE = 'Slot by slot'
+export const slotsDiffer = (n: number) => (n === 0 ? 'Every slot holds the same item.' : n === 1 ? '1 slot differs.' : `${n} slots differ.`)
+export const SLOT_STATUS = { same: 'Same', changed: 'Different', 'draft-only': 'Only in the draft', 'saved-only': 'Only in the saved build', 'both-empty': 'Empty in both' } as const
+export const SIDE_EMPTY = {
+  emptied: 'Emptied by you',
+  unfilled: 'Left empty by the recommendation',
+  locked: 'Locked: the Demon Heart slot',
+  'no-slot': 'No such slot at this difficulty',
+  'no-ammo': 'Its weapon fires no ammo',
+} as const
+export const comparing = (name: string) => `Showing this draft beside “${name}”.`
+export const COMPARE_STOPPED = 'Comparison closed.'
+export const comparisonRegion = (name: string) => `This draft beside ${name}`
+export const SAVED_NOT_PLACED = 'Saved items that can’t be placed with the current data:'
+export const OPEN_SAVED = 'Open the saved build'
+export const SAVED_COLUMN_SR = 'Saved build: '
+
+/* Surprise Me (PRD P4-S4 AC3; SCORING_SPEC §4.8) */
+export const SURPRISE_TITLE = 'Surprise Me'
+export const SURPRISE_INTRO =
+  'Draws a random loadout for your inputs: each slot gets an item drawn at random from the ones verified obtainable at your progress, under the same rules as the recommendation (class, slots, no duplicates). Random, not ranked — every slot still shows its score.'
+export const SURPRISE = 'Surprise Me'
+export const SURPRISE_AGAIN = 'Draw again'
+export const surpriseWarning = (n: number) =>
+  n === 1 ? 'Drawing replaces your 1 fixed pick (a swap or a saved build’s slot) with a random one.' : `Drawing replaces your ${n} fixed picks (swaps or a saved build’s slots) with random ones.`
+export const surpriseDrawn = (reset: number) =>
+  reset === 0 ? 'A random loadout was drawn for your inputs.' : `A random loadout was drawn for your inputs; your ${reset === 1 ? 'fixed pick was' : `${reset} fixed picks were`} replaced.`
+export const SURPRISE_SEE = 'See it in step 2'
+/**
+ * AMENDMENTS-016 B113(e) M3: agrees with "your N fixed picks were replaced" — a draw fills every slot (fixed
+ * picks included); only a slot you swap AFTER the draw keeps your pick.
+ */
+export const SURPRISE_BANNER =
+  'Surprise Me: this loadout was drawn at random from items verified obtainable at your progress — a random loadout, not a ranked one. A slot you swap after the draw keeps your pick.'
+export const SURPRISE_BACK = 'Back to the recommendation'
+export const surpriseCleared = 'The recommendation is back in every slot you haven’t fixed.'
+export const RANDOM_TAG = 'random draw'
+
+/* Step 3 — profile bars (PRD P4-S3 AC2; AMENDMENTS-016 B113a) and what each piece adds (AC1) */
+export const PROFILE_BARS_NOTE =
+  'Each bar runs to the highest figure the builder finds for it among gear verified obtainable at your stage, for your class and difficulty — whatever your goal or your picks. The tick marks that figure: a full bar means this loadout reaches it. Class synergy runs to 100.'
+/** The tick's figure, then what it is. */
+export const BAR_TICK_LEAD = 'Tick:'
+export const BAR_TICK_BASIS = {
+  estDamage: ' — the highest damage estimate found among weapons and gear verified obtainable at your stage.',
+  defense: ' — the most defense found among gear verified obtainable at your stage.',
+  mobility: ' — the most mobility found among gear verified obtainable at your stage.',
+  survivability: ' — the most survivability found among gear verified obtainable at your stage.',
+} as const
+export const BAR_OF_100 = 'Scale: 0 to 100'
+/** The reference figure's est. chip: what it estimates (screen readers; the tip's heading). */
+export const REFERENCE_WHAT = { estDamage: 'estimated damage per second', defense: 'defense total', mobility: 'mobility points', survivability: 'survivability points' } as const
+export const referenceContext = (what: string) => `${what}: the highest found among gear verified obtainable at your stage`
+/** Earned: the loadout reaches its reference (the bar is full because of the picks, not by default). */
+export const BAR_REACHED = 'This loadout reaches the tick.'
+export const BAR_PAST_END = 'Past the tick: this loadout goes beyond the highest found among verified-obtainable gear (gear you own or fixed counts here; the tick leaves it out).'
+export const BAR_NONE_WORD = { estDamage: 'damage', defense: 'defense', mobility: 'mobility', survivability: 'survivability' } as const
+export const barNoReference = (word: string) => `No bar: nothing verified obtainable at your stage gives a ${word} figure to measure against.`
+export const barZeroReference = (word: string) => `No bar: no gear verified obtainable at your stage adds any ${word}.`
+export const CONTRIB_TITLE = 'What each piece of gear adds'
+export const CONTRIB_NOTE = 'Counted points for your class under this site’s weights, each armor piece’s own defense, and what isn’t counted. The damage estimate starts from the main weapon; this gear adds to it.'
+export const CONTRIB_KIND = { armor: 'Armor piece', set: 'Set bonus', accessory: 'Accessory', potion: 'Potion' } as const
+export const CONTRIB_NONE = 'No armor, accessories or potions in this loadout.'
+
+/* The saved-builds list (P4-S4; UX_SPEC §1 /builds as a builder sub-view) */
+export const BUILDS_DOC_TITLE = 'Saved builds'
+export const BUILDS_TITLE = 'Saved builds'
+export const BUILDS_INTRO = 'Every loadout saved in this browser. Opening one re-scores its items against the current data.'
+export const BUILDS_BACK = 'Back to the builder'
+export const BUILDS_EMPTY = 'No saved builds in this browser.'
+export const BUILDS_EMPTY_CTA = 'Build my loadout'
+export const buildsCount = (n: number) => (n === 1 ? '1 saved build' : `${n} saved builds`)
+export const madeFor = (boss: string) => `Made for ${boss}`
+export const previewLabel = (name: string) => `${name}: its equipment`
+export const PREVIEW_EMPTY = 'Every slot is empty.'
 
 /* Owned picker */
 export const OWNED_PICKER_TITLE = 'Add gear you own'

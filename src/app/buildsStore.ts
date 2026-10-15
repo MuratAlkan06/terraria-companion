@@ -1,8 +1,9 @@
 /**
  * Saved builds (ADR D4: Zustand), persisted through the storage module to `tc.v1.builds` (ADR D6;
  * DATA_SCHEMA_SPEC §8a BuildsV1, AMENDMENTS-016 B106 BuildsV2; PRD P4-S2 scope "save/load named builds",
- * UX_SPEC §3.5 Step 4, §6).
- * Hydrated synchronously when first imported (only the loadout chunk imports it).
+ * UX_SPEC §3.5 Step 4, §6; P4-S4 AC4: saved builds appear on the homepage).
+ * Hydrated synchronously when first imported — at app start, since the homepage's saved-builds rail
+ * reads it (the builder and the readiness checker's import share the same store).
  *
  * - Every action saves immediately. A failed save keeps the change for this session and sets
  *   `persistError` (DATA_SCHEMA_SPEC §4b) — the page says so.

@@ -307,7 +307,8 @@ describe('StepWizard (UX_SPEC §3.5): four numbered steps, the current one marke
     expect(count(html, /data-step-link="/g)).toBe(4)
     expect(html).toMatch(/aria-current="step"[^>]*data-step-link="2"/)
     expect(text(html)).toContain('Step 2 of 4: Loadout')
-    expect(Object.values(copy.STEP_NAMES)).toEqual(['Inputs', 'Loadout', 'Why it works', 'Save'])
+    // UX_SPEC §3.5: P4-S4 makes step 4 "Compare & Save"
+    expect(Object.values(copy.STEP_NAMES)).toEqual(['Inputs', 'Loadout', 'Why it works', 'Compare & Save'])
     expect(html).toContain('href="/loadout?step=3&amp;class=ranged"')
   })
 })
@@ -789,6 +790,28 @@ describe('copy audit (SCORING_SPEC §8.4; UX_SPEC §10.3): no "best", outcome, o
     ownedAdded: () => [copy.ownedAdded('Zenith')],
     ownedRemoved: () => [copy.ownedRemoved('Zenith')],
     linkIgnored: () => [copy.linkIgnored(copy.LINK_BOSS)],
+    // P4-S3 / P4-S4
+    compareThisSr: () => [copy.compareThisSr('My build')],
+    analyzeBuildSr: () => [copy.analyzeBuildSr('My build')],
+    deltaLine: () => [copy.deltaLine('+3'), copy.deltaLine(copy.DELTA_SAME)],
+    fitDropped: () => [copy.fitDropped('Estimated damage per second')],
+    FIT_FOOTER: () => [copy.FIT_FOOTER(2)],
+    compareContext: () => [copy.compareContext(copy.COMPARE_WHAT.defense, 'My build')],
+    comparing: () => [copy.comparing('My build')],
+    comparisonRegion: () => [copy.comparisonRegion('My build')],
+    slotsDiffer: () => [copy.slotsDiffer(0), copy.slotsDiffer(1), copy.slotsDiffer(5)],
+    surpriseWarning: () => [copy.surpriseWarning(1), copy.surpriseWarning(3)],
+    surpriseDrawn: () => [copy.surpriseDrawn(0), copy.surpriseDrawn(1), copy.surpriseDrawn(4)],
+    barNoReference: () => [copy.barNoReference(copy.BAR_NONE_WORD.estDamage)],
+    barZeroReference: () => [copy.barZeroReference(copy.BAR_NONE_WORD.mobility)],
+    referenceContext: () => [copy.referenceContext(copy.REFERENCE_WHAT.mobility)],
+    // AMENDMENTS-016 B113b
+    fitUnder: () => [copy.fitUnder('Survivability')],
+    fitLeaning: () => [copy.fitLeaning(copy.FIT_SIDE.saved, '24.4'), copy.fitLeaning(copy.FIT_SIDE.draft, '0.1')],
+    fitSum: () => [copy.fitSum('(0.35 × 60.0) ÷ 0.35 = 60.0')],
+    buildsCount: () => [copy.buildsCount(1), copy.buildsCount(4)],
+    madeFor: () => [copy.madeFor('Plantera')],
+    previewLabel: () => [copy.previewLabel('My build')],
   }
 
   function allCopy(): string[] {

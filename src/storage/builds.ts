@@ -54,6 +54,15 @@ export interface BuildsData {
   builds: SavedBuild[]
 }
 
+/**
+ * A saved build's items as saved, in equip-screen order (weapons, armor, accessories, ammo, potions,
+ * summon) — the previews' order (the homepage rail, the saved-builds list). Dependency-free.
+ */
+export function buildItemIds(build: Pick<SavedBuild, 'slots'>): number[] {
+  const s = build.slots
+  return [s.mainWeapon, s.altWeapon, s.helmet, s.chest, s.legs, ...s.accessories, ...s.ammo, ...s.buffs, s.summon].filter((x): x is number => x !== null)
+}
+
 export const EMPTY_BUILDS: BuildsData = { builds: [] }
 
 /** A build's display-name cap (UI input maxLength; the schema only requires non-empty). */

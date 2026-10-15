@@ -10,10 +10,12 @@
  *
  *   step=1..4 · stage · class · difficulty · goal · boss · owned=<id>,<id> ·
  *   main · alt · armor=<helmet>.<chest>.<legs> (- for none) · acc1..acc7 · ammo1 · ammo2 · buff1..buff3 ·
- *   summon (an item id, or "none" = deliberately empty) · build=<buildId>
+ *   summon (an item id, or "none" = deliberately empty) · build=<buildId> ·
+ *   surprise=<seed> (P4-S4 Surprise Me: unfixed slots drawn at random) · vs=<buildId> (Step 4: the saved
+ *   build compared with the draft) · view=builds (the saved-builds list, a builder sub-view)
  */
 import type { Difficulty, Goal, LoadoutClass } from '../../../schemas'
-import { ACCESSORY_SLOT_IDS, AMMO_SLOT_IDS, BUFF_SLOT_IDS, SLOT_IDS, type BuilderData, type BuilderInput, type BuilderResult, type Pin, type Pins, type SlotId } from '../../../scoring/recommend'
+import { ACCESSORY_SLOT_IDS, AMMO_SLOT_IDS, BUFF_SLOT_IDS, isSeed, SEED_MAX, SLOT_IDS, type BuilderData, type BuilderInput, type BuilderResult, type Pin, type Pins, type SlotId } from '../../../scoring/recommend'
 import type { TrackedProgress } from '../../../scoring/progress'
 import { SLOT_COUNT } from '../../../scoring/constants'
 import { BUILD_GOALS, type BuildGoal, type SavedBuild } from '../../../storage/builds'
@@ -21,9 +23,9 @@ import { READINESS_CLASSES, READINESS_DIFFICULTIES, STORED_ACCESSORY_SLOTS, type
 import type { BuildDraft } from '../../buildsStore'
 import { getStageInfo, isStage, type Stage } from '../../stages'
 import * as copy from './loadoutCopy'
-import { LOADOUT_PATH } from './loadoutLinks'
+import { BUILDS_VIEW_HREF, buildOpenHref, LOADOUT_PATH } from './loadoutLinks'
 
-export { LOADOUT_PATH }
+export { BUILDS_VIEW_HREF, buildOpenHref, LOADOUT_PATH }
 export const STEP_COUNT = 4
 export type Step = 1 | 2 | 3 | 4
 export const STEPS: readonly Step[] = [1, 2, 3, 4]
@@ -39,9 +41,18 @@ export interface LoadoutState {
   owned: number[]
   pins: Pins
   build?: string
+  /** Surprise Me's seed (SCORING_SPEC §4.8): the slots no pin fixes are drawn at random. */
+  surprise?: number
+  /** Step 4: the saved build shown beside the draft. */
+  vs?: string
+  /** The saved-builds list instead of the wizard. */
+  view?: 'builds'
 }
 
 export const EMPTY_STATE: LoadoutState = { step: 1, owned: [], pins: {} }
+
+/** A fresh Surprise Me seed (1 … 2^32 − 1). */
+export const newSeed = (random: () => number = Math.random): number => 1 + Math.floor(random() * SEED_MAX)
 
 /** SCORING_SPEC §4 defaults: stage from settings else Early Pre-HM; melee; Classic; balanced; no boss. */
 export const DEFAULTS = { cls: 'melee', difficulty: 'classic', goal: 'balanced' } as const satisfies { cls: LoadoutClass; difficulty: Difficulty; goal: Goal }
@@ -70,8 +81,8 @@ export function effectiveInputs(state: LoadoutState, defaultStage: Stage | null)
   }
 }
 
-export function engineInput(eff: EffectiveInputs, progress: TrackedProgress, pins: Pins): BuilderInput {
-  return { stage: eff.stage, cls: eff.cls, difficulty: eff.difficulty, goal: eff.goal, bossId: eff.bossId, owned: eff.owned, progress, pins }
+export function engineInput(eff: EffectiveInputs, progress: TrackedProgress, pins: Pins, seed?: number): BuilderInput {
+  return { stage: eff.stage, cls: eff.cls, difficulty: eff.difficulty, goal: eff.goal, bossId: eff.bossId, owned: eff.owned, progress, pins, ...(seed !== undefined ? { seed } : {}) }
 }
 
 // --- URL --------------------------------------------------------------------------------------------------
@@ -155,6 +166,15 @@ export function parseLoadoutSearch(params: URLSearchParams, isBoss: (id: string)
   const buildRaw = value('build')
   const build = buildRaw !== null && BUILD_ID.test(buildRaw) ? buildRaw : undefined
   if (buildRaw !== null && !build) problems.add(copy.LINK_VALUES)
+  const surpriseRaw = value('surprise')
+  const surprise = surpriseRaw !== null && /^\d{1,10}$/.test(surpriseRaw) && isSeed(Number(surpriseRaw)) ? Number(surpriseRaw) : undefined
+  if (surpriseRaw !== null && surprise === undefined) problems.add(copy.LINK_VALUES)
+  const vsRaw = value('vs')
+  const vs = vsRaw !== null && BUILD_ID.test(vsRaw) ? vsRaw : undefined
+  if (vsRaw !== null && !vs) problems.add(copy.LINK_VALUES)
+  const viewRaw = value('view')
+  const view = viewRaw === 'builds' ? viewRaw : undefined
+  if (viewRaw !== null && !view) problems.add(copy.LINK_VALUES)
   const state: LoadoutState = {
     step,
     ...(stage ? { stage } : {}),
@@ -165,6 +185,9 @@ export function parseLoadoutSearch(params: URLSearchParams, isBoss: (id: string)
     owned,
     pins,
     ...(build ? { build } : {}),
+    ...(surprise !== undefined ? { surprise } : {}),
+    ...(vs ? { vs } : {}),
+    ...(view ? { view } : {}),
   }
   return { state, notices: [...problems].map(copy.linkIgnored) }
 }
@@ -187,6 +210,9 @@ export function loadoutSearch(state: LoadoutState): string {
     if (pin) add(PIN_PARAMS[slot], pinValue(pin))
   }
   add('build', state.build)
+  add('surprise', state.surprise === undefined ? undefined : String(state.surprise))
+  add('vs', state.vs)
+  add('view', state.view)
   return parts.length > 0 ? `?${parts.join('&')}` : ''
 }
 
@@ -369,6 +395,10 @@ export function slotLabel(slot: SlotId, demonHeart = false): string {
 export const slotCardId = (slot: SlotId) => `loadout-slot-${slot}`
 export const swapButtonId = (slot: SlotId) => `loadout-swap-${slot}`
 export const stepHeadingId = (step: Step) => `loadout-step-${step}`
+/** The builds view's heading (focus lands there when the view opens). */
+export const BUILDS_HEADING_ID = 'loadout-builds'
+/** Step 4's comparison block (focus lands there when a saved build's "Compare" opens it). */
+export const COMPARISON_ID = 'loadout-comparison'
 
 /** Pins that follow a weapon: its ammo slot. Swapping a weapon drops them (they would no longer fit). */
 export function withPin(pins: Pins, slot: SlotId, pin: Pin | undefined): Pins {

@@ -7,6 +7,18 @@
 /** The builder route's path (registered in src/app/routes.tsx as id "loadout"). */
 export const LOADOUT_PATH = '/loadout'
 
+/**
+ * The saved-builds list (P4-S4; UX_SPEC §1 `/builds`, shipped as a builder sub-view — no route of its
+ * own): every saved build with Open, Analyze and Delete.
+ */
+export const BUILDS_VIEW_HREF = `${LOADOUT_PATH}?view=builds`
+
+/**
+ * Opens a saved build in the builder (UX_SPEC §1 `?build=:localId`): the builder expands the bare link
+ * to the build's inputs and slots at Step 2. The homepage rail links here without the builder's code.
+ */
+export const buildOpenHref = (buildId: string): string => `${LOADOUT_PATH}?build=${encodeURIComponent(buildId)}`
+
 const STAFF_TAGS = ['minion-summon-items', 'sentry-summon-items']
 
 /**

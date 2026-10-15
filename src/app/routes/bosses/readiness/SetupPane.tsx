@@ -1,5 +1,5 @@
-import { Lock, Map as MapIcon, Plus, X } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { FolderInput, Lock, Map as MapIcon, Plus, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { AssumptionChip } from '../../../../components/AssumptionChip'
 import { buttonClass } from '../../../../components/buttonStyles'
@@ -48,6 +48,9 @@ export interface SetupPaneProps {
   /** Slot buttons register here so the page can move focus to them. */
   registerSlot: (key: string, el: HTMLElement | null) => void
   ids: { setup: string; boss: string; bossError: string; loadout: string; loadoutError: string }
+  /** The builder's saved builds (UX_SPEC §3.8 "import saved build"): the import control shows when there are any. */
+  savedBuilds?: readonly { buildId: string; name: string; updatedAt: string }[]
+  onImport?: (buildId: string) => void
 }
 
 const FIELD = 'min-h-tap w-full border-2 border-panel-border bg-surface-sunken px-3 text-base text-fg focus:border-gold-600'
@@ -193,6 +196,7 @@ function LoadoutEditor(props: SetupPaneProps) {
           {copy.LOADOUT_TITLE}
         </h3>
         <p className="text-sm text-fg-muted">{copy.LOADOUT_HINT}</p>
+        {props.savedBuilds && props.savedBuilds.length > 0 && props.onImport ? <ImportBuild builds={props.savedBuilds} onImport={props.onImport} selectId={`${ids.loadout}-import`} /> : null}
         {errors.empty ? (
           <p id={ids.loadoutError} role="alert" className="text-sm text-negative">
             {copy.ERROR_EMPTY}
@@ -231,6 +235,37 @@ function LoadoutEditor(props: SetupPaneProps) {
       <ListGroup {...props} list="buffs" title={copy.GROUP_POTIONS} addLabel={copy.ADD_POTION} />
       <Group title={copy.GROUP_SUMMON}>{single('summon')}</Group>
     </section>
+  )
+}
+
+/**
+ * "Import a saved build" (UX_SPEC §3.8; AMENDMENTS-016 B106 queue): the builder's saved builds, newest
+ * first and preselected, with one Import button — the page asks before it replaces an entered loadout.
+ */
+function ImportBuild({ builds, onImport, selectId }: { builds: readonly { buildId: string; name: string; updatedAt: string }[]; onImport: (buildId: string) => void; selectId: string }) {
+  const sorted = [...builds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.name.localeCompare(b.name))
+  const [choice, setChoice] = useState(sorted[0]?.buildId ?? '')
+  const value = sorted.some((b) => b.buildId === choice) ? choice : (sorted[0]?.buildId ?? '')
+  return (
+    <div className="space-y-1 pt-1" data-import-build="">
+      <label htmlFor={selectId} className={LABEL}>
+        {copy.IMPORT_LABEL}
+      </label>
+      <p className="text-xs text-fg-muted">{copy.IMPORT_HINT}</p>
+      <div className="flex items-stretch gap-2">
+        <select id={selectId} value={value} onChange={(e) => setChoice(e.target.value)} className={cx(FIELD, 'min-w-0 flex-1')}>
+          {sorted.map((b) => (
+            <option key={b.buildId} value={b.buildId}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={() => onImport(value)} className={buttonClass('secondary', 'shrink-0 px-3 text-sm')} data-import-submit="">
+          <FolderInput aria-hidden="true" className="size-4" />
+          {copy.IMPORT}
+        </button>
+      </div>
+    </div>
   )
 }
 

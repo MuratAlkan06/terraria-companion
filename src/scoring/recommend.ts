@@ -27,7 +27,12 @@
  *   (gated / Unknown), never upgraded.
  * - The Demon Heart slot (Expert / Master) exists only once the Wall of Flesh is in EP; then it is
  *   filled with the assumption chip (B69/Q3).
- * - Deterministic: same inputs ⇒ same output; every ordering ends in a total order.
+ * - Surprise Me (§4.8, P4-S4 AC3): with a `seed`, every slot the user didn't fix is drawn uniformly
+ *   (seeded mulberry32) from its FULL legal pool — the same eligible candidates the recommendation
+ *   ranks, under every constraint (class, availability, slot count, Demon Heart, no duplicates, ≤ 1
+ *   wings, no direct upgrade pairs, no repeated buff, ammo the weapon fires). Randomness never relaxes
+ *   legality; each drawn pick says it was drawn, not ranked.
+ * - Deterministic: same inputs (and seed) ⇒ same output; every ordering ends in a total order.
  */
 import type { Accessory, ArmorPiece, ArmorSet, Boss, DamageClass, Difficulty, Goal, Item, LoadoutClass, LoadoutSlots, Rarity, Stage, StatEffect, Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
@@ -84,6 +89,8 @@ export interface BuilderInput {
   /** tc.v1.progress: tracked defeats + world evil. */
   progress: TrackedProgress
   pins?: Pins
+  /** Surprise Me (SCORING_SPEC §4.8): unpinned slots are drawn at random from their legal pools with this seed. */
+  seed?: number
 }
 
 export type BuilderData = ReadinessData
@@ -141,7 +148,8 @@ export interface PickView extends ItemRef {
   score?: PickScore
   scoreMissing?: string[]
   rationale: Segment[]
-  source: 'recommended' | 'pinned'
+  /** 'random': drawn by Surprise Me (§4.8) from the slot's legal pool, not ranked. */
+  source: 'recommended' | 'pinned' | 'random'
   availability: Availability
   /** Gear the user marked owned whose availability is Unknown (recommended because owned, B69/Q2; or a pin, B108 M3). */
   ownedUnknown: boolean
@@ -188,6 +196,8 @@ export interface SlotResult {
   /** Ammo slots: the ammo type and which weapon fires it. */
   ammoClass?: string
   ammoFor?: 'main' | 'alt'
+  /** Surprise Me drew this slot's pick (an accessory drawn from every category is scored on all its points). */
+  random?: true
 }
 
 export interface GatedEntry extends ItemRef {
@@ -224,6 +234,8 @@ export interface BuilderResult {
   notices: Segment[][]
   /** Every pick adding 0 counted points (B108(a): Step 3 names each). */
   zeroPoint: ZeroPointPick[]
+  /** Surprise Me's seed when the draft was drawn at random (§7 RecommendationResult.seed). */
+  seed?: number
 }
 
 // --- context -------------------------------------------------------------------------------------------
@@ -255,6 +267,22 @@ function known<T>(record: unknown, path: string): T | undefined {
 const unverified = (record: unknown, path: string) => getField(record, path).status === 'unverified'
 const fmt2 = (n: number) => String(Number(n.toFixed(2)))
 const itemKey = (id: number) => `i:${id}`
+
+/** Seeds Surprise Me accepts (unsigned 32-bit, mulberry32's state). */
+export const SEED_MAX = 0xffffffff
+export const isSeed = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= SEED_MAX
+
+/** SCORING_SPEC §4.8: the seeded mulberry32 generator — uniform floats in [0, 1), deterministic per seed. */
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 /** A node the chosen world evil leaves out (the other world's evil boss, B97a); none under "Both". */
 function isOtherWorld(ctx: Ctx, nodeId: string): boolean {
@@ -667,6 +695,8 @@ interface Built {
   slotCount: number
   template: AccessoryQuota[]
   progress: BuilderResult['progress']
+  /** Slots whose pick Surprise Me drew (§4.8). */
+  random: ReadonlySet<SlotId>
 }
 
 /** A pinned item resolved against the dataset (scored when it can be). */
@@ -745,6 +775,20 @@ function build(input: BuilderInput, data: BuilderData): Built {
   const otherWorldName = ctx.otherCondition ? (data.conditions.get(ctx.otherCondition)?.name ?? ctx.otherCondition) : undefined
   /** A slot's pool disclosure (SCORING_SPEC §3 "always rendered"). */
   const disc = (c: PoolCounts) => copy.disclosure(c, cls, otherWorldName)
+  /**
+   * §4.8 Surprise Me: with a seed, a slot's pick is a uniform draw from its legal list (one generator,
+   * slots drawn in a fixed order, so the same seed and inputs give the same loadout); without one, the
+   * list's first (top-ranked) candidate.
+   */
+  const rng = input.seed !== undefined ? mulberry32(input.seed) : undefined
+  const random = new Set<SlotId>()
+  const choose = <T>(slotId: SlotId, list: readonly T[]): T | undefined => {
+    if (!rng || list.length === 0) return list[0]
+    random.add(slotId)
+    return list[Math.floor(rng() * list.length)]
+  }
+  /** A drawn pick's why: drawn at random from `pool` (never ranked). */
+  const drawnWhy = (pool: readonly Segment[]) => copy.rationale.random(pool)
 
   // --- ammo pools (lazily, per type) and the highest-damage obtainable ammo per type
   const ammoPools = new Map<string, Pool>()
@@ -814,7 +858,7 @@ function build(input: BuilderInput, data: BuilderData): Built {
     if (p && !isSummonStaff(p.record as Weapon)) main = p
     else ctx.notices.push(copy.pinNotice.notFit(data.weapons.get(mainPin.id)?.name ?? `Item #${mainPin.id}`))
   }
-  if (mainPin?.kind !== 'empty' && !main) main = mainPool.eligible[0]
+  if (mainPin?.kind !== 'empty' && !main) main = choose('main', mainPool.eligible)
 
   // --- alt (§4.2)
   const altPin = pins.alt
@@ -837,19 +881,21 @@ function build(input: BuilderInput, data: BuilderData): Built {
       altRanked = [...rest.filter(differs), ...rest.filter((c) => !differs(c))]
     }
   }
-  if (altPin?.kind !== 'empty' && !alt && main) alt = altRanked[0]
+  if (altPin?.kind !== 'empty' && !alt && main) alt = choose('alt', altRanked)
   /**
    * §4.2's why for a recommended alt: another damage class (hybrid), another kind of weapon, or the same
    * kind (none other obtainable). B108 H2: beside a pinned main scoring below it, the alt is no
-   * "next-highest" — the line says it outscores your pick.
+   * "next-highest" — the line says it outscores your pick. B110: beside a pinned main whose score is
+   * Unknown, the line compares nothing with it ("your pick's score is Unknown").
    */
   const altWhy = (c: Cand): Segment[] => {
     const mainWeapon = main ? ((isPinned(main) ? main.record : main.weapon) as Weapon) : undefined
     if (cls === 'hybrid') return copy.rationale.altHybrid(copy.classWord(c.damageClass ?? 'other'))
+    const pinUnscored = main !== undefined && isPinned(main) && main.score === undefined
     const pinScore = main && isPinned(main) ? main.score?.value : undefined
     const abovePin = pinScore !== undefined && c.score.value > pinScore && !sameScore(c.score.value, pinScore)
-    if (c.tag0 !== mainWeapon?.tags[0]) return copy.rationale.altType(copy.weaponKind(c.tag0), abovePin)
-    return copy.rationale.altSameType(abovePin)
+    if (c.tag0 !== mainWeapon?.tags[0]) return pinUnscored ? copy.rationale.altTypeUnscoredPin(copy.weaponKind(c.tag0)) : copy.rationale.altType(copy.weaponKind(c.tag0), abovePin)
+    return pinUnscored ? copy.rationale.altSameTypeUnscoredPin() : copy.rationale.altSameType(abovePin)
   }
 
   // --- ammo for the weapons (§4.5); the weapons are then re-scored with the ammo in the loadout
@@ -881,7 +927,8 @@ function build(input: BuilderInput, data: BuilderData): Built {
         }
       } else ctx.notices.push(copy.pinNotice.ammoMismatch(r?.name ?? `Item #${pin.id}`))
     }
-    if (pin?.kind !== 'empty' && !pick) pick = pool.eligible[0]
+    if (pin?.kind !== 'empty' && !pick) pick = choose(slotId, pool.eligible)
+    const drawn = random.has(slotId)
     const result: SlotResult = {
       id: slotId,
       group: 'ammo',
@@ -891,12 +938,13 @@ function build(input: BuilderInput, data: BuilderData): Built {
       disclosure: disc(pool.counts),
       ammoClass,
       ammoFor,
+      ...(drawn ? { random: true as const } : {}),
     }
     const weaponSeg: Segment = { kind: 'item', id: forWeapon.id, text: forWeapon.name }
     const ammoType = data.ammoTypeName(ammoClass)
     if (pick) {
       const recommended = () => copy.rationale.ammo(sizeOf(pool.counts), ammoType, weaponSeg)
-      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, pool.eligible[0], recommended) : recommended())
+      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, pool.eligible[0], recommended) : drawn ? drawnWhy(copy.drawnFrom.ammo(sizeOf(pool.counts), ammoType, weaponSeg)) : recommended(), false, drawn)
       chosen.set(slotId, pick)
     } else result.empty = pin?.kind === 'empty' ? copy.empty.pinnedEmpty() : copy.empty.ammo(ammoType, weaponSeg)
     slots.set(slotId, result)
@@ -928,21 +976,23 @@ function build(input: BuilderInput, data: BuilderData): Built {
 
   // weapon slots
   {
-    const result: SlotResult = { id: 'main', group: 'weapons', state: main ? 'pick' : 'empty', alternatives: alternatives(mainPool, main), pool: mainPool.counts, disclosure: disc(mainPool.counts) }
+    const drawn = random.has('main')
+    const result: SlotResult = { id: 'main', group: 'weapons', state: main ? 'pick' : 'empty', alternatives: alternatives(mainPool, main), pool: mainPool.counts, disclosure: disc(mainPool.counts), ...(drawn ? { random: true as const } : {}) }
     if (main) {
       const pick = main
       const recommended = () => withTies(copy.rationale.main(sizeOf(mainPool.counts), cls), pick, mainPool.eligible)
-      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, mainPool.eligible[0], recommended) : recommended())
+      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, mainPool.eligible[0], recommended) : drawn ? drawnWhy(copy.drawnFrom.main(sizeOf(mainPool.counts), cls)) : recommended(), false, drawn)
       chosen.set('main', main)
     } else result.empty = mainPin?.kind === 'empty' ? copy.empty.pinnedEmpty() : copy.empty.main(cls)
     slots.set('main', result)
   }
   {
+    const drawn = random.has('alt')
     const altPool: Pool = { ...mainPool, eligible: altRanked }
-    const result: SlotResult = { id: 'alt', group: 'weapons', state: alt ? 'pick' : 'empty', alternatives: alternatives(altPool, alt), pool: mainPool.counts, disclosure: disc(mainPool.counts) }
+    const result: SlotResult = { id: 'alt', group: 'weapons', state: alt ? 'pick' : 'empty', alternatives: alternatives(altPool, alt), pool: mainPool.counts, disclosure: disc(mainPool.counts), ...(drawn ? { random: true as const } : {}) }
     if (alt) {
       const top = altRanked[0]
-      result.pick = view(alt, isPinned(alt) ? pinnedWhy(alt, top, () => (top ? altWhy(top) : [])) : altWhy(alt))
+      result.pick = view(alt, isPinned(alt) ? pinnedWhy(alt, top, () => (top ? altWhy(top) : [])) : drawn ? drawnWhy(copy.drawnFrom.alt(sizeOfList(altRanked), cls)) : altWhy(alt), false, drawn)
       chosen.set('alt', alt)
     } else result.empty = altPin?.kind === 'empty' ? copy.empty.pinnedEmpty() : !main ? copy.empty.altNoMain() : cls === 'hybrid' ? copy.empty.altHybridNone() : copy.empty.altNone()
     slots.set('alt', result)
@@ -1012,13 +1062,14 @@ function build(input: BuilderInput, data: BuilderData): Built {
       }
     } else ctx.notices.push(copy.pinNotice.notFit(pieces.map((p) => p.name).join(', ') || 'That armor'))
   } else if (armorPin?.kind === 'item') ctx.notices.push(copy.pinNotice.notFit(data.armor.get(armorPin.id)?.name ?? `Item #${armorPin.id}`))
-  if (armorPin?.kind !== 'empty' && !armor) armor = armorPool.eligible[0]
+  if (armorPin?.kind !== 'empty' && !armor) armor = choose('armor', armorPool.eligible)
   {
-    const result: SlotResult = { id: 'armor', group: 'armor', state: armor ? 'pick' : 'empty', alternatives: alternatives(armorPool, armor), pool: armorPool.counts, disclosure: disc(armorPool.counts) }
+    const drawn = random.has('armor')
+    const result: SlotResult = { id: 'armor', group: 'armor', state: armor ? 'pick' : 'empty', alternatives: alternatives(armorPool, armor), pool: armorPool.counts, disclosure: disc(armorPool.counts), ...(drawn ? { random: true as const } : {}) }
     if (armor) {
       const pick = armor
       const recommended = () => withTies(copy.rationale.armor(sizeOf(armorPool.counts), input.goal), pick, armorPool.eligible)
-      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, armorPool.eligible[0], recommended) : recommended())
+      result.pick = view(pick, isPinned(pick) ? pinnedWhy(pick, armorPool.eligible[0], recommended) : drawn ? drawnWhy(copy.drawnFrom.armor(sizeOf(armorPool.counts))) : recommended(), false, drawn)
       chosen.set('armor', armor)
     } else result.empty = armorPin?.kind === 'empty' ? copy.empty.pinnedEmpty() : copy.empty.armor()
     slots.set('armor', result)
@@ -1135,6 +1186,24 @@ function build(input: BuilderInput, data: BuilderData): Built {
     }
     if (pins[slotId]?.kind === 'empty') {
       slots.set(slotId, { ...base, empty: copy.empty.pinnedEmpty(), pool: accPool.counts, disclosure: disc(accPool.counts) })
+      continue
+    }
+    if (rng) {
+      // §4.8: drawn from EVERY free accessory (the quota is a ranking rule, not a legality one), scored on all its points
+      const ranked = accPool.eligible
+        .filter(fitsConstraints)
+        .sort(quotaOrder('any'))
+        .map((c) => withQuotaScore(c, 'any'))
+      const drawn = choose(slotId, ranked)
+      const result: SlotResult = { ...base, state: drawn ? 'pick' : 'empty', pool: accPool.counts, disclosure: disc(accPool.counts), alternatives: alternatives({ eligible: ranked }, drawn) }
+      if (drawn) {
+        result.random = true
+        result.pick = view(drawn, drawnWhy(copy.drawnFrom.accessory(sizeOfList(ranked))), (drawn.total as number) <= 0, true)
+        accChosen[i] = drawn
+        chosen.set(slotId, drawn)
+        place(drawn.id, drawn.wings === true, drawn.links ?? [])
+      } else result.empty = copy.empty.accessory()
+      slots.set(slotId, result)
       continue
     }
     const free = accPool.eligible.filter(fitsConstraints)
@@ -1258,13 +1327,15 @@ function build(input: BuilderInput, data: BuilderData): Built {
       continue
     }
     const free = buffPool.eligible.filter((c) => !buffItems.has(c.id) && !(c.buffIds ?? []).some((b) => buffsUsed.has(b)))
-    const pick = free[0]
+    const pick = choose(slotId, free)
+    const drawn = random.has(slotId)
     buffChosen.push(pick)
     if (pick) {
       buffItems.add(pick.id)
       for (const b of pick.buffIds ?? []) buffsUsed.add(b)
       chosen.set(slotId, pick)
-      slots.set(slotId, { ...base, state: 'pick', pick: view(pick, withTies(copy.rationale.buff(sizeOf(buffPool.counts)), pick, free)), alternatives: alternatives({ ...buffPool, eligible: free }, pick) })
+      const why = drawn ? drawnWhy(copy.drawnFrom.buff(sizeOfList(free))) : withTies(copy.rationale.buff(sizeOf(buffPool.counts)), pick, free)
+      slots.set(slotId, { ...base, state: 'pick', pick: view(pick, why, false, drawn), alternatives: alternatives({ ...buffPool, eligible: free }, pick), ...(drawn ? { random: true as const } : {}) })
     } else slots.set(slotId, { ...base, empty: copy.empty.buff() })
   }
   // B108 H2 / M3: each pinned potion against the slot's top candidate given the other potions (one push per slot above)
@@ -1303,15 +1374,27 @@ function build(input: BuilderInput, data: BuilderData): Built {
         summon = { pinned: true, key: itemKey(w.id), id: w.id, name: w.name, record: w, ...pinnedAvailability(ctx, [w]), ...(damage !== undefined ? { score: damageScore(w) } : { scoreMissing: ['damage'] }) }
       } else ctx.notices.push(copy.pinNotice.notFit(w?.name ?? `Item #${pin.id}`))
     }
-    if (pin?.kind !== 'empty' && !summon) summon = summonPool.eligible[0]
-    const result: SlotResult = { id: 'summon', group: 'summon', state: summon ? 'pick' : 'empty', alternatives: alternatives(summonPool, summon), pool: summonPool.counts, disclosure: disc(summonPool.counts) }
+    if (pin?.kind !== 'empty' && !summon) summon = choose('summon', summonPool.eligible)
+    const drawn = random.has('summon')
+    const result: SlotResult = { id: 'summon', group: 'summon', state: summon ? 'pick' : 'empty', alternatives: alternatives(summonPool, summon), pool: summonPool.counts, disclosure: disc(summonPool.counts), ...(drawn ? { random: true as const } : {}) }
     if (summon) {
       const pick = summon
       const top = summonPool.eligible[0]
       const recommended = () => withTies(copy.rationale.summon(sizeOf(summonPool.counts)), pick, summonPool.eligible)
-      // the recommendation's why carries the minion-AI note; every other pinned line gets it appended
+      // the recommendation's why carries the minion-AI note; every other line (pinned, drawn) gets it appended
       const same = isPinned(pick) && pick.score !== undefined && top?.key === pick.key
-      result.pick = view(pick, !isPinned(pick) ? recommended() : same ? pinnedWhy(pick, top, recommended) : [...pinnedWhy(pick, top, recommended), SPACE, ...copy.rationale.minionNote()])
+      result.pick = view(
+        pick,
+        drawn
+          ? [...drawnWhy(copy.drawnFrom.summon(sizeOf(summonPool.counts))), SPACE, ...copy.rationale.minionNote()]
+          : !isPinned(pick)
+            ? recommended()
+            : same
+              ? pinnedWhy(pick, top, recommended)
+              : [...pinnedWhy(pick, top, recommended), SPACE, ...copy.rationale.minionNote()],
+        false,
+        drawn,
+      )
       chosen.set('summon', summon)
     } else result.empty = pin?.kind === 'empty' ? copy.empty.pinnedEmpty() : copy.empty.summon()
     slots.set('summon', result)
@@ -1327,6 +1410,7 @@ function build(input: BuilderInput, data: BuilderData): Built {
     slotCount,
     template,
     progress,
+    random,
   }
 }
 
@@ -1336,8 +1420,11 @@ function damageScore(w: Weapon): PickScore {
   return { kind: 'damage', value: damage, text: String(damage), label: copy.scoreLabel.damage, formulaText: copy.formula.damage(damage), terms: [], effects: [] }
 }
 
-/** A slot's pick as shown. `zero`: an accessory / potion adding 0 counted points (B108(a): named on the card and in Step 3). */
-function view(c: Cand | PinnedItem, rationale: Segment[], zero = false): PickView {
+/**
+ * A slot's pick as shown. `zero`: an accessory / potion adding 0 counted points (B108(a): named on the
+ * card and in Step 3). `drawn`: Surprise Me drew it (§4.8).
+ */
+function view(c: Cand | PinnedItem, rationale: Segment[], zero = false, drawn = false): PickView {
   const pinned = isPinned(c)
   return {
     key: c.key,
@@ -1348,7 +1435,7 @@ function view(c: Cand | PinnedItem, rationale: Segment[], zero = false): PickVie
     ...(c.score ? { score: c.score } : {}),
     ...(pinned && c.scoreMissing ? { scoreMissing: c.scoreMissing } : {}),
     rationale: !pinned && c.ownedUnknown ? [...rationale, SPACE, ...copy.rationale.owned()] : rationale,
-    source: pinned ? 'pinned' : 'recommended',
+    source: pinned ? 'pinned' : drawn ? 'random' : 'recommended',
     availability: c.availability,
     ownedUnknown: c.ownedUnknown,
     ...(zero ? { zeroPoints: true as const } : {}),
@@ -1407,12 +1494,14 @@ function gatedTrack(b: Built): GatedGroup[] {
     const slotIds = slotsOfQuota.map(({ i }) => ACCESSORY_SLOT_IDS[i])
     // a slot of this quota left empty, or filled from another category: any qualifying gated item would outrank it
     const open = slotIds.some((id) => !b.chosen.get(id) || b.slots.get(id)?.fallback)
-    let weakest: Cand | PinnedItem | undefined
-    if (!open) for (const id of slotIds) {
-      const p = b.chosen.get(id) as Cand | PinnedItem
-      if (!weakest || (p.score?.value ?? 0) < (weakest.score?.value ?? 0)) weakest = p
-    }
-    const floor = weakest?.score?.value
+    // a pick's worth in this quota: its quota score — a Surprise Me draw is scored on all its points, so read its quota points (§4.8)
+    const inQuota = (id: SlotId, p: Cand | PinnedItem) => (b.random.has(id) && p.points ? quotaValue(p.points, quota) : (p.score?.value ?? 0))
+    let floor: number | undefined
+    if (!open)
+      for (const id of slotIds) {
+        const v = inQuota(id, b.chosen.get(id) as Cand | PinnedItem)
+        if (floor === undefined || v < floor) floor = v
+      }
     const scored = b.pools.accessories.gated
       .filter((c) => c.quotas?.includes(quota))
       .map((c) => ({ ...c, score: accessoryScore(c, quota, b.ctx.cls) }))
@@ -1550,6 +1639,53 @@ export function recommendLoadout(input: BuilderInput, data: BuilderData, options
     assumptions: assumptionsOf(b, input, options.stageName ?? input.stage),
     notices: b.ctx.notices,
     zeroPoint: zeroPointPicks(b),
+    ...(input.seed !== undefined ? { seed: input.seed } : {}),
+  }
+}
+
+// --- the Step 3 references' search space (PRD P4-S3 AC2; AMENDMENTS-016 B113a) ---------------------------------
+
+/**
+ * What a bar's reference may depend on: the user's stage, class, difficulty, target boss and tracked
+ * progress — never a pick, the goal, owned gear or a Surprise Me draw (B113a: a bar never compares a build
+ * with itself). Structural: only these fields are read.
+ */
+export type ReferenceInput = Pick<BuilderInput, 'stage' | 'cls' | 'difficulty' | 'bossId' | 'progress'>
+
+/** The verified-obtainable candidates of each slot for a ReferenceInput (the swap sheets' pools, owned gear left out). */
+export interface ReferencePools {
+  /** Main-slot weapons with the highest-damage verified ammo of their type (§4.5), when they fire ammo. */
+  weapons: readonly { weapon: Weapon; ammo?: { name: string; damage: number } }[]
+  armor: readonly { name: string; set: ArmorSet; variant: ArmorSet['variants'][number]; pieces: readonly ArmorPiece[] }[]
+  accessories: readonly { accessory: Accessory; wings: boolean; links: readonly number[] }[]
+  potions: readonly { item: Item; buffIds: readonly string[]; effects: readonly StatEffect[] }[]
+  /** Accessory slots open at this difficulty and progress (a locked Demon Heart slot left out). */
+  accessorySlots: number
+}
+
+export function referencePools(input: ReferenceInput, data: BuilderData): ReferencePools {
+  // only the five reference fields; the goal is fixed (it orders pools, never admits or drops a candidate)
+  const b = build({ stage: input.stage, cls: input.cls, difficulty: input.difficulty, bossId: input.bossId, progress: input.progress, goal: 'balanced', owned: [] }, data)
+  const verified = (c: Cand) => !c.ownedUnknown && c.availability.status === 'yes'
+  const ammoTop = new Map<string, { name: string; damage: number } | undefined>()
+  const ammoFor = (ammoClass: string | undefined) => {
+    if (!ammoClass) return undefined
+    if (!ammoTop.has(ammoClass)) {
+      const top = ammoPool(b.ctx, ammoClass).eligible.find(verified)
+      ammoTop.set(ammoClass, top ? { name: top.name, damage: top.ammoDamage as number } : undefined)
+    }
+    return ammoTop.get(ammoClass)
+  }
+  return {
+    weapons: b.pools.main.eligible.filter(verified).map((c) => {
+      const w = c.weapon as Weapon
+      const ammo = ammoFor(known<string>(w, 'ammoClass'))
+      return { weapon: w, ...(ammo ? { ammo } : {}) }
+    }),
+    armor: b.pools.armor.eligible.filter(verified).map((c) => ({ name: c.name, set: c.set as ArmorSet, variant: c.variant as ArmorSet['variants'][number], pieces: c.armorPieces as ArmorPiece[] })),
+    accessories: b.pools.accessories.eligible.filter(verified).map((c) => ({ accessory: c.accessory as Accessory, wings: c.wings === true, links: c.links ?? [] })),
+    potions: b.pools.buffs.eligible.filter(verified).map((c) => ({ item: c.potion as Item, buffIds: c.buffIds ?? [], effects: c.potionEffects ?? [] })),
+    accessorySlots: b.slotCount - (b.dhIndex !== null && !b.dhOpen ? 1 : 0),
   }
 }
 
