@@ -32,8 +32,14 @@
  * (vendor NPC articles — their shop tables —, container and gatherable-material articles, the
  * exhaustive-condition evidence) · the "Buff potions" article, every potion candidate's article and the
  * articles of the buffs they grant (merge/potions.ts) · imageinfo for the potion candidates' images.
+ * Plan (P6-S0 item corpus): + the "Fishing catches" article (AMENDMENTS-004 B20: the structured catch
+ * tables, merge/fishing.ts) · the articles of the buffs corpus food grants (Well Fed and its tiers) ·
+ * imageinfo for the infobox image of every corpus candidate row not already fetched above
+ * (merge/corpus.ts corpusImageFiles).
  */
 import { buffArticleTitles, BUFF_IDS_PAGE, cargoBuffNames } from '../merge/buffs'
+import { corpusFoodBuffNames, corpusImageFiles } from '../merge/corpus'
+import { FISHING_CATCHES_PAGE } from '../merge/fishing'
 import { bossImageFiles } from '../merge/bosses'
 import { accessoryRows, armorPieceRows, armorSetPages, WINGS_PAGE } from '../merge/equipment'
 import { LAB_RULE_PAGES, labFamilyPages } from '../merge/labParams'
@@ -121,6 +127,8 @@ export interface SyncResult {
   equipmentImages: ImageInfoFetch
   /** B70 P4-prep: image metadata for the infobox image of every potion candidate row. */
   potionImages: ImageInfoFetch
+  /** P6-S0: image metadata for the corpus candidate rows' infobox images not in the fetches above. */
+  corpusImages: ImageInfoFetch
 }
 
 export async function runSyncPlan(client: WikiClient, log?: (line: string) => void): Promise<SyncResult> {
@@ -196,6 +204,14 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   log?.('potion image metadata (imageinfo)')
   const potionImages = await fetchImageInfo(client, potionImageFiles(tables.Items.rows, info), 'images/potions')
 
+  // P6-S0 item corpus: the fishing catch tables (B20), the food buffs' articles, the corpus images
+  log?.('articles: Fishing catches, corpus food buffs')
+  const foodBuffTitles = buffArticleTitles(parseBuffIdTable(buffIds.html), corpusFoodBuffNames(tables.Items.rows, info, parseBuffIdTable(buffIds.html)).keys())
+  for (const [title, article] of await fetchArticles(client, [FISHING_CATCHES_PAGE, ...foodBuffTitles], 'articles')) articles.set(title, article)
+  log?.('corpus image metadata (imageinfo)')
+  const fetchedFiles = new Set([weaponImages, ammoImages, equipmentImages, potionImages].flatMap((f) => [...f.found.keys(), ...f.missing]))
+  const corpusImages = await fetchImageInfo(client, corpusImageFiles(tables.Items.rows, info).filter((f) => !fetchedFiles.has(f.trim())), 'images/corpus')
+
   return {
     iteminfo,
     modules,
@@ -213,6 +229,7 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
     accessoryCategories: { ...accessoryCategories, pageStatus: accessoryCategoryPages },
     equipmentImages,
     potionImages,
+    corpusImages,
   }
 }
 

@@ -99,7 +99,8 @@
  * behavior lines — never its flavor-text quote line (src/schemas `tooltipBehavior`; validate
  * labDowngrade `limitation`) — else, for a card whose tooltip is flavor only, a reviewed overlay
  * `inGameBehavior` sentence of the weapon's own article (quote-checked, `withBehaviorSentences`), else
- * the wiki pointer (the card says "No verified description yet.").
+ * the wiki pointer, which the app's LimitationCard treats as no description (it states that none is
+ * verified, in its own wording) — src/lab/labWeapons.ts inGameDescription.
  *
  * GUARD CONTRACT: every candidate is run through the sim's own `assessWeapon` (src/sim, pure TS). A
  * candidate blocked by an unverified field the pipeline rule covers (`simRequiredWeaponFields`,

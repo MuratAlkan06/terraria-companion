@@ -419,7 +419,8 @@ export function buildPotions(input: PotionBuildInput): PotionBuild {
     } else gaps.add({ ref, field: 'sprite', kind: 'missing-sprite', detail: `${name}: no wiki image file resolved for "${str(row.imagefile)}"; the placeholder sprite is shown`, sources: [wikiUrl] })
 
     // ---- acquisition + §7b gating ----
-    const { acquisition, gating } = itemRoutes({ id, name, noun: 'potion', row, wikiUrl, recipesBy, dropsBy, withheld: input.withheld?.get(id), gating: input.gating, unknown, mismatch, gaps, reasons, ...(input.sources ? { sources: input.sources } : {}) })
+    const { acquisition, gating, sources: routeSources } = itemRoutes({ id, name, noun: 'potion', row, wikiUrl, recipesBy, dropsBy, withheld: input.withheld?.get(id), gating: input.gating, unknown, mismatch, gaps, reasons, ...(input.sources ? { sources: input.sources } : {}) })
+    sources.push(...routeSources)
     let gatedBy: Item['gatedBy']
     if (gating.ok) gatedBy = gating.gatedBy
     else {

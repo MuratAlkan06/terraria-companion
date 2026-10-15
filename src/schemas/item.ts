@@ -172,6 +172,17 @@ export const ItemCategory = z.enum([
   'summoning',
   'exploration-utility',
   'other',
+  // P6-S0 item corpus (additive): the remaining wiki infobox item types the encyclopedia browses
+  // (pipeline/merge/corpus.ts maps each Cargo Items `type` list onto exactly one category; the full
+  // type list stays in `tags`).
+  'vanity', // cosmetic armor pieces and vanity accessories (music boxes, …)
+  'dye', // dyes and hair dyes
+  'pet', // pet and light pet summons
+  'furniture', // placeable furniture, light sources, storage, mechanisms, background objects
+  'block', // placeable blocks, bricks and walls
+  'fishing', // fish, quest fish, crates and bait (AMENDMENTS-004 B20)
+  'grab-bag', // treasure bags, presents, goodie bags and other opened containers
+  'permanent-booster', // consumables with a permanent effect (Life Crystal, Demon Heart, …)
 ])
 export type ItemCategory = z.infer<typeof ItemCategory>
 
@@ -203,8 +214,14 @@ export const Item = z.strictObject({
       pickaxePowerPct: z.int().positive().optional(),
       axePowerPct: z.int().positive().optional(),
       hammerPowerPct: z.int().positive().optional(),
+      // P6-S0 (additive, AMENDMENTS-004 B20 fishing items): a fishing pole's fishing power in percent
+      // (Module:Iteminfo/data fishingPole, cross-checked with the wiki infobox).
+      fishingPowerPct: z.int().positive().optional(),
     })
     .optional(),
+  // P6-S0 (additive, B20): bait power in percent (Module:Iteminfo/data bait, cross-checked with the
+  // wiki infobox). Absent + not listed = not bait.
+  baitPowerPct: z.int().positive().optional(),
   hookStats: z
     .strictObject({
       reachTiles: z.number().positive().optional(),
@@ -229,3 +246,22 @@ export const Item = z.strictObject({
   summonsBossNode: Slug.optional(),
 })
 export type Item = z.infer<typeof Item>
+
+/** P6-S0 item-detail shard file names: the core file and the ID-range shards (`items.detail.<n>.json`). */
+export const ITEM_DETAIL_CORE_FILE = 'items.detail.json'
+export const ITEM_DETAIL_INDEX_FILE = 'items.detail.index.json'
+export const ItemDetailFile = z.string().regex(/^items\.detail(?:\.\d+)?\.json$/)
+
+/**
+ * P6-S0 (DATA_SCHEMA_SPEC §5 "items.detail.<n>.json by ID ranges + items.detail.index.json"):
+ * `items.detail.index.json` names the data file holding each Item record. `items.detail.json` (the
+ * core file) keeps exactly the records the shipped Lab / boss pages / readiness checker load — the
+ * ammo, the potion corpus and every item a boss record references (summon items, prep-checklist
+ * items); every other item lives in the ID-range shard `items.detail.<n>.json` holding ids
+ * n×shardSize … (n+1)×shardSize − 1. Every emitted Item id is listed in exactly one file (validated).
+ */
+export const ItemDetailIndex = z.strictObject({
+  shardSize: z.int().positive(),
+  files: z.array(z.strictObject({ file: ItemDetailFile, ids: z.array(ItemId) })).min(1),
+})
+export type ItemDetailIndex = z.infer<typeof ItemDetailIndex>

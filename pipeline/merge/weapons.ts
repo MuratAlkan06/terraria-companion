@@ -408,7 +408,7 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
     }
 
     // acquisition + §7b gating (shared with the ammo dataset, merge/acquisition.ts)
-    const { acquisition, gating } = itemRoutes({
+    const { acquisition, gating, sources: routeSources } = itemRoutes({
       id,
       name,
       noun: 'weapon',
@@ -424,6 +424,7 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
       reasons,
       ...(input.sources ? { sources: input.sources } : {}),
     })
+    sources.push(...routeSources)
     if (gating.ok) {
       w.gatedBy = gating.gatedBy
       w.stage = gating.gatedBy.stage

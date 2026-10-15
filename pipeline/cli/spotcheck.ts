@@ -11,7 +11,9 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { Accessory, ArmorPiece, ArmorSet, Boss, Buff, Condition, DropSource, GapEntry, Item, Recipe, RecipeGroup, StatEffect, Weapon } from '../../src/schemas'
+import type { Accessory, ArmorPiece, ArmorSet, Boss, Buff, Condition, DropSource, GapEntry, Item, ItemDetailIndex, Recipe, RecipeGroup, StatEffect, Weapon } from '../../src/schemas'
+import { FISHING_CATCHES_PAGE } from '../merge/fishing'
+import { parseFishingCatches } from '../parse/fishing'
 import { RAW_DIR, WikiClient } from '../fetch'
 import { fetchArticles } from '../fetch/articles'
 import { wikiPageUrl } from '../fetch/config'
@@ -35,6 +37,9 @@ type Case =
   | { kind: 'armor-set'; page: string; set: string; why: string }
   | { kind: 'accessory'; page: string; item: string; why: string }
   | { kind: 'wing'; page: string; item: string; why: string }
+  // P6-S0: any item record (every item file of items.detail.index.json): category, fields, routes both ways
+  // (recipes producing it + recipes using it), fishing routes next to the "Fishing catches" rows naming it
+  | { kind: 'item'; page: string; item: string; why: string }
 
 const PLATFORM_NOTE = /\((?:Desktop, Console(?:, Old-gen console)? and Mobile versions|Desktop version, Console version, and Mobile version)\)/g
 const MODE_LABEL: Record<string, string> = { 'm-normal': 'classic', 'm-expert-master': 'expert+master', 'm-expert': 'expert', 'm-master': 'master' }
@@ -77,7 +82,8 @@ async function main(): Promise<number> {
   const drops = load<DropSource[]>('drops.json')
   const weapons = load<Weapon[]>('weapons.detail.json')
   const bosses = load<Boss[]>('bosses.json')
-  const items = load<Item[]>('items.detail.json')
+  // P6-S0: every item file the index lists (core + ID-range shards)
+  const items = load<ItemDetailIndex>('items.detail.index.json').files.flatMap((f) => load<Item[]>(f.file))
   const buffs = load<Buff[]>('buffs.json')
   const armor = load<ArmorPiece[]>('armor.detail.json')
   const armorSets = load<ArmorSet[]>('armor-sets.json')
@@ -103,11 +109,11 @@ async function main(): Promise<number> {
   for (const c of cases) {
     // boss / ammo / buff cases read the article the build already parsed (cached by the sync plan)
     const html =
-      c.kind === 'boss' || c.kind === 'ammo' || c.kind === 'buff' || c.kind === 'armor-set' || c.kind === 'wing'
+      c.kind === 'boss' || c.kind === 'ammo' || c.kind === 'buff' || c.kind === 'armor-set' || c.kind === 'wing' || (c.kind === 'item' && c.page === FISHING_CATCHES_PAGE)
         ? ((await fetchArticles(client, [c.page], 'articles')).get(c.page)?.html ?? '')
         : ((await client.get({ action: 'parse', page: c.page, prop: 'text' }, `spotcheck/${c.page.replace(/[^A-Za-z0-9._-]/g, '_')}`)).response as { parse: { text: string } }).parse.text
     const nodes = parseHtml(html)
-    const title = c.kind === 'recipe' ? c.result : c.kind === 'weapon' || c.kind === 'ammo' || c.kind === 'accessory' || c.kind === 'wing' ? c.item : c.kind === 'armor-set' ? c.set : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : c.kind === 'buff' ? c.buff : `${c.source ?? c.page} → ${c.item}`
+    const title = c.kind === 'recipe' ? c.result : c.kind === 'weapon' || c.kind === 'ammo' || c.kind === 'accessory' || c.kind === 'wing' || c.kind === 'item' ? c.item : c.kind === 'armor-set' ? c.set : c.kind === 'boss' ? `${c.boss} (drop: ${c.item})` : c.kind === 'buff' ? c.buff : `${c.source ?? c.page} → ${c.item}`
     console.log(`\n=== ${c.kind.toUpperCase()} · ${title} · ${c.why}`)
     console.log(`    wiki: https://terraria.wiki.gg/wiki/${encodeURIComponent(c.page.replaceAll(' ', '_'))}`)
     if (c.kind === 'ammo') {
@@ -180,6 +186,49 @@ async function main(): Promise<number> {
           }
         }
       }
+      continue
+    }
+    if (c.kind === 'item') {
+      const rec = [...items, ...weapons, ...accessories, ...armor].find((x) => x.name === c.item)
+      if (!rec) {
+        console.log('  DATA  (no item record with this name)')
+        continue
+      }
+      const it = rec as Item
+      const tool = it.toolStats ? Object.entries(it.toolStats).map(([k, v]) => `${k} ${v}`).join(', ') : 'n/a'
+      console.log(`  DATA  ${rec.type} i:${rec.id} · category ${it.category ?? '—'} · tags ${rec.tags.join(', ') || 'none'} · rarity ${unknownOr(rec, rec.rarity, 'rarity')} · value ${unknownOr(rec, rec.valueCopper, 'valueCopper')} · consumable ${unknownOr(rec, it.consumable, 'consumable')} · maxStack ${unknownOr(rec, it.maxStack, 'maxStack')} · toolStats ${tool} · bait ${unknownOr(rec, it.baitPowerPct, 'baitPowerPct')} · summonsBossNode ${it.summonsBossNode ?? 'n/a'} · buffGrants ${it.buffGrants ? it.buffGrants.map((g) => `${g.buffId}${typeof g.durationTicks === 'number' ? ` ${g.durationTicks}t` : ''}`).join(', ') : unknownOr(rec, undefined, 'buffGrants')}`)
+      console.log(`  DATA  wikiUrl ${rec.wikiUrl} · sprite ${rec.sprite ?? 'placeholder'} · gatedBy ${rec.gatedBy ? `${rec.gatedBy.stage} [${[...rec.gatedBy.bosses, ...rec.gatedBy.conditions].join(', ') || 'no gate'}]` : unknownOr(rec, undefined, 'gatedBy')}`)
+      for (const [i, a] of rec.acquisition.entries()) {
+        const at = `acquisition.${i}.conditions`
+        const conds = 'conditions' in a ? (rec._prov.unverifiedFields.includes(at) ? 'Unknown' : a.conditions.join(', ') || 'none') : ''
+        if (a.method === 'craft') for (const id of a.recipeIds) console.log(`  DATA  made by: ${recipeLine(recipes.find((r) => r.id === id) as Recipe)}`)
+        else if (a.method === 'drop') console.log(`  DATA  dropped by: ${a.dropIds.map((id) => drops.find((d) => d.id === id)?.source.npcName ?? id).join('; ')}`)
+        else if (a.method === 'fishing') console.log(`  DATA  fished: ${a.biomes.join(' / ')} · conditions ${conds}`)
+        else if (a.method === 'purchase') console.log(`  DATA  sold by ${a.npcName} · price ${unknownOr(rec, a.priceCopper, `acquisition.${i}.priceCopper`)} · conditions ${conds}`)
+        else console.log(`  DATA  ${a.method}: ${JSON.stringify(a)}`)
+      }
+      if (rec.acquisition.length === 0) console.log(`  DATA  acquisition ${unknownOr(rec, undefined, 'acquisition')}`)
+      const uses = recipes.filter((r) => r.ingredients.some((g) => (g.ref.kind === 'item' ? g.ref.itemId === rec.id : groups.get(g.ref.groupId)?.memberItemIds.includes(rec.id))) || r.stations.some((st) => st.kind === 'item' && st.itemId === rec.id))
+      console.log(`  DATA  used by ${uses.length} recipe(s)${uses.length ? `, e.g. ${uses.slice(0, 4).map(recipeLine).join(' || ')}` : ''}`)
+      console.log(`  DATA  Unknown fields: ${rec._prov.unverifiedFields.join(', ') || 'none'}`)
+      if (c.page === FISHING_CATCHES_PAGE) {
+        for (const row of parseFishingCatches(html).rows.filter((r) => r.itemIds.includes(rec.id))) console.log(`  WIKI  catch row: ${row.category} › ${row.table} · general ${row.general?.label ?? 'n/a'} · quality ${row.quality} · heights ${row.heights.join('/')} · conditions ${row.conditions.map((x) => x.label).join(' & ') || 'none'}`)
+        continue
+      }
+      const box = infoboxForItem(parseItemInfoboxes(html), rec.id) ?? parseItemInfoboxes(html).find((b) => b.title === c.item)
+      if (box) for (const r of box.rows) if (['Type', 'Rarity', 'Pickaxe power', 'Axe power', 'Hammer power', 'Fishing power', 'Bait power', 'Use time', 'Consumable', 'Sell', 'Buy'].includes(r.label)) console.log(`  WIKI  ${r.label}: ${r.value}`)
+      const seen = new Set<string>()
+      for (const t of findAll(nodes, (x) => hasClass(x, 'recipes'))) {
+        for (const r of tableRows(t)) {
+          const text = r.text.replace(/^.*?only:\s*/, '').replace(/\s*Internal Item ID: \d+/g, '')
+          if (text.includes(c.item) && !seen.has(text)) {
+            seen.add(text)
+            console.log(`  WIKI  recipe row: ${text}`)
+          }
+        }
+      }
+      const lead = findAll(nodes, (x) => x.type === 'el' && x.tag === 'p').map((p) => clean(cellText(p.type === 'el' ? p.children : []))).find((t) => t.length > 40)
+      if (lead) console.log(`  WIKI  lead: ${lead.slice(0, 500)}`)
       continue
     }
     if (c.kind === 'buff') {

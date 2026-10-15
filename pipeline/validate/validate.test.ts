@@ -9,6 +9,7 @@ import { loadDatasetDir, type CollectionKey, type RawDataset } from './dataset'
 import { formatError, type PipelineError, type PipelineErrorCode } from './errors'
 import { validateDataset, type ValidationResult } from './index'
 import { projectList } from './listDetail'
+import { checkItemShards, shardItems } from '../emit/itemShards'
 
 // Test-only loose record type for mutating raw JSON fixtures.
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -843,5 +844,70 @@ describe('list projection + loader', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('P6-S0 item closure, drops together, item-detail shards', () => {
+  it('itemClosure (manifest): a recipe / drop item that is neither emitted nor a declared gap is E_DANGLING_REF; a declared gap (field "id") resolves it', () => {
+    const raw = sample()
+    ;(raw.manifest as Rec).itemClosure = true
+    const passing = run(raw)
+    if (!passing.ok) throw new Error(passing.errors.map(formatError).join('\n'))
+    // the drop's item (Musket Ball, i:97) leaves the item collections: undeclared → fails; declared → passes
+    raw.collections.items = records(raw, 'items').filter((i) => i.id !== 97)
+    raw.collections.weapons = records(raw, 'weapons').filter((w) => w.ammoClass !== 'musket-ball')
+    raw.lists = {}
+    const failing = run(raw)
+    expect(failing.ok).toBe(false)
+    expect(errorsOf(failing).filter((e) => e.message.includes('P6-S0 crafting closure')).map((e) => (e.code === 'E_DANGLING_REF' ? [e.fromRef, e.toRef] : []))).toEqual([['drop:97-shadow-orb-741638a5', 'i:97']])
+    raw.stageGaps = [{ ref: 'i:97', field: 'id', kind: 'count-reconciliation', detail: 'Cargo Items row 1 not emitted as an item: test.', sources: ['https://terraria.wiki.gg/wiki/Musket_Ball'] }]
+    expect(errorsOf(run(raw)).filter((e) => e.message.includes('P6-S0 crafting closure'))).toEqual([])
+  })
+
+  it('B84 dropsWith: must resolve, link back, and share source, rates and conditions', () => {
+    const raw = sample()
+    const [a, b] = [find(raw, 'drops', '434-wall-of-flesh-741638a5'), find(raw, 'drops', '434-treasure-bag-wall-of-flesh-741638a5')]
+    a.dropsWith = ['434-treasure-bag-wall-of-flesh-741638a5']
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH').map((e) => e.message).join('\n')).toMatch(/does not link back[\s\S]*another source, rate or conditions/)
+    b.dropsWith = ['434-wall-of-flesh-741638a5']
+    b.source = { ...a.source }
+    b.rates = { ...a.rates }
+    const ok = run(raw)
+    expect(errorsOf(ok).filter((e) => e.message.includes('dropsWith'))).toEqual([])
+    a.dropsWith = ['no-such-drop']
+    expect(codesOf(run(raw))).toContain('E_DANGLING_REF')
+  })
+
+  it('the items collection loads from items.detail.json + the shards items.detail.index.json lists; any index ⇄ file drift is E_SCHEMA', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-shards-'))
+    try {
+      const raw = sample()
+      const items = records(raw, 'items') as { id: number }[]
+      const write = (f: string, v: unknown) => writeFileSync(join(dir, f), JSON.stringify(v))
+      write('dataset.json', raw.manifest)
+      const { files, index } = shardItems(items, new Set([items[0].id]))
+      for (const [f, list] of files) write(f, list)
+      write('items.detail.index.json', index)
+      const ok = loadDatasetDir(dir)
+      expect(ok.errors).toEqual([])
+      expect((ok.raw.collections.items as Rec[]).map((i) => i.id)).toEqual(items.map((i) => i.id).sort((x, y) => x - y))
+      // a shard the index does not list, and an id listed in the wrong range
+      write('items.detail.99.json', [])
+      const bad = { ...index, files: index.files.map((f, i) => (i === 1 ? { ...f, file: 'items.detail.98.json' } : f)) }
+      write('items.detail.index.json', bad)
+      write('items.detail.98.json', files.get(index.files[1].file))
+      const drift = loadDatasetDir(dir).errors.map((e) => e.message)
+      expect(drift).toEqual(expect.arrayContaining([expect.stringContaining('items.detail.99.json is not listed'), expect.stringContaining('outside the id range of items.detail.98.json')]))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('shardItems: core ids stay in items.detail.json, the rest go to their ID-range shard; checkItemShards accepts exactly that', () => {
+    const { files, index } = shardItems([{ id: 2001 }, { id: 5 }, { id: 1999 }, { id: 43 }], new Set([43]))
+    expect([...files.keys()]).toEqual(['items.detail.json', 'items.detail.0.json', 'items.detail.1.json', 'items.detail.2.json'])
+    expect(index).toEqual({ shardSize: 1000, files: [{ file: 'items.detail.json', ids: [43] }, { file: 'items.detail.0.json', ids: [5] }, { file: 'items.detail.1.json', ids: [1999] }, { file: 'items.detail.2.json', ids: [2001] }] })
+    expect(checkItemShards(index, files, ['items.detail.0.json', 'items.detail.1.json', 'items.detail.2.json'])).toEqual({ ok: true, problems: [] })
+    expect(checkItemShards(index, new Map([...files].map(([f, l]) => [f, f === 'items.detail.0.json' ? [] : l])), []).problems).toEqual(['items.detail.0.json records do not equal its index ids'])
   })
 })

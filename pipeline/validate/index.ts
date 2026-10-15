@@ -9,7 +9,8 @@
  *  3. strict schema parse of every record (E_SCHEMA) — stops here on failure
  *  4. §7a-10 ammo classes: E_DANGLING_REF once items are produced; A1 warning + downgrade while pending
  *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, the P5 boss
- *     curation gate (manifest.bossPages), list⊂detail, search docs
+ *     curation gate (manifest.bossPages), the P6-S0 item closure (manifest.itemClosure), list⊂detail,
+ *     search docs
  *  6. gaps + meta
  */
 import type * as z from 'zod'
@@ -27,6 +28,7 @@ import {
   type Dataset,
   type RawDataset,
 } from './dataset'
+import { checkItemClosure } from './closure'
 import { checkBossCuration } from './curation'
 import type { PipelineError, PipelineWarning } from './errors'
 import { checkFixtures } from './fixtures'
@@ -136,6 +138,7 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
     ...(['bosses', 'nodes', 'edges'].some((k) => scope.pending.has(k as CollectionKey)) ? [] : checkFixtures(dataset, manifest.data.fixtures)),
     ...checkSuggestionGating(dataset),
     ...checkBossCuration(dataset, manifest.data.bossPages ?? [], stageGaps),
+    ...(manifest.data.itemClosure ? checkItemClosure(dataset, stageGaps) : []),
     ...checkListDetail(raw.lists, dataset),
     ...(raw.searchDocs !== undefined ? checkSearchDocs(raw.searchDocs, dataset) : []),
   )

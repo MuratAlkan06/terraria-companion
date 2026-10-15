@@ -41,6 +41,7 @@ import {
   bossDropRows,
   classGear,
   bossDropSections,
+  CUT_AT_END,
   bossPageUnknowns,
   declaredGapReason,
   DROP_TIERS,
@@ -459,7 +460,11 @@ describe('page model', () => {
   it('items resolve to their real page: weapon in-app, accessory to its own article, else the wiki search for the Iteminfo name; a nameless id has no link', () => {
     expect(itemOf(1123)).toMatchObject({ name: 'Bee Keeper', kind: 'weapon', link: { kind: 'internal', to: '/weapons/1123' } })
     expect(itemOf(3097)).toMatchObject({ name: 'Shield of Cthulhu', kind: 'accessory', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu' } })
-    expect(itemOf(560)).toEqual({ id: 560, name: 'Slime Crown', kind: 'other', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Special:Search?search=Slime%20Crown' } })
+    // B96(d), fixed data-side by P6-S0: a summoning item is a record of its own (items.detail.json holds every item a boss references)
+    expect(itemOf(560)).toEqual({ id: 560, name: 'Slime Crown', kind: 'item', sprite: '/sprites/items/560.png', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Slime_Crown' } })
+    expect(itemOf(43)).toMatchObject({ name: 'Suspicious Looking Eye', kind: 'item', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Suspicious_Looking_Eye' } })
+    // an Iteminfo name without any record still opens the wiki search for that exact name (Magic Shimmer Dropper: no Cargo Items row)
+    expect(itemOf(5492)).toEqual({ id: 5492, name: 'Magic Shimmer Dropper', kind: 'other', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Special:Search?search=Magic%20Shimmer%20Dropper' } })
     expect(names.byId.has(999999)).toBe(false)
     expect(itemOf(999999)).toEqual({ id: 999999, name: 'Item #999999', kind: 'other' })
     // B70: the Ironskin Potion is a record of its own (the potion corpus) — its own article and sprite
@@ -623,7 +628,9 @@ describe('H2: drops — order and grouping (property over every boss page)', () 
     expect(eye.tiers.rewards.map((g) => g.item.name)).toEqual(expect.arrayContaining(['Shield of Cthulhu', 'Binoculars', 'Eye of Cthulhu Relic']))
     expect(eye.tiers.materials.map((g) => g.item.name)).toEqual(expect.arrayContaining(['Demonite Ore', 'Crimtane Ore', 'Lesser Healing Potion', 'Gold Coin', 'Unholy Arrow']))
     const skeletron = bossDropSections(boss('skeletron'), drops, itemOf)
-    expect(skeletron.tiers.conditional.map((g) => g.item.name)).toEqual(['Hellforge'])
+    // B84 (P6-S0): the Hellforge's caption is a registered condition now, so it left the collapsed Unknown-conditions group
+    expect(skeletron.tiers.conditional.map((g) => g.item.name)).toEqual([])
+    expect([...drops.byId.values()].filter((d) => d.itemId === 221 && d.source.bossId === 'skeletron').map((d) => d.conditions)).toEqual([['hellforge-absent']])
     // King Slime's Slime Staff also drops from slimes, but a weapon is a reward
     expect(bossDropSections(boss('king-slime'), drops, itemOf).tiers.rewards.map((g) => g.item.name)).toContain('Slime Staff')
   })
@@ -943,18 +950,23 @@ describe('M4: every item slot links its real page, else the wiki search for its 
     expect(html).toContain('href="https://terraria.wiki.gg/wiki/Regeneration_Potion"')
   })
 
-  it('an item with no page and no article (Torch, Campfire) opens the wiki search for its exact name, in a new tab with the external marker', () => {
+  it('an item with no page opens its own article (Torch, Campfire: records since P6-S0, B96(d)) — else the wiki search for its exact name — in a new tab with the external marker', () => {
     const html = render(boss('eye-of-cthulhu'))
     expect(html).not.toContain('data-item-inert')
-    for (const name of ['Torch', 'Campfire']) {
-      const href = wikiSearchUrl(name)
-      expect(href).toBe(`https://terraria.wiki.gg/wiki/Special:Search?search=${name}`)
+    // their infobox lives on the family article (the record's own wikiUrl)
+    for (const [id, name, page] of [[8, 'Torch', 'Torches'], [966, 'Campfire', 'Campfires']] as const) {
+      const href = `https://terraria.wiki.gg/wiki/${page}`
+      expect(itemOf(id).link).toEqual({ kind: 'external', href })
       const link = new RegExp(`<a href="${escaped(href).replace(/[.?]/g, '\\$&')}" target="_blank" rel="noopener noreferrer"[^>]*>[\\s\\S]*?</a>`).exec(html)?.[0] ?? ''
       // B82: the ↗ is glued to the name's last word, 4px from it (never wrapping alone)
       expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*aria-hidden="true"`))
       expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*class="[^"]*\\bml-1\\b`))
       expect(link, name).toContain('on terraria.wiki.gg (opens in a new tab)')
     }
+    // without any record, an Iteminfo name still opens the wiki search for that exact name
+    const b = structuredClone(boss('king-slime'))
+    b.summon.items = [5492]
+    expect(section(render(b), 'summon')).toContain(`href="${escaped(wikiSearchUrl('Magic Shimmer Dropper'))}"`)
   })
 
   it('a nameless ref stays inert and says it has no page', () => {
@@ -1136,7 +1148,10 @@ describe('design review P5-S5 M2: wiki sentences cut mid-way', () => {
   const nodeName = (id: string) => graph.nodeById.get(id)?.name ?? id
   const PILLARS = 'https://terraria.wiki.gg/wiki/Celestial_Pillars'
   const MECHANICAL_BOSSES = 'https://terraria.wiki.gg/wiki/Mechanical_bosses'
+  // the sentence the display-side CUT_AT_END pin was made for (B93(ii)); P6-S0 re-extracted the data, so
+  // no shipped edge carries it any more and its pin is retired (B104) — it stays here only as a unit of quoteTrail
   const MECH_CUT = 'Defeating each of the three mechanical bosses at least once causes the following to happen'
+  const MECH_SENTENCE = "One Plantera's Bulb immediately spawns once all three mechanical bosses are defeated for the first time."
 
   it('quoteLead: none for a whole sentence; a cut one gets its subject in brackets when its article is about a node the edge connects, else an ellipsis', () => {
     expect(quoteLead('Pillars drop Lunar Fragments when destroyed.', PILLARS, ['Celestial Pillars'])).toBeUndefined()
@@ -1145,14 +1160,17 @@ describe('design review P5-S5 M2: wiki sentences cut mid-way', () => {
     expect(quoteLead('are four late-Hardmode, stationary bosses.', 'https://terraria.wiki.gg/wiki/Bosses', ['Celestial Pillars'])).toBe('…')
   })
 
-  it('quoteTrail (B93(ii)): an ellipsis only after the sentence pinned as cut at the end, from its own article — never inferred from a missing full stop', () => {
-    expect(quoteTrail(MECH_CUT, MECHANICAL_BOSSES)).toBe('…')
-    expect(quoteTrail(MECH_CUT, 'https://terraria.wiki.gg/wiki/Plantera')).toBeUndefined()
-    expect(quoteTrail(`${MECH_CUT}:`, MECHANICAL_BOSSES)).toBeUndefined()
-    expect(quoteTrail('A world permanently changes into Hardmode after the Wall of Flesh is defeated for the first time', 'https://terraria.wiki.gg/wiki/Hardmode')).toBeUndefined()
+  it('quoteTrail (B93(ii)): an ellipsis only after a sentence pinned as cut at the end, from its own article — never inferred from a missing full stop', () => {
+    const pins = [{ sourceUrl: MECHANICAL_BOSSES, text: MECH_CUT }]
+    expect(quoteTrail(MECH_CUT, MECHANICAL_BOSSES, pins)).toBe('…')
+    expect(quoteTrail(MECH_CUT, 'https://terraria.wiki.gg/wiki/Plantera', pins)).toBeUndefined()
+    expect(quoteTrail(`${MECH_CUT}:`, MECHANICAL_BOSSES, pins)).toBeUndefined()
+    expect(quoteTrail('A world permanently changes into Hardmode after the Wall of Flesh is defeated for the first time', 'https://terraria.wiki.gg/wiki/Hardmode', pins)).toBeUndefined()
+    // the shipped pin list is empty since B104, so the retired sentence no longer trails by default
+    expect(quoteTrail(MECH_CUT, MECHANICAL_BOSSES)).toBeUndefined()
   })
 
-  it('sweep: every edge note reads from a capital or a marked lead (the shipped cut sentence: the Celestial Pillars article’s lead); only the mech sentence is cut at the end', () => {
+  it('sweep: every edge note reads from a capital or a marked lead (the shipped cut sentence: the Celestial Pillars article’s lead); none is cut at the end (the CUT_AT_END set is empty, B104)', () => {
     const cut = raw.edges.filter((e) => e.note && /^\p{Ll}/u.test(e.note))
     expect(cut.map((e) => `${e.from}->${e.to}`)).toEqual(['lunatic-cultist->celestial-pillars'])
     for (const e of raw.edges) {
@@ -1161,10 +1179,15 @@ describe('design review P5-S5 M2: wiki sentences cut mid-way', () => {
       expect(`${lead ?? ''}${e.note}`, `${e.from}->${e.to}`).not.toMatch(/^\p{Ll}/u)
     }
     expect(quoteLead(cut[0].note as string, cut[0].sourceUrl, [nodeName(cut[0].from), nodeName(cut[0].to)])).toBe('[Celestial Pillars] ')
-    // cut at the end: exactly the three mech → All mechanical bosses edges (one shared sentence, stored verbatim)
+    // cut at the end: none since the B93(ii) data-side re-extraction (P6-S0) — the three mech → All mechanical
+    // bosses edges quote a whole sentence of the same section, so the CUT_AT_END pin is retired (B104): the
+    // set is empty, the mechanism kept for a future cut a re-extraction can't fix
+    expect(CUT_AT_END).toEqual([])
     const trailed = raw.edges.filter((e) => e.note && quoteTrail(e.note, e.sourceUrl) !== undefined)
-    expect(trailed.map((e) => `${e.from}->${e.to}`).sort()).toEqual(['skeletron-prime->all-mechanical-bosses', 'the-destroyer->all-mechanical-bosses', 'the-twins->all-mechanical-bosses'])
-    for (const e of trailed) expect(e.note, `${e.from}->${e.to}`).toBe(MECH_CUT)
+    expect(trailed).toEqual([])
+    const mechEdges = raw.edges.filter((e) => e.to === 'all-mechanical-bosses')
+    expect(mechEdges.map((e) => `${e.from}->${e.to}`).sort()).toEqual(['skeletron-prime->all-mechanical-bosses', 'the-destroyer->all-mechanical-bosses', 'the-twins->all-mechanical-bosses'])
+    for (const e of mechEdges) expect([e.note, e.sourceUrl], `${e.from}->${e.to}`).toEqual([MECH_SENTENCE, MECHANICAL_BOSSES])
     // every other note without end punctuation is a whole sentence: no trail
     const unpunctuated = raw.edges.filter((e) => e.note && !/[.!?]$/.test(e.note) && !trailed.includes(e))
     expect(unpunctuated.map((e) => `${e.from}->${e.to}`).sort()).toEqual(['plantera->frost-moon', 'pre-hardmode->queen-bee', 'wall-of-flesh->hardmode'])
@@ -1179,10 +1202,11 @@ describe('design review P5-S5 M2: wiki sentences cut mid-way', () => {
     expect(step).toContain(`href="${PILLARS}"`)
   })
 
-  it('each mech page’s After section quotes the cut sentence with a trailing ellipsis; a whole sentence on another page stays as stored', () => {
+  it('each mech page’s After section quotes the re-extracted whole sentence as stored, no ellipsis (B93(ii) data side); a whole sentence on another page stays as stored', () => {
     for (const id of ['skeletron-prime', 'the-destroyer', 'the-twins']) {
       const step = /<li data-step="all-mechanical-bosses"[\s\S]*?<\/li>/.exec(section(render(boss(id)), 'next'))?.[0] ?? ''
-      expect(step, id).toMatch(new RegExp(`data-step-quote=""[^>]*>“${MECH_CUT}…”`))
+      expect(step, id).toMatch(new RegExp(`data-step-quote=""[^>]*>“${escaped(MECH_SENTENCE).replace(/[.]/g, '\\.')}”`))
+      expect(step, id).not.toContain('…')
       expect(step, id).toContain(`href="${MECHANICAL_BOSSES}"`)
     }
     const hardmode = /<li data-step="hardmode"[\s\S]*?<\/li>/.exec(section(render(boss('wall-of-flesh')), 'next'))?.[0] ?? ''

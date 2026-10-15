@@ -537,7 +537,7 @@ describe('design review P5-S5 M3: a fight carried over from an earlier stage', (
 })
 
 describe('design review P5-S5 M2: a wiki sentence cut mid-way gets its subject back, marked', () => {
-  const MECH_CUT = edgeNote('the-twins', 'all-mechanical-bosses', 'required-gate')
+  const MECH_SENTENCE = edgeNote('the-twins', 'all-mechanical-bosses', 'required-gate')
 
   it('the Lunatic Cultist’s sentence (the Celestial Pillars article’s lead without its subject): “[Celestial Pillars] are four…”; the stored quote stays verbatim', () => {
     const r = recommend(graph, defeated(...PRE, 'wall-of-flesh', ...MECHS), null)
@@ -558,21 +558,21 @@ describe('design review P5-S5 M2: a wiki sentence cut mid-way gets its subject b
           expect(shown, i.key).not.toMatch(/^\p{Ll}/u)
           // a whole sentence carries no lead
           if (!/^\p{Ll}/u.test(i.evidence.text)) expect(i.evidence.lead, i.key).toBeUndefined()
-          // only the sentence pinned as cut at the end carries a trail (B93(ii))
-          expect(i.evidence.trail, i.key).toBe(i.evidence.text === MECH_CUT.text ? '…' : undefined)
+          // no shipped quote is cut at the end since the B93(ii) data-side re-extraction (P6-S0)
+          expect(i.evidence.trail, i.key).toBeUndefined()
         }
       }
     }
   })
 
-  it('B93(ii): where the panel quotes the mech sentence (a milestone opening no single fight), it ends with an ellipsis; the stored quote stays verbatim', () => {
+  it('B93(ii) (data side, P6-S0): where the panel quotes the mech edges, the sentence is whole — no ellipsis; the stored quote stays verbatim', () => {
     // the shipped graph quotes Plantera's sentence for the mechs; without that link the panel falls back to the mechs' own
     const trimmed = buildMapGraph({ nodes: raw.nodes, edges: raw.edges.filter((e) => !(e.from === 'all-mechanical-bosses' && e.to === 'plantera')) }, bossesJson as Boss[])
     const r = recommend(trimmed, defeated(...PRE, 'wall-of-flesh'), null)
     expect(keys(r.required)).toEqual(MECHS)
-    for (const id of MECHS) expect(item(r.required, id)!.evidence, id).toEqual({ ...edgeNote(id, 'all-mechanical-bosses', 'required-gate'), trail: '…' })
-    expect(MECH_CUT.text).not.toMatch(/…$/)
-    expect(render(r)).toContain(`“${escaped(MECH_CUT.text)}…”`)
+    for (const id of MECHS) expect(item(r.required, id)!.evidence, id).toEqual(edgeNote(id, 'all-mechanical-bosses', 'required-gate'))
+    expect(MECH_SENTENCE.text).toBe("One Plantera's Bulb immediately spawns once all three mechanical bosses are defeated for the first time.")
+    expect(render(r)).toContain(`“${escaped(MECH_SENTENCE.text)}”`)
   })
 })
 

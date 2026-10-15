@@ -235,6 +235,14 @@ function checkDrops(c: Checker, ds: Dataset) {
     c.item(ref, 'itemId', d.itemId)
     if (d.source.bossId !== undefined) c.boss(ref, 'source.bossId', d.source.bossId)
     d.conditions.forEach((s, i) => c.condition(ref, `conditions.${i}`, s))
+    // AMENDMENTS-015 B84 dropsWith: resolves, symmetric, same source / rates / conditions, never itself
+    d.dropsWith?.forEach((other, i) => {
+      const o = c.ix.drops.get(other)
+      if (!o) return c.dangling(ref, `dropsWith.${i}`, `drop:${other}`, 'drop source not found')
+      if (other === d.id) return c.derived(ref, `dropsWith.${i}`, 'a drop cannot drop together with itself')
+      if (!(o.dropsWith ?? []).includes(d.id)) c.derived(ref, `dropsWith.${i}`, `drop:${other} does not link back (dropsWith must be symmetric)`)
+      if (o.source.npcName !== d.source.npcName || JSON.stringify(o.rates) !== JSON.stringify(d.rates) || JSON.stringify(o.conditions) !== JSON.stringify(d.conditions)) c.derived(ref, `dropsWith.${i}`, `drop:${other} has another source, rate or conditions — records that drop together share them`)
+    })
   }
 }
 

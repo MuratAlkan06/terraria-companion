@@ -34,8 +34,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
  * Limitation card. "What it does in-game" must be verified BEHAVIOR text (UX_SPEC §8): a reviewed,
  * quote-checked sentence of the weapon's article when the caller has one (lab-params overlay
  * `inGameBehavior`), else the tooltip's behavior lines — never its flavor-text line ("'Greetings,
- * programs!'", src/schemas tooltipBehavior) — else a pointer to the wiki page (the card then says
- * "No verified description yet.").
+ * programs!'", src/schemas tooltipBehavior) — else a pointer to the wiki page, which the app's
+ * LimitationCard treats as no description (it states that none is verified, in its own wording).
  */
 export function limitation(record: { name?: unknown; behaviorText?: unknown; wikiUrl?: unknown }, reason: string, behavior?: string): LabBehavior {
   const name = typeof record.name === 'string' ? record.name : 'this weapon'

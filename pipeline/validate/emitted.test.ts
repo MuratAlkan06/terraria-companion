@@ -5,7 +5,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BOSS_PAGE_IDS, getField, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, getField, ItemDetailIndex, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { itemClosure } from './closure'
 import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
 import { loadDatasetDir } from './dataset'
@@ -19,6 +20,8 @@ import { checkSuggestionGating } from './suggestions'
 const DATA_DIR = join(import.meta.dirname, '../../src/data')
 const REPO = join(import.meta.dirname, '../..')
 const emitted = existsSync(join(DATA_DIR, 'dataset.json'))
+/** P6-S0: the whole items collection = every file items.detail.index.json lists (core + ID-range shards). */
+const allItems = (): Item[] => ItemDetailIndex.parse(JSON.parse(readFileSync(join(DATA_DIR, 'items.detail.index.json'), 'utf8'))).files.flatMap((f) => JSON.parse(readFileSync(join(DATA_DIR, f.file), 'utf8')) as Item[])
 
 describe.runIf(emitted)('emitted dataset (src/data)', () => {
   const loaded = loadDatasetDir(DATA_DIR)
@@ -39,11 +42,11 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     }
   })
 
-  it('public/sprites/manifest.json lists exactly the weapon + boss + ammo item + armor + accessory sprite paths, with wiki provenance (D3/A10)', () => {
+  it('public/sprites/manifest.json lists exactly the weapon + boss + item (all files) + armor + accessory sprite paths, with wiki provenance (D3/A10)', () => {
     const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(REPO, 'public/sprites/manifest.json'), 'utf8')))
     const weapons = JSON.parse(readFileSync(join(DATA_DIR, 'weapons.detail.json'), 'utf8')) as Weapon[]
     const bosses = JSON.parse(readFileSync(join(DATA_DIR, 'bosses.json'), 'utf8')) as Boss[]
-    const items = JSON.parse(readFileSync(join(DATA_DIR, 'items.detail.json'), 'utf8')) as Item[]
+    const items = allItems()
     const equipment = [...(JSON.parse(readFileSync(join(DATA_DIR, 'armor.detail.json'), 'utf8')) as ArmorPiece[]), ...(JSON.parse(readFileSync(join(DATA_DIR, 'accessories.detail.json'), 'utf8')) as Accessory[])]
     expect([...weapons, ...bosses, ...items, ...equipment].flatMap((r) => (r.sprite ? [r.sprite] : [])).sort()).toEqual(manifest.files.map((f) => f.path).sort())
     for (const b of bosses) if (b.sprite) expect(manifest.files.find((f) => f.path === b.sprite)?.ref).toBe(`boss:${b.id}`)
@@ -78,8 +81,10 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const classes = new Set([...items, ...weapons].flatMap((r) => (r.ammoStats ? [r.ammoStats.ammoClass] : [])))
       for (const w of weapons) if (w.ammoClass) expect(classes.has(w.ammoClass), `${w.name} ${w.ammoClass}`).toBe(true)
       expect(weapons.find((w) => w.id === 949)?.ammoStats).toMatchObject({ ammoClass: 'snowball', damage: 8 })
-      // B70: the items collection is ammo (with ammoStats) + the potion corpus (without)
-      expect(items.every((i) => (i.category === 'ammo' && i.ammoStats) || (i.category === 'potion' && !i.ammoStats))).toBe(true)
+      // B70: ammo carries ammoStats, potions do not; P6-S0: items.detail.json adds only the corpus items a boss record references
+      expect(items.every((i) => (i.category === 'ammo') === (i.ammoStats !== undefined))).toBe(true)
+      const bossRefs = new Set(read<Boss[]>('bosses.json').flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
+      expect(items.filter((i) => i.category !== 'ammo' && i.category !== 'potion').every((i) => bossRefs.has(i.id))).toBe(true)
     })
 
     it('B2 spot checks: Musket Ball 2×, High Velocity Bullet 8×; a rocket and a dart carry no multiplier of their own', () => {
@@ -108,7 +113,7 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     })
 
     it('B31: list records and search docs carry their record\'s own wikiUrl', () => {
-      const detail = new Map([...weapons, ...items].map((r) => [r.id, r.wikiUrl]))
+      const detail = new Map([...weapons, ...allItems()].map((r) => [r.id, r.wikiUrl]))
       for (const file of ['weapons.list.json', 'items.list.json']) for (const r of read<{ id: number; wikiUrl: string }[]>(file)) expect(r.wikiUrl, `${file} i:${r.id}`).toBe(detail.get(r.id))
       expect(read<SearchDoc[]>('search-docs.json').every((d) => d.wikiUrl?.startsWith('https://terraria.wiki.gg/wiki/'))).toBe(true)
     })
@@ -206,6 +211,118 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     it('spot-check structured accessory stat: Worm Scarf reduces damage taken by 17% (agrees with Equipinfo endurance)', () => {
       expect(acc(3224)).toMatchObject({ name: 'Worm Scarf', categories: ['defense'], effects: [{ kind: 'stat', stat: 'damage-reduction-pct', value: 17 }] })
       expect(acc(3224)._prov.sources).toContainEqual(expect.objectContaining({ kind: 'cargo:Equipinfo' }))
+    })
+  })
+
+  // P6-S0 item corpus. Spot-check values were compared side by side with the rendered wiki articles by
+  // `npm run pipeline:spotcheck` (pipeline/spotcheck/cases.json, the six P6-S0 "item" cases) on 2026-10-15.
+  describe('P6-S0 item corpus: shards, universe accounting, crafting closure, B20 fishing, queue items', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const index = ItemDetailIndex.parse(read('items.detail.index.json'))
+    const items = allItems()
+    const byName = (name: string) => items.find((i) => i.name === name) as Item
+    const recipes = read<{ id: string; resultItemId: number; ingredients: { amount: number; ref: { kind: string; itemId?: number; groupId?: string } }[]; stations: { kind: string; itemId?: number; groupId?: string }[] }[]>('recipes.json')
+    const stageGaps = read<GapEntry[]>('stage-gaps.json')
+
+    it('items.detail.json keeps exactly ammo + potions + the items boss records reference; every other item sits in its ID-range shard', () => {
+      expect(index.files[0].file).toBe('items.detail.json')
+      const bossRefs = new Set(read<Boss[]>('bosses.json').flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
+      const expectedCore = items.filter((i) => i.category === 'ammo' || i.category === 'potion' || bossRefs.has(i.id)).map((i) => i.id).sort((a, b) => a - b)
+      expect(index.files[0].ids).toEqual(expectedCore)
+      for (const f of index.files.slice(1)) {
+        const n = Number(/^items\.detail\.(\d+)\.json$/.exec(f.file)?.[1])
+        for (const id of f.ids) expect(Math.floor(id / index.shardSize), `${f.file} i:${id}`).toBe(n)
+      }
+      expect(items).toHaveLength(5045)
+      expect(new Set(items.map((i) => i.id)).size).toBe(items.length)
+    })
+
+    it('every Module:Iteminfo/data item is an emitted record or a declared gap; no recipe / group / drop reference is unresolved', () => {
+      const universe = read<{ items: { id: number }[] }>('item-universe.json').items
+      const emittedIds = new Set([...read<Weapon[]>('weapons.detail.json'), ...read<ArmorPiece[]>('armor.detail.json'), ...read<Accessory[]>('accessories.detail.json'), ...items].map((r) => r.id))
+      const declared = new Set(stageGaps.filter((g) => g.field === 'id').map((g) => g.ref))
+      expect(universe.filter((u) => !emittedIds.has(u.id) && !declared.has(`i:${u.id}`))).toEqual([])
+      expect(universe.length - emittedIds.size).toBe(54)
+      const result = validateDataset(structuredClone(loaded.raw), { now: new Date(meta.generatedAt) })
+      if (!result.ok) throw new Error(result.errors.slice(0, 5).map(formatError).join('\n'))
+      expect(result.manifest.itemClosure).toBe(true)
+      const closure = itemClosure(result.dataset, stageGaps)
+      expect(closure.undeclared.size).toBe(0)
+      expect(closure.emitted.size).toBeGreaterThan(4500)
+      // removing one declared gap makes the closure fail (E_DANGLING_REF)
+      const raw = structuredClone(loaded.raw)
+      raw.stageGaps = (raw.stageGaps as GapEntry[]).filter((g) => g.ref !== `i:${[...closure.declared][0]}`)
+      const broken = validateDataset(raw, { now: new Date(meta.generatedAt) })
+      expect(broken.ok).toBe(false)
+      expect(broken.errors.every((e) => e.code === 'E_DANGLING_REF')).toBe(true)
+    })
+
+    it('spot-check fishing (B20): Toxikarp is fished in the Corruption in Hardmode; Neon Tetra is a Jungle fish used in two cooking recipes', () => {
+      const toxikarp = read<Weapon[]>('weapons.detail.json').find((w) => w.name === 'Toxikarp') as Weapon
+      expect(toxikarp.acquisition).toEqual([{ method: 'fishing', biomes: ['Corruption'], conditions: ['hardmode'] }])
+      expect(toxikarp._prov.sources).toContainEqual(expect.objectContaining({ kind: 'wiki-article', url: 'https://terraria.wiki.gg/wiki/Fishing_catches' }))
+      expect(getField(toxikarp, 'gatedBy')).toEqual({ status: 'unverified' }) // fishing never derives a gate
+      const tetra = byName('Neon Tetra')
+      expect(tetra).toMatchObject({ category: 'fishing', acquisition: [{ method: 'fishing', biomes: ['Jungle'], conditions: [] }] })
+      expect(recipes.filter((r) => r.ingredients.some((g) => g.ref.itemId === tetra.id)).map((r) => r.resultItemId).sort()).toEqual([4034, 5537])
+    })
+
+    it('spot-check vanity: Familiar Shirt is sold by the Clothier for 1 Gold once Skeletron is defeated (gated late pre-Hardmode)', () => {
+      expect(byName('Familiar Shirt')).toMatchObject({ category: 'vanity', valueCopper: 10000, acquisition: [{ method: 'purchase', npcName: 'Clothier', priceCopper: 10000, conditions: ['post-skeletron'] }], gatedBy: { bosses: ['skeletron'], conditions: [], stage: 'late-prehm' } })
+    })
+
+    it('spot-check material, recipe links both ways: Silk is crafted from 7 Cobwebs at a Loom and is an ingredient of 183 recipes (the Bed among them)', () => {
+      const silk = byName('Silk')
+      expect(silk).toMatchObject({ category: 'material', gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+      const made = recipes.filter((r) => silk.acquisition.some((a) => a.method === 'craft' && a.recipeIds.includes(r.id)))
+      expect(made.map((r) => [r.ingredients.map((g) => [g.ref.itemId, g.amount]), r.stations])).toEqual([[[[150, 7]], [{ kind: 'item', itemId: 332 }]]]) // Cobweb ×7 @ Loom
+      const uses = recipes.filter((r) => r.ingredients.some((g) => g.ref.itemId === silk.id))
+      expect(uses).toHaveLength(183)
+      expect(uses.map((r) => r.resultItemId)).toContain(224) // Bed
+    })
+
+    it('spot-check tool: Copper Pickaxe has 35% pickaxe power, a Copper Bar ×8 + Any Wood ×4 anvil recipe and the Merchant sells it for 5 Silver', () => {
+      const pick = byName('Copper Pickaxe')
+      expect(pick).toMatchObject({ category: 'tool', toolStats: { pickaxePowerPct: 35 }, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+      expect(pick.acquisition).toContainEqual({ method: 'purchase', npcName: 'Merchant', priceCopper: 500, conditions: [] })
+      const recipe = recipes.find((r) => pick.acquisition.some((a) => a.method === 'craft' && a.recipeIds.includes(r.id)))
+      expect(recipe?.ingredients.map((g) => [g.ref.itemId ?? g.ref.groupId, g.amount])).toEqual(expect.arrayContaining([[20, 8], ['any-wood', 4]]))
+    })
+
+    it('spot-check B96(d): the Suspicious Looking Eye is a record in items.detail.json — its own article, the Eye of Cthulhu it summons, its Lens ×6 altar recipe', () => {
+      const sle = read<Item[]>('items.detail.json').find((i) => i.id === 43) as Item
+      expect(sle).toMatchObject({ name: 'Suspicious Looking Eye', category: 'summoning', wikiUrl: 'https://terraria.wiki.gg/wiki/Suspicious_Looking_Eye', summonsBossNode: 'eye-of-cthulhu' })
+      const recipe = recipes.find((r) => r.resultItemId === 43)
+      expect(recipe?.ingredients.map((g) => [g.ref.itemId, g.amount])).toEqual([[38, 6]])
+      // every boss summon item now resolves to a record the boss pages load (no wiki-search fallback): items.detail.json, or
+      // an equipment collection (Clothier Voodoo Doll is an accessory)
+      const loadedByPages = new Set([...read<Item[]>('items.detail.json'), ...read<Weapon[]>('weapons.detail.json'), ...read<Accessory[]>('accessories.detail.json'), ...read<ArmorPiece[]>('armor.detail.json')].map((r) => r.id))
+      for (const b of read<Boss[]>('bosses.json')) for (const id of [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]) expect(loadedByPages.has(id), `${b.id} i:${id}`).toBe(true)
+    })
+
+    it('spot-check B93(ii): the mechanical boss → All mechanical bosses edges quote a whole sentence of the Mechanical bosses article', () => {
+      const { edges } = read<{ edges: ProgressionEdge[] }>('progression.json')
+      const mech = edges.filter((e) => e.to === 'all-mechanical-bosses')
+      expect(mech.map((e) => e.from).sort()).toEqual(['skeletron-prime', 'the-destroyer', 'the-twins'])
+      for (const e of mech) expect([e.note, e.sourceUrl]).toEqual(["One Plantera's Bulb immediately spawns once all three mechanical bosses are defeated for the first time.", 'https://terraria.wiki.gg/wiki/Mechanical_bosses'])
+    })
+
+    it('B84: Skeletron drops the Hellforge only when none is present (caption condition); bundled drops link each other in dropsWith', () => {
+      const drops = read<DropSource[]>('drops.json')
+      expect(drops.filter((d) => d.itemId === 221 && d.source.bossId === 'skeletron').map((d) => [d.conditions, d._prov.unverifiedFields.includes('conditions')])).toEqual([[['hellforge-absent'], false]])
+      const linked = drops.filter((d) => d.dropsWith)
+      expect(linked).toHaveLength(20)
+      const byId = new Map(drops.map((d) => [d.id, d]))
+      for (const d of linked) for (const o of d.dropsWith ?? []) expect([byId.get(o)?.dropsWith, byId.get(o)?.source.npcName], d.id).toEqual([expect.arrayContaining([d.id]), d.source.npcName])
+      const launcher = drops.find((d) => d.itemId === 758 && d.source.npcName === 'Treasure Bag (Plantera)') as DropSource
+      expect(launcher.dropsWith?.map((id) => byId.get(id)?.itemId)).toEqual([771]) // Grenade Launcher ↔ Rocket I
+    })
+
+    it('B83(f): wholly Unknown boss stats state their parse reason (Duke Fishron, Lunatic Cultist, Skeletron Prime …)', () => {
+      const reason = (id: string) => stageGaps.find((g) => g.ref === `boss:${id}` && g.field === 'statsByDifficulty')?.detail
+      expect(reason('duke-fishron')).toBe("Duke Fishron: No single verified value per difficulty in the wiki's infobox: defense has several values (alternatives on further lines).")
+      expect(reason('skeletron-prime')).toBe("Skeletron Prime: No single verified value per difficulty in the wiki's infobox: defense has several values (alternatives on further lines).")
+      expect(reason('lunatic-cultist')).toBe('Lunatic Cultist: No single verified value per difficulty in the wiki\'s infobox: defense has text next to the value ("/ 27").')
     })
   })
 
@@ -484,7 +601,9 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(potions.map((p) => p.name)).not.toEqual(expect.arrayContaining(['Stink Potion']))
       const docs = read<SearchDoc[]>('search-docs.json')
       for (const p of potions) expect(docs.find((d) => d.id === `i:${p.id}`), p.name).toMatchObject({ type: 'item', name: p.name })
-      expect(read<{ counts: Record<string, number> }>('meta.json').counts.items).toBe(145)
+      // 145 = ammo 79 + potions 66 before P6-S0; the corpus brings the items collection to 5,045
+      expect(items.filter((i) => i.category === 'ammo' || i.category === 'potion')).toHaveLength(145)
+      expect(read<{ counts: Record<string, number> }>('meta.json').counts.items).toBe(5045)
     })
 
     it('spot-check Ironskin: +8 defense (stat), 8 minutes = 28800 ticks, early pre-Hardmode with no gate', () => {

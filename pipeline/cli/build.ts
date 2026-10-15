@@ -14,17 +14,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { BOSS_PAGE_IDS, isCoveredBy, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SpriteManifest, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type Recipe, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, isCoveredBy, ITEM_DETAIL_CORE_FILE, ITEM_DETAIL_INDEX_FILE, ItemDetailIndex, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SpriteManifest, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type ProvSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import { b70Sections } from '../emit/b70Report'
+import { corpusSections } from '../emit/corpusReport'
 import { renderGapReport } from '../emit/gapReport'
 import { THUMBNAIL_MIN_BYTES, thumbnailFor } from '../emit/thumbnail'
+import { ITEM_SHARD_FILE, serializeItemIndex, shardItems } from '../emit/itemShards'
 import { checkBudgets, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
 import { writeFiles } from '../emit/write'
 import { buildAccessories } from '../merge/accessories'
+import { buildCorpus, corpusFoodBuffNames } from '../merge/corpus'
+import { buildFishingRoutes, FISHING_CATCHES_PAGE } from '../merge/fishing'
 import { buildAmmo, identifyAmmo } from '../merge/ammo'
 import { buildArmor } from '../merge/armor'
 import { EFFECT_CATEGORIES, EFFECT_RULES, tooltipEffectLines } from '../merge/effects'
@@ -41,19 +45,21 @@ import { buildAcquisitionSources } from '../merge/sources'
 import { AI_CLASS_EVIDENCE } from '../merge/labFamilies'
 import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } from '../merge/labParams'
 import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadContainersOverlay, loadGatherablesOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadVendorsOverlay, loadWithheldOverlay } from '../merge/overlays'
-import { makeProv } from '../merge/prov'
+import { isoDate, makeProv } from '../merge/prov'
 import { buildRecipes } from '../merge/recipes'
 import { PAGE_BUCKET_LABEL, reconcileCategories, reconcileWeaponLists, type PageBucket } from '../merge/reconcile'
 import { buildConditions, buildItemUniverse } from '../merge/registry'
 import { buildSearchDocs } from '../merge/search'
 import { buildWeapons, type WithheldField } from '../merge/weapons'
 import { captionConditions, parseDropListing } from '../parse/dropCaptions'
+import { parseFishingCatches } from '../parse/fishing'
 import { parseBuffIdTable } from '../parse/infobox'
 import { parseIteminfo } from '../parse/iteminfo'
 import { stripMarkup } from '../parse/text'
 import { parseProjectileinfo } from '../parse/projectileinfo'
 import { parseGameRecipeGroups, parseRecipesL10n, parseWikiRecipeGroups } from '../parse/recipeModules'
 import { formatError, formatWarning, validateDataset } from '../validate'
+import { itemClosure } from '../validate/closure'
 import { stationItemUses, TINKERERS_WORKSHOP_ITEM_ID } from '../validate/integrity'
 import { suggestionContext, suggestionGateFailures } from '../validate/suggestions'
 import {
@@ -134,6 +140,12 @@ async function main(): Promise<number> {
   const moduleRev = (m: (typeof mods)[keyof typeof mods]) => ({ title: m.title, rev: m.rev, fetchedAt: m.fetchedAt })
   const overlay = loadConditionsOverlay()
   const matchers = conditionMatchers(overlay)
+  // P6-S0 (AMENDMENTS-004 B20): fishing routes from the "Fishing catches" article
+  const fishingArticle = sync.articles.get(FISHING_CATCHES_PAGE)
+  if (!fishingArticle) throw new Error(`${FISHING_CATCHES_PAGE} article missing from the sync`)
+  const fishingCatches = parseFishingCatches(fishingArticle.html)
+  const fishing = buildFishingRoutes(fishingCatches, matchers)
+  const fishingSource: ProvSource = { kind: 'wiki-article', url: wikiPageUrl(fishingArticle.resolvedTitle), rev: fishingArticle.revid, fetchedAt: isoDate(fishingArticle.fetchedAt) }
 
   // merge + cross-check
   const conditions = buildConditions(overlay, sync.overlayPages)
@@ -209,6 +221,7 @@ async function main(): Promise<number> {
     gatherables: loadGatherablesOverlay(),
     conditions: overlay,
     withheld,
+    fishing: { byItem: fishing.byItem, source: fishingSource },
   })
   const gatingContext = {
     recipesByResult: byKey<Recipe, number>(recipes.recipes, (r) => r.resultItemId),
@@ -224,7 +237,10 @@ async function main(): Promise<number> {
   const derive = createGatingDeriver({ ...gatingContext, extraRoutes: acqSources.extraRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive })
   // the pre-slice derivation (recipes + boss drops only) — gating-delta evidence for the report, never emitted
   const deriveBaseline = createGatingDeriver(gatingContext)
-  const routeSources = { vendorRoute: acqSources.vendorRoute, gather: acqSources.gather }
+  // P6-S0: the same derivation without the fishing routes — the B20 gating delta for the report, never emitted
+  const noFishingRoutes = new Map([...acqSources.extraRoutes].map(([id, rs]) => [id, rs.filter((r) => !(r.kind === 'unknown' && r.blocker === 'fishing-route-ungated'))]))
+  const deriveNoFishing = createGatingDeriver({ ...gatingContext, extraRoutes: noFishingRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive })
+  const routeSources = { vendorRoute: acqSources.vendorRoute, gather: acqSources.gather, fishing: acqSources.fishing, ...(acqSources.fishingSource ? { fishingSource: acqSources.fishingSource } : {}) }
   const weapons = buildWeapons({
     itemRows: sync.tables.Items.rows,
     itemsFetchedAt: sync.tables.Items.fetchedAt,
@@ -261,6 +277,8 @@ async function main(): Promise<number> {
   const weaponIdSet = new Set(weapons.weapons.map((w) => w.id))
   const notPotion = new Map<number, string>([...ammoIdn.included.filter((c) => !weaponIdSet.has(c.item.id)).map((c) => [c.item.id, 'an ammo item'] as const), ...[...weaponIdSet].map((id) => [id, 'a weapon'] as const)])
   for (const [name, by] of potionBuffNames(identifyPotions(sync.tables.Items.rows, iteminfo, notPotion), buffTable.rows)) addMember(name, `granted by ${listed(by)}`)
+  // P6-S0: the buffs corpus food grants (Well Fed and its tiers)
+  for (const [name, by] of corpusFoodBuffNames(sync.tables.Items.rows, iteminfo, buffTable.rows)) addMember(name, `granted by ${listed(by)}`)
   for (const e of buffsOverlay.entries) addMember(e.name, 'buff effects curated in overlays/buffs.json')
   const buffs = buildBuffs({ table: buffTable, members, overlay: buffsOverlay, articles: sync.articles, evidence })
 
@@ -302,7 +320,7 @@ async function main(): Promise<number> {
     withheld,
     sources: routeSources,
   })
-  const itemRecords = [...ammo.items, ...potions.items].sort((a, b) => a.id - b.id)
+  const ammoPotionRecords = [...ammo.items, ...potions.items].sort((a, b) => a.id - b.id)
   const weaponRecords = weapons.weapons.map((w): Weapon => {
     const a = ammo.weaponAmmo.get(w.id)
     if (!a) return w
@@ -326,7 +344,7 @@ async function main(): Promise<number> {
     overlay: labOverlay,
   })
   // P2-S8 armor pieces + armor sets, accessories (merge/armor.ts, merge/accessories.ts, merge/effects.ts)
-  const itemSlugs = new Set([...weapons.weapons.map((w) => w.slug), ...itemRecords.map((i) => i.slug)])
+  const itemSlugs = new Set([...weapons.weapons.map((w) => w.slug), ...ammoPotionRecords.map((i) => i.slug)])
   const armorSetsOverlay = loadArmorSetsOverlay()
   const equipmentInput = {
     itemRows: sync.tables.Items.rows,
@@ -343,7 +361,37 @@ async function main(): Promise<number> {
   }
   const armor = buildArmor({ ...equipmentInput, evidence, overlay: armorSetsOverlay, usedSlugs: itemSlugs })
   const accessories = buildAccessories({ ...equipmentInput, usedSlugs: new Set([...itemSlugs, ...armor.pieces.map((p) => p.slug)]) })
-  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...potions.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps]
+
+  // P6-S0 item corpus (merge/corpus.ts): every remaining vanilla item, one collection with the ammo + potions
+  const summons = new Map<number, string[]>()
+  for (const b of bosses.bosses) for (const id of b.summon.items) summons.set(id, [...new Set([...(summons.get(id) ?? []), b.nodeId])].sort())
+  const corpus = buildCorpus({
+    itemRows: sync.tables.Items.rows,
+    itemsFetchedAt: sync.tables.Items.fetchedAt,
+    iteminfo,
+    images: new Map([sync.weaponImages, sync.ammoImages, sync.equipmentImages, sync.potionImages, sync.corpusImages].flatMap((f) => [...f.found])),
+    recipes: recipes.recipes,
+    drops: drops.drops,
+    gating: derive,
+    elsewhere: new Set([...weapons.weapons, ...ammoPotionRecords, ...armor.pieces, ...accessories.accessories].map((r) => r.id)),
+    usedSlugs: new Set([...itemSlugs, ...armor.pieces.map((p) => p.slug), ...accessories.accessories.map((a) => a.slug)]),
+    stationIds: new Set(stationItemUses(recipes.recipes, new Map(recipes.groups.map((g) => [g.id, g]))).keys()),
+    buffTable: buffTable.rows,
+    buffSlug: (name) => buffs.slugByName.get(name),
+    summons,
+    fishedIds: new Set(fishing.byItem.keys()),
+    withheld,
+    sources: routeSources,
+  })
+  const itemRecords = [...ammoPotionRecords, ...corpus.items].sort((a, b) => a.id - b.id)
+  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...potions.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps, ...corpus.gaps]
+  // P6-S0 universe accounting: every Module:Iteminfo/data item is an emitted record or a declared gap
+  const emittedItemIds = new Set([...weapons.weapons, ...itemRecords, ...armor.pieces, ...accessories.accessories].map((r) => r.id))
+  const declaredIds = new Set(stageGaps.filter((g) => g.field === 'id').map((g) => g.ref))
+  const unrowedIds = [...universe.items].filter((i) => !emittedItemIds.has(i.id) && !declaredIds.has(`i:${i.id}`))
+  for (const i of unrowedIds) {
+    stageGaps.push({ ref: `i:${i.id}`, field: 'id', kind: 'count-reconciliation', detail: `${i.name ?? i.internalName} (item ${i.id}): Module:Iteminfo/data rev ${iteminfo.rev} carries this item but no Cargo Items row (the wiki's item infobox table) does — no verifiable item data, not emitted`, sources: [wikiPageUrl('Module:Iteminfo/data')] })
+  }
 
   const generatedAt = [
     sync.iteminfo.fetchedAt,
@@ -361,6 +409,7 @@ async function main(): Promise<number> {
     sync.accessoryCategories.fetchedAt,
     sync.equipmentImages.fetchedAt,
     sync.potionImages.fetchedAt,
+    sync.corpusImages.fetchedAt,
   ]
     .sort()
     .at(-1) as string
@@ -368,7 +417,7 @@ async function main(): Promise<number> {
   const manifest: DatasetManifest = {
     name: 'wiki-sync',
     description:
-      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), armor pieces, armor sets and accessories (P2-S8), the potion corpus (B70 P4-prep), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe: the rest of the item corpus is produced by P6-S0 (partial.itemUniverse) and Lab scenarios by a later slice (partial.pending).',
+      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), armor pieces, armor sets and accessories (P2-S8), the potion corpus (B70 P4-prep), the full item corpus with fishing routes (P6-S0), plus search docs. Every Module:Iteminfo/data item is an emitted record or a declared gap (itemClosure); item-universe.json stays the name source the app reads (partial.itemUniverse); Lab scenarios come with a later slice (partial.pending).',
     iteminfo: { rev: iteminfo.rev, syncedTo: iteminfo.terrariaVersion },
     notes: [
       `Sources: Module:Iteminfo/data rev ${iteminfo.rev} (generated ${iteminfo.generated}, game ${iteminfo.terrariaVersion}); ${Object.values(mods).map((m) => `${m.title} rev ${m.rev}`).join('; ')}; Cargo tables fetched ${Object.values(sync.tables).map((t) => `${t.table} ${t.fetchedAt}`).join(', ')}; weapon category tree ${sync.weaponCategories.fetchedAt}; imageinfo ${sync.weaponImages.fetchedAt}.`,
@@ -400,10 +449,15 @@ async function main(): Promise<number> {
       'StatKind B54 (AMENDMENTS-011, landed by the B70 P4-prep slice): fishing-power-flat, ammo-save-pct, knockback-pct, tag-effect-slots, lava-immunity-ticks (stated seconds × 60), melee-scale-pct, tile-reach-flat, potion-cooldown-pct (reductions negative), armor-penetration-flat, minion-knockback, whip-speed-pct. Value-stating lines are stats (an unmodeled rest of the line stays a quoted special); lines without a value stay specials. Buff overlay flips: Ammo Reservation ammo-save-pct 20, Tipsy fishing-power-flat 5.',
       'Armor-set variant classes (AMENDMENTS-011 B52, B70 slice): variants[].classes = [class] for single-class / class-less variants; for a hybrid, the classes its quoted article description names (\'mage\' = magic, \'summoner\' = summon), checked equal to the variant\'s stat class signals; class stays "other" for hybrids (kept one release; read classes ?? [class]). Editorial like class.',
       'Potions (B70 P4-prep, pipeline/merge/potions.ts): Cargo Items rows typed "potion" (not "food") that are the same desktop item in Module:Iteminfo/data and grant a buff (buffType) or restore health / mana; category "potion" in items.detail.json. healLife / healMana = Iteminfo, cross-checked with the infobox (a range such as "70–120" withholds the value). buffGrants: Iteminfo buffType for buffTime ticks (cross-checked with the Cargo buffs/debuffs and the infobox Duration), Potion Sickness when Iteminfo potion is true and Mana Sickness for mana-restoring items (Cargo debuffs agreeing; duration from the infobox, else Unknown). Reconciled against the wiki\'s "Buff potions" table and the Potions navbox (gap report). Utility consumables with no buff and no healing (Recall, Wormhole, …) are excluded with a reason.',
+      'Item corpus (P6-S0, pipeline/merge/corpus.ts): every Cargo Items row that is the same desktop item in Module:Iteminfo/data and that no other collection emits, as an Item (type "item"); category = the first matching rule over the wiki infobox type list (station, summoning, mount, pet, hook, tool, dye, vanity, food, permanent-booster, exploration-utility, fishing, grab-bag, furniture, block, material, other — the gap report lists each rule), tags = the slugged type list (+ quest-fish, unobtainable). rarity / consumable cross-checked with the infobox; maxStack only for consumable items (non-stacking items report 9999 in both sources, B7); tool / fishing / bait powers = Iteminfo cross-checked with the infobox (axe power = Iteminfo axe × 5); buffGrants = Iteminfo buffType for buffTime ticks when the buff is in the registry (food: Well Fed and its tiers; pet buffs are outside the A4-bounded registry → Unknown); hook / mount stats are not extracted (Unknown); summonsBossNode derived from Boss.summon.items. Excluded rows (set infoboxes, no item ID, sync lag, name mismatch, duplicates) and Iteminfo items without any Cargo row are gap entries, so every Module:Iteminfo/data item is an emitted record or a declared gap — validate enforces it for every recipe / recipe-group / station / drop item reference (manifest itemClosure).',
+      'Fishing (P6-S0, AMENDMENTS-004 B20, pipeline/parse/fishing.ts + merge/fishing.ts): the "Fishing catches" article\'s catch tables give every fished item its `fishing` routes — where = the liquid (Lava / Honey), the row\'s biome conditions (+ heights when not "Any"), conditions = the article\'s World status / generic condition labels mapped through the conditions overlay (match.fishingConditions); an unmapped label makes the route\'s conditions Unknown. Remix-seed rows and NPC catches are skipped. A fishing route never derives a gate (blocker fishing-route-ungated): no pond / biome / height is reviewed for gating.',
+      'Pipeline queue (P6-S0, AMENDMENTS-015): condition hellforge-absent maps Skeletron\'s Hellforge caption and Cargo note (B84); DropSource.dropsWith links the records of one bundled drop cell both ways (B84 "drops together"); wholly Unknown boss stats from unparseable health / defense cells carry their parse reason as a statsByDifficulty gap (B83(f)); the mechanical boss → all-mechanical-bosses edges quote a whole sentence (B93(ii)).',
+      'Item detail files (P6-S0, DATA_SCHEMA_SPEC §5 sharding): items.detail.json keeps the records the shipped Lab / boss pages / readiness checker load — the ammo, the potion corpus and every item a boss record references (summon and prep-checklist items); every other item lives in the ID-range shard items.detail.<n>.json (ids n×1000 … n×1000+999); items.detail.index.json lists each file\'s ids. items.list.json and the search docs cover every item.',
       'Gating expansion (B70 P4-prep: AMENDMENTS-014 B68, AMENDMENTS-015 B78; pipeline/merge/sources.ts + gating.ts): §7b also takes (1) vendor routes — the NPC\'s quoted availability (overlays/vendors.json: its move-in rule as conditions, "has one of these items" as the minimum over them, NPCs it needs) AND the item\'s row in the NPC article\'s shop table with a reviewed Availability text; vendors whose availability is an OR, an NPC count or a random visit stay Unknown; (2) loot of reviewed containers (overlays/containers.json, matched by name AND article: chests and Shadow Orbs / Crimson Hearts with their quoted conditions; ore-tier bars only in their world, "(in worlds with Iron)"); (3) a curated gatherable base-material registry (overlays/gatherables.json, quote-backed: gate-free early pre-Hardmode unless conditioned). Either-or conditions over an exhaustive group (the world evil, the ore of a tier) drop out; a gate-free sufficient route is exact even when another route is unknown; anything else unknown keeps gatedBy Unknown. Purchase acquisitions carry their derived conditions (NPC ∪ shop row) or list them Unknown; gatherable items get an "other" acquisition quoting the evidence sentence.',
     ],
     partial: { itemUniverse: ITEM_UNIVERSE_FILE, pending: PENDING },
     bossPages: [...BOSS_PAGE_IDS],
+    itemClosure: true,
   }
 
   // validate pass 1 → the strict-parsed (and possibly Lab-downgraded) weapons the lists project
@@ -466,7 +520,7 @@ async function main(): Promise<number> {
   }
 
   // sprite manifest (public/, committed; binaries are local-only). B30: files over 100 KB list a thumbnail.
-  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites, ...potions.sprites, ...armor.sprites, ...accessories.sprites].map((f) => {
+  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites, ...potions.sprites, ...armor.sprites, ...accessories.sprites, ...corpus.sprites].map((f) => {
     const thumbnail = thumbnailFor(f)
     return thumbnail ? { ...f, thumbnail } : f
   })
@@ -482,13 +536,20 @@ async function main(): Promise<number> {
   }
   const spriteManifestText = `{"fallbackMode":${JSON.stringify(spriteManifest.fallbackMode)},"rightsNote":${JSON.stringify(spriteManifest.rightsNote)},"files":${serializeRecords(spriteManifest.files).trimEnd()}}\n`
 
+  // P6-S0 item-detail files: core (what the shipped app loads in full) + ID-range shards + index
+  const bossItemRefs = new Set(first.dataset.bosses.flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
+  const coreItemIds = new Set([...ammoPotionRecords.map((i) => i.id), ...bossItemRefs])
+  const itemShards = shardItems(itemDetails, coreItemIds)
+  ItemDetailIndex.parse(itemShards.index)
+
   const files = new Map<string, string>([
     [MANIFEST_FILE, serializeObject(manifest)],
     [ITEM_UNIVERSE_FILE, `{"source":${JSON.stringify(universe.source)},"items":${serializeRecords(universe.items).trimEnd()}}\n`],
     [STAGE_GAPS_FILE, serializeRecords(stageGaps)],
     [collectionFile('weapons'), serializeRecords(weaponDetails)],
     [LIST_FILES.weapons, serializeRecords(weaponList)],
-    [collectionFile('items'), serializeRecords(itemDetails)],
+    ...[...itemShards.files].map(([file, list]): [string, string] => [file, serializeRecords(list)]),
+    [ITEM_DETAIL_INDEX_FILE, serializeItemIndex(itemShards.index)],
     [LIST_FILES.items, serializeRecords(itemList)],
     [collectionFile('buffs'), serializeRecords(first.dataset.buffs)],
     [collectionFile('armor'), serializeRecords(armorDetails)],
@@ -513,8 +574,8 @@ async function main(): Promise<number> {
     return 1
   }
 
-  const owned = new Set<string>([MANIFEST_FILE, ITEM_UNIVERSE_FILE, STAGE_GAPS_FILE, SEARCH_DOCS_FILE, ...OUTPUT_FILES, ...Object.values(LIST_FILES), ...Object.values(COLLECTIONS).map((c) => c.file.split('#')[0]), 'weapons.json'])
-  writeFiles(outDir, files, (f) => owned.has(f))
+  const owned = new Set<string>([MANIFEST_FILE, ITEM_UNIVERSE_FILE, STAGE_GAPS_FILE, SEARCH_DOCS_FILE, ITEM_DETAIL_CORE_FILE, ITEM_DETAIL_INDEX_FILE, ...OUTPUT_FILES, ...Object.values(LIST_FILES), ...Object.values(COLLECTIONS).map((c) => c.file.split('#')[0]), 'weapons.json'])
+  writeFiles(outDir, files, (f) => owned.has(f) || ITEM_SHARD_FILE.test(f))
   mkdirSync(dirname(spriteManifestPath), { recursive: true })
   writeFileSync(spriteManifestPath, spriteManifestText)
 
@@ -1290,7 +1351,8 @@ async function main(): Promise<number> {
       weapons: weaponDetails,
       armor: armorDetails,
       accessories: accessoryDetails,
-      items: itemDetails,
+      // the B70 report covers its own families (ammo + potions); the P6-S0 corpus has its own sections
+      items: itemDetails.filter((i) => i.category === 'ammo' || i.category === 'potion'),
       armorSets: setDetails,
       buffs: first.dataset.buffs,
       bosses: first.dataset.bosses,
@@ -1301,6 +1363,28 @@ async function main(): Promise<number> {
       sources: acqSources,
       potions,
       stageOrder: STAGE_ORDER,
+    }),
+    ...corpusSections({
+      cargoRows: sync.tables.Items.rows.length,
+      corpus,
+      weapons: weaponDetails,
+      armor: armorDetails,
+      accessories: accessoryDetails,
+      items: itemDetails,
+      ammoPotionIds: new Set(ammoPotionRecords.map((i) => i.id)),
+      universe: universe.items,
+      stageGaps,
+      closure: itemClosure(result.dataset, stageGaps),
+      fishing: { catches: fishingCatches, report: fishing.report, url: fishingSource.url, rev: fishingSource.rev as number },
+      drops: result.dataset.drops,
+      bosses: result.dataset.bosses,
+      edges: result.dataset.edges,
+      itemIndex: itemShards.index,
+      fishingGatingDelta: [...weaponDetails, ...armorDetails, ...accessoryDetails, ...itemDetails].flatMap((r) => {
+        const show = (g: ReturnType<typeof derive>) => (g.ok ? `${g.gatedBy.stage}${g.gatedBy.bosses.length ? ` · ${g.gatedBy.bosses.join(', ')}` : ''}${g.gatedBy.conditions.length ? ` · [${g.gatedBy.conditions.join(', ')}]` : ''}` : 'Unknown')
+        const [before, after] = [show(deriveNoFishing(r.id)), show(derive(r.id))]
+        return before === after ? [] : [{ name: r.name, before, after }]
+      }),
     }),
     {
       title: 'Sprites',
@@ -1314,7 +1398,7 @@ async function main(): Promise<number> {
 
   const sizes: EmittedFile[] = [...budget.sizes, { file: relative(repoRoot, spriteManifestPath), bytes: Buffer.byteLength(spriteManifestText), gzBytes: gzSize(spriteManifestText) }]
   const report = renderGapReport({
-    slice: 'P2-S8',
+    slice: 'P6-S0',
     meta: result.meta,
     gaps: result.gaps,
     warnings: result.warnings,
@@ -1347,6 +1431,7 @@ async function main(): Promise<number> {
           ['id collisions resolved with -N suffix', d.idCollisions],
           ['rows from a bundled custom cell ("Grenade Launcher" + ":+ Rocket I (50–149)"): quantity = the row item\'s own entry', d.bundledRows],
           ['bundle companions without a Drops row of their own (not emitted; one gap each)', d.bundleCompanionsWithoutRow],
+          ['records linked by dropsWith (one bundled cell drops together, AMENDMENTS-015 B84)', d.dropsTogetherRecords],
         ],
       },
       {
@@ -1433,7 +1518,19 @@ async function main(): Promise<number> {
           ['  with a wiki sprite (manifest)', accessories.sprites.length],
         ],
       },
-      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + ammo items + armor + accessories + armor sets + enemies + bosses + buffs)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
+      {
+        title: 'Item corpus + fishing (P6-S0 summary — details below)',
+        rows: [
+          ['corpus items emitted (Cargo Items rows ' + sync.tables.Items.rows.length + '; rows of items emitted elsewhere ' + corpus.identification.elsewhere + '; excluded ' + corpus.identification.excluded.length + ')', corpus.items.length],
+          ['  items collection total (ammo + potions + corpus)', itemDetails.length],
+          ['  with ≥1 acquisition route / derived gatedBy', `${corpus.items.filter((i) => i.acquisition.length > 0).length} / ${corpus.items.filter((i) => i.gatedBy).length}`],
+          ['  with a wiki sprite (manifest)', corpus.sprites.length],
+          ['  item detail files: core items.detail.json / ID-range shards', `${itemShards.index.files[0].ids.length} / ${itemShards.index.files.length - 1} files (${itemShards.index.files.slice(1).map((f) => f.ids.length).join(' + ')})`],
+          ['Iteminfo items (universe) = emitted records + declared gaps', `${universe.items.length} = ${emittedItemIds.size} + ${universe.items.length - emittedItemIds.size}`],
+          ['fishing routes: records with a fishing acquisition (Fishing catches items ' + fishing.report.items + ')', [...weaponDetails, ...armorDetails, ...accessoryDetails, ...itemDetails].filter((r) => r.acquisition.some((a) => a.method === 'fishing')).length],
+        ],
+      },
+      { title: 'Search docs + conditions + item universe', rows: [['search docs (weapons + items + armor + accessories + armor sets + enemies + bosses + buffs)', searchDocs.length], ['conditions (curated registry)', conditions.length], ['Iteminfo item IDs (universe)', universe.items.length]] },
     ],
     reasonTallies: [
       { title: 'Why drop fields are Unknown (rows per reason)', tally: drops.reasons },
@@ -1445,6 +1542,8 @@ async function main(): Promise<number> {
       { title: 'Why armor-piece gatedBy / stage are Unknown (§7b blockers, pieces per combination)', tally: armor.gatingBlockers },
       { title: 'Why accessory fields are Unknown / routes not modeled (accessories per reason)', tally: accessories.reasons },
       { title: 'Why accessory gatedBy / stage are Unknown (§7b blockers, accessories per combination)', tally: accessories.gatingBlockers },
+      { title: 'Why corpus item fields are Unknown / routes not modeled (P6-S0 corpus items per reason)', tally: corpus.reasons },
+      { title: 'Why corpus item gatedBy / stage are Unknown (§7b blockers, corpus items per combination)', tally: corpus.gatingBlockers },
     ],
     sections,
     ambiguousNames: new Map([...recipes.ambiguousNames, ...drops.ambiguousNames]),
@@ -1462,6 +1561,7 @@ async function main(): Promise<number> {
   console.log(`  recipes ${r.emitted}/${r.cargoRows} Cargo rows (legacy ${r.legacyRows}, non-desktop ${r.nonDesktopRows}, duplicate ${r.duplicateRows}, excluded ${r.excludedRows}); with conditions ${r.withConditions}; note stations ${r.availabilityNoteStations}; groups ${recipes.groups.length}`)
   console.log(`  drops ${d.emittedRecords} records from ${d.emittedRows}/${d.cargoRows} rows (non-desktop ${d.nonDesktopRows}, excluded ${d.excludedRows}, split rows ${d.splitRows}, id collisions ${d.idCollisions})`)
   console.log(`  enemies ${enemies.ledger.enemies}; conditions ${conditions.length}; search docs ${searchDocs.length}; item universe ${universe.items.length}`)
+  console.log(`  item corpus ${corpus.items.length} (Cargo rows ${sync.tables.Items.rows.length}, elsewhere ${corpus.identification.elsewhere}, excluded ${corpus.identification.excluded.length}); items ${itemDetails.length} in ${itemShards.index.files.length} files (core ${itemShards.index.files[0].ids.length}); universe ${universe.items.length} = emitted ${emittedItemIds.size} + declared gaps ${universe.items.length - emittedItemIds.size}; fishing items ${fishing.report.items}`)
   console.log(`  bosses ${first.dataset.bosses.length}; nodes ${first.dataset.nodes.length}; edges ${first.dataset.edges.length}; boss drops linked ${d.bossLinkedRecords}, event-boss n/a ${d.eventBossRecords}, mismatch ${d.bossMismatchRecords}; weapons with gatedBy ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length}`)
   console.log(`  armor pieces ${armorDetails.length} (piece rows ${armor.identification.typedRows}, excluded ${armor.identification.excluded.length}); sets ${setDetails.length}/${armor.setPages} set articles (withheld ${withheldSetPages.size}); accessories ${accessoryDetails.length} (functional rows ${accessories.identification.typedRows}, excluded ${accessories.identification.excluded.length}, vanity ${accessories.vanityRows.length}); tinkering links ${tinkeringLinks}; wings ${wingRecords.filter((a) => a.wingStats).length}/${wingRecords.length}; effects Unknown ${unknownEffectAccessories.length}`)
   console.log(`  ammo records ${ammoRecords.length} (items ${ammoItemDetails.length} + weapons-as-ammo ${dualRole.length}; Cargo ammunition rows ${aIdn.typedRows}, excluded ${aIdn.excluded.length}; Iteminfo ammo ${iteminfoAmmo.length}); buffs ${buffs.buffs.length} (dot ${buffs.buffs.filter((b) => b.dot).length}, structured effects ${buffs.buffs.filter((b) => b.effects.length > 0).length})`)

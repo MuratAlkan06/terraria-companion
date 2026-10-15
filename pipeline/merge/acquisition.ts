@@ -9,6 +9,9 @@
  *   both are derivable, else Unknown; without them (unit tests of the P2-S2 behavior) always Unknown.
  * - other (B78) = the item is in the curated gatherable base-material registry: its verbatim evidence
  *   sentence + article.
+ * - fishing (P6-S0, AMENDMENTS-004 B20) = the item's routes in the "Fishing catches" article
+ *   (merge/fishing.ts): where + mapped conditions; a route with an unmapped condition lists its
+ *   conditions as Unknown. The article becomes a source of the record (RouteResult.sources).
  * - A wiki self-conflict (AMENDMENTS-004 B19, overlays/withheld.json) withholds the whole acquisition
  *   (Unknown + source-mismatch); route hints in the Cargo tags / listcat that no record backs are
  *   reported as gaps, never inferred.
@@ -16,9 +19,10 @@
  *   route into account (derivable or explicitly unknown); without them it is adjusted for the item's
  *   own purchase routes (Unknown conditions ⇒ a derived craft/drop gate is exact only when gate-free).
  */
-import type { Acquisition, GapEntry } from '../../src/schemas'
+import type { Acquisition, GapEntry, ProvSource } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import { tally, type ReasonTally } from './drops'
+import type { FishingRoute } from './fishing'
 import type { GatingResult } from './gating'
 import { OverlayError } from './registry'
 import { gatherAcquisition, type GatherRoute, type VendorRoute } from './sources'
@@ -71,6 +75,9 @@ export interface RouteContext {
 export interface RouteSources {
   vendorRoute: (itemId: number, itemName: string, vendorTag: string) => VendorRoute
   gather: ReadonlyMap<number, GatherRoute>
+  /** P6-S0 B20: fishing routes per item + the "Fishing catches" article provenance. */
+  fishing?: ReadonlyMap<number, readonly FishingRoute[]>
+  fishingSource?: ProvSource
 }
 
 export interface RouteResult {
@@ -78,6 +85,8 @@ export interface RouteResult {
   /** Vendor NPC names (purchase routes). */
   vendors: string[]
   gating: GatingResult
+  /** Provenance the routes add to the record (the "Fishing catches" article for fishing routes). */
+  sources: ProvSource[]
 }
 
 export function itemRoutes(c: RouteContext): RouteResult {
@@ -110,7 +119,15 @@ export function itemRoutes(c: RouteContext): RouteResult {
   // B78: a curated gatherable base material (its evidence sentence is the route text)
   const gathered = withheld ? undefined : c.sources?.gather.get(id)
   if (gathered) acquisition.push(gatherAcquisition(gathered))
-  if (acquisition.length === 0 && !withheld) c.unknown('acquisition', `no recipe, drop or named vendor on the wiki for this ${c.noun}`)
+  // P6-S0 B20: fishing routes (the "Fishing catches" article)
+  const fished = withheld ? [] : (c.sources?.fishing?.get(id) ?? [])
+  const sources: ProvSource[] = fished.length > 0 && c.sources?.fishingSource ? [c.sources.fishingSource] : []
+  for (const f of fished) {
+    const i = acquisition.length
+    acquisition.push({ ...f.acquisition, biomes: [...f.acquisition.biomes], conditions: [...f.acquisition.conditions] })
+    if (f.unmapped.length > 0) c.unknown(`acquisition.${i}.conditions`, `a fishing condition the registry does not model (${f.unmapped.join(', ')})`)
+  }
+  if (acquisition.length === 0 && !withheld) c.unknown('acquisition', `no recipe, drop, named vendor or fishing catch on the wiki for this ${c.noun}`)
   // route hints with no backing record (reported, never inferred)
   const hints: string[] = []
   // a withheld acquisition (B19) is itself the finding; route hints would restate the conflicting tag
@@ -119,7 +136,7 @@ export function itemRoutes(c: RouteContext): RouteResult {
     if ((lower.some((t) => ['drop', 'bag loot', 'treasure bag loot', 'loot'].includes(t)) || listcat.some((x) => /(drop|loot) items$/.test(x))) && dropIds.length === 0) hints.push('tagged drop/loot but no Cargo Drops row resolves')
     if (lower.some((t) => ['vendor', 'buy', 'buyable'].includes(t)) && vendors.length === 0) hints.push('tagged as sold but no vendor NPC is named')
     if (lower.some((t) => /^vendor:seed:/.test(t))) hints.push('sold only in secret-seed worlds (not modeled)')
-    if (lower.includes('fished') || listcat.includes('fished items')) hints.push('obtained by fishing (not modeled)')
+    if ((lower.includes('fished') || listcat.includes('fished items')) && fished.length === 0) hints.push('tagged as fished, but the "Fishing catches" article lists no catch of it')
     if (lower.includes('plunder') || listcat.includes('plunder items')) hints.push('plunder (not modeled)')
   }
   for (const h of hints) tally(c.reasons, `acquisition: ${h}`, name)
@@ -134,5 +151,5 @@ export function itemRoutes(c: RouteContext): RouteResult {
     if (!gating.ok) gating = { ok: false, blockers: [...new Set([...gating.blockers.filter((b) => b !== 'cycle'), 'vendor-conditions-unknown' as const])].sort() }
     else if (gating.gatedBy.bosses.length > 0 || gating.gatedBy.conditions.length > 0) gating = { ok: false, blockers: ['alternative-route-unverified', 'vendor-conditions-unknown'] }
   }
-  return { acquisition, vendors, gating }
+  return { acquisition, vendors, gating, sources }
 }

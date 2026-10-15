@@ -38,6 +38,8 @@
  *   customBundle/bundleQuantity): the primary's (1 when none is stated), the companion's stated
  *   amount — never the companion's amount on the primary. A companion with no row of its own on the
  *   same source and rate is not emitted and gets a count-reconciliation gap (never merged).
+ *   AMENDMENTS-015 B84 "drops together" (P6-S0): the records of one bundled cell (same source, cell,
+ *   rate and conditions) link each other in `dropsWith` (symmetric, validated).
  */
 import type { GapEntry, ProvSource } from '../../src/schemas'
 import { type DropSource } from '../../src/schemas'
@@ -150,6 +152,8 @@ export interface DropLedger {
   bundledRows: number
   /** Bundle companions with no Drops row of their own on the same source and rate (not emitted; one gap each). */
   bundleCompanionsWithoutRow: number
+  /** B84: records linked by `dropsWith` (one bundled cell, same conditions). */
+  dropsTogetherRecords: number
 }
 
 /**
@@ -206,11 +210,14 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     captionConditionRecords: 0,
     bundledRows: 0,
     bundleCompanionsWithoutRow: 0,
+    dropsTogetherRecords: 0,
   }
   const drops = new Map<string, DropSource>()
   const reasons: ReasonTally = new Map()
   /** Bundled cells by source + rate: their entries and the row items seen (companion coverage check). */
   const bundles = new Map<string, { rowId: string; page: string; sourceName: string; entries: readonly BundleEntry[]; rowItems: Set<string> }>()
+  /** B84: emitted record ids per bundled cell + conditions (they drop together). */
+  const together = new Map<string, string[]>()
 
   const mapNotes = (notes: readonly string[]): Parsed<string[]> => {
     const out: string[] = []
@@ -264,8 +271,10 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
 
     // bundled custom cell ("Grenade Launcher" / ":+ Rocket I (50–149)"): one row per entry
     const bundle = str(row.quantity).trim() === '' ? customBundle(str(row.custom)) : undefined
+    let bundleKey: string | undefined
     if (bundle?.ok) {
       const key = [page, str(row.nameraw), str(row.name), str(row.custom), str(row.rate), str(row.normal), str(row.expert), str(row.master)].join('\u0000')
+      bundleKey = key
       const seen = bundles.get(key) ?? { rowId, page, sourceName, entries: bundle.value, rowItems: new Set<string>() }
       seen.rowItems.add(itemName)
       bundles.set(key, seen)
@@ -470,6 +479,11 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
         _prov: makeProv(sources, fields, crossCheckFailed),
       }
       drops.set(id, record)
+      if (bundleKey !== undefined) {
+        // one bundled cell drops together whatever its conditions are; records of different condition variants never link
+        const groupKey = `${bundleKey}\u0000${conditionsUnknown ? '?' : JSON.stringify(record.conditions)}`
+        together.set(groupKey, [...(together.get(groupKey) ?? []), id])
+      }
       ledger.emittedRecords += 1
       if (bossKind === 'linked') ledger.bossLinkedRecords += 1
       else if (bossKind === 'mismatch') ledger.bossMismatchRecords += 1
@@ -493,6 +507,15 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
         detail: `Cargo Drops row ${b.rowId} (${b.page}: ${b.sourceName}) bundles "${entry.name}"${entry.amount ? ` (${entry.amount})` : ''} with "${primary}" (they drop together), but no Drops row of that source and rate lists "${entry.name}"; that drop is not emitted (never merged into another item's record).`,
         sources: [wikiPageUrl(b.page)],
       })
+    }
+  }
+  // B84: records of one bundled cell drop together — link them both ways (before _prov, key order)
+  for (const ids of together.values()) {
+    if (ids.length < 2) continue
+    ledger.dropsTogetherRecords += ids.length
+    for (const id of ids) {
+      const { _prov, ...rest } = drops.get(id) as DropSource
+      drops.set(id, { ...rest, dropsWith: ids.filter((x) => x !== id).sort(), _prov })
     }
   }
   const list = [...drops.values()].sort((a, b) => a.itemId - b.itemId || a.id.localeCompare(b.id))

@@ -90,23 +90,28 @@ export function quoteLead(text: string, sourceUrl: string, subjects: readonly st
   return title !== undefined && subjects.includes(title) ? `[${title}] ` : '…'
 }
 
+/** A stored wiki sentence pinned verbatim, with its source. */
+export interface PinnedQuote {
+  sourceUrl: string
+  text: string
+}
+
 /**
  * Stored wiki sentences the extraction cut at the END, mid-promise (AMENDMENTS-015 B93(ii)), pinned
- * verbatim with their source: the Mechanical bosses article's "…causes the following to happen", its
- * list left behind (the one sentence the three mech → All mechanical bosses edges share). Pinned, never
- * inferred from a missing full stop — whole sentences without one ship too (Wall of Flesh → Hardmode,
- * Queen Bee, Plantera → Frost Moon). When the stored sentence is re-extracted, the pin stops matching.
+ * verbatim with their source. Pinned, never inferred from a missing full stop — whole sentences without
+ * one ship too (Wall of Flesh → Hardmode, Queen Bee, Plantera → Frost Moon). Empty since P6-S0
+ * (AMENDMENTS-016 B104): its one entry, the Mechanical bosses article's "…causes the following to
+ * happen", was re-extracted as a whole sentence, so the pin matched nothing. The mechanism stays for the
+ * next sentence a re-extraction cannot make whole.
  */
-const CUT_AT_END: readonly { sourceUrl: string; text: string }[] = [
-  { sourceUrl: 'https://terraria.wiki.gg/wiki/Mechanical_bosses', text: 'Defeating each of the three mechanical bosses at least once causes the following to happen' },
-]
+export const CUT_AT_END: readonly PinnedQuote[] = []
 
 /**
  * quoteLead's counterpart at the other end: an ellipsis after a stored sentence pinned as cut at the
- * end (CUT_AT_END), else none. Display only; the stored quote never changes.
+ * end (CUT_AT_END by default), else none. Display only; the stored quote never changes.
  */
-export function quoteTrail(text: string, sourceUrl: string): string | undefined {
-  return CUT_AT_END.some((q) => q.text === text && q.sourceUrl === sourceUrl) ? '…' : undefined
+export function quoteTrail(text: string, sourceUrl: string, cutAtEnd: readonly PinnedQuote[] = CUT_AT_END): string | undefined {
+  return cutAtEnd.some((q) => q.text === text && q.sourceUrl === sourceUrl) ? '…' : undefined
 }
 
 /** Item id → what the page can say about it: name, sprite, and its real page (see module doc). */

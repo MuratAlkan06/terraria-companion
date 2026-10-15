@@ -90,6 +90,12 @@ export const DropSource = z.strictObject({
     master: DropRate.optional(),
   }),
   conditions: z.array(ConditionSlug),
+  /**
+   * AMENDMENTS-015 B84 "drops together" linkage (additive, P6-S0): ids of the other drop records the
+   * wiki lists in the SAME bundled drop cell as this one ("Grenade Launcher" + ":+ Rocket I (50–149)")
+   * — they come in one roll, at the same chance. Symmetric (validated); absent = not bundled.
+   */
+  dropsWith: z.array(z.string()).min(1).optional(),
   _prov: Prov,
 })
 export type DropSource = z.infer<typeof DropSource>

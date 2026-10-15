@@ -11,6 +11,9 @@
  *   is added when verified (> 0; 0 = no contact damage → not applicable). Multi-part bosses whose
  *   boss-level stats are not one row (`statsUnknown`) and every unparseable cell are Unknown; a
  *   `statsUnknown` reason is also a `missing-field` gap on `statsByDifficulty` (the page shows it).
+ *   AMENDMENTS-015 B83(f): stats wholly Unknown because the representative row's health / defense
+ *   cells do not parse (Duke Fishron, Lunatic Cultist, Skeletron Prime, …) state that parse reason
+ *   the same way (statsParseReason), so the page never shows the Unknown without its reason.
  * - location.biomes: the primary row's Cargo `environment` alternatives verbatim (as enemies);
  *   location.time: only with a quote stating it, else Unknown.
  * - summon: item names → Iteminfo IDs (exact + unambiguous or the build fails), registry
@@ -43,6 +46,28 @@ import { GapLog, isoDate, makeProv, moduleSource } from './prov'
 import { OverlayError } from './registry'
 
 const DIFFS: readonly Difficulty[] = ['classic', 'expert', 'master']
+
+/**
+ * AMENDMENTS-015 B83(f): the stated reason behind wholly Unknown stats whose health / defense cells do
+ * not parse — from parse/npcStats.ts's reasons ("defense: several values (alternatives on further
+ * lines)"), worded as one sentence for the page. Contact-damage reasons are left out: contact damage
+ * alone never makes a difficulty Unknown. Undefined when no health / defense reason is recorded.
+ */
+export function statsParseReason(reasons: readonly string[]): string | undefined {
+  const parts = reasons.flatMap((r) => {
+    const m = /^(hp|defense): (.+)$/.exec(r)
+    if (!m) return []
+    const field = m[1] === 'hp' ? 'health' : 'defense'
+    const why = m[2]
+    if (why === 'several values (alternatives on further lines)') return [`${field} has several values (alternatives on further lines)`]
+    if (why === 'flagged by the wiki as based on outdated source code') return [`${field} is flagged by the wiki as based on outdated source code`]
+    if (why === 'a difficulty value carries a note') return [`a ${field} value carries a note`]
+    const text = /^text next to the value \((.+)\)$/.exec(why)
+    if (text) return [`${field} has text next to the value (${text[1]})`]
+    return [`${field}: ${why}`]
+  })
+  return parts.length > 0 ? `No single verified value per difficulty in the wiki's infobox: ${parts.join('; ')}.` : undefined
+}
 
 type CuratedFields = Pick<Boss, 'prepChecklist' | 'strategies' | 'suggestedEquipment'>
 
@@ -239,6 +264,8 @@ export function buildBosses(input: BossBuildInput): BossBuild {
         statsByDifficulty[d] = s
         statRow.byDifficulty[d] = `${s.hp} / ${s.defense} / ${s.contactDamage ?? (dmg[d] === 0 ? 'none' : 'Unknown')}`
       }
+      const why = DIFFS.every((d) => statsByDifficulty[d] === undefined) ? statsParseReason(statRow.reasons) : undefined
+      if (why) gaps.add({ ref: `boss:${e.id}`, field: 'statsByDifficulty', kind: 'missing-field', detail: `${e.name}: ${why}`, sources: [wikiUrl] })
     }
     stats.push(statRow)
 

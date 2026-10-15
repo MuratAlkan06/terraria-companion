@@ -1,61 +1,384 @@
 [
-  { "kind": "recipe", "page": "Zenith", "result": "Zenith", "why": "multi-ingredient endgame recipe, B3 Mythril/Orichalcum Anvil station group" },
-  { "kind": "recipe", "page": "Chests", "result": "Chest", "why": "group ingredient (Any Iron Bar)" },
-  { "kind": "recipe", "page": "Terra Blade", "result": "Terra Blade", "why": "hardmode weapon chain" },
-  { "kind": "recipe", "page": "Night's Edge", "result": "Night's Edge", "why": "world-evil alternative recipes, B3 Demon/Crimson Altar station group" },
-  { "kind": "recipe", "page": "Furnace", "result": "Furnace", "why": "two group ingredients (Any Stone Block, Any Wood); version-tagged row" },
-  { "kind": "recipe", "page": "Ankh Shield", "result": "Ankh Shield", "why": "Tinkerer's Workshop accessory combination" },
-  { "kind": "recipe", "page": "Megashark", "result": "Megashark", "why": "multi-ingredient hardmode recipe" },
-  { "kind": "recipe", "page": "Terraformer", "result": "Terraformer", "why": "result note #note_post_moon_lord → condition station" },
-  { "kind": "recipe", "page": "Snow Cloud", "result": "Snow Cloud", "why": "compound station 'Sky Mill and Snow Biome'" },
-  { "kind": "recipe", "page": "Tin Ore", "result": "Tin Ore", "why": "Shimmer transmutation + Chlorophyte Extractinator conversion" },
-
-  { "kind": "drop", "page": "Eater of Worlds", "item": "Shadow Scale", "source": "Eater of Worlds", "why": "boss drop with per-difficulty rates; multi-part boss (segments)" },
-  { "kind": "drop", "page": "Creeper", "item": "Tissue Sample", "why": "AMENDMENTS-002 B1 per-difficulty quantity" },
-  { "kind": "drop", "page": "Queen Bee", "item": "Bee Gun", "source": "Queen Bee", "why": "boss drop, classic-only (Expert+ via treasure bag)" },
-  { "kind": "drop", "page": "Mothron", "item": "Broken Hero Sword", "why": "event drop (Solar Eclipse) with per-difficulty rates" },
-  { "kind": "drop", "page": "Goblin Sorcerer", "item": "Harpoon", "why": "event drop (Goblin Army)" },
-  { "kind": "drop", "page": "Armored Skeleton", "item": "Armor Polish", "why": "per-difficulty rate (expert boost)" },
-  { "kind": "drop", "page": "Zombie", "item": "Shackle", "source": "Zombie", "why": "common enemy drop" },
-  { "kind": "drop", "page": "Present", "item": "Red Ryder", "why": "rate split pre-Hardmode / Hardmode" },
-  { "kind": "drop", "page": "Gold Chest", "item": "Magic Mirror", "why": "chest loot with layer notes incl. unregistered 'lava layer' → Unknown" },
-  { "kind": "drop", "page": "Pumpking", "item": "The Horseman's Blade", "why": "event boss drop with a rate range → Unknown (honesty)" },
-
-  { "kind": "weapon", "page": "Zenith", "item": "Zenith", "why": "P2-S2 AC2: melee, useTime 10 ≠ useAnimation 30 (TO-VERIFY #10), deep recipe chain" },
-  { "kind": "weapon", "page": "Terra Blade", "item": "Terra Blade", "why": "P2-S2 AC2: melee, crafted (True Night's Edge + True Excalibur)" },
-  { "kind": "weapon", "page": "Minishark", "item": "Minishark", "why": "P2-S2 AC2: ranged gun, ammo class, vendor purchase (Arms Dealer)" },
-  { "kind": "weapon", "page": "Daedalus Stormbow", "item": "Daedalus Stormbow", "why": "P2-S2 AC2: ranged bow, Hallowed Mimic drop" },
-  { "kind": "weapon", "page": "Razorblade Typhoon", "item": "Razorblade Typhoon", "why": "P2-S2 AC2: magic, mana cost, boss drop (Duke Fishron)" },
-  { "kind": "weapon", "page": "Terraprisma", "item": "Terraprisma", "why": "P2-S2 AC2: summon minion, no crit (not applicable), boss drop" },
-  { "kind": "weapon", "page": "Kaleidoscope", "item": "Kaleidoscope", "why": "P2-S2 AC2: summon whip, boss drop + treasure bag" },
-  { "kind": "weapon", "page": "Night's Edge", "item": "Night's Edge", "why": "P2-S2 AC2: melee, world-evil alternative recipes" },
-  { "kind": "weapon", "page": "Toxikarp", "item": "Toxikarp", "why": "P2-S2 AC2: ranged; fishing-only (Corruption) → acquisition must be Unknown, never guessed (fishing not modeled)" },
-  { "kind": "weapon", "page": "Celebration Mk2", "item": "Celebration Mk2", "why": "P2-S2 AC2: ranged launcher, rocket ammo class, Moon Lord drop" },
-
-  { "kind": "boss", "page": "King Slime", "boss": "king-slime", "item": "Slime Staff", "why": "P2-S6: summon item, per-difficulty stats (npcstat cells), boss + treasure-bag drop rates" },
-  { "kind": "boss", "page": "Eye of Cthulhu", "boss": "eye-of-cthulhu", "item": "Binoculars", "why": "P2-S6: night summon, stats, classic vs bag rate" },
-  { "kind": "boss", "page": "Deerclops", "boss": "deerclops", "item": "Pew-matic Horn", "why": "P2-S6: optional boss, mode-content damage cell with (contact) note" },
-  { "kind": "boss", "page": "Queen Slime", "boss": "queen-slime", "item": "Blade Staff", "why": "P2-S6: Hardmode boss, Hallow summon condition, stats" },
-  { "kind": "boss", "page": "Plantera", "boss": "plantera", "item": "Temple Key", "why": "P2-S6: no summon item, bare-integer defense, contact damage Unknown (outdated-source flag)" },
-  { "kind": "boss", "page": "Wall of Flesh", "boss": "wall-of-flesh", "item": "Breaker Blade", "why": "P2-S6: required gate to Hardmode; multi-part stats Unknown (mouth vs eye defense)" },
-  { "kind": "boss", "page": "Golem", "boss": "golem", "item": "Stynger", "why": "P2-S6: multi-part boss → stats Unknown; summon item + post-Plantera condition" },
-  { "kind": "ammo", "page": "Musket Ball", "item": "Musket Ball", "why": "P2-S7 / B2: velocity multiplier 2× from the own infobox, cross-checked with Projectileinfo extraUpdates 1" },
-  { "kind": "ammo", "page": "High Velocity Bullet", "item": "High Velocity Bullet", "why": "P2-S7: highest multiplier (8×), crafted bullet" },
-  { "kind": "ammo", "page": "Rockets", "item": "Rocket III", "why": "P2-S7: a rocket on a list article — no own infobox, so the multiplier is Unknown; damage from the Rockets table" },
-  { "kind": "ammo", "page": "Crystal Dart", "item": "Crystal Dart", "why": "P2-S7: a dart (Seed ammo class) with a 2× multiplier" },
-  { "kind": "ammo", "page": "Gel", "item": "Gel", "why": "P2-S7: ammo with no damage of its own → damage / knockback / velocity bonus Unknown" },
-  { "kind": "buff", "page": "Ironskin Potion", "buff": "ironskin", "why": "P2-S7: loadout potion — stat effect from the buff tooltip, game ID from the Buff IDs table + Internal Buff ID" },
-  { "kind": "buff", "page": "Acid Venom", "buff": "acid-venom", "why": "P2-S7: Lab DoT — enemy 30 HP/s vs player 15 HP/s in the Effects row" },
-  { "kind": "buff", "page": "Tipsy", "buff": "tipsy", "why": "P2-S7: debuff with player-side stat effects (Ale / Ale Tosser), quoted from the effect list" },
-  { "kind": "armor-set", "page": "Hallowed armor", "set": "hallowed-armor", "why": "P2-S8: four class-variant helmets; the Hallowed Hood segment adds +2 minions; per-helmet Defense totals" },
-  { "kind": "armor-set", "page": "Chlorophyte armor", "set": "chlorophyte-armor", "why": "P2-S8: mixed set bonus — a special (leaf crystal) plus helmet-specific stats (Mask 5% damage reduction, Visor +2 minions)" },
-  { "kind": "armor-set", "page": "Spectre armor", "set": "spectre-armor", "why": "P2-S8: two helmets with different bonuses; a stated reduction (negative damage-pct) plus its unmodeled remainder" },
-  { "kind": "armor-set", "page": "Frost armor", "set": "frost-armor", "why": "P2-S8: hybrid melee/ranged set — class 'other' by a quoted overlay ruling" },
-  { "kind": "armor-set", "page": "Beetle armor", "set": "beetle-armor", "why": "P2-S8: two alternative chests with different bonuses — withheld (schema cannot express it), pieces without setId + gap" },
-  { "kind": "accessory", "page": "Ankh Shield", "item": "Ankh Shield", "why": "P2-S8: tinkering chain downward — combinedFrom Obsidian Shield + Ankh Charm; defense from Iteminfo" },
-  { "kind": "accessory", "page": "Ankh Charm", "item": "Ankh Charm", "why": "P2-S8: tinkering chain both directions — combinedFrom the five immunity pairs, upgradesTo Ankh Shield" },
-  { "kind": "wing", "page": "Wings", "item": "Celestial Starboard", "why": "P2-S8: wingStats — 3 s flight (180 ticks) and hover from the Wings list table" },
-  { "kind": "wing", "page": "Wings", "item": "Fledgling Wings", "why": "P2-S8: shortest flight time (0.42 s → 25 ticks within the table's precision), no hover" },
-  { "kind": "accessory", "page": "Razortip", "item": "Razortip", "why": "P2-S8: honest Unknown effects — the wiki transcribes no game text for this 1.4.5 accessory" },
-  { "kind": "accessory", "page": "Worm Scarf", "item": "Worm Scarf", "why": "P2-S8: structured stat effect (damage-reduction-pct 17) cross-checked with Equipinfo endurance" }
+  {
+    "kind": "recipe",
+    "page": "Zenith",
+    "result": "Zenith",
+    "why": "multi-ingredient endgame recipe, B3 Mythril/Orichalcum Anvil station group"
+  },
+  {
+    "kind": "recipe",
+    "page": "Chests",
+    "result": "Chest",
+    "why": "group ingredient (Any Iron Bar)"
+  },
+  {
+    "kind": "recipe",
+    "page": "Terra Blade",
+    "result": "Terra Blade",
+    "why": "hardmode weapon chain"
+  },
+  {
+    "kind": "recipe",
+    "page": "Night's Edge",
+    "result": "Night's Edge",
+    "why": "world-evil alternative recipes, B3 Demon/Crimson Altar station group"
+  },
+  {
+    "kind": "recipe",
+    "page": "Furnace",
+    "result": "Furnace",
+    "why": "two group ingredients (Any Stone Block, Any Wood); version-tagged row"
+  },
+  {
+    "kind": "recipe",
+    "page": "Ankh Shield",
+    "result": "Ankh Shield",
+    "why": "Tinkerer's Workshop accessory combination"
+  },
+  {
+    "kind": "recipe",
+    "page": "Megashark",
+    "result": "Megashark",
+    "why": "multi-ingredient hardmode recipe"
+  },
+  {
+    "kind": "recipe",
+    "page": "Terraformer",
+    "result": "Terraformer",
+    "why": "result note #note_post_moon_lord → condition station"
+  },
+  {
+    "kind": "recipe",
+    "page": "Snow Cloud",
+    "result": "Snow Cloud",
+    "why": "compound station 'Sky Mill and Snow Biome'"
+  },
+  {
+    "kind": "recipe",
+    "page": "Tin Ore",
+    "result": "Tin Ore",
+    "why": "Shimmer transmutation + Chlorophyte Extractinator conversion"
+  },
+  {
+    "kind": "drop",
+    "page": "Eater of Worlds",
+    "item": "Shadow Scale",
+    "source": "Eater of Worlds",
+    "why": "boss drop with per-difficulty rates; multi-part boss (segments)"
+  },
+  {
+    "kind": "drop",
+    "page": "Creeper",
+    "item": "Tissue Sample",
+    "why": "AMENDMENTS-002 B1 per-difficulty quantity"
+  },
+  {
+    "kind": "drop",
+    "page": "Queen Bee",
+    "item": "Bee Gun",
+    "source": "Queen Bee",
+    "why": "boss drop, classic-only (Expert+ via treasure bag)"
+  },
+  {
+    "kind": "drop",
+    "page": "Mothron",
+    "item": "Broken Hero Sword",
+    "why": "event drop (Solar Eclipse) with per-difficulty rates"
+  },
+  {
+    "kind": "drop",
+    "page": "Goblin Sorcerer",
+    "item": "Harpoon",
+    "why": "event drop (Goblin Army)"
+  },
+  {
+    "kind": "drop",
+    "page": "Armored Skeleton",
+    "item": "Armor Polish",
+    "why": "per-difficulty rate (expert boost)"
+  },
+  {
+    "kind": "drop",
+    "page": "Zombie",
+    "item": "Shackle",
+    "source": "Zombie",
+    "why": "common enemy drop"
+  },
+  {
+    "kind": "drop",
+    "page": "Present",
+    "item": "Red Ryder",
+    "why": "rate split pre-Hardmode / Hardmode"
+  },
+  {
+    "kind": "drop",
+    "page": "Gold Chest",
+    "item": "Magic Mirror",
+    "why": "chest loot with layer notes incl. unregistered 'lava layer' → Unknown"
+  },
+  {
+    "kind": "drop",
+    "page": "Pumpking",
+    "item": "The Horseman's Blade",
+    "why": "event boss drop with a rate range → Unknown (honesty)"
+  },
+  {
+    "kind": "weapon",
+    "page": "Zenith",
+    "item": "Zenith",
+    "why": "P2-S2 AC2: melee, useTime 10 ≠ useAnimation 30 (TO-VERIFY #10), deep recipe chain"
+  },
+  {
+    "kind": "weapon",
+    "page": "Terra Blade",
+    "item": "Terra Blade",
+    "why": "P2-S2 AC2: melee, crafted (True Night's Edge + True Excalibur)"
+  },
+  {
+    "kind": "weapon",
+    "page": "Minishark",
+    "item": "Minishark",
+    "why": "P2-S2 AC2: ranged gun, ammo class, vendor purchase (Arms Dealer)"
+  },
+  {
+    "kind": "weapon",
+    "page": "Daedalus Stormbow",
+    "item": "Daedalus Stormbow",
+    "why": "P2-S2 AC2: ranged bow, Hallowed Mimic drop"
+  },
+  {
+    "kind": "weapon",
+    "page": "Razorblade Typhoon",
+    "item": "Razorblade Typhoon",
+    "why": "P2-S2 AC2: magic, mana cost, boss drop (Duke Fishron)"
+  },
+  {
+    "kind": "weapon",
+    "page": "Terraprisma",
+    "item": "Terraprisma",
+    "why": "P2-S2 AC2: summon minion, no crit (not applicable), boss drop"
+  },
+  {
+    "kind": "weapon",
+    "page": "Kaleidoscope",
+    "item": "Kaleidoscope",
+    "why": "P2-S2 AC2: summon whip, boss drop + treasure bag"
+  },
+  {
+    "kind": "weapon",
+    "page": "Night's Edge",
+    "item": "Night's Edge",
+    "why": "P2-S2 AC2: melee, world-evil alternative recipes"
+  },
+  {
+    "kind": "weapon",
+    "page": "Toxikarp",
+    "item": "Toxikarp",
+    "why": "P2-S2 AC2: ranged; fishing-only (Corruption) → acquisition must be Unknown, never guessed (fishing not modeled)"
+  },
+  {
+    "kind": "weapon",
+    "page": "Celebration Mk2",
+    "item": "Celebration Mk2",
+    "why": "P2-S2 AC2: ranged launcher, rocket ammo class, Moon Lord drop"
+  },
+  {
+    "kind": "boss",
+    "page": "King Slime",
+    "boss": "king-slime",
+    "item": "Slime Staff",
+    "why": "P2-S6: summon item, per-difficulty stats (npcstat cells), boss + treasure-bag drop rates"
+  },
+  {
+    "kind": "boss",
+    "page": "Eye of Cthulhu",
+    "boss": "eye-of-cthulhu",
+    "item": "Binoculars",
+    "why": "P2-S6: night summon, stats, classic vs bag rate"
+  },
+  {
+    "kind": "boss",
+    "page": "Deerclops",
+    "boss": "deerclops",
+    "item": "Pew-matic Horn",
+    "why": "P2-S6: optional boss, mode-content damage cell with (contact) note"
+  },
+  {
+    "kind": "boss",
+    "page": "Queen Slime",
+    "boss": "queen-slime",
+    "item": "Blade Staff",
+    "why": "P2-S6: Hardmode boss, Hallow summon condition, stats"
+  },
+  {
+    "kind": "boss",
+    "page": "Plantera",
+    "boss": "plantera",
+    "item": "Temple Key",
+    "why": "P2-S6: no summon item, bare-integer defense, contact damage Unknown (outdated-source flag)"
+  },
+  {
+    "kind": "boss",
+    "page": "Wall of Flesh",
+    "boss": "wall-of-flesh",
+    "item": "Breaker Blade",
+    "why": "P2-S6: required gate to Hardmode; multi-part stats Unknown (mouth vs eye defense)"
+  },
+  {
+    "kind": "boss",
+    "page": "Golem",
+    "boss": "golem",
+    "item": "Stynger",
+    "why": "P2-S6: multi-part boss → stats Unknown; summon item + post-Plantera condition"
+  },
+  {
+    "kind": "ammo",
+    "page": "Musket Ball",
+    "item": "Musket Ball",
+    "why": "P2-S7 / B2: velocity multiplier 2× from the own infobox, cross-checked with Projectileinfo extraUpdates 1"
+  },
+  {
+    "kind": "ammo",
+    "page": "High Velocity Bullet",
+    "item": "High Velocity Bullet",
+    "why": "P2-S7: highest multiplier (8×), crafted bullet"
+  },
+  {
+    "kind": "ammo",
+    "page": "Rockets",
+    "item": "Rocket III",
+    "why": "P2-S7: a rocket on a list article — no own infobox, so the multiplier is Unknown; damage from the Rockets table"
+  },
+  {
+    "kind": "ammo",
+    "page": "Crystal Dart",
+    "item": "Crystal Dart",
+    "why": "P2-S7: a dart (Seed ammo class) with a 2× multiplier"
+  },
+  {
+    "kind": "ammo",
+    "page": "Gel",
+    "item": "Gel",
+    "why": "P2-S7: ammo with no damage of its own → damage / knockback / velocity bonus Unknown"
+  },
+  {
+    "kind": "buff",
+    "page": "Ironskin Potion",
+    "buff": "ironskin",
+    "why": "P2-S7: loadout potion — stat effect from the buff tooltip, game ID from the Buff IDs table + Internal Buff ID"
+  },
+  {
+    "kind": "buff",
+    "page": "Acid Venom",
+    "buff": "acid-venom",
+    "why": "P2-S7: Lab DoT — enemy 30 HP/s vs player 15 HP/s in the Effects row"
+  },
+  {
+    "kind": "buff",
+    "page": "Tipsy",
+    "buff": "tipsy",
+    "why": "P2-S7: debuff with player-side stat effects (Ale / Ale Tosser), quoted from the effect list"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Hallowed armor",
+    "set": "hallowed-armor",
+    "why": "P2-S8: four class-variant helmets; the Hallowed Hood segment adds +2 minions; per-helmet Defense totals"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Chlorophyte armor",
+    "set": "chlorophyte-armor",
+    "why": "P2-S8: mixed set bonus — a special (leaf crystal) plus helmet-specific stats (Mask 5% damage reduction, Visor +2 minions)"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Spectre armor",
+    "set": "spectre-armor",
+    "why": "P2-S8: two helmets with different bonuses; a stated reduction (negative damage-pct) plus its unmodeled remainder"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Frost armor",
+    "set": "frost-armor",
+    "why": "P2-S8: hybrid melee/ranged set — class 'other' by a quoted overlay ruling"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Beetle armor",
+    "set": "beetle-armor",
+    "why": "P2-S8: two alternative chests with different bonuses — withheld (schema cannot express it), pieces without setId + gap"
+  },
+  {
+    "kind": "accessory",
+    "page": "Ankh Shield",
+    "item": "Ankh Shield",
+    "why": "P2-S8: tinkering chain downward — combinedFrom Obsidian Shield + Ankh Charm; defense from Iteminfo"
+  },
+  {
+    "kind": "accessory",
+    "page": "Ankh Charm",
+    "item": "Ankh Charm",
+    "why": "P2-S8: tinkering chain both directions — combinedFrom the five immunity pairs, upgradesTo Ankh Shield"
+  },
+  {
+    "kind": "wing",
+    "page": "Wings",
+    "item": "Celestial Starboard",
+    "why": "P2-S8: wingStats — 3 s flight (180 ticks) and hover from the Wings list table"
+  },
+  {
+    "kind": "wing",
+    "page": "Wings",
+    "item": "Fledgling Wings",
+    "why": "P2-S8: shortest flight time (0.42 s → 25 ticks within the table's precision), no hover"
+  },
+  {
+    "kind": "accessory",
+    "page": "Razortip",
+    "item": "Razortip",
+    "why": "P2-S8: honest Unknown effects — the wiki transcribes no game text for this 1.4.5 accessory"
+  },
+  {
+    "kind": "accessory",
+    "page": "Worm Scarf",
+    "item": "Worm Scarf",
+    "why": "P2-S8: structured stat effect (damage-reduction-pct 17) cross-checked with Equipinfo endurance"
+  },
+  {
+    "kind": "item",
+    "page": "Fishing catches",
+    "item": "Toxikarp",
+    "why": "P6-S0 / AMENDMENTS-004 B20: a weapon gains its fishing route (Corruption, Hardmode)"
+  },
+  {
+    "kind": "item",
+    "page": "Fishing catches",
+    "item": "Neon Tetra",
+    "why": "P6-S0 / B20: a fish (fishing category) — Jungle catch"
+  },
+  {
+    "kind": "item",
+    "page": "Familiar set",
+    "item": "Familiar Shirt",
+    "why": "P6-S0: a vanity piece — Clothier sale gated by Skeletron"
+  },
+  {
+    "kind": "item",
+    "page": "Silk",
+    "item": "Silk",
+    "why": "P6-S0: a material linked both ways — crafted from Cobweb, ingredient of many recipes"
+  },
+  {
+    "kind": "item",
+    "page": "Copper Pickaxe",
+    "item": "Copper Pickaxe",
+    "why": "P6-S0: a tool — pickaxe power cross-checked, recipe + Merchant"
+  },
+  {
+    "kind": "item",
+    "page": "Suspicious Looking Eye",
+    "item": "Suspicious Looking Eye",
+    "why": "P6-S0 / AMENDMENTS-015 B96(d): the boss summon is a record in items.detail.json (own article, summons the Eye of Cthulhu)"
+  }
 ]

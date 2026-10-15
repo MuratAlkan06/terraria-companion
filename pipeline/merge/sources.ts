@@ -17,6 +17,11 @@
  * A derivable route = the row's conditions + "this NPC is present" (the NPC's own availability: its
  * conditions, the minimum over its "one of these items" list, the NPCs it needs).
  * A B19-withheld item (overlays/withheld.json) gets only an unknown route (acquisition-withheld).
+ *
+ * FISHING ROUTES (P6-S0, AMENDMENTS-004 B20): every item the "Fishing catches" article lists
+ * (merge/fishing.ts) gets an unknown route (fishing-route-ungated): its emitted `fishing` acquisition
+ * is real, but no fishing place is reviewed for gating, so it blocks a gated minimum like any
+ * unverified input (a gate-free route of another kind still derives exactly).
  */
 import type { Acquisition, ProvSource } from '../../src/schemas'
 import type { Article } from '../fetch/articles'
@@ -27,6 +32,7 @@ import { parseShopTables, type ShopRow } from '../parse/shops'
 import { stripMarkup } from '../parse/text'
 import type { WithheldField } from './acquisition'
 import { Evidence } from './evidence'
+import type { FishingRoute } from './fishing'
 import { containerKey, type ExtraRoute, type NpcAvailability } from './gating'
 import type { ConditionsOverlay, ContainersOverlay, GatherablesOverlay, VendorsOverlay } from './overlays'
 import { OverlayError } from './registry'
@@ -54,6 +60,8 @@ export interface SourcesInput {
   gatherables: GatherablesOverlay
   conditions: ConditionsOverlay
   withheld?: ReadonlyMap<number, WithheldField>
+  /** P6-S0 B20: fishing routes per item (merge/fishing.ts) + the "Fishing catches" article provenance. */
+  fishing?: { byItem: ReadonlyMap<number, readonly FishingRoute[]>; source: ProvSource }
 }
 
 export interface SourcesReport {
@@ -77,6 +85,9 @@ export interface AcquisitionSources {
   /** The vendor route of one item + vendor tag name (the emitted purchase acquisition reads it). */
   vendorRoute: (itemId: number, itemName: string, vendorTag: string) => VendorRoute
   gather: Map<number, GatherRoute>
+  /** P6-S0 B20: fishing routes per item (emitted as `fishing` acquisitions) and their article provenance. */
+  fishing: ReadonlyMap<number, readonly FishingRoute[]>
+  fishingSource?: ProvSource
   /** Curated provenance of the overlay pages (for records whose gating used them — report only). */
   sources: ProvSource[]
   report: SourcesReport
@@ -225,6 +236,12 @@ export function buildAcquisitionSources(input: SourcesInput): AcquisitionSources
     report.gatherables.push({ item: g.item, id, url: p.url, conditions: [...g.conditions].sort() })
   }
 
+  // ---------------- fishing (P6-S0 B20) ----------------
+  for (const id of [...(input.fishing?.byItem.keys() ?? [])].sort((a, b) => a - b)) {
+    if (input.withheld?.has(id)) continue // the withheld acquisition already blocks (acquisition-withheld)
+    push(id, { kind: 'unknown', blocker: 'fishing-route-ungated' })
+  }
+
   // ---------------- containers ----------------
   const containers = new Map<string, { conditions: string[] }>()
   for (const c of input.containers.entries) {
@@ -259,6 +276,8 @@ export function buildAcquisitionSources(input: SourcesInput): AcquisitionSources
     exhaustive,
     vendorRoute,
     gather,
+    fishing: input.fishing?.byItem ?? new Map(),
+    ...(input.fishing ? { fishingSource: input.fishing.source } : {}),
     sources: [...pageSources.values()].sort((a, b) => a.url.localeCompare(b.url)),
     report,
   }

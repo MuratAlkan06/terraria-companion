@@ -207,9 +207,12 @@ describe('fresh world (nothing tracked): the Eye of Cthulhu', () => {
     expect(r.assumptions.map((a) => a.id)).toContain('potions-active')
     // a set bonus that is a number (Wood armor: "1 defense") is counted, and says so — not "named, not scored"
     expect(line(r, 'synergy.set')?.text).toBe('Your Wood armor set bonus is active: 1 defense. Its numbers count with the rest of your gear.')
-    // the summoning item has no record of its own: named from the Iteminfo universe when the caller gives it, else "item #43"
-    expect(line(r, 'preparation.boss-summon')?.text).toMatch(/^Eye of Cthulhu is summoned with item #43: /)
-    const named = analyze({ bossId: 'eye-of-cthulhu' }, { ...DATA, nameOf: (n) => (n === 43 ? 'Suspicious Looking Eye' : undefined) })
+    // P6-S0 (B96(d) data side): the summoning item is a record of its own (items.detail.json) and is named from it
+    expect(line(r, 'preparation.boss-summon')?.text).toMatch(/^Eye of Cthulhu is summoned with Suspicious Looking Eye: /)
+    // without a record: named from the Iteminfo universe when the caller gives it, else "item #43"
+    const noRecord = { ...DATA, items: new Map([...DATA.items].filter(([id]) => id !== 43)) }
+    expect(line(analyze({ bossId: 'eye-of-cthulhu' }, noRecord), 'preparation.boss-summon')?.text).toMatch(/^Eye of Cthulhu is summoned with item #43: /)
+    const named = analyze({ bossId: 'eye-of-cthulhu' }, { ...noRecord, nameOf: (n) => (n === 43 ? 'Suspicious Looking Eye' : undefined) })
     expect(line(named, 'preparation.boss-summon')?.text).toMatch(/^Eye of Cthulhu is summoned with Suspicious Looking Eye: /)
   })
 

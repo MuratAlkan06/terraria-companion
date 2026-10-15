@@ -30,7 +30,8 @@
  *     NPC's quoted conditions ∪ the shop row's mapped conditions ∪, for every "has one of these items"
  *     requirement, the MINIMUM over those items (any one suffices) ∪ the gating of NPCs it needs;
  *   · unknown: a route that exists but is not derivable (a vendor whose availability or shop row is
- *     not structured) — it blocks exactness like any unverified input.
+ *     not structured; a fishing route, P6-S0 merge/fishing.ts) — it blocks exactness like any
+ *     unverified input.
  * Conditions with `satisfiedByNode` become node gates (hardmode ⇐ the Hardmode milestone); the rest
  * stay conditions. Boss gates are transitively reduced against the required-gate DAG and
  * `stage` = max over the gating nodes of (unlocksStage ?? stage) (AMENDMENTS-005 B22; early-prehm
@@ -70,7 +71,8 @@ import {
 } from '../../src/schemas'
 
 export const GATING_BLOCKERS = {
-  'no-known-route': 'an input item has no recipe, drop, vendor or gatherable route in the datasets (fishing-only or otherwise unmodeled items: item corpus P6-S0)',
+  'no-known-route': 'an input item has no recipe, drop, vendor, gatherable or fishing route in the datasets (an unmodeled source: event loot, NPC gifts, Extractinator output, …)',
+  'fishing-route-ungated': 'a fishing route (the "Fishing catches" article, AMENDMENTS-004 B20) exists, but whether its pond / biome / height is reachable before a boss is not reviewed — fishing never counts as a verified gate (P6-S0)',
   'drop-source-ungated': 'a drop comes from an enemy, an event boss or a container outside the reviewed container registry (Enemy.stage Unknown; event bosses are progression markers, not Boss records; crates / lock boxes / bags are not reviewed)',
   'boss-attribution-pending': 'a boss drop has no verified boss → progression-node attribution (source.bossId Unknown: the row\'s NPC ids disagree with the registry boss)',
   'drop-conditions-unknown': 'a drop lists its conditions as Unknown',

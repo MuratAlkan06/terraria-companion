@@ -255,7 +255,7 @@ export function equipmentCore(ctx: EquipmentContext, c: EquipmentCandidate, s: R
     ctx.gaps.add({ ref: s.ref, field: 'sprite', kind: 'missing-sprite', detail: `${c.name}: no wiki image file resolved for "${str(c.row.imagefile)}"; the placeholder sprite is shown`, sources: [s.wikiUrl] })
   }
   // acquisition + §7b gating
-  const { acquisition, gating } = itemRoutes({
+  const { acquisition, gating, sources: routeSources } = itemRoutes({
     id,
     name: c.name,
     noun: ctx.noun,
@@ -271,6 +271,7 @@ export function equipmentCore(ctx: EquipmentContext, c: EquipmentCandidate, s: R
     reasons: ctx.reasons,
     ...(ctx.sources ? { sources: ctx.sources } : {}),
   })
+  s.sources.push(...routeSources)
   let gatedBy: GatedBy | undefined
   if (gating.ok) gatedBy = gating.gatedBy
   else {

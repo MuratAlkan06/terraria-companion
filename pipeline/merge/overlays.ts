@@ -28,6 +28,12 @@ const ConditionOverlayEntry = z.strictObject({
        * rows do not carry these captions.
        */
       dropCaptions: z.array(z.string().min(1)).optional(),
+      /**
+       * P6-S0 (AMENDMENTS-004 B20): condition labels of the "Fishing catches" article (its World status /
+       * generic definitions, or a biome definition whose requirement is this condition — the Dungeon's
+       * "Skeletron is defeated") that a catch row's route requires (merge/fishing.ts).
+       */
+      fishingConditions: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 })
@@ -625,15 +631,18 @@ export interface ConditionMatchers {
   recipeNote: Map<string, ConditionOverlayEntry>
   dropNote: Map<string, ConditionOverlayEntry>
   dropCaption: Map<string, ConditionOverlayEntry>
+  /** P6-S0: "Fishing catches" condition label → condition (merge/fishing.ts). */
+  fishing: Map<string, ConditionOverlayEntry>
 }
 
 export function conditionMatchers(overlay: ConditionsOverlay): ConditionMatchers {
-  const m: ConditionMatchers = { station: new Map(), recipeNote: new Map(), dropNote: new Map(), dropCaption: new Map() }
+  const m: ConditionMatchers = { station: new Map(), recipeNote: new Map(), dropNote: new Map(), dropCaption: new Map(), fishing: new Map() }
   for (const e of overlay.entries) {
     for (const t of e.match?.stations ?? []) m.station.set(t, e)
     for (const t of e.match?.recipeNotes ?? []) m.recipeNote.set(t, e)
     for (const t of e.match?.dropNotes ?? []) m.dropNote.set(t, e)
     for (const t of e.match?.dropCaptions ?? []) m.dropCaption.set(t, e)
+    for (const t of e.match?.fishingConditions ?? []) m.fishing.set(t, e)
   }
   return m
 }

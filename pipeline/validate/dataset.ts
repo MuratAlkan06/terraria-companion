@@ -21,11 +21,20 @@
  *   them into gaps.json so re-validating a committed dataset reproduces the same report.
  * - `fixtures`: the §7a-13 fixture checks run whenever bosses/nodes/edges are produced; a subset
  *   dataset may restrict them to the facts its records can express (validate/fixtures.ts).
+ * - `itemClosure` (P6-S0): the item corpus is complete — every item a recipe (result, ingredient,
+ *   recipe-group member, station) or a drop references must be an emitted record or carry a declared
+ *   stage gap (`field: "id"`), checked by validate/closure.ts.
+ *
+ * ITEM SHARDS (P6-S0): the `items` collection is items.detail.json plus the ID-range shards
+ * items.detail.<n>.json listed by items.detail.index.json (src/schemas ItemDetailIndex); the index must
+ * match the files exactly (emit/itemShards.ts checkItemShards).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as z from 'zod'
 import {
+  ITEM_DETAIL_INDEX_FILE,
+  ItemDetailIndex,
   Accessory,
   ArmorPiece,
   ArmorSet,
@@ -47,6 +56,7 @@ import {
   Weapon,
   WikiUrl,
 } from '../../src/schemas'
+import { checkItemShards, ITEM_SHARD_FILE } from '../emit/itemShards'
 import type { PipelineError } from './errors'
 import { FIXTURE_NAMES } from './fixtures'
 
@@ -110,6 +120,8 @@ export const DatasetManifest = z.strictObject({
    * (validate/curation.ts). The emitted app dataset lists exactly src/schemas/bossPages.ts; absent = none.
    */
   bossPages: z.array(Slug).optional(),
+  /** P6-S0: item references must resolve to emitted records or declared gaps (validate/closure.ts). */
+  itemClosure: z.literal(true).optional(),
 })
 export type DatasetManifest = z.infer<typeof DatasetManifest>
 
@@ -210,10 +222,12 @@ export function loadDatasetDir(dir: string): { raw: RawDataset; errors: Pipeline
     'progression.json',
     ...OUTPUT_FILES,
     ...Object.values(LIST_FILES),
+    ITEM_DETAIL_INDEX_FILE,
   ])
   for (const { file } of Object.values(COLLECTIONS)) known.add(file)
+  const shardFiles = readdirSync(dir).filter((f) => ITEM_SHARD_FILE.test(f)).sort()
   for (const file of readdirSync(dir)) {
-    if (file.endsWith('.json') && !known.has(file)) errors.push(fileError(file, 'unknown dataset file'))
+    if (file.endsWith('.json') && !known.has(file) && !ITEM_SHARD_FILE.test(file)) errors.push(fileError(file, 'unknown dataset file'))
   }
 
   const collections: RawDataset['collections'] = {}
@@ -223,6 +237,25 @@ export function loadDatasetDir(dir: string): { raw: RawDataset; errors: Pipeline
     const value = readJson(dir, file, errors)
     if (value !== undefined) collections[key] = value
   }
+  // P6-S0: the items collection = the core file + the shards its index lists
+  const indexRaw = readJson(dir, ITEM_DETAIL_INDEX_FILE, errors)
+  if (indexRaw === undefined) {
+    if (shardFiles.length > 0) errors.push(fileError(ITEM_DETAIL_INDEX_FILE, `missing, but item shard files exist (${shardFiles.join(', ')})`))
+  } else {
+    const index = ItemDetailIndex.safeParse(indexRaw)
+    if (!index.success) errors.push(fileError(ITEM_DETAIL_INDEX_FILE, 'invalid item index'))
+    else {
+      const records = new Map<string, { id?: unknown }[] | undefined>()
+      for (const f of index.data.files) {
+        const value = f.file === COLLECTIONS.items.file ? collections.items : readJson(dir, f.file, errors)
+        records.set(f.file, Array.isArray(value) ? (value as { id?: unknown }[]) : undefined)
+      }
+      const check = checkItemShards(index.data, records, shardFiles)
+      for (const p of check.problems) errors.push(fileError(ITEM_DETAIL_INDEX_FILE, p))
+      collections.items = index.data.files.flatMap((f) => records.get(f.file) ?? []).sort((a, b) => Number(a.id) - Number(b.id))
+    }
+  }
+
   const progression = readJson(dir, 'progression.json', errors)
   if (progression !== undefined) {
     if (typeof progression !== 'object' || progression === null || Array.isArray(progression)) {

@@ -8,7 +8,13 @@
  * thumbnails (public/sprites/thumbs/…, first frame of every sprite over 100 KB, emit/thumbnail.ts)
  * from the verified binaries — no network.
  *
- *   tsx pipeline/cli/sprites.ts [--refresh]
+ *   tsx pipeline/cli/sprites.ts [--refresh] [--corpus]
+ *
+ * P6-S0 item corpus: the corpus items items.detail.json holds (every item a boss record references —
+ * summon and prep-checklist items the shipped boss pages / readiness checker render) are downloaded by
+ * default; `--corpus` adds every other corpus item of the manifest (≈ 4,900 files ≈ 90 min at the D2
+ * pace — deferred until the encyclopedia view ships, the AMENDMENTS-011 B55 precedent). Their image
+ * URLs are the cached imageinfo of the manifest entry's SHA-1.
  *
  * Resumable + cached: a file already present (wiki SHA-1, or the served SHA-1 recorded in
  * pipeline/raw/sprites-index.json for the same wiki version) is skipped. Verification: the
@@ -25,6 +31,7 @@ import { parseArgs } from 'node:util'
 import { FetchError, RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { sha1Hex } from '../fetch/client'
 import { gifThumbnail, thumbnailFor } from '../emit/thumbnail'
+import { SpriteManifest } from '../../src/schemas'
 import { identifyAmmo } from '../merge/ammo'
 import { identifyPotions } from '../merge/potions'
 import { bossSprite } from '../merge/bosses'
@@ -36,7 +43,7 @@ const repoRoot = resolve(import.meta.dirname, '..', '..')
 const SPRITES_DIR = join(repoRoot, 'public/sprites')
 
 async function main(): Promise<number> {
-  const { values } = parseArgs({ options: { refresh: { type: 'boolean', default: false } }, strict: true })
+  const { values } = parseArgs({ options: { refresh: { type: 'boolean', default: false }, corpus: { type: 'boolean', default: false } }, strict: true })
   const client = new WikiClient({ cacheDir: RAW_DIR, refresh: false, log: (l) => console.log(l) })
   const started = Date.now()
   const sync = await runSyncPlan(client)
@@ -73,7 +80,22 @@ async function main(): Promise<number> {
       return image ? [{ id: item.id, label: `items/${item.id}`, name, image, dest: join(SPRITES_DIR, 'items', `${item.id}.${/\.gif$/i.test(image.file) ? 'gif' : 'png'}`) }] : []
     })
     .sort((a, b) => a.id - b.id)
-  const targets = [...weaponTargets, ...bossTargets, ...itemTargets, ...potionTargets]
+  // P6-S0 corpus items (see the header): core by default, every one with --corpus
+  const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(SPRITES_DIR, 'manifest.json'), 'utf8')))
+  const imageBySha = new Map([sync.weaponImages, sync.ammoImages, sync.equipmentImages, sync.potionImages, sync.corpusImages].flatMap((f) => [...f.found.values()].map((i) => [i.sha1, i] as const)))
+  const coreIds = new Set((JSON.parse(readFileSync(join(repoRoot, 'src/data/items.detail.json'), 'utf8')) as { id: number }[]).map((i) => i.id))
+  const taken = new Set([...itemTargets, ...potionTargets].map((t) => t.dest))
+  const corpusTargets = manifest.files
+    .filter((f) => f.path.startsWith('/sprites/items/'))
+    .flatMap((f) => {
+      const id = Number(f.ref.slice(2))
+      const dest = join(SPRITES_DIR, f.path.replace(/^\/sprites\//, ''))
+      const image = imageBySha.get(f.sha1)
+      if ((!values.corpus && !coreIds.has(id)) || taken.has(dest) || !image) return []
+      return [{ id, label: `items/${id}`, name: info.items.get(id)?.name ?? `item ${id}`, image, dest }]
+    })
+    .sort((a, b) => a.id - b.id)
+  const targets = [...weaponTargets, ...bossTargets, ...itemTargets, ...potionTargets, ...corpusTargets]
 
   const downloader = new WikiClient({ cacheDir: RAW_DIR, refresh: values.refresh, log: (l) => console.log(l) })
   const indexPath = join(RAW_DIR, 'sprites-index.json')
@@ -165,8 +187,8 @@ async function main(): Promise<number> {
     requests: { syncPlan: planRequests, downloads: s.networkRequests, attempts: s.attempts, retries: s.retries, networkMs: s.networkMs, firstRequestAt: s.firstRequestAt ?? null, lastRequestAt: s.lastRequestAt ?? null },
   }
   writeFileSync(join(RAW_DIR, 'sprites-record.json'), `${JSON.stringify(record, null, 2)}\n`)
-  console.log('\nsprites summary (weapons + bosses + ammo items + potions)')
-  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items + ${potionTargets.length} potions): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
+  console.log(`\nsprites summary (weapons + bosses + ammo items + potions + ${values.corpus ? 'every corpus item' : 'core corpus items'})`)
+  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items + ${potionTargets.length} potions + ${corpusTargets.length} corpus items): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
   for (const t of thumbnails) console.log(`  thumbnail ${t.path} ${t.width}×${t.height} ${t.bytes} B (from ${t.source})`)
   console.log(`  this run: ${downloaded} downloaded, ${cached} already cached, ${copied} copied (identical file), ${failures.length} failed`)
   console.log(`  requests: ${planRequests} sync-plan + ${s.networkRequests} downloads (${s.attempts} attempts, ${s.retries} retries); ${(durationMs / 1000).toFixed(1)}s wall`)

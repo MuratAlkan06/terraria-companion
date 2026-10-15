@@ -6,7 +6,7 @@ import type { Article } from '../fetch/articles'
 import type { CargoRow } from '../fetch/cargo'
 import type { ImageInfoFetch } from '../fetch/images'
 import type { Iteminfo } from '../parse/iteminfo'
-import { bossAttribution, bossImageFiles, buildBosses, buildProgression } from './bosses'
+import { bossAttribution, bossImageFiles, buildBosses, buildProgression, statsParseReason } from './bosses'
 import { Evidence } from './evidence'
 import { BossesOverlay, ProgressionOverlay } from './overlays'
 
@@ -228,5 +228,15 @@ describe('buildProgression', () => {
 
   it('an edge quote that is not on its article fails the build', () => {
     expect(() => buildProgression({ overlay: progression([{ ...gate, quote: 'Hardmode starts after the Eye of Cthulhu is defeated.' }]), bosses: overlay(), evidence })).toThrow(/quote not found verbatim on "Hardmode"/)
+  })
+})
+
+describe('AMENDMENTS-015 B83(f): statsParseReason', () => {
+  it('words the health / defense parse reasons as one sentence; contact damage alone states none', () => {
+    expect(statsParseReason(['defense: several values (alternatives on further lines)', 'contact damage: flagged by the wiki as based on outdated source code'])).toBe("No single verified value per difficulty in the wiki's infobox: defense has several values (alternatives on further lines).")
+    expect(statsParseReason(['hp: flagged by the wiki as based on outdated source code'])).toBe("No single verified value per difficulty in the wiki's infobox: health is flagged by the wiki as based on outdated source code.")
+    expect(statsParseReason(['defense: text next to the value ("/ 27")'])).toBe('No single verified value per difficulty in the wiki\'s infobox: defense has text next to the value ("/ 27").')
+    expect(statsParseReason(['defense: a difficulty value carries a note', 'hp: empty cell'])).toBe("No single verified value per difficulty in the wiki's infobox: a defense value carries a note; health: empty cell.")
+    expect(statsParseReason(['contact damage: flagged by the wiki as based on outdated source code'])).toBeUndefined()
   })
 })

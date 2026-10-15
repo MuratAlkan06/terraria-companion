@@ -1,11 +1,11 @@
 /**
- * Dataset metadata accessor.
+ * Dataset metadata accessor: a synchronous, typed view of the subset of `meta.json` the shell
+ * bundle needs (game version, schema version, generation date, license).
  *
- * P1 ships a hand-authored stub `meta.json` (AMENDMENTS-001 A8) marked `stub: true`.
- * P2's pipeline replaces it with the full `Meta` shape (DATA_SCHEMA_SPEC §7d); the
- * Zod schema and `loadMeta()` data-access contract arrive with that slice. Until then
- * this is a typed view of the subset the shell needs. The game version string lives
- * ONLY in meta.json (ADR D1) — components must read it from here, never hard-code it.
+ * `meta.json` is emitted by the pipeline in the full `Meta` shape (DATA_SCHEMA_SPEC §7d), strict-parsed
+ * against the Zod `Meta` schema (src/schemas/meta.ts) when it is written; the async data-access
+ * contract is `loadMeta()` (src/data-access). The game version string lives ONLY in meta.json
+ * (ADR D1) — components must read it from here, never hard-code it.
  */
 import rawMeta from './meta.json'
 
