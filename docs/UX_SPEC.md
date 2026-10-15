@@ -28,8 +28,8 @@ SPA routes under React Router v7. **Eager bundle:** shell + `/` only. **Every ot
 | `/bosses` | Boss node map + legend. `?recommend=1` opens recommender panel | P5-S1, P5-S5 | `chunk-bosses` |
 | `/bosses/:id` | Boss page | P5-S2/S3 | `chunk-bosses` |
 | `/readiness` | Feature A. `?boss=:id&class=&difficulty=` prefill | P5-S6/S7 | `chunk-readiness` |
-| `/armor`, `/armor/:id` | Armor sets + set-bonus-aware compare. Being built — not cut (B131(b)) | P6-S1 | `chunk-db` |
-| `/accessories`, `/accessories/:id` | Accessories + tinkering trees. Being built — not cut (B131(b)) | P6-S2 | `chunk-db` |
+| `/armor`, `/armor/:id` | Armor sets + set-bonus-aware compare. Delivered in 41bbb32 — see the B134 as-built note (§ As built) (B131(b)) | P6-S1 | `chunk-db` |
+| `/accessories`, `/accessories/:id` | Accessories + tinkering trees. Delivered in 41bbb32 — see the B134 as-built note (§ As built) (B131(b)) | P6-S2 | `chunk-db` |
 | `/items` | Encyclopedia hub (category tiles) + every Item record, filterable `?category=&stage=&q=` (B112) | P6-S3 | `chunk-db` |
 | `/items/:id` | Item page; "Crafting tree" tab (B131(b): no separate tab — P6-S4 is met by the planner's tree, which the plan preview must show before saving; one tree renderer, verified in the P6 slice); "What Should I Grind For?" CTA. Hash anchors (e.g. `#acq-title`) scroll + focus once their async section mounts (B113(c)); a weapon/armor/accessory id is a styled 404 linking `/weapons/:id` where it applies (B113(e) M5) | P6-S3/S4 | `chunk-db` |
 | `/plan` | Feature B: plan list (multiple concurrent) | P6-S5/S6 | `chunk-plan` |

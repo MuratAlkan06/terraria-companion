@@ -302,7 +302,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 2. "Show Me How to Get It" jumps to the item's acquisition instructions (deep-links into Feature B's planner once P6-S5 ships).
 3. Suggestions respect class choice and difficulty (Expert/Master accessory slot counts).
 4. The analysis + loadout persist locally and restore on return.
-   > Amended (B94(5), B97(a), B117): gated upgrades list nearest gate first within each "after you defeat X" group, the rest counted; with a world evil chosen, upgrades behind the other world's evil boss are left out and counted. AC2: "Show Me How to Get It" opens the planner (`/plan/new?item=:id`) for single items; armor sets keep their wiki links (B117, superseding B112's interim item-page anchor).
+   > Amended (B94(5), B97(a), B117): gated upgrades list nearest gate first within each "after you defeat X" group, the rest counted; with a world evil chosen, upgrades behind the other world's evil boss are left out and counted. AC2: "Show Me How to Get It" opens the planner (`/plan/new?item=:id`) for single items; armor sets link to their in-app set pages (B134 superseded B117 here) (B117, superseding B112's interim item-page anchor).
 
 ### P6 — Encyclopedia, Crafting Trees, Feature B, Armor/Accessory Views, Guides
 
@@ -315,7 +315,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 1. Accessories list/filter by category (mobility/defense/offense/utility) and stage; each shows exact effects and best-fit loadout notes.
 2. An accessory with an upgrade path (e.g., the Ankh Shield chain) renders its full tinkering/combination tree with every node clickable.
 3. All effects text is verified-with-source or marked Unknown.
-   > B131(b): P6-S1 and P6-S2 are BUILT, not cut — the original owner spec promises these databases; cutting them would change the contract. In flight at B132 (docs/RELEASE.md §5). B131(c): B112's "P6-S1/S2" label meant the encyclopedia foundation (the item corpus UI that delivers P6-S3), not these slices.
+   > B131(b): P6-S1 and P6-S2 are BUILT, not cut — the original owner spec promises these databases; cutting them would change the contract. Delivered in 41bbb32 (B134 as-built note below) (docs/RELEASE.md §5). B131(c): B112's "P6-S1/S2" label meant the encyclopedia foundation (the item corpus UI that delivers P6-S3), not these slices.
 
 **P6-S3 "Item Encyclopedia Categories"** [D: full item corpus]
 1. Every REQUIREMENTS §7 category browses with its items; each item page shows effect, acquisition, and progression fit.

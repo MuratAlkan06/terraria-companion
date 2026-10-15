@@ -5,7 +5,7 @@ data: Terraria 1.4.5.8 (Desktop), `src/data/meta.json` generated 2026-10-15T18:2
 
 - **Gate state:** the release gate returned REVISE (AMENDMENTS-016 B131). This report, its review ledger
   (Appendix A) and the doc-parity closeout (§7) are the docs half of that REVISE (B131(d)/(e), recorded as B132).
-  The other half — the P6 slice (§5) — is still being built, so this report describes the product as of B132
+  The other half — the P6 slice (§5) — is still delivered in 41bbb32, so this report describes the product as of B132
   and names what lands with that slice. The gate re-runs after both.
 - **Supersedes** `docs/HANDOFF.md` (B131(e)). The amendments chain (`AMENDMENTS-001` … `016`) stays binding and
   wins on any conflict; this report cites it inline by B-number.
@@ -160,7 +160,7 @@ records, 334 enemies, 18 bosses, 28 progression nodes, 35 edges, 78 buffs, 54 co
 | P7-S4 Quick compare vs equipped | One-click compare against the active loadout's weapon | P7 extras top the global cut line | A weapon page's "Compare" opens `/compare` with that weapon; builds compare in Step 4 |
 | P7-S5 Random challenge generator | Random stage-legal challenges | P7 extras top the global cut line; also adjacent to the owner's explicit exclusions | Nothing equivalent. The nearest feature is the builder's Surprise Me — a random stage-legal loadout (B111 R2) |
 
-**Not cut:** P6-S1 armor and P6-S2 accessory databases are being built (§5). P6-S4 crafting trees are met by the
+**Not cut:** P6-S1 armor and P6-S2 accessory databases are delivered in 41bbb32 (§5). P6-S4 crafting trees are met by the
 planner's tree if the plan preview shows it before saving — verified, or added, in the P6 slice (B131(b)).
 
 ### 3.2 Retired by ruling (not omissions)
@@ -241,7 +241,7 @@ None. Every B131(e) item is delivered (§7), including the whole pre-B85 list.
 4. **Deployment:** static `dist/` to Cloudflare Pages (GitHub Pages as the alternate, ADR D8) — after 1 and 2; see
    README "Before any public deployment".
 
-The armor and accessory pages are being built (§5), not cut.
+The armor and accessory pages are delivered in 41bbb32 (§5), not cut.
 
 ## 7. Doc-parity closeout (B131(e))
 - [x] **B126 set-aside origin** → DATA_SCHEMA_SPEC §4b (the wrapper format), UX_SPEC §5.6 (origin display, B125(d)
@@ -309,10 +309,10 @@ Transcribed from the amendments chain (B131(d)). How to read it:
 | 15 | P7-S2 backup / restore / set-aside + P7-S2b build text | B123–B126 | REVISE (B125: H1, M1–M4) → fix round ratified (B126) → narrow re-check APPROVED (session record; transcribed here per B131(d)) | Not in chain | `202cdca` feat: add data backup, restore, quarantine, and build codes | B124: clipboard verified by mocked tests + Chromium's success signal |
 | 16 | Licensing (B127's "P7-S4", B131(c)) | B127 | Ratified (B127) → final-batch APPROVE (session record; transcribed here per B131(d)) | Not in chain | `c61de3d` feat: add licensing page, legal notices, and takedown runbook; docs `51c2fc2` (B127–B130) | |
 | 17 | Cross-browser sweep (B128's "P7-S3", B131(c); PRD P7-S6 work) | B128, B129 | Ratified (B128) → micro-fix ratified (B129) → final-batch APPROVE (session record; transcribed here per B131(d)) | Not in chain | `f7aab06` feat: add cross-browser fixes, consistency sweeps, and ui polish | WebKit installed for the Safari stand-in (B128) |
-| 18 | B127-items micro-fix (`sm:` → `md:`, the third-party license file, `src/data/LICENSE.md`, UX lines) | B130 | Landed after the final-batch APPROVE — **visual check owed to the in-flight P6 review** (B131(d)) | Not in chain | Committed — in `c61de3d` or `f7aab06` (the chain doesn't record which); docs `51c2fc2` | |
+| 18 | B127-items micro-fix (`sm:` → `md:`, the third-party license file, `src/data/LICENSE.md`, UX lines) | B130 | Landed after the final-batch APPROVE — **visual check DELIVERED inside the P6 pages design review (B131d transcription in B143): weapon/item headers side-by-side at 768/1440, the compare add-box, Step-4 slot rows at 768, licensing list first-line links at 375 — all PASS** (B131(d)) | Not in chain | Committed — in `c61de3d` or `f7aab06` (the chain doesn't record which); docs `51c2fc2` | |
 | 19 | Release gate (P7-S7) | B131 | Gate verdict REVISE (B131(a)–(e)) | — | — | |
-| 20 | P6 slice: armor / accessory pages, P6-S4 preview check, initial-JS budget test, row 18's visual check | B131(b)/(d)/(e) | In flight — no verdict yet | — | Not committed | Owned by the concurrent agent |
-| 21 | Release docs (this report, the ledger, the B131(e) closeout) | B132 | Docs only — no design review | — | Not committed (this slice ran no git) | |
+| 20 | P6 slice: armor / accessory pages, P6-S4 preview check, initial-JS budget test, row 18's visual check | B131(b)/(d)/(e) | APPROVED (B138 closing re-check) — committed in 41bbb32 | — | committed: 41bbb32 (feat) / 7aaff89 (docs) | Owned by the concurrent agent |
+| 21 | Release docs (this report, the ledger, the B131(e) closeout) | B132 | Docs only — no design review | — | committed: 41bbb32 (feat) / 7aaff89 (docs) (this slice ran no git) | |
 
 ### Appendix A continuation — B133 → B142 (final-closure batch)
 | Entry | Slice | Design | Verification | Gate |
@@ -322,5 +322,5 @@ Transcribed from the amendments chain (B131(d)). How to read it:
 | B135 | Set-schema extension + 69 sets | fix round | — | — |
 | B136–B137 | Readiness unknown set-state + Improve guard | fix round (B136) → closing re-check **APPROVED** (B138) | — | — |
 | B138–B139 | I-am-error ruling (premise disproven by the implementer; revised) | — | — | — |
-| B140–B142 | Drop-conditions split, option-A deriver semantics, Flinx knock-on | within the approved batch; conditions verified in-browser by the implementing round | **PASS** (this batch's verification: 27-row matrix, 2 docs-only failures → corrected under this continuation) | pending (this commit) |
+| B140–B142 | Drop-conditions split, option-A deriver semantics, Flinx knock-on | within the approved batch; conditions verified in-browser by the implementing round | **PASS** (this batch's verification: 27-row matrix, 2 docs-only failures → corrected under this continuation) | committed: 41bbb32 / 7aaff89 |
 _Row 20 correction: the P6 pages batch's design verdict is **APPROVED** (closing re-check, B138), superseding "in flight"._
