@@ -302,7 +302,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 2. "Show Me How to Get It" jumps to the item's acquisition instructions (deep-links into Feature B's planner once P6-S5 ships).
 3. Suggestions respect class choice and difficulty (Expert/Master accessory slot counts).
 4. The analysis + loadout persist locally and restore on return.
-   > Amended (B94(5), B97(a), B117): gated upgrades list nearest gate first within each "after you defeat X" group, the rest counted; with a world evil chosen, upgrades behind the other world's evil boss are left out and counted. AC2: "Show Me How to Get It" opens the planner (`/plan/new?item=:id`) for single items; armor sets link to their in-app set pages (B134 superseded B117 here) (B117, superseding B112's interim item-page anchor).
+   > Amended (B94(5), B97(a), B117): gated upgrades list nearest gate first within each "after you defeat X" group, the rest counted; with a world evil chosen, upgrades behind the other world's evil boss are left out and counted. AC2: "Show Me How to Get It" opens the planner (`/plan/new?item=:id`) for single items (B117, superseding B112's interim item-page anchor); armor sets link to their in-app set pages (B134, superseding B117's wiki links for sets).
 
 ### P6 — Encyclopedia, Crafting Trees, Feature B, Armor/Accessory Views, Guides
 

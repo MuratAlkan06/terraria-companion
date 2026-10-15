@@ -3,10 +3,10 @@
 Status: release candidate, NOT released · 2026-10-15 · branch `feat/p1-app-shell` (local only — no remote) ·
 data: Terraria 1.4.5.8 (Desktop), `src/data/meta.json` generated 2026-10-15T18:21:41Z.
 
-- **Gate state:** the release gate returned REVISE (AMENDMENTS-016 B131). This report, its review ledger
-  (Appendix A) and the doc-parity closeout (§7) are the docs half of that REVISE (B131(d)/(e), recorded as B132).
-  The other half — the P6 slice (§5) — is still delivered in 41bbb32, so this report describes the product as of B132
-  and names what lands with that slice. The gate re-runs after both.
+- **Gate state:** the release gate returned REVISE (AMENDMENTS-016 B131). Both halves of that REVISE are closed.
+  The docs half is this report, its review ledger (Appendix A) and the doc-parity closeout (§7) — B131(d)/(e),
+  recorded as B132 (docs commit 7aaff89). The P6 half (§5) is delivered in 41bbb32 (B134 → B138, APPROVED). This
+  report describes the product as of 41bbb32. Corrections to this report's own text are recorded in B143 and B145.
 - **Supersedes** `docs/HANDOFF.md` (B131(e)). The amendments chain (`AMENDMENTS-001` … `016`) stays binding and
   wins on any conflict; this report cites it inline by B-number.
 - **Sources:** the amendments chain, the route registry (`src/app/routes.tsx`), `package.json`, and the emitted
@@ -61,9 +61,9 @@ The Lab golden re-pin tool has no package script yet (queued, B116): `npx tsx pi
 - The takedown lever is `fallbackMode` in `public/sprites/manifest.index.json`: README → "Takedown runbook
   (sprites)" (B112(b), B127).
 
-## 2. Working features (as shipped at B132)
+## 2. Working features (as shipped at 41bbb32 / B142)
 
-Counts: 488 weapons, 256 armor pieces, 69 armor sets, 352 accessories, 5,045 items, 3,934 recipes, 3,228 drop
+Counts: 488 weapons, 256 armor pieces, 69 armor sets, 352 accessories, 5,045 items, 3,934 recipes, 3,250 drop
 records, 334 enemies, 18 bosses, 28 progression nodes, 35 edges, 78 buffs, 54 conditions (`meta.json`).
 
 **Foundation (PRD §4) — complete.**
@@ -115,6 +115,20 @@ records, 334 enemies, 18 bosses, 28 progression nodes, 35 edges, 78 buffs, 54 co
   gate first, other-world items left out and counted (B94(5), B97(a)); the analysis persists and goes "Out of
   date" in a dashed frame (B96(c), B97); "Show Me How to Get It" opens the planner (B117). Reachable from boss
   pages, the map, the builder and its own desktop entry (B96(b)).
+- **Armor database** (P6-S1 — built, not cut, B131(b); delivered in 41bbb32, B134 → B138 APPROVED): `/armor` browses
+  the 69 sets by class / stage / name, plus the 14 pieces that belong to no set recorded in this dataset (256 pieces
+  in all). Set composition follows B135: Beetle armor has two chests, and the Wizard set is a hat plus eight robes
+  with no legs. Set pages show the quoted set bonuses and full-set totals for each helmet. Compare is
+  set-bonus-aware — never a naive per-piece sum — and words the cases where a bonus flips the result (B134). Stage
+  peers are listed only where the stage is verified: 19 of the 69 sets. The rest say their stage is Unknown and list
+  no peers. (B134's "19/67" predates the two sets B135 added; both have unverified stages.) A piece id redirects to
+  its set page, anchored and focused, and replaces the history entry (B134).
+- **Accessory database** (P6-S2 — built, not cut, B131(b); delivered in 41bbb32, B134 → B138 APPROVED):
+  `/accessories` lists the 352 accessories, filterable by category / stage / name; the four with an unverified
+  category are under "Unknown". Detail pages show stats, quoted effects and class scoping by the builder's registry
+  (B108(a), B134). The combination tree follows real recipes, alternatives included, and every node links in-app.
+  Shimmer transmutations are not combinations and are left out (B134). With both pages live, P4-S2 AC3's wiki-link
+  exception has expired: armor and accessory names link in-app, the builder's included (B131(b), B134).
 - **Item encyclopedia** (P6-S3 — built as B112's "P6-S1/S2" encyclopedia foundation, B131(c)): `/items` hub and
   5,045 item records in 19 categories, filterable by category / stage / name (B112, B115); item pages with
   effect, how to obtain, used in, gate badges, and drop quantities derived under B105 labeled "derived" (B112);
@@ -160,8 +174,8 @@ records, 334 enemies, 18 bosses, 28 progression nodes, 35 edges, 78 buffs, 54 co
 | P7-S4 Quick compare vs equipped | One-click compare against the active loadout's weapon | P7 extras top the global cut line | A weapon page's "Compare" opens `/compare` with that weapon; builds compare in Step 4 |
 | P7-S5 Random challenge generator | Random stage-legal challenges | P7 extras top the global cut line; also adjacent to the owner's explicit exclusions | Nothing equivalent. The nearest feature is the builder's Surprise Me — a random stage-legal loadout (B111 R2) |
 
-**Not cut:** P6-S1 armor and P6-S2 accessory databases are delivered in 41bbb32 (§5). P6-S4 crafting trees are met by the
-planner's tree if the plan preview shows it before saving — verified, or added, in the P6 slice (B131(b)).
+**Not cut:** P6-S1 armor and P6-S2 accessory databases are delivered in 41bbb32 (§2, §5). P6-S4 crafting trees are met
+by the planner's tree, which the plan preview shows before saving (pinned, B134; B131(b)).
 
 ### 3.2 Retired by ruling (not omissions)
 - **Custom scenarios: 0, cut per §10** (risk 1: "custom scenarios → limitation cards") — PRD P3-S13 AC2 retired
@@ -220,15 +234,17 @@ None. Every B131(e) item is delivered (§7), including the whole pre-B85 list.
   through accessibility trees and tests only (B119, B124). Clipboard export: mocked tests plus Chromium's success
   signal (B124).
 
-## 5. In flight — not cut (the P6 slice; B131(b)/(d)/(e))
-- **P6-S1 armor and P6-S2 accessory database pages** (`/armor`, `/accessories` — UX_SPEC §1). When they land, P4-S2
-  AC3's wiki-link exception for armor and accessories expires and those links go internal.
-- **P6-S4:** the plan preview must show the tree before saving — the slice checks it and adds it if missing (one
-  tree renderer, no separate tab).
-- **Initial-JS budget:** an enforcing test for the 200 KB gz initial-route limit (ADR D7), which sat at 98 % of the
-  limit with nothing enforcing it.
-- **Visual check of the B127-items micro-fix** (B130: the `sm:` → `md:` surfaces and the rest): the micro-fix landed
-  after the final-batch APPROVE, so its narrow visual check rides this slice's design review (B131(d)).
+## 5. Delivered — the P6 slice (B131(b)/(d)/(e); commit 41bbb32)
+- **P6-S1 armor and P6-S2 accessory database pages** (`/armor`, `/accessories` — UX_SPEC §1; §2 above): delivered in
+  41bbb32. Design review: REVISE (B134) → fix rounds (B135–B137) → closing re-check APPROVED (B138). P4-S2 AC3's
+  wiki-link exception for armor and accessories has expired; those links are in-app (B131(b), B134).
+- **P6-S4:** the plan preview shows the full recursive tree before saving. It uses the planner's own tree renderer,
+  read-only, with no separate tab, and is pinned by `src/app/routes/plan/planPreview.test.ts` (B134).
+- **Initial-JS budget:** enforced by `vite.config.test.ts` — the 200 KB gz initial-route limit (ADR D7; 200,000 bytes),
+  measured on an in-memory production build. The entry graph measured 196.1–196.3 KB gz of 200 (B134).
+- **Visual check of the B127-items micro-fix** (B130: the `sm:` → `md:` surfaces and the rest): ran inside the P6
+  pages design review; every surface passed at its sampled widths. Transcribed in B143(2), with the 1024 note firmed
+  in B145 (B131(d)).
 
 ## 6. Awaiting the owner
 1. **Takedown / contact address** (B127, owner input 1): set `takedownContact` in `src/app/site.ts` and replace the
@@ -241,7 +257,7 @@ None. Every B131(e) item is delivered (§7), including the whole pre-B85 list.
 4. **Deployment:** static `dist/` to Cloudflare Pages (GitHub Pages as the alternate, ADR D8) — after 1 and 2; see
    README "Before any public deployment".
 
-The armor and accessory pages are delivered in 41bbb32 (§5), not cut.
+Nothing in the P6 slice awaits the owner: the armor and accessory pages are delivered in 41bbb32 (§2, §5), not cut.
 
 ## 7. Doc-parity closeout (B131(e))
 - [x] **B126 set-aside origin** → DATA_SCHEMA_SPEC §4b (the wrapper format), UX_SPEC §5.6 (origin display, B125(d)
@@ -269,7 +285,8 @@ The armor and accessory pages are delivered in 41bbb32 (§5), not cut.
   - A7 → DATA_SCHEMA_SPEC §4b DomainKey `checklists`.
 - [x] **Also closed on the way:** B122 Q3 → PRD P4-S4 note; B131(b)'s P4-S2 AC3 expiry → PRD P4-S2 note; B131(c)
   slice labels → UX_SPEC §1 and §3.9 wording; B74(a)/(b) → UX_SPEC §3.7.
-- [ ] **Not docs — rides the P6 slice:** the initial-JS budget test (§5).
+- [x] **Not docs — rode the P6 slice:** the initial-JS budget test → `vite.config.test.ts` (200 KB gz enforced;
+  196.1–196.3 KB measured, B134), committed in 41bbb32 (§5).
 - [x] **HANDOFF.md** is superseded by this report (above). Its file belongs to the concurrent slice and was not
   edited here.
 
@@ -311,10 +328,10 @@ Transcribed from the amendments chain (B131(d)). How to read it:
 | 17 | Cross-browser sweep (B128's "P7-S3", B131(c); PRD P7-S6 work) | B128, B129 | Ratified (B128) → micro-fix ratified (B129) → final-batch APPROVE (session record; transcribed here per B131(d)) | Not in chain | `f7aab06` feat: add cross-browser fixes, consistency sweeps, and ui polish | WebKit installed for the Safari stand-in (B128) |
 | 18 | B127-items micro-fix (`sm:` → `md:`, the third-party license file, `src/data/LICENSE.md`, UX lines) | B130 | Landed after the final-batch APPROVE — **visual check DELIVERED inside the P6 pages design review (B131d transcription in B143): weapon/item headers side-by-side at 768/1440, the compare add-box, Step-4 slot rows at 768, licensing list first-line links at 375 — all PASS** (B131(d)) | Not in chain | Committed — in `c61de3d` or `f7aab06` (the chain doesn't record which); docs `51c2fc2` | |
 | 19 | Release gate (P7-S7) | B131 | Gate verdict REVISE (B131(a)–(e)) | — | — | |
-| 20 | P6 slice: armor / accessory pages, P6-S4 preview check, initial-JS budget test, row 18's visual check | B131(b)/(d)/(e) | APPROVED (B138 closing re-check) — committed in 41bbb32 | — | committed: 41bbb32 (feat) / 7aaff89 (docs) | Owned by the concurrent agent |
-| 21 | Release docs (this report, the ledger, the B131(e) closeout) | B132 | Docs only — no design review | — | committed: 41bbb32 (feat) / 7aaff89 (docs) (this slice ran no git) | |
+| 20 | P6 slice: armor / accessory pages, P6-S4 preview check, initial-JS budget test, row 18's visual check | B131(b)/(d)/(e), B134–B142 | REVISE (B134 Blocker: false set claims) → fix rounds (B135–B137) → closing re-check APPROVED (B138) | PASS — the B140–B142 batch verification (27-row matrix; continuation below) | committed: 41bbb32 (feat) / 7aaff89 (docs) | Detail: the continuation table below |
+| 21 | Release docs (this report, the ledger, the B131(e) closeout) | B132, B143, B145 | Docs only — no design review | — | `7aaff89` docs: deliver release report and spec parity sweep; `f04e921` docs: close release-gate revise items with as-shipped record (ungated, B144; partly applied, B145) | B145's corrections ride the next gated commit |
 
-### Appendix A continuation — B133 → B142 (final-closure batch)
+### Appendix A continuation — B133 → B145 (final-closure batch)
 | Entry | Slice | Design | Verification | Gate |
 |---|---|---|---|---|
 | B133 | Ledger corrections | — (docs) | transcribed session verdicts: all B85–B131 slices carried verification PASS + workflow APPROVE; B113/B114 re-review APPROVED; P3-S8 verified twice | — |
@@ -323,4 +340,7 @@ Transcribed from the amendments chain (B131(d)). How to read it:
 | B136–B137 | Readiness unknown set-state + Improve guard | fix round (B136) → closing re-check **APPROVED** (B138) | — | — |
 | B138–B139 | I-am-error ruling (premise disproven by the implementer; revised) | — | — | — |
 | B140–B142 | Drop-conditions split, option-A deriver semantics, Flinx knock-on | within the approved batch; conditions verified in-browser by the implementing round | **PASS** (this batch's verification: 27-row matrix, 2 docs-only failures → corrected under this continuation) | committed: 41bbb32 / 7aaff89 |
-_Row 20 correction: the P6 pages batch's design verdict is **APPROVED** (closing re-check, B138), superseding "in flight"._
+| B143 | Second gate-REVISE closure (this report as shipped; B131(d) visual-check transcription; PRD/UX drift) | — (docs) | — | committed `f04e921` **without the github-workflow pre-commit gate** (B144). Most of its RELEASE.md edits did not land: the §2 list, the §5 rewrite and the §7 tick (B145) |
+| B144 | Process deviation self-report: f04e921 skipped the workflow gate | — (docs) | — | not yet committed; rides the next gated commit. Its "verbatim prescription" claim is corrected by B145 |
+| B145 | Corrections: B143(1) and B144 overstatements; RELEASE §2/§5/§7, gate state and ledger rows 20–21 made true | — (docs) | — | the next gated commit |
+_Corrections carried by this continuation: B133 supersedes the main table's "Not in chain" verification cells (every B85–B131 slice carried a verification PASS and a workflow APPROVE) and row 18's commit cell (split per B133(4)); row 20's design verdict is **APPROVED** (closing re-check, B138)._

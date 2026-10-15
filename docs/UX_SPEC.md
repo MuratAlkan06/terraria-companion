@@ -43,7 +43,7 @@ SPA routes under React Router v7. **Eager bundle:** shell + `/` only. **Every ot
 
 **Nav visibility rule (P1-S1 AC2):** nav config is data-driven; a route appears only after its slice ships. No disabled nav items, ever.
 
-_Amendment history (B121 sweep): B99(a), B100 (`?target=` queued), B101(d), B111 R2/R5, B112, B113(c)/(e); `/lab/coverage` status recorded (B115/B116 — question open). B123(a)/(g): `/builds` export/import as built; `/settings/data` added. B127: `/about/licensing` sections as built, incl. Fonts and Open-source software. B132 closeout: `/lab/coverage` retired (B122 Q2); cut slices marked on `/weapons/:id`, `/lab`, `/guides` and the armor/accessory rows marked being built (B131(b)); slice labels disambiguated (B131(c))._
+_Amendment history (B121 sweep): B99(a), B100 (`?target=` queued), B101(d), B111 R2/R5, B112, B113(c)/(e); `/lab/coverage` status recorded (B115/B116 — question open). B123(a)/(g): `/builds` export/import as built; `/settings/data` added. B127: `/about/licensing` sections as built, incl. Fonts and Open-source software. B132 closeout: `/lab/coverage` retired (B122 Q2); cut slices marked on `/weapons/:id`, `/lab`, `/guides` and the armor/accessory rows marked being built (B131(b)); slice labels disambiguated (B131(c)). B134: the armor/accessory rows now read delivered in 41bbb32, pointing to "As built — armor & accessory databases" (end of this spec)._
 
 ## 2. App Shell
 
