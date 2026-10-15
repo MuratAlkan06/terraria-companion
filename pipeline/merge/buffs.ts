@@ -3,8 +3,8 @@
  * debuff articles + overlays/buffs.json → Buff[].
  *
  * MEMBERSHIP (`members`): every buff an emitted weapon or ammo item inflicts or grants (Cargo Items
- * `debuffs` / ammo `buffs` columns, Iteminfo `buffType` of ammo) + the curated loadout potions of the
- * overlay. Each member is resolved by its exact name in the Buff IDs table (TO-VERIFY #12: the game's
+ * `debuffs` / ammo `buffs` columns, Iteminfo `buffType` of ammo), every buff an emitted potion grants
+ * (AMENDMENTS-014 B70, merge/potions.ts potionBuffNames) + the curated entries of the overlay. Each member is resolved by its exact name in the Buff IDs table (TO-VERIFY #12: the game's
  * buff ID list with each buff's article); a name the table does not have is not emitted (gap).
  *
  * FIELDS

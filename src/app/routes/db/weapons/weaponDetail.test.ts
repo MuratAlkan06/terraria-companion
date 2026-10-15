@@ -132,20 +132,18 @@ describe('partially-verified badge covers every Unknown on the page (design revi
     expect(html).toContain('show which 3 values are unknown')
   })
 
-  it('Bomb: 6 weapon-level + 3 Black Slime rates = 9, labelled like the page sections (P3-S11: its damage and knockback verify; B85(b): no crit row)', () => {
+  it('Bomb: 2 vendor prices + 3 Black Slime rates = 5, labelled like the page sections (B70: stage, vendor conditions and gating derive; P3-S11: damage and knockback verify; B85(b): no crit row)', () => {
     const bomb = byName('Bomb')
     const entries = weaponPageUnknowns(bomb, data.drops)
-    expect(unknownCount(entries)).toBe(9)
+    expect(unknownCount(entries)).toBe(5)
     expect(entries.map((e) => e.label)).toEqual([
-      'Game stage',
       'Black Slime (bonus drop) — drop chance (Classic, Expert, Master)',
       'Sold by Demolitionist — price',
-      'Sold by Demolitionist — conditions',
       'Sold by Skeleton Merchant — price',
-      'Sold by Skeleton Merchant — conditions',
-      'Required progress',
     ])
-    expect(renderDetail(bomb)).toContain('show which 9 values are unknown')
+    const html = renderDetail(bomb)
+    expect(html).toContain('show which 5 values are unknown')
+    expect(unknownMarkers(html)).toHaveLength(5)
   })
 
   it('B85(b): classless crit is not applicable — no Unknown "Critical chance" on any classless page (the 15 thrown explosives each count one Unknown fewer)', () => {
@@ -160,7 +158,7 @@ describe('partially-verified badge covers every Unknown on the page (design revi
   })
 
   it('while the drop index is not loaded only the weapon-level Unknowns (all that is on screen) count', () => {
-    expect(unknownCount(weaponPageUnknowns(byName('Bomb'), undefined))).toBe(6)
+    expect(unknownCount(weaponPageUnknowns(byName('Bomb'), undefined))).toBe(2)
     expect(unknownCount(weaponPageUnknowns(byName('Terraprisma'), undefined))).toBe(0)
   })
 })
@@ -236,20 +234,22 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
     expect(html.match(/<td class="bg-hatch-unknown[^"]*"><button[^>]*data-unknown-field="drop:/g)).toHaveLength(3)
   })
 
-  it('Bomb (classless): no crit row (B85(b): classless damage never crits), damage + knockback verified (P3-S11), two vendors with Unknown price + conditions', () => {
+  it('Bomb (classless): no crit row (B85(b): classless damage never crits), damage + knockback verified (P3-S11), two vendors with Unknown price; conditions, stage and gating known (B70)', () => {
     const bomb = byName('Bomb')
     const html = renderDetail(bomb)
     expect(critView(bomb).status).toBe('not-applicable')
     expect(weaponStatRows(bomb).map((r) => r.key)).toEqual(['damage', 'useTime', 'knockback', 'autoReuse'])
     expect(html).not.toContain('Critical chance')
-    expect(bomb).toMatchObject({ damage: 100, knockback: 8 })
+    expect(bomb).toMatchObject({ damage: 100, knockback: 8, stage: 'early-prehm', gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
     const markers = unknownMarkers(html)
-    for (const f of ['acquisition.1.priceCopper', 'acquisition.2.conditions']) {
+    for (const f of ['acquisition.1.priceCopper', 'acquisition.2.priceCopper']) {
       expect(markers).toContain(f)
     }
-    for (const f of ['damage', 'knockback', 'critPct']) expect(markers).not.toContain(f)
+    for (const f of ['damage', 'knockback', 'critPct', 'stage', 'gatedBy', 'acquisition.1.conditions', 'acquisition.2.conditions']) expect(markers).not.toContain(f)
     expect(html).toContain('Sold by Demolitionist')
     expect(html).toContain('Sold by Skeleton Merchant')
+    // gating derives: available from the start — no boss or world condition gates it
+    expect(html).toContain('Required progress:</span><span>None — no boss or world condition gates it</span>')
   })
 
   it('B17 / B64 / B85(b): summon and classless weapons have no crit row at all; melee / ranged / magic keep theirs', () => {

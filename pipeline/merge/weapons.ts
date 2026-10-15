@@ -44,7 +44,7 @@ import type { ImageInfoFetch } from '../fetch/images'
 import type { Iteminfo, IteminfoItem } from '../parse/iteminfo'
 import { slugify, stripMarkup } from '../parse/text'
 import { limitation } from '../validate/labDowngrade'
-import { itemRoutes, type WithheldField } from './acquisition'
+import { itemRoutes, type RouteSources, type WithheldField } from './acquisition'
 import { checkExplosiveStat, type ExplosiveEvidence } from './explosives'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
@@ -176,6 +176,8 @@ export interface WeaponBuildInput {
    * (class) table row, the own article's damage sentence) — merge/explosives.ts. Absent: none.
    */
   explosive?: (itemId: number, page: string) => ExplosiveEvidence | undefined
+  /** B68/B78 acquisition sources (vendor model + gatherables); absent = the P2-S2 vendor behavior. */
+  sources?: RouteSources
 }
 
 export interface WeaponBuild {
@@ -420,6 +422,7 @@ export function buildWeapons(input: WeaponBuildInput): WeaponBuild {
       mismatch,
       gaps,
       reasons,
+      ...(input.sources ? { sources: input.sources } : {}),
     })
     if (gating.ok) {
       w.gatedBy = gating.gatedBy

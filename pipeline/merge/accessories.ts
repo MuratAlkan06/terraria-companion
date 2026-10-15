@@ -35,7 +35,7 @@ import { parseWingTable, type WingRow } from '../parse/equipment'
 import type { Iteminfo } from '../parse/iteminfo'
 import { slugify } from '../parse/text'
 import { deriveTinkering } from '../validate/integrity'
-import type { WithheldField } from './acquisition'
+import type { RouteSources, WithheldField } from './acquisition'
 import { tally, type ReasonTally } from './drops'
 import { classifyLine, countRule, crossCheckEquipinfo, EFFECT_CATEGORIES, tooltipEffectLines, type EffectCategory, type EquipCrossCheck, type RuleUsage } from './effects'
 import { accessoryRows, checkedDefense, equipmentCore, identifyAccessories, recordState, uniqueSlugs, WINGS_PAGE, type EquipmentContext, type EquipmentIdentification } from './equipment'
@@ -58,6 +58,8 @@ export interface AccessoryBuildInput {
   drops: readonly { id: string; itemId: number }[]
   gating: (itemId: number) => GatingResult
   withheld?: ReadonlyMap<number, WithheldField>
+  /** B68/B78 acquisition sources (vendor model + gatherables). */
+  sources?: RouteSources
   /** Slugs already used in the item ID space. */
   usedSlugs: ReadonlySet<string>
 }
@@ -113,6 +115,7 @@ export function buildAccessories(input: AccessoryBuildInput): AccessoryBuild {
     dropsBy: new Map(),
     gating: input.gating,
     withheld: input.withheld,
+    ...(input.sources ? { sources: input.sources } : {}),
     gaps,
     reasons: new Map(),
     gatingBlockers: new Map(),

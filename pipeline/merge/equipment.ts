@@ -18,7 +18,7 @@ import { wikiPageUrl } from '../fetch/config'
 import type { ImageInfoFetch } from '../fetch/images'
 import type { Iteminfo, IteminfoItem } from '../parse/iteminfo'
 import { slugify, stripMarkup } from '../parse/text'
-import { itemRoutes, type WithheldField } from './acquisition'
+import { itemRoutes, type RouteSources, type WithheldField } from './acquisition'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
 import { GapLog, isoDate, moduleSource } from './prov'
@@ -153,6 +153,8 @@ export interface EquipmentContext {
   dropsBy: ReadonlyMap<number, readonly string[]>
   gating: (itemId: number) => GatingResult
   withheld?: ReadonlyMap<number, WithheldField>
+  /** B68/B78 acquisition sources (vendor model + gatherables); absent = the P2-S8 vendor behavior. */
+  sources?: RouteSources
   gaps: GapLog
   reasons: ReasonTally
   gatingBlockers: ReasonTally
@@ -267,6 +269,7 @@ export function equipmentCore(ctx: EquipmentContext, c: EquipmentCandidate, s: R
     mismatch: s.mismatch,
     gaps: ctx.gaps,
     reasons: ctx.reasons,
+    ...(ctx.sources ? { sources: ctx.sources } : {}),
   })
   let gatedBy: GatedBy | undefined
   if (gating.ok) gatedBy = gating.gatedBy

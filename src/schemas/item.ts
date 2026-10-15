@@ -111,6 +111,21 @@ export const StatKind = z.enum([
   'max-life-flat',
   'mining-speed-pct',
   'aggro-flat',
+  // AMENDMENTS-011 B54 (pre-approved; landed by the AMENDMENTS-014 B70 P4-prep slice). Units follow the
+  // §2 conventions: *-pct = integer percent (signed: reductions negative), *-ticks = ticks (60/s),
+  // *-flat = the game's own unit (fishing power points, tiles of reach, armor penetration points,
+  // summon tag effect slots). Rows without a stated value stay kind:"special" (B54: "no value/unit").
+  'fishing-power-flat',
+  'ammo-save-pct', // chance not to consume ammo (all ammo kinds; ammo-scoped lines stay specials)
+  'knockback-pct',
+  'tag-effect-slots',
+  'lava-immunity-ticks',
+  'melee-scale-pct',
+  'tile-reach-flat',
+  'potion-cooldown-pct', // healing-potion cooldown (Potion Sickness duration); reductions negative
+  'armor-penetration-flat',
+  'minion-knockback',
+  'whip-speed-pct',
 ]) // CLOSED enum: pipeline FAILS on unclassifiable effect → explicit extension, never silent text
 export type StatKind = z.infer<typeof StatKind>
 
@@ -198,6 +213,11 @@ export const Item = z.strictObject({
     })
     .optional(),
   mountStats: z.strictObject({ description: PlainText1, sourceUrl: WikiUrl }).optional(),
+  // AMENDMENTS-014 B70 potion corpus (additive): health / mana a consumable restores instantly
+  // (Module:Iteminfo/data healLife / healMana, cross-checked with the wiki infobox). Absent + not
+  // listed = not applicable (restores nothing); absent + listed = Unknown.
+  healLife: z.int().positive().optional(),
+  healMana: z.int().positive().optional(),
   buffGrants: z
     .array(
       z.strictObject({

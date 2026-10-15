@@ -5,7 +5,8 @@
  * ammo items (type "item") and the buffs (type "buff"), and every doc carries its entity's
  * `wikiUrl` (AMENDMENTS-007 B31). P2-S8 adds armor pieces ("armor"), accessories ("accessory", tags =
  * the record's tags + its categories) and armor sets ("set", tags = the variants' classes other than
- * "other", stage = the set's stage).
+ * "other" — AMENDMENTS-011 B52 `classes ?? [class]`, so hybrids are tagged with every class —, stage =
+ * the set's stage). B70: potions are items (type "item") like the ammo.
  */
 import type { Accessory, ArmorPiece, ArmorSet, Boss, Buff, Enemy, Item, SearchDoc, Weapon } from '../../src/schemas'
 
@@ -52,7 +53,7 @@ export function buildSearchDocs(ds: SearchDocInput): SearchDoc[] {
     docs.push({ id: `i:${a.id}`, name: a.name, type: 'accessory', ...(a.stage ? { stage: a.stage } : {}), ...(a.rarity !== undefined ? { rarity: a.rarity } : {}), tags: [...new Set([...a.tags, ...a.categories])].sort(), wikiUrl: a.wikiUrl })
   }
   for (const s of [...(ds.armorSets ?? [])].sort((x, y) => x.id.localeCompare(y.id))) {
-    const classes = [...new Set(s.variants.map((v) => v.class).filter((c) => c !== 'other'))].sort()
+    const classes = [...new Set(s.variants.flatMap((v) => v.classes ?? [v.class]).filter((c) => c !== 'other'))].sort()
     docs.push({ id: `set:${s.id}`, name: s.name, type: 'set', ...(s.stage ? { stage: s.stage } : {}), tags: classes, wikiUrl: s.wikiUrl })
   }
   for (const e of [...ds.enemies].sort((a, b) => a.id.localeCompare(b.id))) {

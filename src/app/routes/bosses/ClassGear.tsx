@@ -12,7 +12,8 @@ import { useDelayedFlag, useResource } from '../../useResource'
 import { ItemCell, PanelHeading, TipList, type GateRef } from './BossBits'
 import { bossMapHref, bossPageHref } from './bossNav'
 import { loadGearData, peekGearData, type GearData } from './bossPageData'
-import { CLASS_LABEL, classGear, curatedList, declaredGapReason, GEAR_CLASSES, gearClassField, prepGuideFor, strategyGroups, type GearClass, type GearEntry, type ItemInfo, type Strategy, type TipSegment } from './bossPageModel'
+import { CLASS_LABEL, classGear, curatedList, declaredGapReason, GEAR_CLASSES, gearClassField, prepGuideFor, SECTION_IDS, strategyGroups, type GearClass, type GearEntry, type ItemInfo, type Strategy, type TipSegment } from './bossPageModel'
+import { listNames } from './focusCardCopy'
 import type { GapEntry } from '../../../data-access/types'
 
 /**
@@ -21,16 +22,18 @@ import type { GapEntry } from '../../../data-access/types'
  * naming what must be defeated first (E_SUGGESTION_GATING guarantees those gates come before this
  * boss) — and the class's curated tips (verbatim wiki quotes with sources).
  *
- * When the boss's suggested gear is Unknown (absent + listed; for every pre-Hardmode boss no item is
- * verified obtainable before it), ONE Unknown block above the tabs says so in plain words (M2) —
+ * When the boss's suggested gear is Unknown (absent + listed: none of the weapons its own quoted tips
+ * name is verified obtainable before it — AMENDMENTS-015 B90(b)/(c); weapons themselves are
+ * verifiable), ONE Unknown block above the tabs says so in plain words (M2) —
  * the overlay's stated reason one tap away — and points to a guide's curated picks where one covers
  * this fight (M3); the tabs then carry the class tips only, the weapons they name linked to their
  * pages. Never an invented pick.
  *
  * When the gear is curated (P5-S3: a weapon passes E_SUGGESTION_GATING and a quoted tip recommends
  * it), a class without an entry is either Unknown on its own path (`suggestedEquipment.<class>`
- * listed — the same Unknown block inside that tab, with its own stated reason) or, if unlisted,
- * simply has no curated pick.
+ * listed — the same Unknown block inside that tab, with its own stated reason and, for a starter-tier
+ * fight, the guide pointer: B91(a)) or, if unlisted, simply has no curated pick. A class's entries
+ * share one box (B91(b)).
  */
 export interface ClassGearProps {
   boss: Boss
@@ -74,16 +77,8 @@ export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, spri
             <p className="font-semibold text-fg">
               Suggested gear: <UnknownValue field="suggestedEquipment" sourceUrl={boss.wikiUrl} />
             </p>
-            <p>We can’t verify which weapons you can get before this fight, so we don’t suggest any. The class tips below quote the wiki’s own gear advice, and the weapons they name link to their pages.</p>
-            {guide ? (
-              <p data-prep-guide="">
-                The{' '}
-                <Link to={guide.to} className={cx('font-semibold', LINK)}>
-                  {guide.title}
-                </Link>{' '}
-                guide has curated weapon picks for each class.
-              </p>
-            ) : null}
+            <p>None of the weapons the wiki recommends for this fight is verified as obtainable before it, so we don’t suggest any. The class tips below quote the wiki’s own gear advice, and the weapons they name link to their pages.</p>
+            {guide ? <PrepGuidePointer guide={guide} /> : null}
             {reason ? <WhyUnknown reason={reason} /> : null}
           </div>
         </div>
@@ -117,7 +112,20 @@ export function ClassGear({ boss, graph, conditions, gaps, itemOf, linkTip, spri
           // findable in-page and render server-side.
           <Tabs.Content key={cls} value={cls} forceMount className="space-y-4 pt-4 data-[state=inactive]:hidden" data-class-panel={cls}>
             {gear.status === 'curated' ? (
-              <ClassGearSlots boss={boss} cls={cls} gaps={gaps} graph={graph} conditions={conditions} itemOf={itemOf} sprites={sprites} nodeStates={nodeStates} worldEvil={worldEvil} gearData={gearData} />
+              <ClassGearSlots
+                boss={boss}
+                cls={cls}
+                gaps={gaps}
+                graph={graph}
+                conditions={conditions}
+                itemOf={itemOf}
+                sprites={sprites}
+                nodeStates={nodeStates}
+                worldEvil={worldEvil}
+                gearData={gearData}
+                classTips={tips.byClass[cls]}
+                otherTips={[...tips.general, ...tips.byDifficulty]}
+              />
             ) : null}
             <ClassTips cls={cls} tips={tips.byClass[cls]} unknown={strategies.status === 'unknown'} boss={boss} linkTip={linkTip} />
           </Tabs.Content>
@@ -157,9 +165,27 @@ function WhyUnknown({ reason }: { reason: string }) {
   )
 }
 
-/** One class's gear is Unknown while other classes have curated picks (P5-S3 honest partial). */
+/** The guide with curated per-class picks for this fight (bossPageModel.BOSS_PREP_GUIDES), where one covers it. */
+function PrepGuidePointer({ guide }: { guide: { title: string; to: string } }) {
+  return (
+    <p data-prep-guide="">
+      The{' '}
+      <Link to={guide.to} className={cx('font-semibold', LINK)}>
+        {guide.title}
+      </Link>{' '}
+      guide has curated weapon picks for each class.
+    </p>
+  )
+}
+
+/**
+ * One class's gear is Unknown while other classes have curated picks (P5-S3 honest partial). A
+ * starter-tier fight points to its guide's picks here too (AMENDMENTS-015 B91(a)), between the plain
+ * line and the stated reason.
+ */
 function ClassGearUnknown({ boss, cls, reason }: { boss: Boss; cls: GearClass; reason: string | undefined }) {
   const label = CLASS_LABEL[cls].toLowerCase()
+  const guide = prepGuideFor(boss.id)
   return (
     <div data-gear-class-unknown={cls} className="flex gap-3 border-2 border-dashed border-stone-500 bg-hatch-unknown p-3">
       <CircleHelp aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-unknown" />
@@ -168,6 +194,7 @@ function ClassGearUnknown({ boss, cls, reason }: { boss: Boss; cls: GearClass; r
           Suggested {label} gear: <UnknownValue field={gearClassField(cls)} sourceUrl={boss.wikiUrl} />
         </p>
         <p>None of the {label} weapons the wiki recommends here is verified as obtainable before this fight. The {label} tips below quote its advice.</p>
+        {guide ? <PrepGuidePointer guide={guide} /> : null}
         {reason ? <WhyUnknown reason={reason} /> : null}
       </div>
     </div>
@@ -187,6 +214,9 @@ function ClassGearSlots(props: {
   nodeStates: Readonly<Record<string, NodeState>>
   worldEvil: WorldEvil | null
   gearData?: GearData
+  /** The class's own tips (its tab) and the class-less ones (the attack-patterns section). */
+  classTips: readonly Strategy[]
+  otherTips: readonly Strategy[]
 }) {
   const resource = useResource('boss-gear', loadGearData, peekGearData)
   const showLoader = useDelayedFlag(!props.gearData && resource.status === 'loading')
@@ -207,13 +237,13 @@ function ClassGearSlots(props: {
     }
     return showLoader ? <p role="status" className="text-sm text-fg-muted">Loading gear…</p> : <div aria-hidden="true" className="min-h-16" />
   }
-  return (
-    <div className="space-y-4">
-      {own.entries.map((entry, i) => (
-        <GearEntrySlots key={i} {...props} entry={entry} data={data} />
-      ))}
-    </div>
-  )
+  // A pick quoted only by a class-less tip (B90(a)): that tip sits in the attack-patterns section, not
+  // in this tab — say where (B91(d)).
+  const named = (tips: readonly Strategy[], name: string) => tips.some((t) => t.text.includes(name))
+  const quotedElsewhere = [...new Set(own.entries.flatMap((e) => e.weapons))]
+    .map((id) => props.itemOf(id).name)
+    .filter((name) => !named(props.classTips, name) && named(props.otherTips, name))
+  return <ClassGearBox {...props} entries={own.entries} data={data} quotedElsewhere={quotedElsewhere} />
 }
 
 function GearGroup({ label, children }: { label: string; children: ReactNode }) {
@@ -228,7 +258,44 @@ function GearGroup({ label, children }: { label: string; children: ReactNode }) 
   )
 }
 
-function GearEntrySlots({ entry, data, graph, conditions, itemOf, sprites, nodeStates, worldEvil }: { entry: GearEntry; data: GearData; graph: MapGraph; conditions: ConditionIndex; itemOf: (id: number) => ItemInfo; sprites: SpriteIndex | null; nodeStates: Readonly<Record<string, NodeState>>; worldEvil: WorldEvil | null }) {
+const unique = <T,>(values: readonly T[]): T[] => [...new Set(values)]
+
+/**
+ * One box per class (AMENDMENTS-015 B91(b)): a class with several curated entries — King Slime's two
+ * melee picks, each backed by its own quoted tip — reads as one set of picks, one heading per kind
+ * (so a screen reader meets "Weapons" once), every entry's items in entry order, and each entry's
+ * note kept as its own line. A UI grouping only: the data keeps the entries apart.
+ */
+function ClassGearBox({
+  entries,
+  data,
+  graph,
+  conditions,
+  itemOf,
+  sprites,
+  nodeStates,
+  worldEvil,
+  quotedElsewhere,
+}: {
+  entries: readonly GearEntry[]
+  data: GearData
+  graph: MapGraph
+  conditions: ConditionIndex
+  itemOf: (id: number) => ItemInfo
+  sprites: SpriteIndex | null
+  nodeStates: Readonly<Record<string, NodeState>>
+  worldEvil: WorldEvil | null
+  /** Picks whose quoted tip is a class-less one (shown under attack patterns, not in this tab). */
+  quotedElsewhere: readonly string[]
+}) {
+  const entry = {
+    class: entries[0].class,
+    weapons: unique(entries.flatMap((e) => e.weapons)),
+    armorSetIds: unique(entries.flatMap((e) => e.armorSetIds)),
+    accessories: unique(entries.flatMap((e) => e.accessories)),
+    buffs: unique(entries.flatMap((e) => e.buffs)),
+    notes: unique(entries.flatMap((e) => (e.note ? [e.note] : []))),
+  }
   const ep = effectiveProgress(graph.progression, { worldEvil, nodeStates })
   const memo = new Map<string, boolean>()
   const gatesOf = (gatedBy: { bosses: string[]; conditions: string[] } | undefined): GateRef[] => {
@@ -294,7 +361,20 @@ function GearEntrySlots({ entry, data, graph, conditions, itemOf, sprites, nodeS
           })}
         </GearGroup>
       ) : null}
-      {entry.note ? <p className="text-sm text-fg-muted">{entry.note}</p> : null}
+      {entry.notes.map((note) => (
+        <p key={note} data-gear-note="" className="text-sm text-fg-muted">
+          {note}
+        </p>
+      ))}
+      {quotedElsewhere.length > 0 ? (
+        <p data-gear-tip-elsewhere="" className="text-sm text-fg-muted">
+          The wiki tip that names {listNames(quotedElsewhere)} is quoted under{' '}
+          <a href={`#${SECTION_IDS.patterns}`} className={cx('font-semibold', LINK)}>
+            Attack patterns &amp; survival tips
+          </a>
+          .
+        </p>
+      ) : null}
     </div>
   )
 }

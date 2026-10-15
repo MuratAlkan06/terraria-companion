@@ -1,7 +1,7 @@
 /* §7b gatedBy derivation: derivable only when every input is verified; minimum over routes. */
 import { describe, expect, it } from 'vitest'
 import type { Condition, DropSource, Prov, ProgressionEdge, ProgressionNode, Recipe, RecipeGroup } from '../../src/schemas'
-import { createGatingDeriver, type GatingContext } from './gating'
+import { containerKey, createGatingDeriver, type GatingContext } from './gating'
 
 const prov = (unverifiedFields: string[] = []): Prov => ({
   gameVersion: '1.4.5.8',
@@ -145,5 +145,106 @@ describe('createGatingDeriver', () => {
     expect(derive(3)).toEqual({ ok: false, blockers: ['progression-graph-pending'] })
     const noBoss = createGatingDeriver(ctx([recipe('4-a', 4, [], { conditions: ['full-moon'] })], [], null))
     expect(noBoss(4)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: ['full-moon'], stage: 'early-prehm' } })
+  })
+})
+
+describe('AMENDMENTS-014 B68 / AMENDMENTS-015 B78 sources: vendors, containers, gatherables, either-or, sufficient bounds', () => {
+  const CHEST_URL = 'https://terraria.wiki.gg/wiki/Chests'
+  const SEED_URL = 'https://terraria.wiki.gg/wiki/I_am_error'
+  const ORB_URL = 'https://terraria.wiki.gg/wiki/Shadow_Orb'
+  const HEART_URL = 'https://terraria.wiki.gg/wiki/Crimson_Heart'
+  const fromPage = (id: string, itemId: number, npcName: string, url: string, conditions: string[] = []): DropSource => ({
+    ...drop(id, itemId, { npcName }, { conditions }),
+    _prov: { ...prov(), sources: [{ kind: 'cargo:Drops', url, fetchedAt: '2026-10-14' }] },
+  })
+  const SLIME = { npcName: 'Green Slime', npcIds: [1] }
+  const conds = new Map(
+    [cond('hardmode', 'wall-of-flesh'), cond('post-moon-lord', 'moon-lord'), cond('full-moon'), cond('corruption-world'), cond('crimson-world'), cond('iron-ore-world'), cond('lead-ore-world'), cond('night')].map((c) => [c.id, c]),
+  )
+  const base = (recipes: Recipe[], drops: DropSource[], groups: RecipeGroup[] = []): GatingContext => ({ ...ctx(recipes, drops, GRAPH, groups), conditions: conds })
+
+  it('a gatherable route is gate-free (or carries its own conditions); an unknown vendor route blocks only a gated best', () => {
+    const derive = createGatingDeriver({
+      ...base([recipe('3-a', 3, [1, 2])], [drop('4-ml', 4, ML)]),
+      extraRoutes: new Map([
+        [1, [{ kind: 'gather', conditions: [] }]],
+        [2, [{ kind: 'gather', conditions: ['night'] }]],
+        [4, [{ kind: 'unknown', blocker: 'vendor-availability-unknown' }]],
+        [5, [{ kind: 'gather', conditions: [] }, { kind: 'unknown', blocker: 'vendor-conditions-unknown' }]],
+      ]),
+    })
+    expect(derive(1)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    expect(derive(3)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: ['night'], stage: 'early-prehm' } })
+    // Moon Lord drop + an unknown vendor route: the vendor could be less gated → Unknown
+    expect(derive(4)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'vendor-availability-unknown'] })
+    expect(derive.sufficient(4)).toEqual({ bosses: ['moon-lord'], conditions: [], stage: 'endgame' })
+    // a gate-free gather route beats any unknown route
+    expect(derive(5)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+  })
+
+  it('purchase: the NPC\'s availability (conditions, the minimum over "one of these items", NPCs it needs) + the shop row', () => {
+    const derive = createGatingDeriver({
+      ...base([], [drop('7-ml', 7, ML)]),
+      extraRoutes: new Map([
+        [10, [{ kind: 'purchase', conditions: [], requiresNpcs: ['Merchant'] }]],
+        [11, [{ kind: 'purchase', conditions: ['hardmode'], requiresNpcs: ['Arms Dealer'] }]],
+        [12, [{ kind: 'purchase', conditions: [], requiresNpcs: ['Picky'] }]],
+        [13, [{ kind: 'purchase', conditions: [], requiresNpcs: ['Nobody'] }]],
+        [6, [{ kind: 'gather', conditions: [] }]],
+      ]),
+      npcs: new Map([
+        ['Merchant', { conditions: [] }],
+        // has a gate-free item (6) or a Moon Lord item (7) → the minimum is gate-free
+        ['Arms Dealer', { conditions: [], requiresAnyOf: [[6, 7]], requiresNpcs: ['Merchant'] }],
+        ['Picky', { conditions: ['full-moon'], requiresAnyOf: [[7]] }],
+      ]),
+    })
+    expect(derive(10)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    expect(derive(11)).toEqual({ ok: true, gatedBy: { bosses: ['wall-of-flesh'], conditions: [], stage: 'late-prehm' } })
+    expect(derive(12)).toEqual({ ok: true, gatedBy: { bosses: ['moon-lord'], conditions: ['full-moon'], stage: 'endgame' } })
+    expect(derive(13)).toEqual({ ok: false, blockers: ['vendor-availability-unknown'] })
+  })
+
+  it('containers gate drops matched by name AND article (a seed-page row with the same name stays ungated); world-specific loot adds its condition', () => {
+    const derive = createGatingDeriver({
+      ...base([], [fromPage('20-chest', 20, 'Chest', CHEST_URL), fromPage('21-chest-seed', 21, 'Chest', SEED_URL), fromPage('22-chest', 22, 'Chest', CHEST_URL)]),
+      containers: new Map([[containerKey('Chest', CHEST_URL), { conditions: [] }]]),
+      containerItemConditions: new Map([[22, ['iron-ore-world']]]),
+    })
+    expect(derive(20)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    expect(derive(21)).toEqual({ ok: false, blockers: ['drop-source-ungated'] })
+    expect(derive(22)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: ['iron-ore-world'], stage: 'early-prehm' } })
+  })
+
+  it('either-or conditions: an exhaustive group drops out; other differing conditions are not expressible', () => {
+    const drops = [fromPage('30-orb', 30, 'Shadow Orb', ORB_URL), fromPage('30-heart', 30, 'Crimson Heart', HEART_URL), fromPage('31-orb', 31, 'Shadow Orb', ORB_URL), fromPage('31-moon', 31, 'Chest', CHEST_URL, ['full-moon'])]
+    const containers = new Map([
+      [containerKey('Shadow Orb', ORB_URL), { conditions: ['corruption-world'] }],
+      [containerKey('Crimson Heart', HEART_URL), { conditions: ['crimson-world'] }],
+      [containerKey('Chest', CHEST_URL), { conditions: [] }],
+    ])
+    const derive = createGatingDeriver({ ...base([], drops), containers, exhaustive: [['corruption-world', 'crimson-world']] })
+    expect(derive(30)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } }) // Musket Ball's case
+    expect(derive(31)).toEqual({ ok: false, blockers: ['condition-alternatives'] })
+    expect(derive.sufficient(31)).toBeDefined()
+    // without the reviewed group no side is ever picked
+    expect(createGatingDeriver({ ...base([], drops), containers })(30)).toEqual({ ok: false, blockers: ['condition-alternatives'] })
+  })
+
+  it('sufficient bounds: Iron Bars in Iron worlds OR Lead Bars in Lead worlds make "Any Iron Bar" gate-free even though both bars have unknown routes; one specific bar stays Unknown', () => {
+    const groups: RecipeGroup[] = [{ id: 'any-iron-bar', name: 'Any Iron Bar', memberItemIds: [22, 704], _prov: prov() }]
+    const recipes = [{ ...recipe('40-a', 40, []), ingredients: [{ amount: 1, ref: { kind: 'group' as const, groupId: 'any-iron-bar' } }] }, recipe('41-a', 41, [22])]
+    const drops = [fromPage('22-chest', 22, 'Chest', CHEST_URL), fromPage('704-chest', 704, 'Chest', CHEST_URL), drop('22-slime', 22, SLIME), drop('704-slime', 704, SLIME)]
+    const derive = createGatingDeriver({
+      ...base(recipes, drops, groups),
+      containers: new Map([[containerKey('Chest', CHEST_URL), { conditions: [] }]]),
+      containerItemConditions: new Map([[22, ['iron-ore-world']], [704, ['lead-ore-world']]]),
+      exhaustive: [['iron-ore-world', 'lead-ore-world']],
+    })
+    expect(derive(22)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'drop-source-ungated'] })
+    expect(derive.sufficient(22)).toEqual({ bosses: [], conditions: ['iron-ore-world'], stage: 'early-prehm' })
+    expect(derive(40)).toEqual({ ok: true, gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    expect(derive(41)).toMatchObject({ ok: false })
+    expect(derive.sufficient(41)).toEqual({ bosses: [], conditions: ['iron-ore-world'], stage: 'early-prehm' })
   })
 })

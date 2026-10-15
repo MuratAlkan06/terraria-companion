@@ -1,7 +1,7 @@
 {
   "gameVersion": "1.4.5.8",
   "dataSchemaVersion": 1,
-  "generatedAt": "2026-10-14T18:50:46.461Z",
+  "generatedAt": "2026-10-14T23:16:52.869Z",
   "iteminfo": {
     "rev": 1023241,
     "syncedTo": "1.4.5.7"
@@ -10,7 +10,7 @@
     "weapons": 488,
     "armor": 256,
     "accessories": 352,
-    "items": 79,
+    "items": 145,
     "armorSets": 67,
     "enemies": 334,
     "recipes": 3934,
@@ -19,18 +19,18 @@
     "bosses": 18,
     "nodes": 28,
     "edges": 35,
-    "buffs": 40,
-    "conditions": 38,
+    "buffs": 75,
+    "conditions": 47,
     "scenarios": 0
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 4376,
+    "total": 3906,
     "byKind": {
-      "source-mismatch": 31,
-      "count-reconciliation": 57,
-      "missing-field": 2460,
-      "gating-underived": 1097,
+      "source-mismatch": 32,
+      "count-reconciliation": 67,
+      "missing-field": 2201,
+      "gating-underived": 875,
       "unverified-drop-rate": 392,
       "lab-limitation-default": 339
     }

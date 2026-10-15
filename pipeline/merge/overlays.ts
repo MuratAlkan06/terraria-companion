@@ -33,12 +33,26 @@ const ConditionOverlayEntry = z.strictObject({
 })
 export type ConditionOverlayEntry = z.infer<typeof ConditionOverlayEntry>
 
+/**
+ * AMENDMENTS-014 B68 / AMENDMENTS-015 B78: a reviewed EXHAUSTIVE group of non-node conditions — every
+ * world satisfies at least one member (the world evil is Corruption or Crimson), so an either-or over
+ * the group is always satisfiable (merge/gating.ts "Either-or conditions"). Pipeline-only, quote-backed.
+ */
+const ExhaustiveConditionGroup = z.strictObject({
+  conditions: z.array(Slug).min(2),
+  page: z.string().min(1),
+  quote: PlainText.min(12),
+  why: z.string().min(1),
+})
+export type ExhaustiveConditionGroup = z.infer<typeof ExhaustiveConditionGroup>
+
 export const ConditionsOverlay = z
   .strictObject({
     overlay: z.literal('conditions'),
     authoredAt: IsoDate,
     notes: z.array(z.string()),
     entries: z.array(ConditionOverlayEntry).min(1),
+    exhaustive: z.array(ExhaustiveConditionGroup).optional(),
   })
   .superRefine((o, ctx) => {
     const ids = new Set<string>()
@@ -54,6 +68,14 @@ export const ConditionsOverlay = z
           keys.set(key, e.id)
         }
       }
+    }
+    for (const g of o.exhaustive ?? []) {
+      for (const c of g.conditions) {
+        const entry = o.entries.find((e) => e.id === c)
+        if (!entry) ctx.addIssue({ code: 'custom', message: `exhaustive group: unknown condition "${c}"` })
+        else if (entry.satisfiedByNode) ctx.addIssue({ code: 'custom', message: `exhaustive group: "${c}" maps to a progression node — only non-node conditions can form an either-or group` })
+      }
+      if (new Set(g.conditions).size !== g.conditions.length) ctx.addIssue({ code: 'custom', message: 'exhaustive group: duplicate condition' })
     }
   })
 export type ConditionsOverlay = z.infer<typeof ConditionsOverlay>
@@ -424,7 +446,13 @@ export const labEvidencePages = (o: LabParamsOverlay): string[] => [...o.entries
  */
 const ArmorSetEntry = z.strictObject({
   page: Page,
-  classes: z.array(z.strictObject({ helmet: PlainText1, class: DamageClass, quote: Quote })).optional(),
+  /**
+   * `class` = the single ArmorSet variant class ("other" for hybrids and class-less sets); `classes`
+   * (AMENDMENTS-011 B52) = the hybrid's damage classes the quote names ("melee/ranged" → melee, ranged;
+   * "mage" → magic; "summoner" → summon) — absent = [class]. A hybrid list must equal the variant's
+   * stat class signals (merge/armor.ts checks both the quote and the data).
+   */
+  classes: z.array(z.strictObject({ helmet: PlainText1, class: DamageClass, classes: z.array(DamageClass.exclude(['other'])).min(2).optional(), quote: Quote })).optional(),
   withhold: z.strictObject({ reason: PlainText1, quote: Quote }).optional(),
   /** Pipeline-only reviewer rationale (not emitted). */
   why: z.string().min(1),
@@ -448,6 +476,129 @@ export const loadArmorSetsOverlay = (dir = OVERLAY_DIR): ArmorSetsOverlay => Arm
 
 /** Every article the armor-sets overlay cites (its set pages — already fetched as set articles). */
 export const armorSetEvidencePages = (o: ArmorSetsOverlay): string[] => o.entries.map((e) => e.page)
+
+// ---------------------------------------------------------------------------------------------
+// AMENDMENTS-014 B68 / AMENDMENTS-015 B78 gating expansion: reviewed acquisition sources the §7b
+// derivation may use. Every entry is quote-backed (checked verbatim against the cached article
+// revision, merge/evidence.ts); conditions are registry slugs (overlays/conditions.json).
+// ---------------------------------------------------------------------------------------------
+
+const EvidenceQuote = z.strictObject({ page: Page, quote: Quote })
+
+/**
+ * overlays/vendors.json — vendor NPC availability + shop-row availability mapping.
+ * - `npcs`: NPCs whose availability is honestly derivable: their quoted move-in / appearance rule as
+ *   registry conditions (none = no progression gate), plus "has one of these items" (`requiresAnyOf`,
+ *   every listed name must occur on the NPC article) and "this NPC is present" (`requiresNpcs`).
+ * - `unavailable`: every other vendor the wiki names, with the quoted reason its availability is not
+ *   derivable (alternative bosses, NPC counts, random visits) — its purchase routes stay Unknown.
+ * - `availability`: verbatim Availability cells of the NPC shop tables (parse/shops.ts) → conditions;
+ *   an unmapped cell keeps the route's conditions Unknown. A mapping no shop row uses is stale.
+ */
+const VendorNpc = z.strictObject({
+  npc: PlainText1,
+  aliases: z.array(PlainText1).optional(),
+  page: Page,
+  conditions: z.array(Slug),
+  evidence: z.array(EvidenceQuote).min(1),
+  requiresAnyOf: z.strictObject({ quote: Quote, items: z.array(z.string().min(1)).min(1) }).optional(),
+  requiresNpcs: z.strictObject({ quote: Quote, npcs: z.array(PlainText1).min(1) }).optional(),
+  why: z.string().min(1),
+})
+export type VendorNpc = z.infer<typeof VendorNpc>
+const VendorUnavailable = z.strictObject({ npc: PlainText1, aliases: z.array(PlainText1).optional(), page: Page, reason: PlainText1, quote: Quote })
+export type VendorUnavailable = z.infer<typeof VendorUnavailable>
+const VendorAvailability = z.strictObject({ text: z.string().min(1), conditions: z.array(Slug), why: z.string().min(1).optional() })
+
+export const VendorsOverlay = z
+  .strictObject({
+    overlay: z.literal('vendors'),
+    authoredAt: IsoDate,
+    notes: z.array(z.string()),
+    npcs: z.array(VendorNpc).min(1),
+    unavailable: z.array(VendorUnavailable),
+    availability: z.array(VendorAvailability).min(1),
+  })
+  .superRefine((o, ctx) => {
+    const names = new Set<string>()
+    for (const n of [...o.npcs, ...o.unavailable]) {
+      for (const name of [n.npc, ...(n.aliases ?? [])]) {
+        if (names.has(name)) ctx.addIssue({ code: 'custom', message: `vendors: NPC "${name}" listed twice` })
+        names.add(name)
+      }
+    }
+    const texts = new Set<string>()
+    for (const a of o.availability) {
+      if (texts.has(a.text)) ctx.addIssue({ code: 'custom', message: `vendors: availability text "${a.text}" mapped twice` })
+      texts.add(a.text)
+    }
+  })
+export type VendorsOverlay = z.infer<typeof VendorsOverlay>
+export const loadVendorsOverlay = (dir = OVERLAY_DIR): VendorsOverlay => VendorsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'vendors.json'), 'utf8')))
+
+/**
+ * overlays/containers.json — loot containers whose own gating is stated: `container` = the Cargo Drops
+ * source name, `page` = the article its rows live on (seed-world pages reuse "Chest" and never match),
+ * `conditions` = what opening it needs in progression terms (none = no gate).
+ */
+const ContainerEntry = z.strictObject({ container: PlainText1, page: Page, conditions: z.array(Slug), evidence: z.array(EvidenceQuote).min(1), why: z.string().min(1) })
+export type ContainerEntry = z.infer<typeof ContainerEntry>
+/** Loot a registered container holds only in some worlds (the chest tables' "(in worlds with Iron)"). */
+const WorldSpecificLoot = z.strictObject({ item: z.string().min(1), conditions: z.array(Slug).min(1), page: Page, quote: Quote })
+export const ContainersOverlay = z
+  .strictObject({ overlay: z.literal('containers'), authoredAt: IsoDate, notes: z.array(z.string()), worldSpecificLoot: z.array(WorldSpecificLoot).optional(), entries: z.array(ContainerEntry).min(1) })
+  .superRefine((o, ctx) => {
+    const seen = new Set<string>()
+    for (const e of o.entries) {
+      const key = `${e.container}|${e.page}`
+      if (seen.has(key)) ctx.addIssue({ code: 'custom', message: `containers: "${key}" listed twice` })
+      seen.add(key)
+    }
+  })
+export type ContainersOverlay = z.infer<typeof ContainersOverlay>
+export const loadContainersOverlay = (dir = OVERLAY_DIR): ContainersOverlay => ContainersOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'containers.json'), 'utf8')))
+
+/**
+ * overlays/gatherables.json — the curated gatherable base-material registry: items the world itself
+ * yields with starting tools (mined, chopped, harvested, dropped by the slimes of a fresh world). Each
+ * is a gate-free early pre-Hardmode route unless it names conditions; `quote` (verbatim on `page`)
+ * is the evidence and becomes the emitted "other" acquisition text of an emitted item.
+ */
+const GatherableEntry = z.strictObject({
+  item: z.string().min(1),
+  page: Page,
+  quote: Quote,
+  /** Further quoted evidence that the source is available early (e.g. Gel: "from the beginning stages"). */
+  support: z.array(EvidenceQuote).optional(),
+  /** "Only while one of these items is in the inventory" (Seeds: a Blowpipe or Blowgun) — each named on `page`; minimum over their gating. */
+  requiresAnyOf: z.array(z.string().min(1)).min(1).optional(),
+  conditions: z.array(Slug),
+  why: z.string().min(1),
+})
+export type GatherableEntry = z.infer<typeof GatherableEntry>
+export const GatherablesOverlay = z
+  .strictObject({ overlay: z.literal('gatherables'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(GatherableEntry).min(1) })
+  .superRefine((o, ctx) => {
+    const seen = new Set<string>()
+    for (const e of o.entries) {
+      if (seen.has(e.item)) ctx.addIssue({ code: 'custom', message: `gatherables: "${e.item}" listed twice` })
+      seen.add(e.item)
+    }
+  })
+export type GatherablesOverlay = z.infer<typeof GatherablesOverlay>
+export const loadGatherablesOverlay = (dir = OVERLAY_DIR): GatherablesOverlay => GatherablesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'gatherables.json'), 'utf8')))
+
+/** Every article the B68/B78 overlays cite (fetched by the sync plan, quote-checked by the build). */
+export function acquisitionSourcePages(v: VendorsOverlay, c: ContainersOverlay, g: GatherablesOverlay, conditions: ConditionsOverlay): string[] {
+  return [
+    ...v.npcs.flatMap((n) => [n.page, ...n.evidence.map((e) => e.page)]),
+    ...v.unavailable.map((n) => n.page),
+    ...c.entries.flatMap((e) => e.evidence.map((x) => x.page)),
+    ...(c.worldSpecificLoot ?? []).map((x) => x.page),
+    ...g.entries.flatMap((e) => [e.page, ...(e.support ?? []).map((x) => x.page)]),
+    ...(conditions.exhaustive ?? []).map((x) => x.page),
+  ]
+}
 
 export const loadBossesOverlay = (dir = OVERLAY_DIR): BossesOverlay => BossesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'bosses.json'), 'utf8')))
 export const loadProgressionOverlay = (dir = OVERLAY_DIR): ProgressionOverlay => ProgressionOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'progression.json'), 'utf8')))

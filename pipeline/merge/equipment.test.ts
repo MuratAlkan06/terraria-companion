@@ -25,15 +25,34 @@ describe('game-text lines → StatEffect (closed StatKind, DATA_SCHEMA_SPEC §2.
   })
 
   it('specials keep the verbatim line (simulated: false, sourceUrl); amendment candidates name the StatKind they would need', () => {
-    const r = classifyLine('20% chance to save ammo', URL, 'test')
-    expect(r.effects).toEqual([special('20% chance to save ammo')])
-    expect(r.rule).toMatchObject({ kind: 'special', proposed: 'ammo-save-pct' })
+    const r = classifyLine('25% chance not to consume arrows', URL, 'test')
+    expect(r.effects).toEqual([special('25% chance not to consume arrows')])
+    expect(r.rule).toMatchObject({ kind: 'special', proposed: 'ammo-save-pct with an ammo scope (arrows)' })
     expect(r.categories).toEqual(['offense'])
     expect(effects('Become immune after striking an enemy')).toEqual([special('Become immune after striking an enemy')])
+    // B54 kinds whose line states no value stay specials ("no value/unit rows stay Unknown")
+    expect(classifyLine('Increases melee knockback', URL, 'test').rule).toMatchObject({ kind: 'special', proposed: 'knockback-pct / minion-knockback (value)' })
+  })
+
+  it('AMENDMENTS-011 B54: the 11 pre-approved kinds structure lines that state their value (category unchanged)', () => {
+    const r = classifyLine('20% chance to save ammo', URL, 'test')
+    expect(r.effects).toEqual([stat('ammo-save-pct', 20)])
+    expect(r.categories).toEqual(['offense'])
+    expect(effects('Increases armor penetration by 5')).toEqual([stat('armor-penetration-flat', 5)])
+    expect(effects('Increases your max number of summon tag effects by 1')).toEqual([stat('tag-effect-slots', 1)])
+    expect(effects('Increases fishing power by 10')).toEqual([stat('fishing-power-flat', 10)])
+    expect(effects('Increases block placement & tool range by 1')).toEqual([stat('tile-reach-flat', 1)])
+    expect(effects('Reduces the cooldown of healing potions by 25%')).toEqual([stat('potion-cooldown-pct', -25)])
+    // seconds → ticks (§2 units); the LINE must state the seconds
+    expect(effects('Provides 7 seconds of immunity to lava')).toEqual([stat('lava-immunity-ticks', 420)])
+    expect(effects('Increases whip range by 30% and speed by 15%')).toEqual([stat('whip-range-pct', 30), stat('whip-speed-pct', 15)])
+    expect(effects('10% increased summon and ranged damage and 20% chance to save ammo')).toEqual([stat('damage-pct', 10, 'summon'), stat('damage-pct', 10, 'ranged'), stat('ammo-save-pct', 20)])
   })
 
   it('stat + remainder: the stated number is structured, the unmodeled rest stays a quoted special', () => {
-    expect(effects('Increases whip range by 30% and speed by 15%')).toEqual([stat('whip-range-pct', 30), special('Increases whip range by 30% and speed by 15%')])
+    expect(effects('Fishing line will never break, decreases chance of bait consumption, increases fishing power by 10')).toEqual([stat('fishing-power-flat', 10), special('Fishing line will never break, decreases chance of bait consumption, increases fishing power by 10')])
+    expect(effects('Grants immunity to fire blocks and 7 seconds of immunity to lava')).toEqual([stat('lava-immunity-ticks', 420), special('Grants immunity to fire blocks and 7 seconds of immunity to lava')])
+    expect(effects('Increases your summon damage by 10% and the knockback of your minions')).toEqual([stat('damage-pct', 10, 'summon'), special('Increases your summon damage by 10% and the knockback of your minions')])
   })
 
   it('flavor / explanation lines emit nothing; an unclassifiable line fails the build (never silent text)', () => {

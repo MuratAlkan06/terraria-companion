@@ -4,7 +4,8 @@
   "notes": [
     "Residual decisions for the armor-set derivation (pipeline/merge/armor.ts, P2-S8). Everything else — set membership (the pieces a set article hosts), per-helmet set bonus game text, set-bonus effects, defense totals, stage and every single-class variant — is derived from Cargo Items, Module:Iteminfo/data, Cargo Equipinfo and the set article's infobox. Every quote is checked verbatim against the cached article revision.",
     "withhold: the ArmorSet schema needs ≥1 helmet, exactly one chest and one legs piece hosted by the set article, and a set bonus per helmet. Sets that cannot be expressed are not emitted; their pieces carry no setId and a gap entry records why (amendment candidates in the P2-S8 report).",
-    "classes: ArmorSet.variants[].class is a single DamageClass. Where the variant's stats name several classes, the set article's own description decides: the wiki calls these sets hybrids ('melee/ranged', 'mage/summoner', …) or describes no class at all, so the ruling is 'other' = no single class — the safe direction for class-filtered recommendations (they are under-, never wrongly recommended). The schema cannot express a hybrid class (amendment candidate: a class list per variant)."
+    "classes: ArmorSet.variants[].class is a single DamageClass. Where the variant's stats name several classes, the set article's own description decides: the wiki calls these sets hybrids ('melee/ranged', 'mage/summoner', …) or describes no class at all, so the ruling is 'other' = no single class — the safe direction for class-filtered recommendations (they are under-, never wrongly recommended).",
+    "AMENDMENTS-011 B52 (landed by the B70 P4-prep slice, 2026-10-14): a ruling's `classes` lists the hybrid's damage classes as its quoted article description names them ('mage' = magic, 'summoner' = summon); the build checks the quote names every listed class AND that the list equals the variant's stat class signals. Emitted as variants[].classes beside the kept single `class` (one release, consumers read classes ?? [class]). Crystal Assassin names no class, so it stays ['other']."
   ],
   "entries": [
     {
@@ -33,12 +34,12 @@
     },
     {
       "page": "Frost armor",
-      "classes": [{ "helmet": "Frost Helmet", "class": "other", "quote": "Frost armor is a Hardmode melee/ranged armor set" }],
+      "classes": [{ "helmet": "Frost Helmet", "class": "other", "classes": ["melee", "ranged"], "quote": "Frost armor is a Hardmode melee/ranged armor set" }],
       "why": "Pieces and set bonus are melee + ranged (\"Increases melee and ranged damage by 10%\")."
     },
     {
       "page": "Forbidden armor",
-      "classes": [{ "helmet": "Forbidden Mask", "class": "other", "quote": "Forbidden armor is a Hardmode mage/summoner armor set" }],
+      "classes": [{ "helmet": "Forbidden Mask", "class": "other", "classes": ["magic", "summon"], "quote": "Forbidden armor is a Hardmode mage/summoner armor set" }],
       "why": "Magic + summon stats on the pieces."
     },
     {
@@ -48,42 +49,42 @@
     },
     {
       "page": "Squire armor",
-      "classes": [{ "helmet": "Squire's Great Helm", "class": "other", "quote": "Squire armor is a Hardmode melee/summoner armor set" }],
+      "classes": [{ "helmet": "Squire's Great Helm", "class": "other", "classes": ["melee", "summon"], "quote": "Squire armor is a Hardmode melee/summoner armor set" }],
       "why": "Melee + summon (sentry) stats."
     },
     {
       "page": "Monk armor",
-      "classes": [{ "helmet": "Monk's Bushy Brow Bald Cap", "class": "other", "quote": "Monk armor is a Hardmode melee/summoner armor set" }],
+      "classes": [{ "helmet": "Monk's Bushy Brow Bald Cap", "class": "other", "classes": ["melee", "summon"], "quote": "Monk armor is a Hardmode melee/summoner armor set" }],
       "why": "Melee + summon (sentry) stats."
     },
     {
       "page": "Huntress armor",
-      "classes": [{ "helmet": "Huntress's Wig", "class": "other", "quote": "Huntress armor is a Hardmode ranged/summoner armor set" }],
+      "classes": [{ "helmet": "Huntress's Wig", "class": "other", "classes": ["ranged", "summon"], "quote": "Huntress armor is a Hardmode ranged/summoner armor set" }],
       "why": "Ranged + summon (sentry) stats."
     },
     {
       "page": "Apprentice armor",
-      "classes": [{ "helmet": "Apprentice's Hat", "class": "other", "quote": "Apprentice armor is a Hardmode mage/summoner armor set" }],
+      "classes": [{ "helmet": "Apprentice's Hat", "class": "other", "classes": ["magic", "summon"], "quote": "Apprentice armor is a Hardmode mage/summoner armor set" }],
       "why": "Magic + summon (sentry) stats."
     },
     {
       "page": "Valhalla Knight armor",
-      "classes": [{ "helmet": "Valhalla Knight's Helm", "class": "other", "quote": "post-Golem melee/summoner armor set consisting of the Valhalla Knight's Helm" }],
+      "classes": [{ "helmet": "Valhalla Knight's Helm", "class": "other", "classes": ["melee", "summon"], "quote": "post-Golem melee/summoner armor set consisting of the Valhalla Knight's Helm" }],
       "why": "Melee + summon (sentry) stats."
     },
     {
       "page": "Shinobi Infiltrator armor",
-      "classes": [{ "helmet": "Shinobi Infiltrator's Helmet", "class": "other", "quote": "post-Golem melee/summoner armor set consisting of the Shinobi Infiltrator's Helmet" }],
+      "classes": [{ "helmet": "Shinobi Infiltrator's Helmet", "class": "other", "classes": ["melee", "summon"], "quote": "post-Golem melee/summoner armor set consisting of the Shinobi Infiltrator's Helmet" }],
       "why": "Melee + summon (sentry) stats."
     },
     {
       "page": "Red Riding armor",
-      "classes": [{ "helmet": "Red Riding Hood", "class": "other", "quote": "post-Golem ranged/summoner armor set consisting of the Red Riding Hood" }],
+      "classes": [{ "helmet": "Red Riding Hood", "class": "other", "classes": ["ranged", "summon"], "quote": "post-Golem ranged/summoner armor set consisting of the Red Riding Hood" }],
       "why": "Ranged + summon (sentry) stats."
     },
     {
       "page": "Dark Artist armor",
-      "classes": [{ "helmet": "Dark Artist's Hat", "class": "other", "quote": "post-Golem mage/summoner armor set consisting of the Dark Artist's Hat" }],
+      "classes": [{ "helmet": "Dark Artist's Hat", "class": "other", "classes": ["magic", "summon"], "quote": "post-Golem mage/summoner armor set consisting of the Dark Artist's Hat" }],
       "why": "Magic + summon (sentry) stats."
     }
   ]

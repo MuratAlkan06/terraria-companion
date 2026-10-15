@@ -55,9 +55,25 @@ export const STAT_CATEGORY: Record<StatKind, EffectCategory> = {
   'max-life-flat': 'defense',
   'mining-speed-pct': 'utility',
   'aggro-flat': 'defense',
+  // AMENDMENTS-011 B54 kinds — each takes the category its former special rule contributed
+  'fishing-power-flat': 'utility',
+  'ammo-save-pct': 'offense',
+  'knockback-pct': 'offense',
+  'tag-effect-slots': 'offense',
+  'lava-immunity-ticks': 'defense',
+  'melee-scale-pct': 'offense',
+  'tile-reach-flat': 'utility',
+  'potion-cooldown-pct': 'defense',
+  'armor-penetration-flat': 'offense',
+  'minion-knockback': 'offense',
+  'whip-speed-pct': 'offense',
 }
 
-type Stat = { stat: StatKind; value: number; scope?: DamageClass }
+/**
+ * `stated` = the number as the line states it when the emitted value is a unit conversion of it
+ * (§2 units: "7 seconds" → 420 ticks); the classifier checks the LINE states `stated ?? |value|`.
+ */
+type Stat = { stat: StatKind; value: number; scope?: DamageClass; stated?: number }
 type Groups = Record<string, string>
 
 interface RuleBase {
@@ -124,8 +140,9 @@ export const EFFECT_RULES: readonly EffectRule[] = [
   st('minion-slots', /^Increases your max number of minions by (?<n>\d+)$/, (g) => [stat('minion-slots', n(g))]),
   st('sentry-slots', /^Increases? your max number of sentries by (?<n>\d+)$/, (g) => [stat('sentry-slots', n(g))]),
   st('whip-range', /^Increases whip range by (?<n>\d+)%$/, (g) => [stat('whip-range-pct', n(g))]),
-  st('whip-range-and-speed', /^Increases whip range by (?<n>\d+)% and speed by (?<m>\d+)%$/, (g) => [stat('whip-range-pct', n(g))], { categories: ['offense'], proposed: 'whip-speed-pct' }),
-  st('summon-damage-minion-kb', /^Increases your summon damage by (?<n>\d+)% and the knockback of your minions$/, (g) => [dmg(n(g), 'summon')], { categories: ['offense'], proposed: 'minion-knockback' }),
+  // B54: whip speed is a stat (whip-speed-pct); the line states both numbers
+  st('whip-range-and-speed', /^Increases whip range by (?<n>\d+)% and speed by (?<m>\d+)%$/, (g) => [stat('whip-range-pct', n(g)), stat('whip-speed-pct', n(g, 'm'))]),
+  st('summon-damage-minion-kb', /^Increases your summon damage by (?<n>\d+)% and the knockback of your minions$/, (g) => [dmg(n(g), 'summon')], { categories: ['offense'], proposed: 'minion-knockback (value)' }),
   // summoner hybrid armor (Squire / Monk / Huntress / Apprentice tiers)
   st('sentry-and-melee-speed', /^Increases your max number of sentries by (?<n>\d+) and increases melee speed by (?<m>\d+)%$/, (g) => [stat('sentry-slots', n(g)), stat('melee-speed-pct', n(g, 'm'))]),
   st('sentry-and-ranged-crit', /^Increases your max number of sentries by (?<n>\d+) and increases ranged critical strike chance by (?<m>\d+)%$/, (g) => [stat('sentry-slots', n(g)), crit(n(g, 'm'), 'ranged')]),
@@ -140,29 +157,34 @@ export const EFFECT_RULES: readonly EffectRule[] = [
   st('summon-damage-crit-and-move', /^(?<n>\d+)% increased summon damage, (?<m>\d+)% increased (?<c>melee|magic) critical strike chance and movement speed$/, (g) => [dmg(n(g), 'summon'), crit(n(g, 'm'), g.c), stat('move-speed-pct', n(g, 'm'))]),
   st('summon-damage-crit-and-n-move', /^(?<n>\d+)% increased summon damage, (?<m>\d+)% increased (?<c>melee) critical strike chance and (?<k>\d+)% increased movement speed$/, (g) => [dmg(n(g), 'summon'), crit(n(g, 'm'), g.c), stat('move-speed-pct', n(g, 'k'))]),
   st('summon-damage-and-life-regen', /^(?<n>\d+)% increased summon damage and massively increased life regeneration$/, (g) => [dmg(n(g), 'summon')], { categories: ['defense'], proposed: 'life-regen (unit)' }),
-  st('two-damage-and-ammo', /^(?<n>\d+)% increased summon (?:and|&) ranged damage and (?<m>\d+)% chance to save ammo$/, (g) => [dmg(n(g), 'summon'), dmg(n(g), 'ranged')], { categories: ['offense'], proposed: 'ammo-save-pct' }),
+  st('two-damage-and-ammo', /^(?<n>\d+)% increased summon (?:and|&) ranged damage and (?<m>\d+)% chance to save ammo$/, (g) => [dmg(n(g), 'summon'), dmg(n(g), 'ranged'), stat('ammo-save-pct', n(g, 'm'))]),
   // ---- defense ----
   st('defense-bonus', /^(?<n>\d+) defense$/, (g) => [stat('defense-flat', n(g))]),
   st('damage-reduction', /^Reduces damage taken by (?<n>\d+)%$/, (g) => [stat('damage-reduction-pct', n(g))]),
   // ---- utility ----
   st('mining-speed', /^(?<n>\d+)% increased mining speed$/, (g) => [stat('mining-speed-pct', n(g))]),
   st('mining-speed-by', /^Increases mining speed by (?<n>\d+)%$/, (g) => [stat('mining-speed-pct', n(g))]),
+  // ---- AMENDMENTS-011 B54 kinds (former specials whose line states the value) ----
+  st('ammo-save', /^(?<n>\d+)% chance (?:to save ammo|not to consume ammo|to not consume ammo)$/, (g) => [stat('ammo-save-pct', n(g))]),
+  st('armor-penetration', /^Increases armor penetration by (?<n>\d+)$/, (g) => [stat('armor-penetration-flat', n(g))]),
+  st('tag-effect-slots', /^Increases your max number of summon tag effects by (?<n>\d+)$/, (g) => [stat('tag-effect-slots', n(g))]),
+  st('fishing-power', /^Increases fishing power by (?<n>\d+)$/, (g) => [stat('fishing-power-flat', n(g))]),
+  st('fishing-power-and-line', /^Fishing line will never break, decreases chance of bait consumption, increases fishing power by (?<n>\d+)$/, (g) => [stat('fishing-power-flat', n(g))], { categories: ['utility'] }),
+  st('tool-range', /^Increases (?:block placement & tool range|block placement range) by (?<n>\d+)$/, (g) => [stat('tile-reach-flat', n(g))]),
+  st('potion-cooldown', /^Reduces the cooldown of healing potions by (?<n>\d+)%$/, (g) => [stat('potion-cooldown-pct', -n(g))]),
+  st('life-regen-and-potion-cooldown', /^Provides life regeneration and reduces the cooldown of healing potions by (?<n>\d+)%$/, (g) => [stat('potion-cooldown-pct', -n(g))], { categories: ['defense'], proposed: 'life-regen (unit)' }),
+  st('lava-immunity-time', /^Provides (?<n>\d+) seconds of immunity to lava$/, (g) => [{ stat: 'lava-immunity-ticks', value: n(g) * 60, stated: n(g) }]),
+  st('fire-blocks-and-lava-immunity-time', /^Grants immunity to fire blocks and (?<n>\d+) seconds of immunity to lava$/, (g) => [{ stat: 'lava-immunity-ticks', value: n(g) * 60, stated: n(g) }], { categories: ['defense'] }),
   // ---- magic set bonus: a reduction that is converted into healing (Spectre Hood) ----
   st('magic-damage-reduced-to-healing', /^Reduces Magic damage by (?<n>\d+)% and converts it to healing force$/, (g) => [dmg(-n(g), 'magic')], { categories: ['utility'] }),
 
   // ================= specials (no StatKind; verbatim text) =================
   // numbers present, enum has no kind → amendment candidates
-  sp('ammo-save', /^(?:\d+)% chance (?:to save ammo|not to consume (?:arrows|ammo)|to not consume (?:arrows|ammo))$/, ['offense'], 'ammo-save-pct'),
+  sp('ammo-save-arrows', /^\d+% chance (?:not to consume arrows|to not consume arrows)$/, ['offense'], 'ammo-save-pct with an ammo scope (arrows)'),
   sp('arrow-damage', /^Increases arrow damage by \d+% and greatly increases arrow speed$/, ['offense'], 'damage-pct with an ammo scope (arrow/bullet/rocket)'),
   sp('weapon-type-damage', /^Increases (?:gun|bow|specialist ranged) damage by \d+%$/, ['offense'], 'damage-pct with an ammo scope (arrow/bullet/rocket)'),
   sp('sentry-crit', /^\d+% increased sentry critical strike chance$/, ['offense'], 'crit-pct with a sentry scope'),
-  sp('armor-penetration', /^Increases armor penetration by \d+$/, ['offense'], 'armor-penetration-flat'),
-  sp('tag-effect-slots', /^Increases your max number of summon tag effects by \d+$/, ['offense'], 'tag-effect-slots'),
-  sp('fishing-power', /^(?:Increases fishing power by \d+|Fishing line will never break, decreases chance of bait consumption, increases fishing power by \d+)$/, ['utility'], 'fishing-power-flat'),
-  sp('tool-range', /^Increases (?:block placement & tool range|block placement range) by \d+$/, ['utility'], 'tile-reach-flat'),
-  sp('potion-cooldown', /^(?:Reduces the cooldown of healing potions by \d+%|Provides life regeneration and reduces the cooldown of healing potions by \d+%)$/, ['defense'], 'potion-cooldown-pct'),
   sp('shop-discount', /^Lowers shop prices by \d+%$/, ['utility']),
-  sp('lava-immunity-time', /^(?:Provides \d+ seconds of immunity to lava|Grants immunity to fire blocks and \d+ seconds of immunity to lava)$/, ['defense'], 'lava-immunity-ticks'),
   sp('trap-damage', /^\d+% reduced damage and debuff time from traps$/, ['defense']),
   sp('team-absorb', /^Absorbs \d+% of damage done to players on your team when above \d+% life$/, ['defense']),
   sp('low-life-shell', /^Puts a shell around the owner when below \d+% life that reduces damage by \d+%$/, ['defense']),
@@ -172,8 +194,8 @@ export const EFFECT_RULES: readonly EffectRule[] = [
   sp('life-regen', /^(?:Slowly regenerates life|Grants minor life regeneration|Greatly increased life regen|Greatly increases life regen when not moving|Greatly increases life regeneration after striking an enemy)$/, ['defense'], 'life-regen (unit)'),
   sp('mana-regen', /^Increases mana regeneration rate$/, ['offense'], 'mana-regen (unit)'),
   sp('jump', /^(?:Increases jump height|Increases jump height and negates fall damage|Increases jump speed and allows auto-jump)$/, ['mobility'], 'jump-boost (value)'),
-  sp('knockback', /^(?:Increases melee knockback|Increases whip knockback|Increases the knockback of your minions)$/, ['offense'], 'knockback-pct'),
-  sp('melee-size', /^Increases the size of melee weapons$/, ['offense'], 'melee-scale-pct'),
+  sp('knockback', /^(?:Increases melee knockback|Increases whip knockback|Increases the knockback of your minions)$/, ['offense'], 'knockback-pct / minion-knockback (value)'),
+  sp('melee-size', /^Increases the size of melee weapons$/, ['offense'], 'melee-scale-pct (value)'),
   sp('minor-all-stats', /^(?:(?:During daytime|During nighttime), grants minor increase to damage|Minor increase to damage), melee speed, critical strike chance, life regeneration, defense, mining speed, and minion knockback$/, ['offense', 'defense'], 'damage-pct + melee-speed-pct + crit-pct + life-regen + defense-flat + mining-speed-pct (values only in Equipinfo) + minion-knockback'),
   sp('movement-accel', /^(?:Increased movement speed and acceleration|Increases movement speed and acceleration|Slightly increases mobility)$/, ['mobility'], 'move-speed-pct (value)'),
   // mobility mechanics
@@ -282,7 +304,8 @@ export function classifyLine(line: string, sourceUrl: string, where: string): Cl
   const numbers = (line.match(NUMBER) ?? []).map(Number)
   const stats = r.stats(g)
   for (const s of stats) {
-    if (!numbers.includes(Math.abs(s.value))) throw new OverlayError(`[E_SCHEMA] ${where}: rule ${r.id} emits ${s.stat} ${s.value} but the line "${line}" does not state ${Math.abs(s.value)}`)
+    const stated = s.stated ?? Math.abs(s.value)
+    if (!numbers.includes(stated)) throw new OverlayError(`[E_SCHEMA] ${where}: rule ${r.id} emits ${s.stat} ${s.value} but the line "${line}" does not state ${stated}`)
     if (s.value < 0 && !/reduc|lower|decreas/i.test(line)) throw new OverlayError(`[E_SCHEMA] ${where}: rule ${r.id} emits a negative ${s.stat} but "${line}" states no reduction`)
   }
   const effects: StatEffect[] = stats.map((s) => ({ kind: 'stat', stat: s.stat, value: s.value, ...(s.scope ? { scope: s.scope } : {}) }))

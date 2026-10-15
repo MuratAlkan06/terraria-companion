@@ -3,6 +3,7 @@ import { Popover } from 'radix-ui'
 import { useId, useState } from 'react'
 import { meta } from '../data/meta'
 import { fixedBottomInset } from './fixedBottomInset'
+import { unknownItemLine } from './unknownItemLine'
 
 /**
  * "Partially verified" badge (UX_SPEC §5.3): shown next to the ProvenanceLink when anything on
@@ -68,7 +69,7 @@ export function PartiallyVerifiedBadge({ items }: PartiallyVerifiedBadgeProps) {
           </p>
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-fg-muted">
             {items.map((item) => (
-              <li key={item.key}>{item.label}</li>
+              <li key={item.key}>{unknownItemLine(item)}</li>
             ))}
           </ul>
         </Popover.Content>

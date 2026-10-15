@@ -2,8 +2,8 @@
  * `npm run pipeline:sprites` — LOCAL ONLY, never in CI (AMENDMENTS-001 A10). Downloads the
  * weapon sprites (the wiki's infobox image of every emitted weapon) into the gitignored
  * public/sprites/weapons/<itemId>.<ext>, the boss sprites (P2-S6: the registry boss's Cargo
- * NPCs infobox image) into public/sprites/bosses/<npcId>.<ext> and the ammo item sprites (P2-S7)
- * into public/sprites/items/<itemId>.<ext>, through the ADR-001 D2 etiquette client (serial,
+ * NPCs infobox image) into public/sprites/bosses/<npcId>.<ext> and the ammo item sprites (P2-S7) and
+ * potion sprites (B70 P4-prep) into public/sprites/items/<itemId>.<ext>, through the ADR-001 D2 etiquette client (serial,
  * >= 1.1 s apart, backoff, audited in pipeline/raw/requests.log.jsonl). Then writes the B30
  * thumbnails (public/sprites/thumbs/…, first frame of every sprite over 100 KB, emit/thumbnail.ts)
  * from the verified binaries — no network.
@@ -26,6 +26,7 @@ import { FetchError, RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { sha1Hex } from '../fetch/client'
 import { gifThumbnail, thumbnailFor } from '../emit/thumbnail'
 import { identifyAmmo } from '../merge/ammo'
+import { identifyPotions } from '../merge/potions'
 import { bossSprite } from '../merge/bosses'
 import { loadBossesOverlay } from '../merge/overlays'
 import { identifyWeapons } from '../merge/weapons'
@@ -63,7 +64,16 @@ async function main(): Promise<number> {
       return image ? [{ id: item.id, label: `items/${item.id}`, name, image, dest: join(SPRITES_DIR, 'items', `${item.id}.${/\.gif$/i.test(image.file) ? 'gif' : 'png'}`) }] : []
     })
     .sort((a, b) => a.id - b.id)
-  const targets = [...weaponTargets, ...bossTargets, ...itemTargets]
+  // B70 potion corpus (an item emitted as ammo keeps its ammo sprite)
+  const ammoIds = new Set(itemTargets.map((t) => t.id))
+  const potionTargets = identifyPotions(sync.tables.Items.rows, info)
+    .included.filter(({ item }) => !weaponIds.has(item.id) && !ammoIds.has(item.id))
+    .flatMap(({ row, item, name }) => {
+      const image = sync.potionImages.found.get(String(row.imagefile ?? '').trim())
+      return image ? [{ id: item.id, label: `items/${item.id}`, name, image, dest: join(SPRITES_DIR, 'items', `${item.id}.${/\.gif$/i.test(image.file) ? 'gif' : 'png'}`) }] : []
+    })
+    .sort((a, b) => a.id - b.id)
+  const targets = [...weaponTargets, ...bossTargets, ...itemTargets, ...potionTargets]
 
   const downloader = new WikiClient({ cacheDir: RAW_DIR, refresh: values.refresh, log: (l) => console.log(l) })
   const indexPath = join(RAW_DIR, 'sprites-index.json')
@@ -155,8 +165,8 @@ async function main(): Promise<number> {
     requests: { syncPlan: planRequests, downloads: s.networkRequests, attempts: s.attempts, retries: s.retries, networkMs: s.networkMs, firstRequestAt: s.firstRequestAt ?? null, lastRequestAt: s.lastRequestAt ?? null },
   }
   writeFileSync(join(RAW_DIR, 'sprites-record.json'), `${JSON.stringify(record, null, 2)}\n`)
-  console.log('\nsprites summary (weapons + bosses + ammo items)')
-  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
+  console.log('\nsprites summary (weapons + bosses + ammo items + potions)')
+  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items + ${potionTargets.length} potions): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
   for (const t of thumbnails) console.log(`  thumbnail ${t.path} ${t.width}×${t.height} ${t.bytes} B (from ${t.source})`)
   console.log(`  this run: ${downloaded} downloaded, ${cached} already cached, ${copied} copied (identical file), ${failures.length} failed`)
   console.log(`  requests: ${planRequests} sync-plan + ${s.networkRequests} downloads (${s.attempts} attempts, ${s.retries} retries); ${(durationMs / 1000).toFixed(1)}s wall`)

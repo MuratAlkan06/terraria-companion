@@ -28,12 +28,18 @@
  * reconciliation) · imageinfo for the armor-piece and functional-accessory rows' infobox images · the
  * article of every armor SET row (`_page`: the set infobox "Set Bonus" row, per-helmet variants) and
  * the "Wings" article (the wing list table: flight time, hover) · every page the armor-sets overlay cites.
+ * Plan (B70 P4-prep, AMENDMENTS-014/-015): + every page the B68/B78 acquisition-source overlays cite
+ * (vendor NPC articles — their shop tables —, container and gatherable-material articles, the
+ * exhaustive-condition evidence) · the "Buff potions" article, every potion candidate's article and the
+ * articles of the buffs they grant (merge/potions.ts) · imageinfo for the potion candidates' images.
  */
 import { buffArticleTitles, BUFF_IDS_PAGE, cargoBuffNames } from '../merge/buffs'
 import { bossImageFiles } from '../merge/bosses'
 import { accessoryRows, armorPieceRows, armorSetPages, WINGS_PAGE } from '../merge/equipment'
 import { LAB_RULE_PAGES, labFamilyPages } from '../merge/labParams'
+import { potionArticleTitles, potionImageFiles } from '../merge/potions'
 import {
+  acquisitionSourcePages,
   armorSetEvidencePages,
   evidencePages,
   labEvidencePages,
@@ -41,8 +47,11 @@ import {
   loadBossesOverlay,
   loadBuffsOverlay,
   loadConditionsOverlay,
+  loadContainersOverlay,
+  loadGatherablesOverlay,
   loadLabParamsOverlay,
   loadProgressionOverlay,
+  loadVendorsOverlay,
   loadWithheldOverlay,
 } from '../merge/overlays'
 import { parseBuffIdTable } from '../parse/infobox'
@@ -110,6 +119,8 @@ export interface SyncResult {
   accessoryCategories: CategoryTree & { pageStatus: PageStatus }
   /** P2-S8: image metadata for the infobox image of every armor-piece and functional-accessory row. */
   equipmentImages: ImageInfoFetch
+  /** B70 P4-prep: image metadata for the infobox image of every potion candidate row. */
+  potionImages: ImageInfoFetch
 }
 
 export async function runSyncPlan(client: WikiClient, log?: (line: string) => void): Promise<SyncResult> {
@@ -176,6 +187,15 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
   const equipmentTitles = [...armorSetPages(tables.Items.rows), WINGS_PAGE, ...armorSetEvidencePages(loadArmorSetsOverlay())]
   for (const [title, article] of await fetchArticles(client, equipmentTitles, 'articles')) articles.set(title, article)
 
+  // B70 P4-prep: acquisition-source evidence (vendor shop tables, containers, gatherables) + the potion corpus
+  log?.('articles: vendor NPCs, containers, gatherable materials, potions and their buffs')
+  const info = parseIteminfo(iteminfo)
+  const sourceTitles = acquisitionSourcePages(loadVendorsOverlay(), loadContainersOverlay(), loadGatherablesOverlay(), loadConditionsOverlay())
+  const potionTitles = potionArticleTitles(tables.Items.rows, info, parseBuffIdTable(buffIds.html))
+  for (const [title, article] of await fetchArticles(client, [...sourceTitles, ...potionTitles], 'articles')) articles.set(title, article)
+  log?.('potion image metadata (imageinfo)')
+  const potionImages = await fetchImageInfo(client, potionImageFiles(tables.Items.rows, info), 'images/potions')
+
   return {
     iteminfo,
     modules,
@@ -192,6 +212,7 @@ export async function runSyncPlan(client: WikiClient, log?: (line: string) => vo
     armorCategories: { ...armorCategories, pageStatus: armorCategoryPages },
     accessoryCategories: { ...accessoryCategories, pageStatus: accessoryCategoryPages },
     equipmentImages,
+    potionImages,
   }
 }
 

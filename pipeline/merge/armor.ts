@@ -27,6 +27,11 @@
  * range → summon, max mana / mana cost → magic, melee speed → melee. One class → that class; none →
  * "other" (classless); several (hybrid sets) → an overlay `classes` ruling backed by a quote (a ruling
  * where the signals already decide fails as stale).
+ * VARIANT CLASSES (AMENDMENTS-011 B52, landed by the B70 P4-prep slice; `class` is kept one release):
+ * [class] for a single-class or classless variant; for a hybrid ruling the overlay's `classes` list —
+ * the classes the quoted article description names ("melee/summoner" → melee, summon; "mage" → magic),
+ * which must also EQUAL the variant's stat class signals (quote and data agree, else the build fails).
+ * A hybrid ruling without a list (Crystal Assassin: the article names no class) stays ["other"].
  *
  * Set stage = the earliest stage a complete set can be assembled: min over helmets of max(helmet, chest,
  * legs) stage — only when every piece's stage is derived (else Unknown). The set infobox "Defense"
@@ -41,7 +46,7 @@ import { parseSetInfoboxes, type SetBonusSegment } from '../parse/equipment'
 import type { Iteminfo } from '../parse/iteminfo'
 import { slugify } from '../parse/text'
 import { EQUIPINFO_PAGE, equipinfoByItem } from './accessories'
-import type { WithheldField } from './acquisition'
+import type { RouteSources, WithheldField } from './acquisition'
 import { tally, type ReasonTally } from './drops'
 import { classifyLine, countRule, crossCheckEquipinfo, normalizeEffectLines, tooltipEffectLines, type EquipCrossCheck, type RuleUsage } from './effects'
 import { armorSetPages, armorSetRows, checkedDefense, equipmentCore, identifyArmor, iteminfoArmorSlot, recordState, uniqueSlugs, type EquipmentContext, type EquipmentIdentification } from './equipment'
@@ -67,6 +72,8 @@ export interface ArmorBuildInput {
   drops: readonly { id: string; itemId: number }[]
   gating: (itemId: number) => GatingResult
   withheld?: ReadonlyMap<number, WithheldField>
+  /** B68/B78 acquisition sources (vendor model + gatherables). */
+  sources?: RouteSources
   usedSlugs: ReadonlySet<string>
 }
 
@@ -129,6 +136,9 @@ export function bonusPerHelmet(segments: readonly SetBonusSegment[], helmets: re
 
 const stageMax = (a: Stage, b: Stage): Stage => (STAGE_ORDER[a] >= STAGE_ORDER[b] ? a : b)
 
+/** How an article names each damage class in a hybrid description ("mage/summoner armor set"). */
+const CLASS_WORD: Record<Exclude<DamageClass, 'other'>, RegExp> = { melee: /\bmelee\b/i, ranged: /\branged\b/i, magic: /\b(?:mage|magic)\b/i, summon: /\bsummon(?:er)?\b/i }
+
 export function buildArmor(input: ArmorBuildInput): ArmorBuild {
   const info = input.iteminfo
   const gaps = new GapLog()
@@ -142,6 +152,7 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
     dropsBy: new Map(),
     gating: input.gating,
     withheld: input.withheld,
+    ...(input.sources ? { sources: input.sources } : {}),
     gaps,
     reasons: new Map(),
     gatingBlockers: new Map(),
@@ -282,17 +293,29 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
       const signals = classSignals([...h.effects, ...chest.effects, ...leg.effects, ...setBonus])
       const ruling = rulings.get(h.name)
       let cls: DamageClass
+      let classes: DamageClass[]
       if (signals.size > 1) {
         if (!ruling) throw new OverlayError(`[E_SCHEMA] armor set "${page}" (${h.name}): the variant's effects name several classes (${[...signals].sort().join(', ')}) — add a class ruling with a verbatim quote to pipeline/overlays/armor-sets.json`)
-        input.evidence.quote(page, ruling.quote, `overlay armor-sets/${page} classes ${h.name}`)
+        const where = `overlay armor-sets/${page} classes ${h.name}`
+        input.evidence.quote(page, ruling.quote, where)
         cls = ruling.class
-        classNotes.push(`${h.name}: ${cls} (ruling; signals ${[...signals].sort().join(' + ')})`)
+        classes = [cls]
+        if (ruling.classes) {
+          // B52: the quoted hybrid description must name every listed class, and the list must equal the stat signals
+          const listed = [...new Set(ruling.classes)].sort()
+          for (const c of listed) if (!CLASS_WORD[c].test(ruling.quote)) throw new OverlayError(`[E_SCHEMA] ${where}: the quote "${ruling.quote}" does not name the class "${c}"`)
+          if (listed.join(',') !== [...signals].sort().join(',')) throw new OverlayError(`[E_SCHEMA] ${where}: hybrid classes ${listed.join(' + ')} differ from the variant's stat class signals ${[...signals].sort().join(' + ')}`)
+          if (cls !== 'other') throw new OverlayError(`[E_SCHEMA] ${where}: a hybrid variant's single class must be "other" (B52 keeps it beside classes)`)
+          classes = listed
+        }
+        classNotes.push(`${h.name}: ${cls} → classes ${classes.join(' + ')} (ruling; signals ${[...signals].sort().join(' + ')})`)
       } else {
         if (ruling) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: class ruling for "${h.name}" is stale — the effects already decide (${[...signals].join(', ') || 'none → other'})`)
         cls = signals.size === 1 ? [...signals][0] : 'other'
+        classes = [cls]
         classNotes.push(`${h.name}: ${cls} (${signals.size === 1 ? 'derived' : 'no class signal → other'})`)
       }
-      return { helmetId: h.id, class: cls, setBonus, setBonusText: lines.join('\n') }
+      return { helmetId: h.id, class: cls, classes, setBonus, setBonusText: lines.join('\n') }
     })
     if (entry) sources.push(Evidence.source('armor-sets', input.evidence.page(page, `overlay armor-sets/${page}`)))
 
@@ -316,7 +339,7 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
       stage = helmets.map((h) => stageMax(h.stage as Stage, base)).reduce((a, b) => (STAGE_ORDER[a] <= STAGE_ORDER[b] ? a : b))
     } else unverified.push('stage')
     const prov = makeProv(sources, unverified)
-    prov.editorialFields = variants.map((_, i) => `variants.${i}.class`)
+    prov.editorialFields = variants.flatMap((_, i) => [`variants.${i}.class`, `variants.${i}.classes`])
     sets.push({
       id,
       name,

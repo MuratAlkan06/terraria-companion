@@ -32,7 +32,16 @@ export const ArmorSet = z.strictObject({
       // exactly one per helmet (validated bijection, §7a-6)
       z.strictObject({
         helmetId: ItemId,
-        class: DamageClass, // "other" for classless sets
+        class: DamageClass, // "other" for classless and hybrid sets (kept one release beside `classes`, B52)
+        // AMENDMENTS-011 B52 (landed by the B70 P4-prep slice): the variant's damage classes. One class →
+        // [class]; classless → ["other"]; hybrid (quote-evidenced, e.g. "melee/ranged") → the classes,
+        // with `class` "other". Optional for backward compatibility — consumers read
+        // `variant.classes ?? [variant.class]` (SCORING_SPEC §3); the pipeline always emits it.
+        classes: z
+          .array(DamageClass)
+          .min(1)
+          .refine((cs) => new Set(cs).size === cs.length, { message: 'B52: classes must not repeat' })
+          .optional(),
         setBonus: z.array(StatEffect).min(1), // non-stat bonuses use kind:"special"
         setBonusText: PlainText1,
       }),

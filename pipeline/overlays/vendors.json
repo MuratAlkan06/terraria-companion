@@ -1,0 +1,128 @@
+{
+  "overlay": "vendors",
+  "authoredAt": "2026-10-14",
+  "notes": [
+    "AMENDMENTS-014 B68 / AMENDMENTS-015 B78 vendor gating (P4-prep slice). A purchase route (a vendor:<NPC> tag on the item's Cargo Items row) takes part in the §7b derivation only when BOTH halves are honestly derivable: (1) the NPC's availability — `npcs` below, each quoting the NPC article's move-in / appearance rule as registry conditions (none = no progression gate), plus 'has one of these items in the inventory' (`requiresAnyOf`: the minimum over the listed items' own gating — any one suffices) and 'another NPC is present' (`requiresNpcs`); and (2) the item's row in the NPC article's shop table (parse/shops.ts), whose Availability cell must be one of the reviewed `availability` texts. Anything else keeps the route Unknown (gap report blockers vendor-availability-unknown / vendor-conditions-unknown) — never assumed.",
+    "Soft move-in requirements that involve no boss and no Hardmode (a vacant house, coins in the inventory, a rescue in a cavern biome, Bestiary completion) are not progression gates and carry no condition; the purchase route already names the NPC.",
+    "`unavailable`: vendors whose availability is NOT a single derivable gate set — an OR over several bosses (Dryad, Tavernkeep, Steampunker), a count of other town NPCs (Painter, Party Girl, Dye Trader, Princess), a random visit with a random stock (Traveling Merchant), or an event completion the progression graph does not track as a gate (Santa Claus, Pirate). Their purchase routes stay Unknown; each reason is quoted from the NPC article.",
+    "`availability`: verbatim Availability cells (whitespace / link spacing normalized, parse/shops.ts) mapped to registry conditions. Cells naming an OR (\"When any mechanical boss has been defeated.\", several moon phases), an item in the inventory, another NPC, a world seed, a Party / Christmas / golf score / Bestiary percentage, or a pylon rule are deliberately NOT mapped (Unknown). A mapping that no shop row uses fails the build (stale)."
+  ],
+  "npcs": [
+    {
+      "npc": "Merchant", "page": "Merchant", "conditions": [],
+      "evidence": [{ "page": "Merchant", "quote": "All players in the current world have more than 50 Silver total between them in their inventories." }],
+      "why": "Coins in the inventory are not a progression gate; the Merchant is available from the start of a world."
+    },
+    {
+      "npc": "Arms Dealer", "page": "Arms Dealer", "conditions": [],
+      "evidence": [{ "page": "Arms Dealer", "quote": "The player has at least one bullet or bullet-firing gun in their inventory" }],
+      "requiresAnyOf": {
+        "quote": "At least one of these must be in the player's inventory for the Arms Dealer to spawn.",
+        "items": ["Boomstick", "Chain Gun", "Clockwork Assault Rifle", "Flintlock Pistol", "Gatligator", "Handgun", "Megashark", "Minishark", "Musket", "Onyx Blaster", "Pew-matic Horn", "Phoenix Blaster", "Quad-Barrel Shotgun", "Red Ryder", "Revolver", "S.D.M.G.", "Shotgun", "Sniper Rifle", "Tactical Shotgun", "The Undertaker", "Uzi", "Venus Magnum", "Vortex Beater", "Xenopopper", "Chlorophyte Bullet", "Crystal Bullet", "Cursed Bullet", "Endless Musket Pouch", "Exploding Bullet", "Golden Bullet", "High Velocity Bullet", "Ichor Bullet", "Luminite Bullet", "Meteor Shot", "Musket Ball", "Nano Bullet", "Party Bullet", "Silver Bullet", "Tungsten Bullet", "Venom Bullet"]
+      },
+      "why": "The article's Spawning criteria list (every name is checked on the article): the Arms Dealer's gate is the minimum over these items' own gating — one of them in the inventory suffices."
+    },
+    {
+      "npc": "Demolitionist", "page": "Demolitionist", "conditions": [],
+      "evidence": [{ "page": "Demolitionist", "quote": "The player has an explosive in their inventory" }],
+      "requiresAnyOf": {
+        "quote": "At least one of these must be in the player's inventory for the Demolitionist to spawn.",
+        "items": ["Bomb", "Dynamite", "Grenade", "Sticky Bomb", "Beenade", "Smoke Bomb", "Sticky Grenade", "Sticky Dynamite", "Bouncy Bomb", "Bouncy Grenade", "Bomb Fish", "Bouncy Dynamite", "Scarab Bomb", "Dirt Bomb", "Sticky Dirt Bomb", "Power Bomb", "Sticky Power Bomb"]
+      },
+      "requiresNpcs": { "quote": "The Merchant is present.", "npcs": ["Merchant"] },
+      "why": "Spawning criteria list of qualifying explosives (minimum over their gating) and the Merchant's presence."
+    },
+    {
+      "npc": "Clothier", "page": "Clothier", "conditions": ["post-skeletron"],
+      "evidence": [{ "page": "Clothier", "quote": "Skeletron has been defeated." }],
+      "why": "Move-in criterion; post-skeletron maps to the Skeletron node."
+    },
+    {
+      "npc": "Mechanic", "page": "Mechanic", "conditions": ["post-skeletron"],
+      "evidence": [{ "page": "Mechanic", "quote": "who can be rarely encountered in the Dungeon in the Cavern layer and below after Skeletron has been defeated." }],
+      "why": "Rescued as the Bound Mechanic, who only appears after Skeletron."
+    },
+    {
+      "npc": "Witch Doctor", "page": "Witch Doctor", "conditions": ["post-queen-bee"],
+      "evidence": [{ "page": "Witch Doctor", "quote": "The Queen Bee has been defeated." }],
+      "why": "Move-in criterion; post-queen-bee maps to the Queen Bee node."
+    },
+    {
+      "npc": "Wizard", "page": "Wizard", "conditions": ["hardmode"],
+      "evidence": [{ "page": "Wizard", "quote": "who can be rarely encountered in the Cavern layer once the Wall of Flesh has been defeated." }],
+      "why": "The Bound Wizard appears once the Wall of Flesh is defeated = the Hardmode milestone (required-gated by the Wall of Flesh)."
+    },
+    {
+      "npc": "Cyborg", "page": "Cyborg", "conditions": ["post-plantera"],
+      "evidence": [{ "page": "Cyborg", "quote": "Plantera has been defeated." }],
+      "why": "Move-in criterion."
+    },
+    {
+      "npc": "Truffle", "page": "Truffle", "conditions": ["hardmode"],
+      "evidence": [{ "page": "Truffle", "quote": "He can arrive homelessly as soon as Hardmode starts" }],
+      "why": "The Truffle needs Hardmode; his surface Glowing Mushroom house is a building requirement, not a progression gate."
+    },
+    {
+      "npc": "Goblin Tinkerer", "page": "Goblin Tinkerer", "conditions": ["goblin-army-defeated"],
+      "evidence": [{ "page": "Goblin Tinkerer", "quote": "after a Goblin Army has been defeated." }],
+      "why": "Rescued as the Bound Goblin after a Goblin Army; the event has no progression edge (overlays/progression.json notes), so the requirement is a condition chip, not a boss gate."
+    },
+    {
+      "npc": "Stylist", "page": "Stylist", "conditions": [],
+      "evidence": [{ "page": "Stylist", "quote": "who can be encountered randomly in Spider Nests in the Cavern layer." }],
+      "why": "A rescue in a natural cavern biome: no boss, no Hardmode."
+    },
+    {
+      "npc": "Golfer", "page": "Golfer", "conditions": [],
+      "evidence": [{ "page": "Golfer", "quote": "who can be rarely encountered in the Underground Desert." }],
+      "why": "A rescue in a natural biome: no boss, no Hardmode."
+    },
+    {
+      "npc": "Zoologist", "page": "Zoologist", "conditions": [],
+      "evidence": [{ "page": "Zoologist", "quote": "The Bestiary has been filled to at least 10% (55 entries)." }],
+      "why": "Bestiary completion is filled by meeting creatures, not by a boss or Hardmode."
+    },
+    {
+      "npc": "Skeleton Merchant", "page": "Skeleton Merchant", "conditions": [],
+      "evidence": [{ "page": "Skeleton Merchant", "quote": "The Skeleton Merchant is a unique NPC vendor who randomly appears in the Cavern layer." }],
+      "why": "Appears in the Cavern layer with no boss or Hardmode requirement; his moon-phase stock is mapped per shop row."
+    }
+  ],
+  "unavailable": [
+    { "npc": "Traveling Merchant", "aliases": ["Travelling Merchant"], "page": "Traveling Merchant", "reason": "random visits with a randomized stock — no item is ever guaranteed to be sold", "quote": "His inventory is randomized and different every visit" },
+    { "npc": "Dryad", "page": "Dryad", "reason": "moves in after any one of four bosses — an OR the gate set cannot express", "quote": "The Eye of Cthulhu, Eater of Worlds, Brain of Cthulhu, or Skeletron has been defeated." },
+    { "npc": "Tavernkeep", "page": "Tavernkeep", "reason": "appears after the Eater of Worlds OR the Brain of Cthulhu — an OR the gate set cannot express", "quote": "who can be encountered in any layer once the Eater of Worlds or Brain of Cthulhu has been defeated." },
+    { "npc": "Steampunker", "page": "Steampunker", "reason": "moves in after any one of the three mechanical bosses — an OR the gate set cannot express", "quote": "One of the mechanical bosses (The Twins, The Destroyer, or Skeletron Prime) have been defeated." },
+    { "npc": "Painter", "page": "Painter", "reason": "needs a count of other town NPCs, whose own availability differs per NPC", "quote": "8 other town NPCs are in the world." },
+    { "npc": "Party Girl", "page": "Party Girl", "reason": "needs a count of other town NPCs, whose own availability differs per NPC", "quote": "20 other town NPCs are in the world." },
+    { "npc": "Dye Trader", "page": "Dye Trader", "reason": "needs a count of other town NPCs, whose own availability differs per NPC", "quote": "and at least four other town NPCs are in the world." },
+    { "npc": "Princess", "page": "Princess", "reason": "needs every other town NPC present", "quote": "All other town NPCs (not including Santa Claus or town pets) are present" },
+    { "npc": "Santa Claus", "page": "Santa Claus", "reason": "needs a completed Frost Legion event (not tracked as a progression gate) during the Christmas season", "quote": "The Frost Legion event has been completed at least once." },
+    { "npc": "Pirate", "page": "Pirate", "reason": "needs a completed Pirate Invasion (an event marker; event completion is not tracked as a gate)", "quote": "The Pirate Invasion event has been completed at least once." }
+  ],
+  "availability": [
+    { "text": "Always available.", "conditions": [] },
+    { "text": "In Hardmode.", "conditions": ["hardmode"] },
+    { "text": "When Skeletron has been defeated.", "conditions": ["post-skeletron"] },
+    { "text": "When Plantera has been defeated.", "conditions": ["post-plantera"] },
+    { "text": "When Golem has been defeated.", "conditions": ["post-golem"] },
+    { "text": "When the Moon Lord has been defeated.", "conditions": ["post-moon-lord"] },
+    { "text": "During night.", "conditions": ["night"] },
+    { "text": "During Halloween.", "conditions": ["halloween"] },
+    { "text": "During a Blood Moon.", "conditions": ["blood-moon"] },
+    { "text": "In Hardmode, during a Blood Moon.", "conditions": ["hardmode", "blood-moon"] },
+    { "text": "In a Snow biome.", "conditions": ["snow-biome"] },
+    { "text": "In a Jungle.", "conditions": ["jungle"] },
+    { "text": "In Hardmode, in a Jungle.", "conditions": ["hardmode", "jungle"] },
+    { "text": "In a Jungle, when Plantera has been defeated.", "conditions": ["jungle", "post-plantera"] },
+    { "text": "In Hardmode, during night, in a Jungle, when Plantera has been defeated.", "conditions": ["hardmode", "night", "jungle", "post-plantera"] },
+    { "text": "During a full moon:", "conditions": ["full-moon"] },
+    { "text": "During a waning gibbous:", "conditions": ["waning-gibbous"] },
+    { "text": "During a waning crescent:", "conditions": ["waning-crescent"] },
+    { "text": "During a new moon:", "conditions": ["new-moon"] },
+    { "text": "During a waxing crescent:", "conditions": ["waxing-crescent"] },
+    { "text": "During a first quarter:", "conditions": ["first-quarter"] },
+    { "text": "During a waxing gibbous:", "conditions": ["waxing-gibbous"] },
+    { "text": "In Hardmode, during a first quarter:", "conditions": ["hardmode", "first-quarter"] }
+  ]
+}

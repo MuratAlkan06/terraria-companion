@@ -4,6 +4,7 @@
   "notes": [
     "Curated condition registry (DATA_SCHEMA_SPEC §2.9). Every entry cites a wiki page (wikiTitle) whose existence is checked by the fetch stage; descriptions are definitional and carry no numbers that are not on the cited page.",
     "match.stations: recipe station tokens (Cargo Recipes `station`, split on ' and '). match.recipeNotes: Cargo Recipes `resulttext` note keys (texts in Module:Recipes/l10n en.result_note). match.dropNotes: parenthesized note texts in Cargo Drops rate/custom cells (markup stripped). match.dropCaptions: group captions of a registry boss article's rendered drop list (\"Only in Corrupt worlds\"), which the Cargo rows do not carry (parse/dropCaptions.ts).",
+    "AMENDMENTS-014 B68 / AMENDMENTS-015 B78 (P4-prep gating expansion, 2026-10-14): post-queen-bee (Witch Doctor availability), goblin-army-defeated (Goblin Tinkerer availability; an event with no progression edge, so it is a requirement chip, never a boss gate) and blood-moon (NPC shop rows) were added for overlays/vendors.json; the six <ore>-ore-world conditions carry the world-specific ore-bar chest loot (overlays/containers.json worldSpecificLoot). `exhaustive` lists non-node condition groups every world satisfies one member of (the world evil): an either-or over such a group is always satisfiable, so the §7b minimum over e.g. a Shadow Orb route (Corruption worlds) and a Crimson Heart route (Crimson worlds) carries neither condition (merge/gating.ts). Each group is quote-backed (checked verbatim against the cached article); pipeline-only, not emitted.",
     "satisfiedByNode values are references into the progression graph (P2-S6, overlays/progression.json + bosses.json) and are hard-checked. World-state conditions map to the node that makes them true: boss-defeat conditions to the boss node, \"hardmode\" to the Hardmode milestone (required-gated by wall-of-flesh) and post-mechanical-bosses to the all-mechanical-bosses milestone, so gatedBy.stage is the stage the condition opens (a Hardmode-only item is early-hm, not the late-prehm of the Wall of Flesh fight)."
   ],
   "entries": [
@@ -24,6 +25,24 @@
       "match": { "recipeNotes": ["#note_post_moon_lord"] } },
     { "id": "post-skeletron", "name": "Skeletron defeated", "kind": "world-state", "satisfiedByNode": "skeletron", "wikiTitle": "Skeletron",
       "description": "Skeletron has been defeated in the world." },
+    { "id": "post-queen-bee", "name": "Queen Bee defeated", "kind": "world-state", "satisfiedByNode": "queen-bee", "wikiTitle": "Queen Bee",
+      "description": "The Queen Bee has been defeated in the world." },
+    { "id": "goblin-army-defeated", "name": "Goblin Army defeated", "kind": "event", "wikiTitle": "Goblin Army",
+      "description": "A Goblin Army invasion has been defeated in the world." },
+    { "id": "blood-moon", "name": "Blood Moon", "kind": "event", "wikiTitle": "Blood Moon",
+      "description": "A Blood Moon event is in progress." },
+    { "id": "iron-ore-world", "name": "Iron Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Iron Ore (a world generally generates one of Iron Ore and Lead Ore)." },
+    { "id": "lead-ore-world", "name": "Lead Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Lead Ore (a world generally generates one of Lead Ore and Iron Ore)." },
+    { "id": "silver-ore-world", "name": "Silver Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Silver Ore (a world generally generates one of Silver Ore and Tungsten Ore)." },
+    { "id": "tungsten-ore-world", "name": "Tungsten Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Tungsten Ore (a world generally generates one of Tungsten Ore and Silver Ore)." },
+    { "id": "gold-ore-world", "name": "Gold Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Gold Ore (a world generally generates one of Gold Ore and Platinum Ore)." },
+    { "id": "platinum-ore-world", "name": "Platinum Ore world", "kind": "world-state", "wikiTitle": "Ores",
+      "description": "The world's naturally generated ore of this tier is Platinum Ore (a world generally generates one of Platinum Ore and Gold Ore)." },
     { "id": "corruption-world", "name": "Corruption world", "kind": "world-state", "wikiTitle": "The Corruption",
       "description": "The world's evil biome is the Corruption (a world has either the Corruption or the Crimson).",
       "match": { "dropCaptions": ["Only in Corrupt worlds"] } },
@@ -108,5 +127,19 @@
       "description": "The current moon phase is First Quarter.", "match": { "recipeNotes": ["#note_moon_7"] } },
     { "id": "waxing-gibbous", "name": "Waxing Gibbous", "kind": "time", "wikiTitle": "Waxing Gibbous",
       "description": "The current moon phase is Waxing Gibbous.", "match": { "recipeNotes": ["#note_moon_8"] } }
+  ],
+  "exhaustive": [
+    { "conditions": ["corruption-world", "crimson-world"], "page": "Evil biomes",
+      "quote": "Corruption or Crimson is saved as the world's naturally generated evil biome, and determines: whether Shadow Orbs or Crimson Hearts are generated",
+      "why": "Every world saves exactly one naturally generated evil biome (Drunk worlds carry both), so 'Corruption world OR Crimson world' holds in every world." },
+    { "conditions": ["iron-ore-world", "lead-ore-world"], "page": "Ores",
+      "quote": "A world will generally only contain one ore type from each tier, which is chosen at random.",
+      "why": "One ore of each tier per world, so 'Iron Ore world OR Lead Ore world' holds in every world (Drunk worlds carry both)." },
+    { "conditions": ["silver-ore-world", "tungsten-ore-world"], "page": "Ores",
+      "quote": "A world will generally only contain one ore type from each tier, which is chosen at random.",
+      "why": "One ore of each tier per world, so 'Silver Ore world OR Tungsten Ore world' holds in every world (Drunk worlds carry both)." },
+    { "conditions": ["gold-ore-world", "platinum-ore-world"], "page": "Ores",
+      "quote": "A world will generally only contain one ore type from each tier, which is chosen at random.",
+      "why": "One ore of each tier per world, so 'Gold Ore world OR Platinum Ore world' holds in every world (Drunk worlds carry both)." }
   ]
 }

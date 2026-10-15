@@ -43,7 +43,7 @@ import { infoboxForItem, parseItemInfoboxes, type BuffIdRow, type ItemInfobox } 
 import type { Iteminfo, IteminfoItem } from '../parse/iteminfo'
 import { extraUpdates, type Projectileinfo } from '../parse/projectileinfo'
 import { slugify, stripMarkup } from '../parse/text'
-import { itemRoutes, type WithheldField } from './acquisition'
+import { itemRoutes, type RouteSources, type WithheldField } from './acquisition'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
 import { GapLog, isoDate, makeProv, moduleSource } from './prov'
@@ -139,6 +139,8 @@ export interface AmmoBuildInput {
   /** Buff name → emitted buff slug. */
   buffSlug: (name: string) => string | undefined
   withheld?: ReadonlyMap<number, WithheldField>
+  /** B68/B78 acquisition sources (vendor model + gatherables); absent = the P2-S7 vendor behavior. */
+  sources?: RouteSources
 }
 
 export interface AmmoBuild {
@@ -329,7 +331,7 @@ export function buildAmmo(input: AmmoBuildInput): AmmoBuild {
     if (image && sprite) sprites.push({ path: sprite, ref, wikiFileUrl: image.descriptionUrl, sha1: image.sha1, bytes: image.bytes, width: image.width, height: image.height, rights: 're-logic' })
 
     // acquisition + §7b gating (merge/acquisition.ts)
-    const { acquisition, gating } = itemRoutes({ id, name, noun: 'ammo item', row, wikiUrl, recipesBy, dropsBy, withheld: input.withheld?.get(id), gating: input.gating, unknown, mismatch, gaps, reasons })
+    const { acquisition, gating } = itemRoutes({ id, name, noun: 'ammo item', row, wikiUrl, recipesBy, dropsBy, withheld: input.withheld?.get(id), gating: input.gating, unknown, mismatch, gaps, reasons, ...(input.sources ? { sources: input.sources } : {}) })
     let gatedBy: Item['gatedBy']
     if (gating.ok) gatedBy = gating.gatedBy
     else {

@@ -326,6 +326,13 @@ function checkArmor(c: Checker, ds: Dataset) {
       if (!helmets.has(v.helmetId)) c.dangling(ref, `variants.${i}.helmetId`, `i:${v.helmetId}`, 'variant helmet is not in pieces.helmets')
     })
     for (const id of helmets) if (!variantHelmets.has(id)) c.dangling(ref, 'variants', `i:${id}`, 'helmet has no set-bonus variant')
+    // AMENDMENTS-011 B52: variants[].classes beside the kept single `class` — one class ⇒ the same
+    // class; a hybrid list (≥ 2 classes) ⇒ class "other" and no "other" in the list
+    set.variants.forEach((v, i) => {
+      if (v.classes === undefined) return
+      if (v.classes.length === 1 && v.classes[0] !== v.class) c.derived(ref, `variants.${i}.classes`, `[${v.classes[0]}] disagrees with variants.${i}.class "${v.class}"`)
+      if (v.classes.length > 1 && (v.class !== 'other' || v.classes.includes('other'))) c.derived(ref, `variants.${i}.classes`, `a hybrid class list [${v.classes.join(', ')}] needs variants.${i}.class "other" and no "other" in the list`)
+    })
   }
   for (const piece of ds.armor) {
     if (piece.setId === undefined) continue

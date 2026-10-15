@@ -4,18 +4,24 @@
  *
  * - craft = recipes producing the item (incl. Shimmer transmutations); drop = drop records yielding
  *   it (NPCs, bosses, bags, chests, crates); purchase = one route per `vendor:<NPC>` Cargo tag (price
- *   from a single-coin `buy` cell; shop conditions are not structured on the wiki → Unknown).
+ *   from a single-coin `buy` cell). Purchase conditions: with the B68/B78 acquisition sources
+ *   (merge/sources.ts) they are the reviewed NPC availability ∪ the item's shop-row conditions when
+ *   both are derivable, else Unknown; without them (unit tests of the P2-S2 behavior) always Unknown.
+ * - other (B78) = the item is in the curated gatherable base-material registry: its verbatim evidence
+ *   sentence + article.
  * - A wiki self-conflict (AMENDMENTS-004 B19, overlays/withheld.json) withholds the whole acquisition
  *   (Unknown + source-mismatch); route hints in the Cargo tags / listcat that no record backs are
  *   reported as gaps, never inferred.
- * - gating: the deriver's result, adjusted for the item's own purchase routes (their conditions are
- *   Unknown, so a derived craft/drop gate is exact only when it is already gate-free).
+ * - gating: the deriver's result. With the acquisition sources the deriver already took every vendor
+ *   route into account (derivable or explicitly unknown); without them it is adjusted for the item's
+ *   own purchase routes (Unknown conditions ⇒ a derived craft/drop gate is exact only when gate-free).
  */
 import type { Acquisition, GapEntry } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import { tally, type ReasonTally } from './drops'
 import type { GatingResult } from './gating'
 import { OverlayError } from './registry'
+import { gatherAcquisition, type GatherRoute, type VendorRoute } from './sources'
 
 const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
 
@@ -54,6 +60,17 @@ export interface RouteContext {
   mismatch: (field: string, detail: string, sources: string[]) => void
   gaps: { add(entry: GapEntry): void }
   reasons: ReasonTally
+  /**
+   * B68/B78 acquisition sources (merge/sources.ts): the vendor model (purchase conditions) and the
+   * gatherable registry. The deriver passed as `gating` must be built from the same sources.
+   */
+  sources?: RouteSources
+}
+
+/** The B68/B78 acquisition-source view `itemRoutes` reads (merge/sources.ts AcquisitionSources). */
+export interface RouteSources {
+  vendorRoute: (itemId: number, itemName: string, vendorTag: string) => VendorRoute
+  gather: ReadonlyMap<number, GatherRoute>
 }
 
 export interface RouteResult {
@@ -84,10 +101,15 @@ export function itemRoutes(c: RouteContext): RouteResult {
   const price = vendors.length === 1 ? coinPrice(str(row.buy)) : undefined
   for (const npcName of vendors) {
     const i = acquisition.length
-    acquisition.push({ method: 'purchase', npcName, ...(price ? { priceCopper: price } : {}), conditions: [] })
-    c.unknown(`acquisition.${i}.conditions`, 'shop availability conditions are not structured on the wiki')
+    const route = c.sources?.vendorRoute(id, name, npcName)
+    acquisition.push({ method: 'purchase', npcName, ...(price ? { priceCopper: price } : {}), conditions: route?.ok ? route.conditions : [] })
+    if (!route) c.unknown(`acquisition.${i}.conditions`, 'shop availability conditions are not structured on the wiki')
+    else if (!route.ok) c.unknown(`acquisition.${i}.conditions`, route.blocker === 'vendor-availability-unknown' ? `the vendor's availability is not derivable (overlays/vendors.json unavailable)` : `the item's shop row is missing or its availability is not a reviewed condition (overlays/vendors.json)`)
     if (!price) c.unknown(`acquisition.${i}.priceCopper`, vendors.length > 1 ? 'one wiki buy price for several vendors' : 'the wiki buy price is not a single coin amount (e.g. Defender Medals)')
   }
+  // B78: a curated gatherable base material (its evidence sentence is the route text)
+  const gathered = withheld ? undefined : c.sources?.gather.get(id)
+  if (gathered) acquisition.push(gatherAcquisition(gathered))
   if (acquisition.length === 0 && !withheld) c.unknown('acquisition', `no recipe, drop or named vendor on the wiki for this ${c.noun}`)
   // route hints with no backing record (reported, never inferred)
   const hints: string[] = []
@@ -108,7 +130,7 @@ export function itemRoutes(c: RouteContext): RouteResult {
   // own purchase routes take part in §7b too: their conditions are Unknown, so they never derive,
   // and an Unknown route could be the less gated one — a derived craft/drop gate is only exact
   // when it is already gate-free (same rule as the deriver's minimum over routes)
-  if (vendors.length > 0) {
+  if (vendors.length > 0 && !c.sources) {
     if (!gating.ok) gating = { ok: false, blockers: [...new Set([...gating.blockers.filter((b) => b !== 'cycle'), 'vendor-conditions-unknown' as const])].sort() }
     else if (gating.gatedBy.bosses.length > 0 || gating.gatedBy.conditions.length > 0) gating = { ok: false, blockers: ['alternative-route-unverified', 'vendor-conditions-unknown'] }
   }

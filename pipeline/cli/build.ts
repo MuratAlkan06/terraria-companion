@@ -19,6 +19,7 @@ import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
+import { b70Sections } from '../emit/b70Report'
 import { renderGapReport } from '../emit/gapReport'
 import { THUMBNAIL_MIN_BYTES, thumbnailFor } from '../emit/thumbnail'
 import { checkBudgets, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
@@ -35,9 +36,11 @@ import { buildEnemies } from '../merge/enemies'
 import { Evidence } from '../merge/evidence'
 import { explosiveEvidence, explosiveTable, EXPLOSIVES_CLASS_PAGE, statedExplosionDamage } from '../merge/explosives'
 import { createGatingDeriver, GATING_BLOCKERS, type GatingBlocker } from '../merge/gating'
+import { buildPotions, identifyPotions, potionBuffNames } from '../merge/potions'
+import { buildAcquisitionSources } from '../merge/sources'
 import { AI_CLASS_EVIDENCE } from '../merge/labFamilies'
 import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } from '../merge/labParams'
-import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadWithheldOverlay } from '../merge/overlays'
+import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadContainersOverlay, loadGatherablesOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadVendorsOverlay, loadWithheldOverlay } from '../merge/overlays'
 import { makeProv } from '../merge/prov'
 import { buildRecipes } from '../merge/recipes'
 import { PAGE_BUCKET_LABEL, reconcileCategories, reconcileWeaponLists, type PageBucket } from '../merge/reconcile'
@@ -195,7 +198,19 @@ async function main(): Promise<number> {
     for (const t of list) m.set(key(t), [...(m.get(key(t)) ?? []), t])
     return m
   }
-  const derive = createGatingDeriver({
+  // AMENDMENTS-014 B68 / AMENDMENTS-015 B78: reviewed vendor / container / gatherable sources (merge/sources.ts)
+  const acqSources = buildAcquisitionSources({
+    itemRows: sync.tables.Items.rows,
+    iteminfo,
+    articles: sync.articles,
+    evidence,
+    vendors: loadVendorsOverlay(),
+    containers: loadContainersOverlay(),
+    gatherables: loadGatherablesOverlay(),
+    conditions: overlay,
+    withheld,
+  })
+  const gatingContext = {
     recipesByResult: byKey<Recipe, number>(recipes.recipes, (r) => r.resultItemId),
     dropsByItem: byKey<DropSource, number>(drops.drops, (d) => d.itemId),
     groups: new Map(recipes.groups.map((g) => [g.id, g])),
@@ -205,7 +220,11 @@ async function main(): Promise<number> {
       edges: progression.edges,
       bossNode: new Map(bosses.bosses.map((b) => [b.id, b.nodeId])),
     },
-  })
+  }
+  const derive = createGatingDeriver({ ...gatingContext, extraRoutes: acqSources.extraRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive })
+  // the pre-slice derivation (recipes + boss drops only) — gating-delta evidence for the report, never emitted
+  const deriveBaseline = createGatingDeriver(gatingContext)
+  const routeSources = { vendorRoute: acqSources.vendorRoute, gather: acqSources.gather }
   const weapons = buildWeapons({
     itemRows: sync.tables.Items.rows,
     itemsFetchedAt: sync.tables.Items.fetchedAt,
@@ -218,6 +237,7 @@ async function main(): Promise<number> {
     withheld,
     // P3-S11: thrown explosives' blast damage / knockback against the Explosives (class) table + their article
     explosive: explosiveEvidence(sync.articles, (page, sentence) => void evidence.sentence(page, sentence, `explosive damage sentence (${page})`)),
+    sources: routeSources,
   })
 
   // P2-S7 buff registry (A4 bound): debuffs inflicted by emitted weapons / ammo, ammo-granted buffs,
@@ -237,7 +257,11 @@ async function main(): Promise<number> {
     const row = typeof type === 'number' && type > 0 ? buffTable.rows.find((r) => r.id === type) : undefined
     if (row) addMember(row.name, `granted by ${c.name}`)
   }
-  for (const e of buffsOverlay.entries) addMember(e.name, 'combat buff potion (overlays/buffs.json)')
+  // B70 potion corpus: every buff an emitted potion grants (the potion builder runs after the ammo, see below)
+  const weaponIdSet = new Set(weapons.weapons.map((w) => w.id))
+  const notPotion = new Map<number, string>([...ammoIdn.included.filter((c) => !weaponIdSet.has(c.item.id)).map((c) => [c.item.id, 'an ammo item'] as const), ...[...weaponIdSet].map((id) => [id, 'a weapon'] as const)])
+  for (const [name, by] of potionBuffNames(identifyPotions(sync.tables.Items.rows, iteminfo, notPotion), buffTable.rows)) addMember(name, `granted by ${listed(by)}`)
+  for (const e of buffsOverlay.entries) addMember(e.name, 'buff effects curated in overlays/buffs.json')
   const buffs = buildBuffs({ table: buffTable, members, overlay: buffsOverlay, articles: sync.articles, evidence })
 
   // P2-S7 ammo items; dual-role weapons (Snowball) receive their ammoStats on the weapon record
@@ -258,7 +282,27 @@ async function main(): Promise<number> {
     buffTable: buffTable.rows,
     buffSlug: (name) => buffs.slugByName.get(name),
     withheld,
+    sources: routeSources,
   })
+  // B70 potion corpus (merge/potions.ts)
+  const potions = buildPotions({
+    itemRows: sync.tables.Items.rows,
+    itemsFetchedAt: sync.tables.Items.fetchedAt,
+    iteminfo,
+    articles: sync.articles,
+    images: sync.potionImages,
+    recipes: recipes.recipes,
+    drops: drops.drops,
+    gating: derive,
+    elsewhere: notPotion,
+    usedSlugs: new Set([...weapons.weapons.map((w) => w.slug), ...ammo.items.map((i) => i.slug)]),
+    stationIds: new Set(stationItemUses(recipes.recipes, new Map(recipes.groups.map((g) => [g.id, g]))).keys()),
+    buffTable: buffTable.rows,
+    buffSlug: (name) => buffs.slugByName.get(name),
+    withheld,
+    sources: routeSources,
+  })
+  const itemRecords = [...ammo.items, ...potions.items].sort((a, b) => a.id - b.id)
   const weaponRecords = weapons.weapons.map((w): Weapon => {
     const a = ammo.weaponAmmo.get(w.id)
     if (!a) return w
@@ -282,7 +326,7 @@ async function main(): Promise<number> {
     overlay: labOverlay,
   })
   // P2-S8 armor pieces + armor sets, accessories (merge/armor.ts, merge/accessories.ts, merge/effects.ts)
-  const itemSlugs = new Set([...weapons.weapons.map((w) => w.slug), ...ammo.items.map((i) => i.slug)])
+  const itemSlugs = new Set([...weapons.weapons.map((w) => w.slug), ...itemRecords.map((i) => i.slug)])
   const armorSetsOverlay = loadArmorSetsOverlay()
   const equipmentInput = {
     itemRows: sync.tables.Items.rows,
@@ -295,10 +339,11 @@ async function main(): Promise<number> {
     drops: drops.drops,
     gating: derive,
     withheld,
+    sources: routeSources,
   }
   const armor = buildArmor({ ...equipmentInput, evidence, overlay: armorSetsOverlay, usedSlugs: itemSlugs })
   const accessories = buildAccessories({ ...equipmentInput, usedSlugs: new Set([...itemSlugs, ...armor.pieces.map((p) => p.slug)]) })
-  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps]
+  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...potions.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps]
 
   const generatedAt = [
     sync.iteminfo.fetchedAt,
@@ -315,6 +360,7 @@ async function main(): Promise<number> {
     sync.armorCategories.fetchedAt,
     sync.accessoryCategories.fetchedAt,
     sync.equipmentImages.fetchedAt,
+    sync.potionImages.fetchedAt,
   ]
     .sort()
     .at(-1) as string
@@ -322,13 +368,13 @@ async function main(): Promise<number> {
   const manifest: DatasetManifest = {
     name: 'wiki-sync',
     description:
-      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), armor pieces, armor sets and accessories (P2-S8), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe: the rest of the item corpus is produced by P6-S0 (partial.itemUniverse) and Lab scenarios by a later slice (partial.pending).',
+      'Live terraria.wiki.gg sync for Terraria 1.4.5.8 (Desktop): weapons (P2-S2), recipes, recipe groups, drops, enemies and the conditions registry (P2-S2a), bosses and the progression graph (P2-S6), ammo items and the Lab/loadout buff registry (P2-S7), Weapon Lab archetype params (P3-S0), armor pieces, armor sets and accessories (P2-S8), the potion corpus (B70 P4-prep), plus search docs. Item IDs resolve against the Module:Iteminfo/data universe: the rest of the item corpus is produced by P6-S0 (partial.itemUniverse) and Lab scenarios by a later slice (partial.pending).',
     iteminfo: { rev: iteminfo.rev, syncedTo: iteminfo.terrariaVersion },
     notes: [
       `Sources: Module:Iteminfo/data rev ${iteminfo.rev} (generated ${iteminfo.generated}, game ${iteminfo.terrariaVersion}); ${Object.values(mods).map((m) => `${m.title} rev ${m.rev}`).join('; ')}; Cargo tables fetched ${Object.values(sync.tables).map((t) => `${t.table} ${t.fetchedAt}`).join(', ')}; weapon category tree ${sync.weaponCategories.fetchedAt}; imageinfo ${sync.weaponImages.fetchedAt}.`,
       'Weapons: Cargo Items rows whose infobox type contains "weapon" and whose itemid is the same item in Module:Iteminfo/data (display name, or internal name for unnamed IDs). Stats from Module:Iteminfo/data, cross-checked against the Cargo infobox (a disagreement withholds the value as Unknown + source-mismatch gap). See pipeline/merge/weapons.ts for every field rule.',
       'useTimeTicks = Iteminfo useTime (interval between uses/shots); useAnimationTicks = Iteminfo useAnimation = the wiki\'s displayed "Use time" (TO-VERIFY #10); reuseDelayTicks = Iteminfo reuseDelay (cooldown after each use; absent = none). critPct = the weapon\'s crit bonus (wiki shows 4% + bonus); not applicable for summon weapons (summon damage cannot normally crit). shootSpeedTps = Iteminfo shootSpeed (px/tick) × 3.75, the item stat, not the effective projectile velocity.',
-      'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; shop conditions Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).',
+      'Weapon acquisition links recipes (incl. Shimmer), drops (NPCs, bosses, bags, chests, crates) and vendor:<NPC> Cargo tags (purchase; conditions derived per the B70 vendor rule below, else Unknown). Weapon gatedBy/stage follow DATA_SCHEMA_SPEC §7b over the progression graph and are Unknown wherever any input is unverified (gap report lists the blockers). Wiki self-conflicts listed in pipeline/overlays/withheld.json (AMENDMENTS-004 B19) withhold the field (Unknown + source-mismatch gap).',
       'Weapon labBehavior (P3-S0, pipeline/merge/labParams.ts + pipeline/overlays/lab-params.json): weapons in the wiki categories Broadswords / Shortswords + Spears / Bows + Repeaters + Guns / Wands + Magic guns + Spell books are classified into the swing-melee / thrust / bow-gun / magic-bolt archetypes from Iteminfo useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo and mana; params are derived from Module:Iteminfo/data, Module:Projectileinfo/data and the wiki sprite metadata where a formula exists, and single-projectile / no-spread / ammo-unchanged defaults only when the article screen finds no statement of other behavior — flagged weapons need a reviewed overlay entry with verbatim, revision-checked quotes. Semantics follow src/sim/README.md (AMENDMENTS-008 B37). Everything else keeps a limitation card with the specific reason; its "What it does in-game" text is the tooltip\'s behavior lines (never its flavor-text quote), else a reviewed sentence of the weapon\'s own article (lab-params `inGameBehavior`, quote-checked), else none (a wiki link); every emitted archetype weapon passes the sim guard (assessWeapon).',
       'Remaining-archetype families (P3-S0 extension, pipeline/merge/labFamilies.ts): returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their params are stated (yoyo infobox Reach, the Whips list table, whip tooltips, verbatim "maximum range" / fuse sentences, reviewed overlay quotes) or derived (Projectileinfo minionSlots, quoted family rules), or modeled by the AMENDMENTS-013 B63 conventions (whip arc 180° forward; a summon\'s stated average / random / non-whole-tick rate rounded half-to-even to ticks; a contact minion\'s stated immunity frames as an upper-bound rate; a square blast area\'s inscribed circle — listed in _prov.modeledFields once emitted and labeled in the Lab); a param only an unratified convention could supply stays missing. Until the sim implements the archetype (IMPLEMENTED_ARCHETYPES), a weapon with complete params is recorded in the gap report and emitted as a limitation whose reason names what the Lab does not model — every emitted archetype weapon still passes assessWeapon.',
       'Lab coverage expansion (AMENDMENTS-010 B48): Weapon.reuseDelayTicks = Iteminfo reuseDelay (a cooldown after each use, part of the sim cadence); modeling conventions — swing arc/reach (B44), thrust reach = sprite diagonal × scale ÷ 16 + 1 tile where the article states no range (B46; a range the article states is the reach as extracted wiki data, AMENDMENTS-012 B56), 10° for a gun whose article says slight/small spread without an angle (B47) — are listed per record in _prov.modeledFields (B49) and labeled in the Lab; labBehavior.modifiers.dot comes from the weapon infobox debuff rows (buff registry, verified damage per second); ProjectileSpec.damageMultiplierPct only from a quoted percentage.',
@@ -344,13 +390,17 @@ async function main(): Promise<number> {
       'Conditions: curated overlay pipeline/overlays/conditions.json; every cited page verified to exist by the fetch stage; satisfiedByNode slugs are deferred references into the P2-S6 progression graph.',
       'Collections are emitted as JSON arrays (one record per line), incl. weapons.detail.json (AMENDMENTS-003 B11 supersedes the map shapes in DATA_SCHEMA_SPEC §3/§5).',
       'Ammo (P2-S7): Cargo Items rows typed "ammunition" that are the same desktop item in Module:Iteminfo/data with a non-zero `ammo` (AmmoID), emitted to items.detail.json / items.list.json (§5 list/detail split; category "ammo"). ammoStats.ammoClass = slug of the AmmoID item (the weapon rule). damage / knockback / velocityBonusTps (shootSpeed × 3.75 tiles/s, added to the weapon\'s) from Iteminfo for items with damage > 0, cross-checked against Cargo; items with no damage of their own (Gel, sand, solutions…) list all three as Unknown. velocityMultiplier (AMENDMENTS-002 B2) = the item\'s own infobox "Velocity Multiplier" row, cross-checked with 1 + extraUpdates (Module:Projectileinfo/data); not applicable when the own infobox shows none and Projectileinfo agrees, or the item fires no projectile of its own (Iteminfo shoot 0); Unknown for items sharing a list article without an own infobox. Snowball is a weapon AND ammo: its ammoStats are on the weapon record (one ID, one collection). See pipeline/merge/ammo.ts.',
-      'Buffs (P2-S7, A4 bound): every debuff an emitted weapon or ammo item inflicts (Cargo `debuffs`) or grants (Iteminfo buffType), plus the curated combat buff potions in pipeline/overlays/buffs.json. gameBuffId / isDebuff / article from the wiki\'s "Buff IDs" table (TO-VERIFY #12), cross-checked with the article\'s own Buff ID; dot.dps = enemy health loss per second from the buff infobox "Effects" row; effects only from the overlay (verbatim, number-checked quotes), else Unknown. Search docs include buffs because §7a-11 requires every emitted entity to be searchable. See pipeline/merge/buffs.ts.',
+      'Buffs (P2-S7, A4 bound): every debuff an emitted weapon or ammo item inflicts (Cargo `debuffs`) or grants (Iteminfo buffType), every buff an emitted potion grants (B70), plus the curated entries of pipeline/overlays/buffs.json. gameBuffId / isDebuff / article from the wiki\'s "Buff IDs" table (TO-VERIFY #12), cross-checked with the article\'s own Buff ID; dot.dps = enemy health loss per second from the buff infobox "Effects" row; effects only from the overlay (verbatim, number-checked quotes), else Unknown. Search docs include buffs because §7a-11 requires every emitted entity to be searchable. See pipeline/merge/buffs.ts.',
       'Stage (AMENDMENTS-005 B22): §7b item stage = max over gates of (node.unlocksStage ?? node.stage); wall-of-flesh carries unlocksStage early-hm (its drops are Early Hardmode content), validated against its required-gate edge into the hardmode milestone.',
       'Lists and search docs carry each record\'s own wikiUrl (AMENDMENTS-007 B31). Sprite files over 100 KB get a static first-frame PNG thumbnail (whole-number downscale to ≤ 128 px; AMENDMENTS-007 B30) listed in the sprite manifest and generated locally by npm run pipeline:sprites.',
       'Armor (P2-S8, pipeline/merge/armor.ts): Cargo Items rows typed "armor" (the set row of a set article, typed "armor" + "set", is the set infobox, not an item) that are the same desktop item in Module:Iteminfo/data with exactly one head/body/leg slot agreeing with the Cargo body slot. defense = Iteminfo defense cross-checked with the infobox; effects = the per-piece game-text tooltip lines classified by pipeline/merge/effects.ts and cross-checked with Cargo Equipinfo (the wiki\'s UpdateEquip transcription). No maxStack (AMENDMENTS-002 B7).',
       'Armor sets (P2-S8): one per set article; pieces = the armor pieces hosted by the article (≥1 helmet, exactly one chest and legs piece); per-helmet set bonus = the set infobox "Set Bonus" game text (a helmet-specific segment replaces the default for that helmet), classified like tooltips; setBonusText = those lines verbatim. Sets the schema cannot express (two alternative chests, no legs, pieces on other pages, no set bonus) are withheld by a reviewed pipeline/overlays/armor-sets.json entry (quote-checked) with a gap. Variant class (editorial) = the damage-class signals of the variant\'s stats (one → that class, none → other, several → a quoted overlay ruling). Set stage = earliest stage a complete set can be assembled (min over helmets of max piece stage), Unknown unless every piece\'s stage is derived.',
       'Accessories (P2-S8, pipeline/merge/accessories.ts): Cargo Items rows typed "accessory" and not "vanity" that are the same desktop item in Module:Iteminfo/data (accessory true, vanity false); vanity accessories (cosmetic, incl. music boxes) are reconciled but left to the item corpus (P6-S0). effects = Iteminfo defense (defense-flat) + classified game-text lines (Equipinfo cross-check; a disagreement withholds them, an Equipinfo-only stat is a gap, never filled in); Unknown (empty + listed, A1) when the wiki transcribes no game text. categories (editorial) = union of the classified effects\' categories. combinedFrom / upgradesTo derived from Tinkerer\'s Workshop recipes (§7a-7). wingStats from the "Wings" article list table: flightTimeTicks = round(seconds × 60) (exact at the table\'s 2-decimal precision), hover = a hovering speed is listed; verticalSpeedTps Unknown (the table states a multiplier).',
       'Effect lines (P2-S8, pipeline/merge/effects.ts): every game-text line must match exactly one explicit rule — a stat rule onto the CLOSED StatKind enum (the line must state every emitted number), a special (verbatim text, simulated false; rules that would need a new StatKind name it as an amendment candidate), or flavor text; an unclassifiable line fails the build.',
+      'StatKind B54 (AMENDMENTS-011, landed by the B70 P4-prep slice): fishing-power-flat, ammo-save-pct, knockback-pct, tag-effect-slots, lava-immunity-ticks (stated seconds × 60), melee-scale-pct, tile-reach-flat, potion-cooldown-pct (reductions negative), armor-penetration-flat, minion-knockback, whip-speed-pct. Value-stating lines are stats (an unmodeled rest of the line stays a quoted special); lines without a value stay specials. Buff overlay flips: Ammo Reservation ammo-save-pct 20, Tipsy fishing-power-flat 5.',
+      'Armor-set variant classes (AMENDMENTS-011 B52, B70 slice): variants[].classes = [class] for single-class / class-less variants; for a hybrid, the classes its quoted article description names (\'mage\' = magic, \'summoner\' = summon), checked equal to the variant\'s stat class signals; class stays "other" for hybrids (kept one release; read classes ?? [class]). Editorial like class.',
+      'Potions (B70 P4-prep, pipeline/merge/potions.ts): Cargo Items rows typed "potion" (not "food") that are the same desktop item in Module:Iteminfo/data and grant a buff (buffType) or restore health / mana; category "potion" in items.detail.json. healLife / healMana = Iteminfo, cross-checked with the infobox (a range such as "70–120" withholds the value). buffGrants: Iteminfo buffType for buffTime ticks (cross-checked with the Cargo buffs/debuffs and the infobox Duration), Potion Sickness when Iteminfo potion is true and Mana Sickness for mana-restoring items (Cargo debuffs agreeing; duration from the infobox, else Unknown). Reconciled against the wiki\'s "Buff potions" table and the Potions navbox (gap report). Utility consumables with no buff and no healing (Recall, Wormhole, …) are excluded with a reason.',
+      'Gating expansion (B70 P4-prep: AMENDMENTS-014 B68, AMENDMENTS-015 B78; pipeline/merge/sources.ts + gating.ts): §7b also takes (1) vendor routes — the NPC\'s quoted availability (overlays/vendors.json: its move-in rule as conditions, "has one of these items" as the minimum over them, NPCs it needs) AND the item\'s row in the NPC article\'s shop table with a reviewed Availability text; vendors whose availability is an OR, an NPC count or a random visit stay Unknown; (2) loot of reviewed containers (overlays/containers.json, matched by name AND article: chests and Shadow Orbs / Crimson Hearts with their quoted conditions; ore-tier bars only in their world, "(in worlds with Iron)"); (3) a curated gatherable base-material registry (overlays/gatherables.json, quote-backed: gate-free early pre-Hardmode unless conditioned). Either-or conditions over an exhaustive group (the world evil, the ore of a tier) drop out; a gate-free sufficient route is exact even when another route is unknown; anything else unknown keeps gatedBy Unknown. Purchase acquisitions carry their derived conditions (NPC ∪ shop row) or list them Unknown; gatherable items get an "other" acquisition quoting the evidence sentence.',
     ],
     partial: { itemUniverse: ITEM_UNIVERSE_FILE, pending: PENDING },
     bossPages: [...BOSS_PAGE_IDS],
@@ -359,7 +409,7 @@ async function main(): Promise<number> {
   // validate pass 1 → the strict-parsed (and possibly Lab-downgraded) weapons the lists project
   const collections: RawDataset['collections'] = {
     weapons: lab.weapons,
-    items: ammo.items,
+    items: itemRecords,
     buffs: buffs.buffs,
     recipes: recipes.recipes,
     recipeGroups: recipes.groups,
@@ -384,6 +434,8 @@ async function main(): Promise<number> {
   const suggestionCtx = suggestionContext(first.dataset)
   const weaponList = weaponDetails.map((w) => projectList('weapons', w as unknown as Record<string, unknown>))
   const itemDetails = first.dataset.items
+  const ammoItemDetails = itemDetails.filter((i) => i.category === 'ammo')
+  const potionDetails = itemDetails.filter((i) => i.category === 'potion')
   const itemList = itemDetails.map((i) => projectList('items', i as unknown as Record<string, unknown>))
   const armorDetails = first.dataset.armor
   const armorList = armorDetails.map((a) => projectList('armor', a as unknown as Record<string, unknown>))
@@ -414,7 +466,7 @@ async function main(): Promise<number> {
   }
 
   // sprite manifest (public/, committed; binaries are local-only). B30: files over 100 KB list a thumbnail.
-  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites, ...armor.sprites, ...accessories.sprites].map((f) => {
+  const spriteFiles = [...weapons.sprites, ...bosses.sprites, ...ammo.sprites, ...potions.sprites, ...armor.sprites, ...accessories.sprites].map((f) => {
     const thumbnail = thumbnailFor(f)
     return thumbnail ? { ...f, thumbnail } : f
   })
@@ -607,7 +659,7 @@ async function main(): Promise<number> {
   const xcB = (field: string) => buffs.crossCheck.get(field) ?? { agree: 0, mismatch: 0, noWikiValue: 0 }
   const aIdn = ammo.identification
   const dualRole = weaponDetails.filter((w) => w.ammoStats)
-  const ammoRecords = [...itemDetails, ...dualRole]
+  const ammoRecords = [...ammoItemDetails, ...dualRole]
   const iteminfoAmmo = [...iteminfo.items.values()].filter((i) => (i.stats as Record<string, unknown>).ammo !== 0)
   const aCat = reconcileCategories(sync.ammoCategories, sync.tables.Items.rows, ammoRecords, aIdn, ammo.pageOf)
   const aBucketRows: [string, number][] = (Object.keys(PAGE_BUCKET_LABEL) as PageBucket[]).map((k) => [`− ${PAGE_BUCKET_LABEL[k].replaceAll('weapon', 'ammo')}`, aCat.buckets[k].length])
@@ -798,7 +850,7 @@ async function main(): Promise<number> {
     {
       title: 'Weapons — why gatedBy / stage are Unknown (§7b blockers)',
       lines: [
-        `gatedBy derived: ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length} (P2-S2: 0/${weaponDetails.length}, before the boss registry and progression graph existed). A route is derivable only when every input in its chain is verified: boss drops (incl. treasure bags) now gate on their boss node, conditions with satisfiedByNode on their node, transitively reduced over the required-gate DAG; enemy and event-boss stages are Unknown and base materials have no acquisition data yet (P6-S0), so those chains stay underivable. Derived weapons by stage: ${(Object.keys(STAGE_ORDER) as (keyof typeof STAGE_ORDER)[]).map((st) => `${st} ${weaponDetails.filter((w) => w.gatedBy?.stage === st).length}`).join(', ')}. Each weapon below is Unknown → never "obtainable now" (A3 safe direction).`,
+        `gatedBy derived: ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length} (P2-S2: 0/${weaponDetails.length}, before the boss registry and progression graph existed). A route is derivable only when every input in its chain is verified: boss drops (incl. treasure bags) now gate on their boss node, conditions with satisfiedByNode on their node, transitively reduced over the required-gate DAG; since the B70 P4-prep slice (AMENDMENTS-014 B68 / AMENDMENTS-015 B78) reviewed vendor routes, chests / orbs and a curated gatherable base-material registry are inputs too (see the P4-prep sections below); enemy and event-boss stages, fishing (crates) and unreviewed vendors stay Unknown, so chains through them stay underivable. Derived weapons by stage: ${(Object.keys(STAGE_ORDER) as (keyof typeof STAGE_ORDER)[]).map((st) => `${st} ${weaponDetails.filter((w) => w.gatedBy?.stage === st).length}`).join(', ')}. Each weapon below is Unknown → never "obtainable now" (A3 safe direction).`,
         '',
         '| Blockers met on every route | Weapons | Examples |',
         '|---|---:|---|',
@@ -877,7 +929,7 @@ async function main(): Promise<number> {
         `| Cargo Items rows whose infobox type contains "ammunition" | ${aIdn.typedRows} |`,
         ...[...aExcludedByKind].sort().map(([k, n]) => `| − excluded (${k}; one gap entry each) | ${n} |`),
         `| **= ammo records** | **${ammoRecords.length}** |`,
-        `|   ammo items (items.detail.json, category "ammo") | ${itemDetails.length} |`,
+        `|   ammo items (items.detail.json, category "ammo") | ${ammoItemDetails.length} |`,
         `|   weapons that are also ammo (ammoStats on the weapon record: ${dualRole.map((w) => w.name).join(', ') || 'none'}) | ${dualRole.length} |`,
         `| Iteminfo ammo items without an emitted record | ${aIdn.iteminfoOnly.length}${aIdn.iteminfoOnly.length ? ` (${aIdn.iteminfoOnly.map((i) => `${i.name ?? i.internalName} ${i.id}`).join(', ')})` : ''} |`,
         '',
@@ -1200,9 +1252,9 @@ async function main(): Promise<number> {
       ],
     },
     {
-      title: 'StatKind extension candidates (amendment proposals, P2-S8)',
+      title: 'StatKind extension candidates (amendment proposals, P2-S8; B54 landed in the B70 slice)',
       lines: [
-        'Effects the closed StatKind enum (DATA_SCHEMA_SPEC §2.3) cannot express are emitted as `special` (simulated: false) — never as an invented stat. These rules name the StatKind extension that would make them structured; each row is wiki evidence (verbatim game text + article) for an amendment.',
+        'Effects the closed StatKind enum (DATA_SCHEMA_SPEC §2.3) cannot express are emitted as `special` (simulated: false) — never as an invented stat. These rules name the StatKind extension that would make them structured; each row is wiki evidence (verbatim game text + article) for an amendment. AMENDMENTS-011 B54\'s 11 kinds are in the enum since the B70 P4-prep slice: their value-stating lines are stats (flip counts in the B54 section below); what remains here are scope / value / unit candidates.',
         '',
         '"Existing kind" = the StatKind is in the enum but the game text states no value / unit / scope for it (a unit definition, a value source or a scope extension is the amendment); "new kind" = no StatKind covers it.',
         '',
@@ -1234,10 +1286,26 @@ async function main(): Promise<number> {
         }),
       ],
     },
+    ...b70Sections({
+      weapons: weaponDetails,
+      armor: armorDetails,
+      accessories: accessoryDetails,
+      items: itemDetails,
+      armorSets: setDetails,
+      buffs: first.dataset.buffs,
+      bosses: first.dataset.bosses,
+      drops: drops.drops,
+      derive,
+      deriveBaseline,
+      withheldIds: new Set(withheld.keys()),
+      sources: acqSources,
+      potions,
+      stageOrder: STAGE_ORDER,
+    }),
     {
       title: 'Sprites',
       lines: [
-        `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites, ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites, ${ammo.sprites.length}/${itemDetails.length} ammo item sprites, ${armor.sprites.length}/${armorDetails.length} armor piece sprites and ${accessories.sprites.length}/${accessoryDetails.length} accessory sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons, ${armorDetails.length - armor.sprites.length} armor pieces and ${accessoryDetails.length - accessories.sprites.length} accessories have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
+        `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites, ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites, ${ammo.sprites.length}/${ammoItemDetails.length} ammo item sprites, ${potions.sprites.length}/${potionDetails.length} potion sprites, ${armor.sprites.length}/${armorDetails.length} armor piece sprites and ${accessories.sprites.length}/${accessoryDetails.length} accessory sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons, ${armorDetails.length - armor.sprites.length} armor pieces and ${accessoryDetails.length - accessories.sprites.length} accessories have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
         '',
         `Thumbnails (AMENDMENTS-007 B30): every sprite file over ${THUMBNAIL_MIN_BYTES / 1024} KB gets a static PNG of its first frame, downscaled by a whole number to ≤ 128 px (nearest-neighbour block sampling — pixel art is never resampled fractionally), generated locally by \`npm run pipeline:sprites\`: ${spriteManifest.files.filter((f) => f.thumbnail).map((f) => `${f.path} (${f.ref}, ${f.bytes} B, ${f.width}×${f.height}) → ${f.thumbnail?.path} ${f.thumbnail?.width}×${f.thumbnail?.height}`).join('; ') || 'none'}. Heavy files without a thumbnail (generator decodes GIF only): ${heavyWithoutThumbnail.map((f) => f.path).join(', ') || 'none'}. Rows and cards should use the thumbnail, the full file only on detail / boss pages (UI wiring: next UI slice).`,
       ],
@@ -1333,10 +1401,10 @@ async function main(): Promise<number> {
         title: 'Ammo + buffs (P2-S7 summary — details below)',
         rows: [
           ['ammo records (Iteminfo ammo ≠ 0: ' + iteminfoAmmo.length + '; Cargo "ammunition" rows: ' + aIdn.typedRows + ')', ammoRecords.length],
-          ['  ammo items emitted (items.detail.json)', itemDetails.length],
+          ['  ammo items emitted (items.detail.json)', ammoItemDetails.length],
           ['  weapons that are also ammo (ammoStats on the weapon)', dualRole.length],
-          ['  with ≥1 acquisition route', itemDetails.filter((i) => i.acquisition.length > 0).length],
-          ['  with derived gatedBy / stage', itemDetails.filter((i) => i.gatedBy).length],
+          ['  with ≥1 acquisition route', ammoItemDetails.filter((i) => i.acquisition.length > 0).length],
+          ['  with derived gatedBy / stage', ammoItemDetails.filter((i) => i.gatedBy).length],
           ['  with a wiki sprite (manifest)', ammo.sprites.length],
           ['  damage verified / Unknown', `${ammoRecords.filter((x) => x.ammoStats?.damage !== undefined).length} / ${ammoRecords.filter((x) => x._prov.unverifiedFields.includes('ammoStats.damage')).length}`],
           ['  velocityMultiplier stated / not applicable / Unknown', `${ammoRecords.filter((x) => x.ammoStats?.velocityMultiplier !== undefined).length} / ${ammoRecords.filter((x) => x.ammoStats?.velocityMultiplier === undefined && !x._prov.unverifiedFields.includes('ammoStats.velocityMultiplier')).length} / ${ammoRecords.filter((x) => x._prov.unverifiedFields.includes('ammoStats.velocityMultiplier')).length}`],
@@ -1396,7 +1464,7 @@ async function main(): Promise<number> {
   console.log(`  enemies ${enemies.ledger.enemies}; conditions ${conditions.length}; search docs ${searchDocs.length}; item universe ${universe.items.length}`)
   console.log(`  bosses ${first.dataset.bosses.length}; nodes ${first.dataset.nodes.length}; edges ${first.dataset.edges.length}; boss drops linked ${d.bossLinkedRecords}, event-boss n/a ${d.eventBossRecords}, mismatch ${d.bossMismatchRecords}; weapons with gatedBy ${weaponDetails.filter((w) => w.gatedBy).length}/${weaponDetails.length}`)
   console.log(`  armor pieces ${armorDetails.length} (piece rows ${armor.identification.typedRows}, excluded ${armor.identification.excluded.length}); sets ${setDetails.length}/${armor.setPages} set articles (withheld ${withheldSetPages.size}); accessories ${accessoryDetails.length} (functional rows ${accessories.identification.typedRows}, excluded ${accessories.identification.excluded.length}, vanity ${accessories.vanityRows.length}); tinkering links ${tinkeringLinks}; wings ${wingRecords.filter((a) => a.wingStats).length}/${wingRecords.length}; effects Unknown ${unknownEffectAccessories.length}`)
-  console.log(`  ammo records ${ammoRecords.length} (items ${itemDetails.length} + weapons-as-ammo ${dualRole.length}; Cargo ammunition rows ${aIdn.typedRows}, excluded ${aIdn.excluded.length}; Iteminfo ammo ${iteminfoAmmo.length}); buffs ${buffs.buffs.length} (dot ${buffs.buffs.filter((b) => b.dot).length}, structured effects ${buffs.buffs.filter((b) => b.effects.length > 0).length})`)
+  console.log(`  ammo records ${ammoRecords.length} (items ${ammoItemDetails.length} + weapons-as-ammo ${dualRole.length}; Cargo ammunition rows ${aIdn.typedRows}, excluded ${aIdn.excluded.length}; Iteminfo ammo ${iteminfoAmmo.length}); buffs ${buffs.buffs.length} (dot ${buffs.buffs.filter((b) => b.dot).length}, structured effects ${buffs.buffs.filter((b) => b.effects.length > 0).length})`)
   console.log(`  B22 stage moves: ${b22Moved.map((x) => `${x.name} ${plainStage(x.gatedBy as { bosses: string[] })}→${x.gatedBy?.stage}`).join(', ') || 'none'}`)
   console.log(`  sprites: manifest ${spriteManifest.files.length} files (${spriteManifest.files.filter((f) => f.thumbnail).length} with a thumbnail); binaries present locally ${spriteBinaries}/${spriteManifest.files.length} (npm run pipeline:sprites)`)
   console.log(`  lab (P3-S0): ${labCoverage.map((c) => `${c.family} ${c.simulable}/${c.total} (derived ${c.derived}, overlay ${c.overlay}, downgraded ${c.downgraded})`).join('; ')}; all weapons simulable ${labArchetypeTotal}/${weaponDetails.length}; B36 downgrades ${labB36.length} (B36-only ${labB36Only.length})`)

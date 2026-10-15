@@ -209,6 +209,21 @@ describe('corrupted records fail with named errors', () => {
     expect(expectOnly(run(raw), 'E_DUPLICATE_ID').map((e) => e.message).join('\n')).toContain('more than one variant for helmet')
   })
 
+  it('AMENDMENTS-011 B52: variants[].classes is optional (older data validates); when present it agrees with the kept class', () => {
+    const raw = sample()
+    const cobalt = find(raw, 'armorSets', 'cobalt')
+    expect(codesOf(run(raw))).toEqual([]) // no classes at all: the backward-compatible shape
+    cobalt.variants[0].classes = ['magic']
+    cobalt.variants[1].classes = ['melee', 'summon'] // hybrid list, but class is "melee" (must be "other")
+    cobalt.variants[2].classes = ['melee'] // disagrees with class "ranged"
+    expect(expectOnly(run(raw), 'E_DERIVED_MISMATCH').map((e) => (e.code === 'E_DERIVED_MISMATCH' ? e.field : ''))).toEqual(['variants.1.classes', 'variants.2.classes'])
+    cobalt.variants[1].class = 'other'
+    cobalt.variants[2].classes = ['ranged']
+    expect(codesOf(run(raw))).toEqual([])
+    cobalt.variants[2].classes = ['ranged', 'ranged']
+    expect(codesOf(run(raw))).toEqual(['E_SCHEMA']) // classes never repeat (schema)
+  })
+
   it('P2-S8 (A1): an accessory with empty effects / categories is Unknown only when listed — unlisted empties are E_SCHEMA', () => {
     const raw = sample()
     const shackle = find(raw, 'accessories', 216)
@@ -422,14 +437,18 @@ describe('corrupted records fail with named errors', () => {
       expect(fieldsOf(run(raw))).toEqual([`${EOW}:strategies`])
     })
 
-    it('a suggestedEquipment gap must be necessary: it is stale while any weapon passes E_SUGGESTION_GATING for the boss', () => {
+    it('a suggestedEquipment gap must be necessary: it is stale once the boss\'s quoted strategies name a weapon that passes E_SUGGESTION_GATING (B83b: recommendation ≠ mere obtainability)', () => {
       const raw = withPages(curated(sample()))
       declareGap(raw, 'suggestedEquipment')
+      // ungated sample weapons exist (Wooden Bow, Minishark, Wand of Sparking), but no quoted tip names one → the gap stands
+      const quiet = run(raw)
+      if (!quiet.ok) throw new Error(quiet.errors.map(formatError).join('\n'))
+      find(raw, 'bosses', EOW).strategies.push({ class: 'ranged', text: 'The Wooden Bow is fine here.', sourceUrl: SRC })
       const errors = expectOnly(run(raw), 'E_BOSS_CURATION')
       expect(errors).toHaveLength(1)
-      expect(errors[0].message).toMatch(/declared gap is stale: 3 weapon\(s\) now pass E_SUGGESTION_GATING .*Wooden Bow \(i:39\)/)
-      // gate every ungated sample weapon behind the Wall of Flesh (not upstream of the Eater) → the gap is necessary
-      for (const id of [39, 98, 3069]) find(raw, 'weapons', id).gatedBy = { bosses: ['wall-of-flesh'], conditions: [], stage: 'early-hm' }
+      expect(errors[0].message).toMatch(/declared gap is stale: the boss's own quoted strategies name 1 weapon\(s\) that pass E_SUGGESTION_GATING \(Wooden Bow \(i:39\)\)/)
+      // gate the named weapon behind the Wall of Flesh (not upstream of the Eater) → the gap is necessary again
+      find(raw, 'weapons', 39).gatedBy = { bosses: ['wall-of-flesh'], conditions: [], stage: 'early-hm' }
       const result = run(raw)
       if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
     })

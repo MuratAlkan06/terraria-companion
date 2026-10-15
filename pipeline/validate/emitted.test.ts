@@ -13,7 +13,7 @@ import { formatError } from './errors'
 import { checkFixtures, REQUIREMENTS_BOSSES } from './fixtures'
 import { requiredGateUpstream } from './graph'
 import { validateDataset } from './index'
-import { GEAR_CLASSES } from './curation'
+import { GEAR_CLASSES, weaponNamesIn } from './curation'
 import { checkSuggestionGating } from './suggestions'
 
 const DATA_DIR = join(import.meta.dirname, '../../src/data')
@@ -78,7 +78,8 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const classes = new Set([...items, ...weapons].flatMap((r) => (r.ammoStats ? [r.ammoStats.ammoClass] : [])))
       for (const w of weapons) if (w.ammoClass) expect(classes.has(w.ammoClass), `${w.name} ${w.ammoClass}`).toBe(true)
       expect(weapons.find((w) => w.id === 949)?.ammoStats).toMatchObject({ ammoClass: 'snowball', damage: 8 })
-      expect(items.every((i) => i.category === 'ammo' && i.ammoStats)).toBe(true)
+      // B70: the items collection is ammo (with ammoStats) + the potion corpus (without)
+      expect(items.every((i) => (i.category === 'ammo' && i.ammoStats) || (i.category === 'potion' && !i.ammoStats))).toBe(true)
     })
 
     it('B2 spot checks: Musket Ball 2×, High Velocity Bullet 8×; a rocket and a dart carry no multiplier of their own', () => {
@@ -156,10 +157,11 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const h = set('hallowed-armor')
       expect(h.pieces).toEqual({ helmets: [553, 558, 559, 4873], chest: 551, legs: 552 })
       expect(h.variants.map((v) => [v.helmetId, v.class])).toEqual([[553, 'ranged'], [558, 'magic'], [559, 'melee'], [4873, 'summon']])
+      expect(h.variants.map((v) => v.classes)).toEqual([['ranged'], ['magic'], ['melee'], ['summon']]) // B52: single-class variants
       expect(h.variants.find((v) => v.helmetId === 4873)?.setBonus).toEqual([expect.objectContaining({ kind: 'special', text: 'Become immune after striking an enemy' }), { kind: 'stat', stat: 'minion-slots', value: 2 }])
       const total = (helmet: number) => [helmet, h.pieces.chest, h.pieces.legs].reduce((n, id) => n + (piece.get(id)?.defense ?? NaN), 0)
       expect([558, 553, 559, 4873].map(total)).toEqual([31, 35, 50, 27])
-      expect(h._prov.editorialFields).toEqual(['variants.0.class', 'variants.1.class', 'variants.2.class', 'variants.3.class'])
+      expect(h._prov.editorialFields).toEqual(['variants.0.class', 'variants.0.classes', 'variants.1.class', 'variants.1.classes', 'variants.2.class', 'variants.2.classes', 'variants.3.class', 'variants.3.classes'])
     })
 
     it('spot-check mixed bonuses: Chlorophyte Mask = leaf crystal special + 5% damage reduction; Spectre Hood = −40% magic damage + its quoted remainder', () => {
@@ -345,8 +347,8 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       }
     })
 
-    it('suggested gear: Unknown with a declared reason before Hardmode (nothing is required before those fights); from Queen Slime on, entries + per-class Unknowns covering every class', () => {
-      const wholeField = ['king-slime', 'eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu', 'queen-bee', 'skeletron', 'deerclops', 'wall-of-flesh']
+    it('suggested gear: a whole-field Unknown only where no quoted tip names a weapon verified obtainable before the fight (B83b; the Eater of Worlds since the B70 gating expansion); elsewhere entries + per-class Unknowns covering every class', () => {
+      const wholeField = ['eater-of-worlds']
       for (const id of BOSS_PAGE_IDS) {
         const b = boss(id)
         if (wholeField.includes(id)) {
@@ -439,14 +441,16 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
           expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name}`).toBe(!suggestable(item, target))
           if (item.gatedBy?.bosses.includes(target.nodeId)) expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name} (gated by the boss itself)`).toBe(true)
         }
-        // A whole-field gear gap stands only while no weapon is suggestable (the stale-gap rule: every
-        // pre-Hardmode boss and the Wall of Flesh); curated gear names suggestable weapons only.
+        // A whole-field gear gap stands only while no weapon the boss's quoted tips name is suggestable
+        // (the stale-gap rule, AMENDMENTS-015 B83(b): recommendation ≠ mere obtainability); curated gear
+        // names suggestable weapons only.
         const eligible = new Set(ds.weapons.filter((w) => suggestable(w, target)).map((w) => w.id))
+        const quoted = new Set((target.strategies ?? []).flatMap((st) => [...weaponNamesIn(st.text, ds.weapons.map((w) => w.name))]))
         if (target.suggestedEquipment) {
           expect(eligible.size, id).toBeGreaterThan(0)
           for (const w of target.suggestedEquipment.flatMap((g) => g.weapons)) expect(eligible.has(w), `${id} suggests i:${w}`).toBe(true)
         } else {
-          expect(eligible.size, id).toBe(0)
+          expect(ds.weapons.filter((w) => eligible.has(w.id) && quoted.has(w.name)).map((w) => w.name), id).toEqual([])
         }
       }
     })
@@ -455,5 +459,85 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
   it('meta.json keeps the shape the app footer reads', () => {
     expect(meta).toMatchObject({ gameVersion: '1.4.5.8', dataSchemaVersion: 1, license: 'CC BY-NC-SA 4.0' })
     expect(meta).not.toHaveProperty('stub')
+  })
+
+  // AMENDMENTS-014 B70 P4-prep slice. Spot-check values were compared with the cached article revisions
+  // (Ironskin Potion, Healing Potion, Archery Potion, Frost armor, Musket Ball / Arms Dealer, King Slime
+  // strategies) on 2026-10-14; the gap report's P4-prep sections carry the full reconciliation.
+  describe('B70 P4-prep: potion corpus, B52 classes, B68/B78 gating, B54 kinds, forced gear', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const items = read<Item[]>('items.detail.json')
+    const buffs = read<Buff[]>('buffs.json')
+    const weapons = read<Weapon[]>('weapons.detail.json')
+    const accessories = read<Accessory[]>('accessories.detail.json')
+    const sets = read<ArmorSet[]>('armor-sets.json')
+    const bossesB = read<Boss[]>('bosses.json')
+    const item = (id: number) => items.find((i) => i.id === id) as Item
+    const buff = (id: string) => buffs.find((b) => b.id === id) as Buff
+    const weapon = (name: string) => weapons.find((w) => w.name === name) as Weapon
+    const potions = items.filter((i) => i.category === 'potion')
+
+    it('potion corpus: 66 potions (41/43 Buff potions table rows; Love / Stink potions excluded), every one granting a buff record, searchable', () => {
+      expect(potions).toHaveLength(66)
+      expect(potions.every((p) => p.buffGrants && p.buffGrants.every((g) => buffs.some((b) => b.id === g.buffId)))).toBe(true)
+      expect(potions.map((p) => p.name)).not.toEqual(expect.arrayContaining(['Love Potion']))
+      expect(potions.map((p) => p.name)).not.toEqual(expect.arrayContaining(['Stink Potion']))
+      const docs = read<SearchDoc[]>('search-docs.json')
+      for (const p of potions) expect(docs.find((d) => d.id === `i:${p.id}`), p.name).toMatchObject({ type: 'item', name: p.name })
+      expect(read<{ counts: Record<string, number> }>('meta.json').counts.items).toBe(145)
+    })
+
+    it('spot-check Ironskin: +8 defense (stat), 8 minutes = 28800 ticks, early pre-Hardmode with no gate', () => {
+      expect(buff('ironskin').effects).toEqual([{ kind: 'stat', stat: 'defense-flat', value: 8 }])
+      expect(item(292)).toMatchObject({ category: 'potion', buffGrants: [{ buffId: 'ironskin', durationTicks: 28800 }], gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' } })
+    })
+
+    it('spot-check a healing potion: Healing Potion heals 100 and inflicts Potion Sickness for 1 minute; a heal range stays Unknown', () => {
+      expect(item(188)).toMatchObject({ healLife: 100, buffGrants: [{ buffId: 'potion-sickness', durationTicks: 3600 }] })
+      expect(item(28)).toMatchObject({ healLife: 50 })
+      expect(getField(item(3001), 'healLife')).toEqual({ status: 'unverified' }) // Strange Brew: "70–120" vs one game value
+    })
+
+    it("spot-check Archery's scope: bow damage / arrow speed is a quoted special, never a ranged-wide damage stat", () => {
+      expect(buff('archery').effects).toEqual([{ kind: 'special', text: '10% increased bow damage and 20% increased arrow speed', simulated: false, sourceUrl: 'https://terraria.wiki.gg/wiki/Archery_Potion' }])
+    })
+
+    it('spot-check B52: hybrid sets carry their quoted classes (class stays "other"); single-class and class-less variants [class]', () => {
+      const variant = (id: string) => (sets.find((x) => x.id === id) as ArmorSet).variants[0]
+      expect(variant('frost-armor')).toMatchObject({ class: 'other', classes: ['melee', 'ranged'] })
+      expect(variant('forbidden-armor')).toMatchObject({ class: 'other', classes: ['magic', 'summon'] })
+      expect(variant('crystal-assassin-armor')).toMatchObject({ class: 'other', classes: ['other'] })
+      expect(sets.every((x) => x.variants.every((v) => v.classes && (v.classes.length > 1 ? v.class === 'other' : v.classes[0] === v.class)))).toBe(true)
+      expect(sets.flatMap((x) => x.variants).filter((v) => (v.classes?.length ?? 0) > 1)).toHaveLength(10)
+    })
+
+    it('spot-check newly gated Musket Ball: Shadow Orb OR Crimson Heart (either world evil) and the Arms Dealer, always in stock → early pre-Hardmode, no gate', () => {
+      expect(item(97)).toMatchObject({ gatedBy: { bosses: [], conditions: [], stage: 'early-prehm' }, stage: 'early-prehm' })
+      expect(item(97).acquisition).toContainEqual({ method: 'purchase', npcName: 'Arms Dealer', priceCopper: 7, conditions: [] })
+      expect(item(97)._prov.unverifiedFields).toEqual([])
+      // honest residuals: one ore-tier bar (world-specific), a seed-world chest, an orb weapon with an unknown other route
+      for (const name of ['Iron Broadsword', 'Terragrim', 'Musket']) expect(getField(weapon(name), 'gatedBy'), name).toEqual({ status: 'unverified' })
+      expect(weapon('Minishark').gatedBy).toEqual({ bosses: [], conditions: [], stage: 'early-prehm' })
+    })
+
+    it('spot-check stale-gap-forced gear (B83b): King Slime melee Thorn Chakram + Ice Blade, magic Wand of Frosting, ranged / summon Unknown; Eater of Worlds stays a whole-field Unknown', () => {
+      const ks = bossesB.find((b) => b.id === 'king-slime') as Boss
+      expect(ks.suggestedEquipment?.map((g) => [g.class, g.weapons])).toEqual([['melee', [191]], ['melee', [724]], ['magic', [5147]]])
+      expect(ks._prov.unverifiedFields.filter((f) => f.startsWith('suggestedEquipment'))).toEqual(['suggestedEquipment.ranged', 'suggestedEquipment.summon'])
+      expect(getField(bossesB.find((b) => b.id === 'eater-of-worlds'), 'suggestedEquipment')).toEqual({ status: 'unverified' })
+    })
+
+    it('B54 kinds: Ammo Reservation 20% ammo save, Tipsy +5 fishing power, Lava Charm 7 s = 420 ticks, Shark Tooth Necklace 5 armor penetration', () => {
+      expect(buff('ammo-reservation').effects).toEqual([{ kind: 'stat', stat: 'ammo-save-pct', value: 20 }])
+      expect(buff('tipsy').effects).toContainEqual({ kind: 'stat', stat: 'fishing-power-flat', value: 5 })
+      const effectsOf = (name: string) => (accessories.find((a) => a.name === name) as Accessory).effects
+      expect(effectsOf('Lava Charm')).toEqual([{ kind: 'stat', stat: 'lava-immunity-ticks', value: 420 }])
+      expect(effectsOf('Shark Tooth Necklace')).toEqual([{ kind: 'stat', stat: 'armor-penetration-flat', value: 5 }])
+    })
+
+    it('B78 gatherables: an emitted gatherable carries its quoted "other" route (Gel)', () => {
+      expect(item(23).acquisition).toContainEqual({ method: 'other', description: 'Gel is a common crafting material dropped by most slimes and Slimed Zombies', sourceUrl: 'https://terraria.wiki.gg/wiki/Gel', conditions: [] })
+      expect(item(23).gatedBy).toEqual({ bosses: [], conditions: [], stage: 'early-prehm' })
+    })
   })
 })

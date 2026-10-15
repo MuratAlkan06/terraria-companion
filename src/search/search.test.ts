@@ -38,7 +38,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
   it('the shipped search-docs.json and enemies.json pass their dev schemas', () => {
     expect(() => validateDataFile('search-docs', searchDocsJson)).not.toThrow()
     expect(() => validateDataFile('enemies', enemiesJson)).not.toThrow()
-    expect(docs).toHaveLength(1634)
+    expect(docs).toHaveLength(1735)
   })
 
   it('loadSearchDocs is a lazy singleton; a failed chunk is a ChunkLoadError and is retried', async () => {
@@ -48,7 +48,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
     const failure = await da.loadSearchDocs().catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ChunkLoadError)
     expect((failure as ChunkLoadError).file).toBe('search-docs')
-    await expect(da.loadSearchDocs()).resolves.toHaveLength(1634)
+    await expect(da.loadSearchDocs()).resolves.toHaveLength(1735)
     await da.loadSearchDocs()
     expect(importer).toHaveBeenCalledTimes(2)
   })
@@ -58,7 +58,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
   const engine = createSearchEngine(docs)
 
   it('indexes every doc and finds "zenith" as the top hit (AC1)', () => {
-    expect(engine.size).toBe(1634)
+    expect(engine.size).toBe(1735)
     const [top] = engine.search('zenith')
     expect(top.doc).toMatchObject({ id: 'i:4956', name: 'Zenith', type: 'weapon' })
   })
@@ -163,7 +163,7 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
 describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('builds from the shipped data: "zenith" → Zenith first, internal, with its sprite', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
-    expect(index.docCount).toBe(1634)
+    expect(index.docCount).toBe(1735)
     const { groups, options } = index.suggest('zenith')
     expect(groups[0].label).toBe('Weapons')
     expect(options[0]).toMatchObject({
@@ -180,7 +180,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('every row without a local page opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
-    expect(all).toHaveLength(1634)
+    expect(all).toHaveLength(1735)
     const docById = new Map(docs.map((d) => [d.id, d]))
     const pageBosses = new Set<string>(BOSS_PAGE_IDS.map((id) => `boss:${id}`))
     for (const option of all) {
@@ -284,7 +284,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     expect(performance.getEntriesByName('tc:search-index').length).toBeGreaterThan(0)
   })
 
-  it('builds the real 1634-doc index well inside the 500 ms budget on this machine', async () => {
+  it('builds the real 1735-doc index well inside the 500 ms budget on this machine', async () => {
     const start = performance.now()
     createSearchEngine(docs)
     expect(performance.now() - start).toBeLessThan(500)
@@ -303,15 +303,15 @@ describe('detail line + placeholder copy', () => {
     expect(shipped).toEqual([
       { type: 'weapon', count: 488 },
       { type: 'boss', count: 18 },
-      { type: 'item', count: 79 },
+      { type: 'item', count: 145 },
       { type: 'armor', count: 256 },
       { type: 'accessory', count: 352 },
       { type: 'set', count: 67 },
       { type: 'enemy', count: 334 },
-      { type: 'buff', count: 40 },
+      { type: 'buff', count: 75 },
     ])
     expect(searchPlaceholder(shipped)).toBe('Search weapons, bosses, items…')
-    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 79 items, 256 armor, 352 accessories, 67 armor sets, 334 enemies and 40 buffs')
+    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 145 items, 256 armor, 352 accessories, 67 armor sets, 334 enemies and 75 buffs')
     expect(searchPlaceholder([])).toBe('Search…')
     const later = searchableCounts({ ...meta.counts, items: 5000, armor: 300 })
     expect(searchPlaceholder(later)).toBe('Search weapons, bosses, items…')

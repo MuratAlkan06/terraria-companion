@@ -76,6 +76,39 @@ export function wikiArticleTitle(url: string): string | undefined {
   }
 }
 
+/**
+ * How a stored wiki sentence (a progression edge's note) starts where it is quoted. One the extraction
+ * cut mid-sentence — it starts lowercase, its subject left behind ("are four late-Hardmode, stationary
+ * bosses…") — gets a marked lead: the subject in square brackets when the quote's source article is
+ * about a node the edge connects (the article's title is that node's name: "[Celestial Pillars] "),
+ * else an ellipsis marking the cut. A whole sentence has none. The stored quote itself never changes
+ * (evidence checks compare it verbatim); the lead is display only.
+ */
+export function quoteLead(text: string, sourceUrl: string, subjects: readonly string[]): string | undefined {
+  if (!/^\p{Ll}/u.test(text)) return undefined
+  const title = wikiArticleTitle(sourceUrl)
+  return title !== undefined && subjects.includes(title) ? `[${title}] ` : '…'
+}
+
+/**
+ * Stored wiki sentences the extraction cut at the END, mid-promise (AMENDMENTS-015 B93(ii)), pinned
+ * verbatim with their source: the Mechanical bosses article's "…causes the following to happen", its
+ * list left behind (the one sentence the three mech → All mechanical bosses edges share). Pinned, never
+ * inferred from a missing full stop — whole sentences without one ship too (Wall of Flesh → Hardmode,
+ * Queen Bee, Plantera → Frost Moon). When the stored sentence is re-extracted, the pin stops matching.
+ */
+const CUT_AT_END: readonly { sourceUrl: string; text: string }[] = [
+  { sourceUrl: 'https://terraria.wiki.gg/wiki/Mechanical_bosses', text: 'Defeating each of the three mechanical bosses at least once causes the following to happen' },
+]
+
+/**
+ * quoteLead's counterpart at the other end: an ellipsis after a stored sentence pinned as cut at the
+ * end (CUT_AT_END), else none. Display only; the stored quote never changes.
+ */
+export function quoteTrail(text: string, sourceUrl: string): string | undefined {
+  return CUT_AT_END.some((q) => q.text === text && q.sourceUrl === sourceUrl) ? '…' : undefined
+}
+
 /** Item id → what the page can say about it: name, sprite, and its real page (see module doc). */
 export function itemResolver(src: ItemSources): (id: number) => ItemInfo {
   const byId = new Map<number, ItemInfo>()
@@ -533,11 +566,14 @@ export function stepPhrase(types: readonly EdgeType[], direction: 'before' | 'af
 
 /**
  * Guides with curated, per-class weapon suggestions for one boss — what the boss page can't offer
- * while its suggested gear is Unknown (M3). Editorial cross-links; bossPage.test checks that each
- * guide exists under this title and covers the boss.
+ * while its suggested gear, or one class's, is Unknown (M3; AMENDMENTS-015 B91(a): the starter-tier
+ * fights, the Eye of Cthulhu and its optional alternative King Slime, both covered by the first-boss
+ * guide). Editorial cross-links; bossPage.test checks that each guide exists under this title and
+ * covers the boss.
  */
 export const BOSS_PREP_GUIDES: Readonly<Record<string, { slug: string; title: string }>> = {
   'eye-of-cthulhu': { slug: 'first-boss-prep', title: 'Preparing for your first boss' },
+  'king-slime': { slug: 'first-boss-prep', title: 'Preparing for your first boss' },
 }
 
 export function prepGuideFor(bossId: string): { title: string; to: string } | undefined {

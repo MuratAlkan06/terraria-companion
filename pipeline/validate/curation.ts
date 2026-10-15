@@ -9,9 +9,12 @@
  *   reason (`missing-field` entry for boss:<id> + field). Not curated at all (absent + listed with no
  *   reason) and an empty list (a present value claiming "nothing to suggest") both fail.
  * - A declared suggestedEquipment gap must be NECESSARY: SuggestedEquipment needs ≥ 1 weapon, so the
- *   gap is accepted only while no weapon in the dataset passes E_SUGGESTION_GATING for that boss.
- *   Once one does (e.g. when base-material acquisition lands, P6-S0), the build fails until gear is
- *   authored — the same no-stale-withholding rule as overlays/withheld.json.
+ *   gap is accepted only while none of the boss's own quoted strategies names a weapon that passes
+ *   E_SUGGESTION_GATING for that boss. Once one does (the B70 P4-prep gating expansion made the first
+ *   pre-Hardmode weapons qualify), the build fails until gear is authored — the same no-stale-withholding
+ *   rule as overlays/withheld.json. AMENDMENTS-015 B83(b) (later than B78's "any weapon qualifies"):
+ *   gear needs a quoted wiki recommendation AND passing gating — recommendation ≠ mere obtainability —
+ *   so a weapon that merely passes the gate, named by no tip, does not make the gap stale.
  *
  * - Curated suggestedEquipment covers every gear class (P5-S3 honest partial): each of melee /
  *   ranged / magic / summon has ≥ 1 entry, or is a declared per-class gap — `suggestedEquipment.<class>`
@@ -84,10 +87,11 @@ export function checkBossCuration(ds: Dataset, bossPages: readonly string[], sta
         continue
       }
       if (field === 'suggestedEquipment') {
-        const eligible = suggestableWeapons(boss)
+        const quoted = new Set((boss.strategies ?? []).flatMap((s) => [...weaponNamesIn(s.text, weaponNames)]))
+        const eligible = suggestableWeapons(boss).filter((w) => quoted.has(w.name))
         if (eligible.length > 0) {
           const sample = eligible.slice(0, 5).map((w) => `${w.name} (i:${w.id})`).join(', ')
-          errors.push(curationError(id, field, `declared gap is stale: ${eligible.length} weapon(s) now pass E_SUGGESTION_GATING for this boss (${sample}${eligible.length > 5 ? ', …' : ''}) — author suggested equipment`))
+          errors.push(curationError(id, field, `declared gap is stale: the boss's own quoted strategies name ${eligible.length} weapon(s) that pass E_SUGGESTION_GATING (${sample}${eligible.length > 5 ? ', …' : ''}) — author suggested equipment`))
         }
       }
     }
