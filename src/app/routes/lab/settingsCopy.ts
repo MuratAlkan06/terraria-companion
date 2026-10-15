@@ -121,6 +121,18 @@ export function resetAnnouncement({ weaponName, stopped, summonsCleared, loadout
   return `${stopped ? 'Test stopped. ' : ''}Reset: stats, target and default settings restored${cleared} — ${weaponName} is ready.`
 }
 
+/** PRD P3-S8 (UX_SPEC §3 "homing on/off"): the homing switch, and the name of its off state. */
+export const HOMING_SETTING_LABEL = 'Homing'
+export const HOMING_WHAT_IF = 'what-if: homing disabled'
+
+/**
+ * The homing switch on the LimitationCard of a weapon whose data says it homes (src/lab/labWeapons.ts
+ * `homesInGame`) — disabled, with why: no simulated weapon carries homing (the P3-S8 audit), so the
+ * what-if can't run. "Part of how it behaves" also fits a weapon whose homing is a side projectile's.
+ */
+export const homingUnavailableNote = (weaponName: string): string =>
+  `Homing is part of how ${weaponName} behaves in-game. Comparing with and without it (${HOMING_WHAT_IF}) needs the Lab to simulate this weapon, which it doesn’t — see why above.`
+
 /**
  * Design review P3-S4/S5 H2: what the Lab does NOT take from an ammo, in one sentence — the picker's
  * help says exactly what the est. DPS tips say (`ammo-effects`).

@@ -21,6 +21,7 @@ import { LAB_SETUP } from '../../../lab/testing/labData'
 import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS } from '../../../sim'
 import {
   defaultLabWeapon,
+  homesInGame,
   inGameDescription,
   labScopeNouns,
   labStatus,
@@ -496,6 +497,38 @@ describe('LimitationCard (deep-link fallback, UX_SPEC §8 anatomy)', () => {
       if (reason === UNASSIGNED_LIMITATION_PLAIN) plain++
     }
     expect(plain).toBeGreaterThan(0)
+  })
+
+  it('P3-S8: a weapon whose data says it homes shows the homing switch disabled, at its real behavior, with the reason', () => {
+    const staff = all.find((w) => w.name === 'Amethyst Staff')!
+    expect(homesInGame(staff)).toBe(true)
+    const selection = resolveLabSelection(String(staff.id), byId, list, LAB_SETUP)!
+    const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
+    const input = /<input[^>]*id="lab-setting-homing"[^>]*>/.exec(html)?.[0] ?? ''
+    expect(input).toContain('role="switch"')
+    expect(input).toContain('disabled=""')
+    expect(input).toContain('checked=""')
+    expect(input).toContain('aria-describedby="lab-setting-homing-help"')
+    expect(html).toContain('data-homing-toggle="unavailable"')
+    expect(html).toContain('Unavailable')
+    expect(html).toContain(
+      'id="lab-setting-homing-help" class="text-xs text-fg-muted">Homing is part of how Amethyst Staff behaves in-game. Comparing with and without it (what-if: homing disabled) needs the Lab to simulate this weapon, which it doesn’t — see why above.',
+    )
+  })
+
+  it('P3-S8: a weapon without homing data shows no homing switch', () => {
+    const zenith = all.find((w) => w.name === 'Zenith')!
+    expect(homesInGame(zenith)).toBe(false)
+    const selection = resolveLabSelection(String(zenith.id), byId, list, LAB_SETUP)!
+    const html = render(createElement(LimitationCard, { notice: selection.notice!, fallback: selection.weapon, sprites: null, onBack: () => {} }))
+    expect(html).not.toContain('lab-setting-homing')
+  })
+
+  it('P3-S8: the settings panel shows no homing switch (no equippable weapon homes — nothing to toggle)', () => {
+    const dummy = session(sword).sim.renderState().dummies[0]
+    const html = render(createElement(TargetSettingsPanel, { usesMana: true, dummy, ...SETTINGS }))
+    expect(html).toContain('id="lab-setting-variance"')
+    expect(html).not.toContain('lab-setting-homing')
   })
 
   it('an unknown id gets a short notice, the fallback still equipped', () => {

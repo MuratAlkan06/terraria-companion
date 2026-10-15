@@ -16,6 +16,7 @@
  * Expected data gaps are NOT errors: they become `verified:false` + gaps.json entries.
  */
 import type * as z from 'zod'
+import type { LabGolden } from './labCoverage'
 
 export type PipelineError =
   | { code: 'E_SCHEMA'; ref: string; zodIssues: readonly z.core.$ZodIssue[]; message: string }
@@ -31,6 +32,15 @@ export type PipelineError =
   | { code: 'E_FIXTURE'; name: string; message: string }
   /** AMENDMENTS-001 A1 P5 gate: a boss whose page ships lacks a curated minimum (validate/curation.ts). */
   | { code: 'E_BOSS_CURATION'; bossId: string; field: string; message: string }
+  /**
+   * P3-S13 coverage gate (AMENDMENTS-016 B115 (a)/(b), validate/labCoverage.ts): the simulable count fell
+   * below its pinned floor, a simulable weapon's golden is missing or fails, or a pin names a weapon that
+   * isn't simulable (`stale-golden`). A golden error carries the fingerprint the weapon produces now
+   * (`computed`, when it can run one), which pinLabGoldens.ts writes when a re-pin is intended.
+   */
+  | { code: 'E_LAB_COVERAGE'; rule: 'simulable-floor' | 'golden' | 'stale-golden'; ref: string; message: string; computed?: LabGolden }
+  /** P3-S13 (B115 (c), DATA_SCHEMA_SPEC §6): a non-simulable weapon without a typed, renderable refusal. */
+  | { code: 'E_LAB_UNHANDLED'; itemId: number; message: string }
 
 export type PipelineErrorCode = PipelineError['code']
 

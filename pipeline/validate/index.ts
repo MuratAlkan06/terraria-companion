@@ -10,7 +10,7 @@
  *  4. §7a-10 ammo classes: E_DANGLING_REF once items are produced; A1 warning + downgrade while pending
  *  5. integrity, graph, §7a-13 fixtures (when the graph is produced), suggestion gating, the P5 boss
  *     curation gate (manifest.bossPages), the P6-S0 item closure (manifest.itemClosure), list⊂detail,
- *     search docs
+ *     search docs, the P3-S13 Weapon Lab coverage gate (labCoverage.ts, AMENDMENTS-016 B115)
  *  6. gaps + meta
  */
 import type * as z from 'zod'
@@ -34,6 +34,7 @@ import type { PipelineError, PipelineWarning } from './errors'
 import { checkFixtures } from './fixtures'
 import { checkGraph } from './graph'
 import { checkIntegrity, type RefScope } from './integrity'
+import { checkLabCoverage, LAB_COVERAGE_PINS } from './labCoverage'
 import { checkAmmoClasses, downgradeUnverifiedArchetype } from './labDowngrade'
 import { checkListDetail } from './listDetail'
 import { buildGaps, buildMeta } from './report'
@@ -141,6 +142,7 @@ export function validateDataset(raw: RawDataset, options: ValidateOptions = {}):
     ...(manifest.data.itemClosure ? checkItemClosure(dataset, stageGaps) : []),
     ...checkListDetail(raw.lists, dataset),
     ...(raw.searchDocs !== undefined ? checkSearchDocs(raw.searchDocs, dataset) : []),
+    ...checkLabCoverage(dataset, { pins: LAB_COVERAGE_PINS[manifest.data.name] }).errors,
   )
   if (errors.length > 0) return { ok: false, errors, warnings }
 

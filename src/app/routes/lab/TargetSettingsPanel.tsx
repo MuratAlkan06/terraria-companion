@@ -81,6 +81,9 @@ export type SteerHint = 'yoyo' | 'beam' | null
  *   setup, src/lab/labAssumptions.ts `minion-loadout`). Changing either restarts the stats; Reset clears
  *   the loadout and restores one slot.
  * - ±15% damage variance on/off — the engine's own toggle.
+ * - Homing on/off (PRD P3-S8; UX_SPEC §3): never shown here — no weapon the Lab equips homes (the P3-S8
+ *   audit, src/lab/labWeapons.ts `homesInGame`). A weapon whose data says it homes is a limitation, and its
+ *   LimitationCard shows the switch disabled, with the reason (`SettingSwitch`, `HOMING_SETTING_ID`).
  * The single Reset restores every default setting (the loaded ammo stays, like the weapon). While a
  * timed test runs, the panel is disabled by the page (inert, with a lock badge and the reason,
  * §5.7); `locked` also disables the inputs themselves.
@@ -90,6 +93,8 @@ export const VARIANCE_SETTING_ID = 'lab-setting-variance'
 export const IGNORE_MANA_SETTING_ID = 'lab-setting-ignore-mana'
 export const MANA_REGEN_SETTING_ID = 'lab-setting-mana-regen'
 export const MAX_MANA_SETTING_ID = 'lab-setting-max-mana'
+/** PRD P3-S8: the homing switch (shown disabled on a homing weapon's LimitationCard — no simulated weapon homes). */
+export const HOMING_SETTING_ID = 'lab-setting-homing'
 /** Max mana slider: 20 base + 20 per Mana Crystal (200 with all nine, wiki Mana); above that, gear bonuses. */
 const MAX_MANA_RANGE = { min: 20, max: 400, step: 20 } as const
 /**
@@ -1115,8 +1120,25 @@ function CommitSlider({
   )
 }
 
-/** A labeled on/off switch (native checkbox with role="switch"); its help text is `${id}-help`. */
-function SettingSwitch({ id, label, checked, disabled, onChange }: { id: string; label: ReactNode; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
+/**
+ * A labeled on/off switch (native checkbox with role="switch"); its help text is `${id}-help`. `stateText`
+ * replaces the visible "On"/"Off" (a switch that can't be used says so — the help text says why).
+ */
+export function SettingSwitch({
+  id,
+  label,
+  checked,
+  disabled,
+  onChange,
+  stateText,
+}: {
+  id: string
+  label: ReactNode
+  checked: boolean
+  disabled: boolean
+  onChange: (checked: boolean) => void
+  stateText?: string
+}) {
   return (
     <div className="relative">
       <input
@@ -1142,7 +1164,7 @@ function SettingSwitch({ id, label, checked, disabled, onChange }: { id: string;
         </span>
         <span className="flex-1">{label}</span>
         <span aria-hidden="true" className="text-xs text-fg-muted">
-          {checked ? 'On' : 'Off'}
+          {stateText ?? (checked ? 'On' : 'Off')}
         </span>
       </label>
     </div>

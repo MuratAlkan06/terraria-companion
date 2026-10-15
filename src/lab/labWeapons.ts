@@ -296,6 +296,29 @@ export function behaviorFacts(weapon: Pick<Weapon, 'labBehavior'>): BehaviorFact
   }
 }
 
+/** Verified text naming homing — conservative words only: "homing", "homes", "home in" (never "home" alone, "chase"). */
+const HOMING_WORDS = /\bhom(?:ing|es)\b|\bhome in\b/i
+
+/**
+ * PRD P3-S8 homing toggle (UX_SPEC §3 test settings "homing on/off"): the engine's homing is the
+ * `modifiers.homing` layer, switched by `LabSettings.homingEnabled` — on by default (the weapon's real
+ * behavior); off is the what-if "homing disabled".
+ *
+ * AUDIT (2026-10-15, pinned in labWeapons.test.ts): no simulable weapon carries `modifiers.homing`, and none
+ * whose verified text names homing — every weapon whose data says it homes is a limitation (its homing
+ * strength is undocumented, or the homing rides on a behavior the Lab doesn't model). So there is no live
+ * toggle to ship: such a weapon's LimitationCard shows the switch disabled, with the reason.
+ *
+ * True when the weapon's data says it homes: a homing modifier in its params, or its card's verified text —
+ * what it does in-game (`inGameDescription`, flavor line excluded) or why it isn't simulated — naming homing.
+ */
+export function homesInGame(weapon: Weapon): boolean {
+  const lab = weapon.labBehavior
+  if (lab.kind === 'archetype' && lab.modifiers?.homing !== undefined) return true
+  const texts = [inGameDescription(weapon), lab.kind === 'limitation' ? lab.reason : undefined]
+  return texts.some((text) => text !== undefined && HOMING_WORDS.test(text))
+}
+
 /** Where the card's "how it behaves" link points: the limitation's source, else the weapon page. */
 export function behaviorSourceUrl(weapon: Weapon): string {
   return weapon.labBehavior.kind === 'limitation' ? weapon.labBehavior.sourceUrl : weapon.wikiUrl

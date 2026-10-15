@@ -7,9 +7,11 @@ import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
 import { SpriteImg } from '../../../components/SpriteImg'
 import type { SpriteIndex, Weapon } from '../../../data-access/types'
-import { behaviorSourceUrl, inGameDescription, notSimulatedReason, UNASSIGNED_LIMITATION_PLAIN, type LabNotice } from '../../../lab/labWeapons'
+import { behaviorSourceUrl, homesInGame, inGameDescription, notSimulatedReason, UNASSIGNED_LIMITATION_PLAIN, type LabNotice } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { weaponHref } from '../db/weapons/weaponNav'
+import { HOMING_SETTING_LABEL, homingUnavailableNote } from './settingsCopy'
+import { HOMING_SETTING_ID, SettingSwitch } from './TargetSettingsPanel'
 
 /**
  * LimitationCard (UX_SPEC §8, fixed anatomy): (1) weapon identity, (2) "What it does in-game" —
@@ -17,6 +19,10 @@ import { weaponHref } from '../db/weapons/weaponNav'
  * "Open weapon page" + "Back to weapons". Shown over the arena (reduced emphasis behind it) when a
  * `?weapon=` link names a weapon the Lab can't equip; the fallback sword is already equipped, so
  * the Lab never looks broken. A not-found id gets a short notice instead.
+ *
+ * PRD P3-S8: when the weapon's data says it homes (src/lab/labWeapons.ts `homesInGame`), the card also
+ * shows the homing switch DISABLED with the reason — the what-if (homing disabled) needs the weapon
+ * simulated. It shows the weapon's real behavior (on), never a working control.
  */
 export const LIMITATION_TITLE_ID = 'lab-limitation-title'
 
@@ -85,6 +91,16 @@ export function LimitationCard({ notice, fallback, sprites, onBack }: Limitation
         <h3 className="text-sm font-semibold text-fg">Why it isn’t simulated</h3>
         <p className="text-sm text-fg-muted">{reason}</p>
       </div>
+
+      {homesInGame(weapon) ? (
+        <div className="space-y-1" data-lab-setting="homing" data-homing-toggle="unavailable">
+          <h3 className="text-sm font-semibold text-fg">Test settings</h3>
+          <SettingSwitch id={HOMING_SETTING_ID} label={HOMING_SETTING_LABEL} checked disabled stateText="Unavailable" onChange={() => {}} />
+          <p id={`${HOMING_SETTING_ID}-help`} className="text-xs text-fg-muted">
+            {homingUnavailableNote(weapon.name)}
+          </p>
+        </div>
+      ) : null}
 
       <p className="text-sm">
         <span className="font-semibold">{fallback.name}</span> is equipped instead, so you can keep testing.

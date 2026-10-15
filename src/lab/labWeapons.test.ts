@@ -11,6 +11,7 @@ import { assessWeapon, createLabSim, IMPLEMENTED_ARCHETYPES } from '../sim'
 import {
   behaviorSourceUrl,
   defaultLabWeapon,
+  homesInGame,
   inGameDescription,
   isLabEquippable,
   labScopeNouns,
@@ -208,5 +209,45 @@ describe('/lab?weapon=:id deep links (UX_SPEC §10.11)', () => {
   it('builds the deep-link query the Lab reads', () => {
     expect(LAB_WEAPON_PARAM).toBe('weapon')
     expect(labWeaponSearch(24)).toBe('?weapon=24')
+  })
+})
+
+/**
+ * PRD P3-S8 precondition audit (2026-10-15). TRIPWIRE: if a simulable weapon ever homes, the toggle is no
+ * longer display-only — wire `LabSettings.homingEnabled` into the settings panel (default on = the weapon's
+ * real behavior, off labeled "what-if: homing disabled") with goldens for both states, then update this pin.
+ */
+describe('P3-S8 homing audit: no simulated weapon homes, so the toggle ships disabled with its reason', () => {
+  it('no simulable weapon carries a homing modifier, or verified text naming homing', () => {
+    const simulable = weapons.filter((w) => assessWeapon(w).simulable)
+    expect(simulable).toHaveLength(149)
+    expect(simulable.filter((w) => w.labBehavior.kind === 'archetype' && w.labBehavior.modifiers?.homing !== undefined).map((w) => w.name)).toEqual([])
+    expect(simulable.filter(homesInGame).map((w) => w.name)).toEqual([])
+  })
+
+  it('the 27 weapons whose data says they home are all limitation cards the Lab can’t equip', () => {
+    const homing = weapons.filter(homesInGame)
+    expect(homing.map((w) => w.id).sort((a, b) => a - b)).toEqual([
+      113, 190, 218, 495, 739, 1121, 1122, 1123, 1155, 1313, 1446, 1801, 1826, 1946, 2611, 2622, 2888, 3474, 3475, 3540, 4760, 4911, 5118, 5294, 5477, 5479, 5526,
+    ])
+    for (const w of homing) {
+      expect(w.labBehavior.kind, w.name).toBe('limitation')
+      expect(labStatus(w, LAB_SETUP).kind, w.name).toBe('not-simulable')
+    }
+  })
+
+  it('reads a homing modifier, the reason or the in-game text — conservative words, never the flavor line', () => {
+    const base = weapons.find((w) => w.labBehavior.kind === 'limitation' && !homesInGame(w))!
+    const card = (reason: string, inGameBehavior: string): Weapon => ({ ...base, labBehavior: { kind: 'limitation', reason, inGameBehavior, sourceUrl: base.wikiUrl } })
+    expect(homesInGame(card('Its bolt homes onto the closest enemy — not modeled.', 'Shoots a bolt'))).toBe(true)
+    expect(homesInGame(card('Not modeled.', 'Launches homing missiles'))).toBe(true)
+    expect(homesInGame(card('Its skulls home in on enemies — not modeled.', 'Shoots a skull'))).toBe(true)
+    expect(homesInGame(card('Not modeled.', 'Teleports you home'))).toBe(false)
+    expect(homesInGame(card('Not modeled.', 'Shoots bees that will chase your enemy'))).toBe(false)
+    expect(homesInGame(card('Not modeled.', "Shoots a bolt\n'Homing in on greatness'"))).toBe(false) // flavor line
+    const sword = list.find((w) => isArchetype(w, 'swing-melee'))!
+    if (sword.labBehavior.kind !== 'archetype') throw new Error('fixture drift')
+    expect(homesInGame(sword)).toBe(false)
+    expect(homesInGame({ ...sword, labBehavior: { ...sword.labBehavior, modifiers: { homing: { strength: 0.2, acquisitionRangeTiles: 10 } } } })).toBe(true)
   })
 })

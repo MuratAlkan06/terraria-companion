@@ -241,6 +241,12 @@ Order (wiki Damage): **variance → defense → crit**.
 - Proven in `determinism.test.ts` across 30/60/144 fps, jittered and spiky frame patterns, and
   arbitrary `step()` chunking. A pinned golden fingerprint catches unintended semantic drift;
   intentional changes re-pin it with a [Changelog](#changelog) entry (AMENDMENTS-008 B38).
+- **Per-weapon goldens (PRD P3-S13, AMENDMENTS-016 B115 (b)):** every simulable COMMITTED weapon also has a
+  pinned fingerprint — a 10 s timed test on the engine defaults (`DEFAULT_SEED`, the default dummy,
+  `DEFAULT_LAB_SETTINGS`, the buff registry, a bow's pinned ammo) — in `pipeline/validate/labGoldens.json`,
+  checked by the build-failing coverage gate (`pipeline/validate/labCoverage.ts`, which also holds the
+  simulable-count floor). An engine change that moves any of them re-pins them in the same change
+  (`npx tsx pipeline/validate/pinLabGoldens.ts` writes exactly the failing entries), with a changelog entry.
 - Limitation: `Math.sin/cos/atan2` are engine-implemented, so results are bit-identical within one
   JS engine (V8 in Node and Chrome); low-order bits could differ across engines (e.g. Firefox).
 
@@ -427,6 +433,16 @@ Homing and multiHit are refused (`modifier-not-implemented`).
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
 `determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+
+- **2026-10-15: per-weapon goldens + the coverage gate (PRD P3-S13, AMENDMENTS-016 B115); P3-S8 homing
+  audit.** No engine change: every `GOLDEN_30S` fingerprint is **unchanged** (none re-pinned). New pins: the
+  149 simulable committed weapons' goldens in `pipeline/validate/labGoldens.json` (see "Determinism
+  contract"; 38 bows and guns pinned with the Lab's default ammo — Wooden Arrow / Musket Ball for their
+  classes), and the simulable floor 149 in `pipeline/validate/labCoverage.ts`. P3-S8: the `homing` modifier
+  and `LabSettings.homingEnabled` are unchanged and still fixture-proven (`modifiers.test.ts`, the staff
+  scenario above); the precondition audit found **0 of 149** simulable weapons with `modifiers.homing` —
+  every weapon whose data says it homes (27) is a limitation — so the Lab ships the toggle disabled with its
+  reason on those LimitationCards, and no toggled-state goldens exist (nothing simulated to toggle).
 
 - **2026-10-14: dummy roster v2 — Moving, Boss-Sized, Armored (PRD P3-S12).** `DummySpec.motion`
   (`DummyMotion`: `axis` `horizontal` | `vertical`, `speedTps`, `rangeTiles`; validated — a malformed one is
