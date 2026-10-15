@@ -1,3 +1,8 @@
+> **SUPERSEDED (AMENDMENTS-016 B131(e), 2026-10-15).** This pause-point note is historical: it describes the state on
+> 2026-10-14 and is no longer the resume protocol. The current, authoritative account of what shipped, what was cut
+> (with reasons), the verified state and every known gap is the final report: **[RELEASE.md](./RELEASE.md)**. Read that
+> instead; nothing below is kept up to date.
+
 # HANDOFF — Session pause point (2026-10-14)
 
 Resume protocol: read this file + TASK_CONTRACT.md + PRD.md §7 + the AMENDMENTS chain (001–015, binding, later wins). Workflow: every slice = implementation-engineer → design-reviewer (UI) → verification-lead → github-workflow gate → commit. No AI-attribution trailers ever (owner ruling 2026-10-09).

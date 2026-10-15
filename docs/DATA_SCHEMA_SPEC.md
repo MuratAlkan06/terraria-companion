@@ -1,7 +1,7 @@
 # DATA SCHEMA SPECIFICATION — Terraria Companion Website (v1)
 
 > **AMENDED BY [AMENDMENTS-001.md](./AMENDMENTS-001.md) (binding — read together).**
-> **B58 parity sweep (AMENDMENTS-016 B121, 2026-10-15):** rulings from AMENDMENTS-015 (B85+) and AMENDMENTS-016 are consolidated inline with B-numbers and an "Amendment history" line per changed section. The amendments chain stays binding and wins on any conflict; earlier unconsolidated rulings are listed in B121.
+> **B58 parity sweep (AMENDMENTS-016 B121, 2026-10-15):** rulings from AMENDMENTS-015 (B85+) and AMENDMENTS-016 are consolidated inline with B-numbers and an "Amendment history" line per changed section. The amendments chain stays binding and wins on any conflict; the earlier unconsolidated rulings B121 listed (B58 remainder, B6, B8/B40, A7, B83/B90 curation) are consolidated by the release closeout (B132, 2026-10-15).
 
 Status: P0 design, for freeze · 2026-10-12 · Authored by database-api-designer agent.
 Sources: docs/ADR-001.md, docs/PRD.md, docs/REQUIREMENTS.md, docs/TASK_CONTRACT.md. Target: shared module `src/schemas/` consumed by both `pipeline/` and the app. Zod 4 (`zod@^4`, syntax verified current via Context7).
@@ -62,14 +62,17 @@ export const AmmoClass = Slug;      // validated against ammoStats.ammoClass val
 ### 2.1 Provenance envelope (`_prov`, uniform on every record)
 ```ts
 export const SourceKind = z.enum([
-  "iteminfo","cargo:Items","cargo:Recipes","cargo:Drops","cargo:NPCs",
+  "iteminfo",
+  "wiki-module",   // B8: machine-extracted from another wiki Lua module (Module:Recipes, Module:RecipeGroups…) — NOT curated
+  "wiki-article",  // B40: machine-extracted from a rendered article revision (Buff IDs table, infobox rows) — NOT curated
+  "cargo:Items","cargo:Recipes","cargo:Drops","cargo:NPCs",
   "cargo:Equipinfo","cargo:Weapon_source","cargo:Exclusive","cargo:Imageinfo",
   "cargo:Modifiers","curated",
 ]);
 export const ProvSource = z.strictObject({
   kind: SourceKind,
   url: WikiUrl,
-  rev: z.int().positive().optional(),  // REQUIRED for kind "iteminfo" (ADR D1 caveat)
+  rev: z.int().positive().optional(),  // REQUIRED for kinds "iteminfo", "wiki-module", "wiki-article" (ADR D1 caveat; B8, B40)
   fetchedAt: IsoDate,
   overlay: Slug.optional(),            // REQUIRED for kind "curated"
 });
@@ -91,7 +94,7 @@ export const Prov = z.strictObject({
 5. **Shared accessor contract:** `getField(record, dotPath) => { status: "verified"|"unverified"|"not-applicable"|"editorial", value? }`. All UI/sim reads go through it; direct field access in UI is a lintable violation.
 6. **Modeled vs extracted (B49; B105, B112):** a value derived by a ratified rule — a Lab modeling convention (B44/B46/B47/B63), or a drop quantity of 1 derived from a non-consumable item kind (B105) — is present AND listed in `modeledFields` (qualified `<path>#<convention>` where two conventions govern one path, B72(b)). A modeled path is never also listed (or covered) in `unverifiedFields` (validated). The UI labels it as derived (drop tables show a visible "derived" label with the provenance note), so it is always distinguishable from wiki-stated data.
 
-_Amendment history (B121 sweep): `modeledFields` + rule 6 — B49 field, now also carrying B105 derived quantities ("derived marks", B112)._
+_Amendment history (B121 sweep): `modeledFields` + rule 6 — B49 field, now also carrying B105 derived quantities ("derived marks", B112). B132 closeout: `wiki-module` (B8) and `wiki-article` (B40) SourceKinds with their required `rev` (src/schemas/prov.ts)._
 
 ### 2.2 Shared item core, acquisition, gating
 ```ts
@@ -136,7 +139,7 @@ const itemCommon = {
 };
 ```
 
-### 2.3 StatEffect (armor/sets/accessories/buffs — powers P3-S14 + loadout math)
+### 2.3 StatEffect (armor/sets/accessories/buffs — powers loadout math; P3-S14 Lab equip context was cut, B131(b))
 ```ts
 export const StatKind = z.enum([
   "damage-pct","damage-flat","crit-pct","melee-speed-pct","attack-speed-pct",
@@ -168,6 +171,9 @@ export const ProjectileSpec = z.strictObject({
   lifetimeTicks: z.int().positive().optional(),
   pierce: z.union([z.int().nonnegative(), z.literal("infinite")]).optional(),
   spriteKey: z.string().optional(),
+  damageMultiplierPct: z.int().positive().optional(), // B48(b): the projectile deals this % of the damage it would
+                                       // otherwise deal (weapon + ammo), rounded down (B57(a)) — e.g. gem staffs' 50%;
+                                       // wiki-sourced per weapon, quote-checked; absent = 100%
 });
 
 // Cross-cutting modifiers (bounce, chain, DoT/debuff, multi-hit, homing per P3-S8)
@@ -238,6 +244,8 @@ export const Weapon = z.strictObject({
                                        // simRequiredWeaponFields omits critPct for "other"; the Lab labels `classless-crit`
   useTimeTicks: z.int().positive(),
   useAnimationTicks: z.int().positive().optional(), // attacksPerSec = 60/useAnimationTicks — TO-VERIFY-IN-P2
+  reuseDelayTicks: z.int().positive().optional(),   // B48(a): cooldown after each use — part of the sim's attack cadence
+                                       // (a sim-required field for every archetype; absent = no delay)
   knockback: z.number().nonnegative(),
   autoReuse: z.boolean().optional(),
   manaCost: z.int().positive().optional(),
@@ -254,8 +262,9 @@ export const CustomScenario = z.strictObject({   // overlay → lab-scenarios.js
 });
 ```
 Core combat numbers (damage, crit, use time, mana, knockback) live on the Weapon, NOT in archetype params — the sim reads both; params describe only shape/behavior.
+**Custom scenarios — retired for v1 (B131(a)):** P3-S13 AC2's custom scenarios are cut per PRD §10 risk 1's own cut line ("custom scenarios → limitation cards"). No weapon carries `kind:"custom-scenario"`, `lab-scenarios.json` is not emitted (the dataset manifest keeps `partial.pending: ["scenarios"]`; meta `counts.scenarios` = 0, gaps `labCoverage.customScenario` = 0); the `CustomScenario` schema and the union arm stay for a possible later slice.
 
-_Amendment history (B121 sweep): B85(b) — classless crit is not applicable, not Unknown (`critPct` shown optional per A1)._
+_Amendment history (B121 sweep): B85(b) — classless crit is not applicable, not Unknown (`critPct` shown optional per A1). B132 closeout: B48(a) `reuseDelayTicks` and B48(b) `damageMultiplierPct` (the B58 remainder — src/schemas/weapon.ts, item.ts); B131(a) custom scenarios retired._
 
 ### 2.5 Armor, ArmorSet, Accessory
 ```ts
@@ -528,7 +537,7 @@ _Amendment history (B121 sweep): B104/B112 `sprite` field; B112 exact-name boost
 | Export build | `exportBuild(build): string` | — |
 | Import build | `importBuild(text): {build} \| {error:"malformed-code"\|"unknown-items", unknownNames?}` | explicit failures |
 
-`DomainKey = "builds"|"favorites"|"progress"|"plans"|"recent"|"settings"|"readiness"`. Note: `tc.v1.readiness` extends ADR D6's key list (same convention) — required by Feature A AC4.
+`DomainKey = "builds"|"favorites"|"progress"|"plans"|"recent"|"settings"|"readiness"|"checklists"`. Note: `tc.v1.readiness` extends ADR D6's key list (same convention) — required by Feature A AC4; `tc.v1.checklists` (A7: `{ byKey: Record<checklistId, entryId[]> }`, keys `boss:<slug>:prep` / `guide:<slug>`) backs the boss-page and guide checklists. Eight domains as built (`DOMAIN_KEYS`, src/storage/index.ts).
 
 As built (P7-S2/P7-S2b, `src/storage/transfer.ts`; B123):
 | Contract | Signature | Error cases |
@@ -539,7 +548,15 @@ As built (P7-S2/P7-S2b, `src/storage/transfer.ts`; B123):
 | Export build (as built) | `encodeBuildCode(build, gameVersion?): string` (the `#code:` value); the readable block is the builder's (`buildText`) | throws on a build the load path would refuse (validated first, like `saveDomain`) |
 | Import build (as built) | `readBuildText(text): {ok, build, v, gameVersion} \| {ok:false, error}` | `empty`, `no-code` (not a build code), `several-codes`, `damaged` (cut short or edited — shape/check/base64/JSON), `future-version`, `invalid` (the load path's validator message). Unknown item ids are NOT an error: the build keeps them; the preview lists them by id with the count (B123(a)) |
 
-_Amendment history: B123 — backup + build-text contracts as built (the planned `exportBuild`/`importBuild` rows above are kept for the record)._
+**Set-aside copy format (B125(b), ratified B126; src/storage/quarantine.ts):** a copy lives under `tc.quarantine.<domain>.<ISO>`. This browser's own data that failed to load is stored BARE (its raw text, as before — every copy written before origins existed reads as local). An unreadable part of an imported backup is stored WRAPPED with its origin, so a file's bad part never reads as damage to local data:
+```ts
+{ format: "terraria-companion-set-aside", v: 1,
+  origin: { kind: "import", fileName: string | null, exportedAt: IsoDateTime },  // the file's name (null if unknown) + its exportedAt
+  raw: string }                                                                // the part's text
+```
+Reading is backward compatible: anything that isn't exactly this v1 wrapper (same four keys) is a local copy, as stored. Restore re-reads `raw` through the load path's decoder (`decodeRaw`). Unchanged parts are not rewritten (B126). UI display: UX_SPEC §5.6.
+
+_Amendment history: B123 — backup + build-text contracts as built (the planned `exportBuild`/`importBuild` rows above are kept for the record). B132 closeout: A7 `checklists` in DomainKey; B125(b)/B126 set-aside origin format._
 
 ## 5. Emitted file layout (`src/data/`, each ≤300 KB gz per ADR D7)
 
@@ -555,7 +572,7 @@ _Amendment history: B123 — backup + build-text contracts as built (the planned
 | `items.list/detail.json` | list adds category. **Sharded (P6-S0, B104/B112):** `items.detail.json` is the app-loaded CORE — ammo, the potion corpus, every item a boss record references, and the boss-drop items (B112: +169 ⇒ 344 records, 25.4 KB gz); every other Item lives in ID-range shards `items.detail.<n>.json` (ids n×shardSize … (n+1)×shardSize−1); `items.detail.index.json` = `{shardSize, files:[{file, ids[]}]}` names the file holding each Item (every id in exactly one file — validated). Per-file shard loader with cache + styled 404 (B112). |
 | `recipes.json` / `recipe-groups.json` | `Recipe[]` / map |
 | `drops.json` | `DropSource[]` |
-| `bosses.json` / `progression.json` / `buffs.json` / `conditions.json` / `lab-scenarios.json` | maps / `{nodes, edges}` |
+| `bosses.json` / `progression.json` / `buffs.json` / `conditions.json` / `lab-scenarios.json` | maps / `{nodes, edges}` — `lab-scenarios.json` is not emitted (custom scenarios retired for v1, B131(a); §2.4) |
 | `public/sprites/manifest.json` | `{fallbackMode, rightsNote, files:[{path, ref, wikiFileUrl, sha1, bytes, width, height, rights:"re-logic", thumbnail?}]}` — the FULL committed provenance record (B16/B30 fields), never fetched by the app (B112) |
 | `public/sprites/manifest.index.json` | Runtime index (B104 split, ratified B112): `{fallbackMode, rightsNote, parts:[{part, file, dir, ids?:[lo,hi], count}]}` — the app reads it, then only the parts holding the sprites a page draws. **D3 takedown lever: the flip point is this file's `fallbackMode`** (manifest.json's copy is the record; the deploy runbook names the index as the hand-edit target — P7 deploy-prereq docs, B112(b)) |
 | `public/sprites/manifest.<part>.json` | 11 parts (weapons, armor, accessories, bosses, items.0…items.6 by item-id range): `{part, files:[{path, ref, wikiFileUrl, width, height, thumbnail?}]}` — a projection of manifest.json (no SHA-1/bytes/rights; rights stated once in the index) |
@@ -566,15 +583,17 @@ _Amendment history (B121 sweep): B104/B112 — item-detail core + shards + index
 
 ## 6. Error taxonomy
 **App:** `ChunkLoadError{file,cause}`, `SchemaVersionError{expected,found}`, `NotFoundError{ref}`, `DataValidationError{file,zodIssues}` (dev), `StorageQuotaError{domain}`, `{quarantined,key}`, import `"malformed-code"|"unknown-items"`.
-**Pipeline (build-failing):** `E_FETCH`, `E_PARSE_LUA`, `E_PARSE_CARGO`, `E_SCHEMA{ref,zodIssues}`, `E_DANGLING_REF{fromRef,field,toRef}`, `E_DUPLICATE_ID`, `E_LIST_DETAIL_DRIFT`, `E_GRAPH_CYCLE` (required-gate subgraph), `E_SUGGESTION_GATING{bossId,itemRef}` (suggested equipment gated behind the boss itself or later), `E_UNVERIFIED_VALUE_EMITTED`, `E_LAB_UNHANDLED{itemId}`, `E_LAB_COVERAGE{rule, ref}`, `E_BUDGET{file,gzBytes}`, `E_FIXTURE{name}`. Expected data gaps are NOT errors — they downgrade to `verified:false` + gaps.json entries.
+**Pipeline (build-failing):** `E_FETCH`, `E_PARSE_LUA`, `E_PARSE_CARGO`, `E_SCHEMA{ref,zodIssues}`, `E_DANGLING_REF{fromRef,field,toRef}`, `E_DERIVED_MISMATCH{ref,field}` (B6: a pipeline-DERIVED field disagrees with its source of truth — dropIds, ArmorPiece.setId ⇄ ArmorSet.pieces, tinkering symmetry, isStation, Boss↔Node symmetry + worldEvil agreement, EoW/BoC pairing — no longer folded into `E_DANGLING_REF`), `E_DUPLICATE_ID`, `E_LIST_DETAIL_DRIFT`, `E_GRAPH_CYCLE` (required-gate subgraph), `E_SUGGESTION_GATING{bossId,itemRef}` (suggested equipment gated behind the boss itself or later), `E_BOSS_CURATION{bossId,field}` (A1 boss curated-field staging, B79; pipeline/validate/curation.ts — see below), `E_UNVERIFIED_VALUE_EMITTED`, `E_LAB_UNHANDLED{itemId}`, `E_LAB_COVERAGE{rule, ref}`, `E_BUDGET{file,gzBytes}`, `E_FIXTURE{name}`. Expected data gaps are NOT errors — they downgrade to `verified:false` + gaps.json entries.
 
 **P3-S13 Lab coverage gate (B115, as shipped per B116; pipeline/validate/labCoverage.ts — build-failing in `pipeline:build` and `pipeline:validate`):** "simulable" is the sim's own verdict (`assessWeapon`), never `labBehavior.kind` alone.
 - `E_LAB_COVERAGE` rule `simulable-floor` — the simulable count fell below its pinned floor (149 at P3 close-out). The floor is raise-only, set by hand in the same change that makes more weapons simulable; lowering it needs a new orchestrator ruling (B115(a), B116).
 - `E_LAB_COVERAGE` rule `golden` — a simulable weapon has no pinned golden, or its 10 s golden run (engine defaults; a bow/gun fires its pinned `ammo` — 149 ammo-named goldens) no longer reproduces it; the error carries the `computed` fingerprint (B115(b)). Rule `stale-golden` — a pin names a weapon that isn't simulable, so the table always equals the simulable set.
 - `E_LAB_UNHANDLED` — a non-simulable weapon without a typed, renderable refusal (a known reason + what the Lab renders: limitation-card texts or a custom scenario id); a guard that throws is a violation too (B115(c)).
-Standing note (B116): goldens pin DATA as well as engine — any build changing a simulable weapon or its ammo fails until re-pinned (pinLabGoldens.ts rewrites only failing entries) with a src/sim/README.md changelog entry (B38). A3's ≥60%-simulable target is retired (B115).
+Standing note (B116): goldens pin DATA as well as engine — any build changing a simulable weapon or its ammo fails until re-pinned (pinLabGoldens.ts rewrites only failing entries) with a src/sim/README.md changelog entry (B38). A3's ≥60%-simulable target is retired (B115), and its ≥80%-per-floor-archetype target with it (B122 Q1).
 
-_Amendment history (B121 sweep): B115/B116 — `E_LAB_COVERAGE` + typed-reason completeness for `E_LAB_UNHANDLED`._
+**Boss curation gate (`E_BOSS_CURATION`; A1, B79, B83(a)/(b) with B90(a)/(b)):** every boss whose page ships (dataset manifest `bossPages`) carries ≥ 1 quoted `attackPatternTags`, and `prepChecklist` / `strategies` / `suggestedEquipment` each hold ≥ 1 entry OR an honest declared gap (absent + listed + a reason in the stage gap log; an empty list fails). Gear is per class (B83(a)): melee / ranged / magic / summon each have an entry or a per-class Unknown (`suggestedEquipment.<class>` listed, with its own reason). Stricter gate (B83(b)): gear needs BOTH a quoted wiki recommendation AND passing `E_SUGGESTION_GATING`; general (untagged) boss tips are valid quote sources, the class coming from the weapon's own verified `damageClass` (B90(a)). Staleness (B90(b), superseding B78's any-weapon reading): a declared gear gap fails the build once the boss's OWN quoted tips name a gating-passing weapon (for a per-class Unknown, a weapon of that class); gating alone never makes a weapon a recommendation.
+
+_Amendment history (B121 sweep): B115/B116 — `E_LAB_COVERAGE` + typed-reason completeness for `E_LAB_UNHANDLED`. B132 closeout: B6 `E_DERIVED_MISMATCH`; `E_BOSS_CURATION` with B83(a)/(b) + B90(a)/(b); B122 Q1._
 
 ## 7. Validation + pipeline stage contract
 
@@ -785,3 +804,8 @@ _Amendment history: B123(a)/(b) — backup wrapper + build code parity ("Backup-
 
 **TO-VERIFY-IN-P2 (resolve with live wiki access; never guess):**
 1. Cargo Items exact columns (type/class, rarity encoding). 2. Recipe-group encoding in Recipes.ingredients/ings/args. 3. Drops NPC IDs vs names; multi-part boss attribution. 4. NPCs table per-difficulty hp/defense. 5. Equipinfo columns (defense, tooltip, wing flight time). 6. Weapon_source → Acquisition mapping. 7. Exclusive table semantics (desktop-only filter). 8. Imageinfo → sprite file resolution. 9. Special rarity tiers encoding. 10. useTime vs useAnimation semantics per class (sim attack rate). 11. Ammo damage/velocity modifier location. 12. Structured buff-ID source. 13. Cargo paging default (500 assumed).
+
+
+### §2.5 addendum — set composition (B135)
+ArmorSet pieces may declare `chests[]` (every chest completing the set, primary first) and may OMIT `legs` (any leg-slot equipment keeps the bonus, per the quoted wiki statement); `variants[].chestId` keys a bonus to a specific chest (Beetle). Additive per the B52 precedent; the 67 prior sets' JSON is byte-identical. Consumers read composition via src/schemas/setCombos.ts.
+_Amendment history (B135): added._

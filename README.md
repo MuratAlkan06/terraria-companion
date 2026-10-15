@@ -4,6 +4,23 @@ A free, non-commercial, unofficial companion site for Terraria (desktop): weapon
 from the Official Terraria Wiki, plus planning tools. A static single-page app (Vite + React); the design
 documents live in [`docs/`](docs/).
 
+## Run it
+
+Needs Node.js 22.12+ and npm. Full run instructions — the data pipeline, the optional sprite download and what
+is and isn't in this release — are in [`docs/RELEASE.md`](docs/RELEASE.md).
+
+```sh
+npm ci           # install the locked dependencies
+npm run dev      # development server
+npm test         # test suite (Vitest)
+npm run build    # production build into dist/ — a static site
+npm run preview  # serve the built dist/ locally
+```
+
+The game data in `src/data/` is committed, so the site runs without the data pipeline. The sprite images are
+not (see Legal): a fresh checkout shows the placeholder art until `npm run pipeline:sprites` downloads them
+locally.
+
 ## Legal
 
 Full details: [`NOTICE`](NOTICE), [`LICENSES/`](LICENSES/) and the site's `/about/licensing` page.
@@ -24,7 +41,12 @@ Full details: [`NOTICE`](NOTICE), [`LICENSES/`](LICENSES/) and the site's `/abou
 - **Fonts — SIL OFL 1.1.** Press Start 2P and Inter, self-hosted from Fontsource packages; license text with
   both copyright notices in [`LICENSES/OFL-1.1.txt`](LICENSES/OFL-1.1.txt) (also served with the site at
   `/licenses/OFL-1.1.txt`).
-- **Libraries.** Open-source libraries under their own licenses (MIT, ISC) — listed in [`NOTICE`](NOTICE).
+- **Libraries.** Open-source libraries under their own licenses. The libraries the site uses are listed in
+  [`NOTICE`](NOTICE) (MIT, ISC); with the packages they include, the bundled code is under MIT, ISC,
+  BSD-3-Clause and 0BSD licenses (the two font packages are SIL OFL 1.1, above). `npm run build` generates the
+  full license text of every bundled package at `dist/licenses/third-party-software.txt`, served at
+  `/licenses/third-party-software.txt`; the few indirect packages that ship no license file are named there
+  without a text.
 - **Code license: not yet chosen by the owner.** There is no `LICENSE` file for the source code.
 - **Takedown contact:** [contact pending — see below]
 

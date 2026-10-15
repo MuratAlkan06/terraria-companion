@@ -2,6 +2,7 @@
 
 > **AMENDED BY [AMENDMENTS-001.md](./AMENDMENTS-001.md) (binding — read together).**
 > **B58 parity sweep (AMENDMENTS-016 B121, 2026-10-15):** rulings from AMENDMENTS-015 (B85+) and AMENDMENTS-016 are consolidated inline with B-numbers and an "Amendment history" line per changed section. The amendments chain stays binding and wins on any conflict. Export/import as built (P7-S2 backup, P7-S2b per-build text — AMENDMENTS-016 B123): §1, §2, §3.1, §4(f), §5.6.
+> **Release closeout (AMENDMENTS-016 B132, 2026-10-15):** B131's scope rulings applied — cut slices marked where the spec names them (§1, §3.3, §3.4), `/lab/coverage` and the custom-scenario banner retired (§1, §5.5), set-aside origin display (§5.6), and the pre-B85 remainders (B74, B75) consolidated (§3.4, §3.7, §11). The final report is [RELEASE.md](./RELEASE.md).
 
 Status: Draft for P0 freeze · 2026-10-12 · Authored by ux-ui-flow agent.
 Sources: docs/REQUIREMENTS.md (§11 binding), docs/PRD.md, docs/ADR-001.md.
@@ -18,31 +19,31 @@ SPA routes under React Router v7. **Eager bundle:** shell + `/` only. **Every ot
 |---|---|---|---|
 | `/` | Homepage: hero, omnibox, stage selector, featured, recents, saved builds | P1-S2 → P2-S5 | eager (shell) |
 | `/weapons` | Virtualized weapon list + FilterBar (class/stage/rarity) | P2-S3 | `chunk-db` |
-| `/weapons/:id` | Weapon detail v1 → v2 | P2-S3 → P6-S7 | `chunk-db` |
-| `/lab` | Weapon Lab. Query: `?weapon=:id`, `?target=` (queued — not shipped yet; not S12-gated, B100), `?test=10\|30` | P3-S1…S14 | `chunk-lab` (PixiJS inside) |
-| `/lab/coverage` | Lab coverage report: simulated/custom/limitation counts, unhandled=0. **Not shipped:** P3-S13 closed as a build-time gate (B115/B116); neither ruling addresses this page — open question in B121 | P3-S13 | `chunk-lab-coverage` (no PixiJS) |
+| `/weapons/:id` | Weapon detail v1 (v2 — P6-S7 — cut, B131(b)) | P2-S3 | `chunk-db` |
+| `/lab` | Weapon Lab. Query: `?weapon=:id`, `?target=` (queued — not shipped yet; not S12-gated, B100), `?test=10\|30` | P3-S1…S13 (S14 equip context cut, B131(b)) | `chunk-lab` (PixiJS inside) |
+| `/lab/coverage` | **Retired — never shipped (B122 Q2):** duplicative of the Lab's "488 · 149 simulated · 339 not" line, the per-weapon limitation cards and the typed refusals, which deliver P3-S13 AC1's substance at the point of use; the bucket counts live in `gaps.json` (`labCoverage`) and the gap report. The P3-S13 gate is build-time (B115/B116); custom scenarios are retired too (B131(a)) | — | — |
 | `/compare` | 2–3 weapon comparison (COMPARE_MAX 3, B99(a)). URL state: `?w=4956,757,1308`; invalid ids dropped after a one-time notice (B101(d)) | P4-S1 | `chunk-compare` |
 | `/loadout` | 4-step wizard. `?step=1..4`; `?build=:localId` to edit. The draft lives in the URL: inputs (`stage`, `class`, `difficulty`, `goal`, `boss`, `owned`), slot pins, `surprise=<seed>` (B111 R2), `vs=<buildId>` (Step 4 comparison), `view=builds` (saved-builds list) | P4-S2…S4 | `chunk-loadout` |
 | `/builds` | Saved builds list, export/import. Ships as a redirect to `/loadout?view=builds` (the list is a builder sub-view; B111 R5). As built (B123(a)): every saved build has Export (its readable text + `#code:` line); the list has "Import a build" (paste → preview → saved as a new build); Step 4 exports the loadout as it stands | P4-S4 → P7-S2b | eager redirect → `chunk-loadout` |
 | `/bosses` | Boss node map + legend. `?recommend=1` opens recommender panel | P5-S1, P5-S5 | `chunk-bosses` |
 | `/bosses/:id` | Boss page | P5-S2/S3 | `chunk-bosses` |
 | `/readiness` | Feature A. `?boss=:id&class=&difficulty=` prefill | P5-S6/S7 | `chunk-readiness` |
-| `/armor`, `/armor/:id` | Armor sets + set-bonus-aware compare | P6-S1 | `chunk-db` |
-| `/accessories`, `/accessories/:id` | Accessories + tinkering trees | P6-S2 | `chunk-db` |
+| `/armor`, `/armor/:id` | Armor sets + set-bonus-aware compare. Being built — not cut (B131(b)) | P6-S1 | `chunk-db` |
+| `/accessories`, `/accessories/:id` | Accessories + tinkering trees. Being built — not cut (B131(b)) | P6-S2 | `chunk-db` |
 | `/items` | Encyclopedia hub (category tiles) + every Item record, filterable `?category=&stage=&q=` (B112) | P6-S3 | `chunk-db` |
-| `/items/:id` | Item page; "Crafting tree" tab; "What Should I Grind For?" CTA. Hash anchors (e.g. `#acq-title`) scroll + focus once their async section mounts (B113(c)); a weapon/armor/accessory id is a styled 404 linking `/weapons/:id` where it applies (B113(e) M5) | P6-S3/S4 | `chunk-db` |
+| `/items/:id` | Item page; "Crafting tree" tab (B131(b): no separate tab — P6-S4 is met by the planner's tree, which the plan preview must show before saving; one tree renderer, verified in the P6 slice); "What Should I Grind For?" CTA. Hash anchors (e.g. `#acq-title`) scroll + focus once their async section mounts (B113(c)); a weapon/armor/accessory id is a styled 404 linking `/weapons/:id` where it applies (B113(e) M5) | P6-S3/S4 | `chunk-db` |
 | `/plan` | Feature B: plan list (multiple concurrent) | P6-S5/S6 | `chunk-plan` |
 | `/plan/new?item=:id` | Plan generation entry ("Make My Plan") | P6-S5 | `chunk-plan` |
 | `/plan/:planId` | Plan detail: tree + checklist + owned quantities | P6-S5/S6 | `chunk-plan` |
-| `/guides`, `/guides/:slug` | Guide index + pages with interactive checklists | P6-S8/S9 | `chunk-guides` |
+| `/guides`, `/guides/:slug` | Guide index + pages with interactive checklists (the 5 pre-Hardmode guides; Hardmode guides — P6-S9 — cut, B131(b)) | P6-S8 | `chunk-guides` |
 | `/favorites` | Starred entities | P7-S1 | `chunk-db` |
 | `/settings/data` | "Your data": back up (one JSON file), restore from a backup (preview, then merge / replace / skip per part), each part's contents and size, Clear, and every set-aside copy with its actions. Entry points: the More sheet and the footer — no desktop header entry, the footer serves desktop (B123(g)) | P7-S2 | own lazy chunk (`DataPage`) |
-| `/about/licensing` | CC BY-NC-SA attribution, Re-Logic notice, provenance (ADR D3). As built (P7-S4, B127): six sections in order — Game data (attribution, changes made, share-alike) · Re-Logic notice · Non-commercial · Takedown requests (placeholder + pending note until `SITE.takedownContact` is set) · **Fonts** (Press Start 2P and Inter credits, SIL OFL 1.1; full text served at `/licenses/OFL-1.1.txt`) · **Open-source software** (each runtime library with its use and license; the bundled libraries' full license texts, generated by the build, at `/licenses/third-party-software.txt`) | P1-S1 → P7-S4 | `chunk-about` |
+| `/about/licensing` | CC BY-NC-SA attribution, Re-Logic notice, provenance (ADR D3). As built (the licensing slice — B127's "P7-S4", not PRD P7-S4; B131(c)): six sections in order — Game data (attribution, changes made, share-alike) · Re-Logic notice · Non-commercial · Takedown requests (placeholder + pending note until `SITE.takedownContact` is set) · **Fonts** (Press Start 2P and Inter credits, SIL OFL 1.1; full text served at `/licenses/OFL-1.1.txt`) · **Open-source software** (each runtime library with its use and license; the bundled libraries' full license texts, generated by the build, at `/licenses/third-party-software.txt`) | P1-S1 → licensing slice (B127) | `chunk-about` |
 | `*` | Styled 404: PixelPanel, "lost in the caverns" art, link home + omnibox | P1-S1 | eager (tiny) |
 
 **Nav visibility rule (P1-S1 AC2):** nav config is data-driven; a route appears only after its slice ships. No disabled nav items, ever.
 
-_Amendment history (B121 sweep): B99(a), B100 (`?target=` queued), B101(d), B111 R2/R5, B112, B113(c)/(e); `/lab/coverage` status recorded (B115/B116 — question open). B123(a)/(g): `/builds` export/import as built; `/settings/data` added. B127: `/about/licensing` sections as built, incl. Fonts and Open-source software._
+_Amendment history (B121 sweep): B99(a), B100 (`?target=` queued), B101(d), B111 R2/R5, B112, B113(c)/(e); `/lab/coverage` status recorded (B115/B116 — question open). B123(a)/(g): `/builds` export/import as built; `/settings/data` added. B127: `/about/licensing` sections as built, incl. Fonts and Open-source software. B132 closeout: `/lab/coverage` retired (B122 Q2); cut slices marked on `/weapons/:id`, `/lab`, `/guides` and the armor/accessory rows marked being built (B131(b)); slice labels disambiguated (B131(c))._
 
 ## 2. App Shell
 
@@ -132,7 +133,7 @@ WeaponDetailPage
 ├─ StatsPanel (PixelPanel): damage, crit, use time, knockback, ammo/mana — value or UnknownValue; ProvenanceLink
 ├─ BehaviorSection: attack/projectile behavior, verified mechanics (each claim sourced)
 ├─ AcquisitionSection: method, materials (ItemSlots), station, verified drop rate or Unknown; GateBadge; "Crafting tree" link
-└─ [P6-S7] GuidanceSection: when-to-use, similar/upgrades, "Compare with stage peers" prefilled
+└─ [P6-S7 — cut, B131(b); not built] GuidanceSection: when-to-use, similar/upgrades, "Compare with stage peers" prefilled
 ```
 
 ### 3.4 Weapon Lab `/lab`
@@ -151,15 +152,16 @@ LabPage
 │  │     StatReadout cluster (top-right: per-hit, total, hits, atk/s, est. DPS w/ EstimateLabel)
 │  │     DpsGraph (bottom strip, toggleable) · ManaBar/AmmoCounter (contextual)
 │  │     TimedTestControl (10s/30s, countdown, locks config) · ResetButton (one action: test+target+settings) · FullscreenToggle
-│  └─ TargetSettingsPanel (right, 280px, collapsible): target picker (Infinite/Boss-Sized/Moving/Multiple/Armored w/ defense slider/Debuff) · test settings (max mana, labeled "ignore mana (test mode)" toggle, homing on/off, [P3-S14] equip context + not-simulated list)
+│  └─ TargetSettingsPanel (right, 280px, collapsible): target picker (Infinite/Boss-Sized/Moving/Multiple/Armored w/ defense slider/Debuff) · test settings (max mana, labeled "ignore mana (test mode)" toggle, homing on/off, [P3-S14 — cut, B131(b); not built] equip context + not-simulated list)
 └─ LimitationCard (replaces interaction area for non-simulated weapons)
 ```
 **Mobile (<768):** canvas full-width (~55vh) top; condensed HUD at canvas corners; DpsGraph behind "Graph" chip; browser + target panels = bottom sheets from a persistent two-button dock ("Weapons", "Target & Settings"); SimDisclaimerBar = one-line sticky strip (still permanent). Attack = touch-and-hold.
 
 **Dummy roster v2 (P3-S12 — B100, B101):** one target at a time (no combined targets in v1 — not PRD-promised). Every value is a player-chosen TEST value, framed as such: Boss-Sized 2/3/4× the dummy (whole multiples keep the pixel art crisp; starts at 3×); Moving 1–16 tiles/s (starts at 4), horizontal 8 tiles away-and-back or vertical 5 tiles up-and-back, motion tick-derived (no accumulation drift — frame-rate-proof); Armored defense 0–100 (starts at 20) — a boss name appears only while the value is that boss's verified first-form defense, with its wiki link (the bosses data loads in parallel; no panel loading state). Armored's tip: "each hit is reduced by half the dummy defense" (B101(c)). Switching target resets the per-target settings (explicit v1 choice, B101(e)); the missed-shots stat counts summon projectiles (honest totals).
 **Homing placement (P3-S8 — B116):** no simulable weapon homes (audit pinned: all 27 homing weapons are limitation-carded), so TargetSettingsPanel shows NO homing switch; a homing weapon's LimitationCard shows the switch DISABLED with its reason (the what-if "homing disabled" needs the Lab to simulate that weapon). The live toggle activates if a verified-homing weapon ever becomes simulable.
+**Fix-pass supplements (B75, P3-S6/S7):** LimitationCard "What it does in-game" text — reviewed text may come from the `inGameBehavior` overlay section; tooltip quote lines are flavor, never behavior, and are stripped; with no verified description the card says "No verified description yet."; a yoyo draws at its in-flight size (half the icon); tethered weapons read "Hits/sec".
 
-_Amendment history (B121 sweep): B100/B101 roster test values; B116 homing switch placement (supersedes "homing on/off" in TargetSettingsPanel above)._
+_Amendment history (B121 sweep): B100/B101 roster test values; B116 homing switch placement (supersedes "homing on/off" in TargetSettingsPanel above). B132 closeout: B75 supplements; P3-S14 marked cut (B131(b))._
 
 ### 3.5 Loadout Builder `/loadout` (StepWizard: 1 Inputs · 2 Loadout · 3 Why it works · 4 Compare & Save)
 - Step1 InputsForm: stage (default from settings) · class · difficulty · goal · current/next boss (search) · owned equipment (OmniSearch multi-add into InventoryGrid). Every field has "Skip — use default"; CTA always enabled. Exception (B108(c), B109): arriving from the comparison's "Open in Builder" (no stage passed) opens Step 1 with the weapon pinned and the stage AWAITING a choice (prompt copy) — never silently defaulted; the pin survives difficulty/goal/boss changes, a class change drops it with a warning. The target boss's gear (and that of every fight it opens) goes to the gated track, its group first (B106, B108(e) M1).
@@ -190,6 +192,7 @@ BossMapPage
 ├─ RecommendPanel (side drawer, ?recommend=1): "Required before progress" vs "Recommended order" with reasons + node links
 └─ BossPage: header (art, name, stage chip, defeat-state toggle) · SummonSection (ProvenanceLink) · LocationSection · PrepChecklist (interactive, persisted) · ArenaTips · PerClassGear (4 class tabs → LoadoutSlots) · AttackPatterns · DropsTable (verified rate or UnknownValue + ProvenanceLink per row) · "Check Readiness" CTA · NextNodes (links back into map, centered)
 ```
+**Map fix-pass supplements (B74(a)/(b), B75 — P5-S1):** on touch screens the 44px target floor wins over whole-tree fit-all (phone fit-all = full width at the floor zoom, ~0.37×, panning for depth, landing at the start); single tap opens the focus card; wheel/trackpad always zooms; phone legend collapsed by default; desktop zoom controls in a bottom row; milestones show short display labels (full name in the card and the accessible name); the "Both" world-evil fork is symmetric with an "or" chip at the junction.
 **Tracking (B86(a)/(b)):** only bosses are markable — milestones and events are DERIVED (PRD P5-S4 AC1's "each node" = each boss); a node is "open" when its direct required gates are satisfied (milestones resolve through their bosses). Under "Both", a mark of either evil boss counts app-wide (B96(a), B97).
 **Done means satisfied (B128, B129):** "done" is counts-in-world everywhere — node status, descriptions, next steps, announcements and the RecommendPanel lists, as for edges. Under a chosen world, a mark on the out-of-play evil boss satisfies no gate and makes nothing done; the in-play fork satisfies normally. Accepted as built: an out-of-play-only mark still selects the panel's "progress" framing (the user did mark something), while the lists themselves stay gate-honest.
 **RecommendPanel rules (P5-S5 — B89; src/app/routes/bosses/recommend.ts):**
@@ -200,7 +203,7 @@ BossMapPage
 - Every item carries a written reason (templated where wiki sentences explain poorly) and the wiki sentence behind its link as evidence (quotes deduped per list; wiki difficulty wording excluded from the copy audit like boss-page quotes).
 - Phone toggle label "What next?"; the legend auto-collapses at 1024–1439; with no `?node=`, the map opens framed on the progress frontier (B86(d)).
 
-_Amendment history (B121 sweep): B86(a)/(b)/(d); B89 recommender rules ("spec-parity for the recommender rules rides this entry per B58"); B96(a)/B97. B128/B129: "done means satisfied" (counts-in-world for status and lists)._
+_Amendment history (B121 sweep): B86(a)/(b)/(d); B89 recommender rules ("spec-parity for the recommender rules rides this entry per B58"); B96(a)/B97. B128/B129: "done means satisfied" (counts-in-world for status and lists). B132 closeout: B74(a)/(b) + B75 map supplements._
 
 ### 3.8 Readiness Checker `/readiness` (Feature A)
 ```
@@ -238,7 +241,7 @@ As built (B117–B119; SCORING_SPEC §2.4/§2.5):
 - **Completion (B118(b)):** the strip keeps the bar and the completion banner on screen at the point of the final check (375 and desktop); a polite live region announces completion, reopen, route switch, update and delete, and focus is placed deliberately after an item pick and after an update (B118(g)).
 - **Complete by cause (B118(c), B119):** a step complete because of something else (owned, covered, boss counted) is NOT a checkbox — a check-circle glyph, "Complete:" for screen readers and the cause in words; its state changes where the cause lives (role-switch pattern, documented in PlanChecklist.tsx).
 - Derived boss-gate steps say which plan items need them (B118(e)); covered subtrees collapse under one summary note (B118(h)); a circular reason names the needed item (B118(d)).
-- **Copy (B120 nits, built in P7-S3 — B128):** the Unknown-availability notice is titled "Unknown availability for half the items" at exactly half ("Mostly Unknown availability" above half), and its last sentence agrees in number ("Its step and sources…" / "Their steps and sources…"). When the tree shows an item obtainable now by its verified gating while every way in the chooser is Unknown (the Stinger case), the chooser footnotes it: "The plan shows this item as obtainable now because its verified requirements are met at your progress. The data can't confirm which of these ways is open, so each one says Unknown." A "Plan it" link whose visible text is the piece's name (the builder's per-piece links) completes for screen readers with " — its grind plan", never the name twice.
+- **Copy (B120 nits, built in the cross-browser sweep — B128's "P7-S3", not PRD P7-S3; B131(c)):** the Unknown-availability notice is titled "Unknown availability for half the items" at exactly half ("Mostly Unknown availability" above half), and its last sentence agrees in number ("Its step and sources…" / "Their steps and sources…"). When the tree shows an item obtainable now by its verified gating while every way in the chooser is Unknown (the Stinger case), the chooser footnotes it: "The plan shows this item as obtainable now because its verified requirements are met at your progress. The data can't confirm which of these ways is open, so each one says Unknown." A "Plan it" link whose visible text is the piece's name (the builder's per-piece links) completes for screen readers with " — its grind plan", never the name twice.
 
 _Amendment history (B121 sweep): §3.9 parity per B119 — B117, B118(a)–(h), B119. B128: the B120 copy (half-title, chooser footnote, per-piece link)._
 
@@ -257,7 +260,7 @@ Alt: garbage query → in-combobox no-results + browse link. Failure: chunk fetc
 
 ### (b) Weapon → Lab → 30s test
 Detail "Test in Weapon Lab" → `/lab?weapon=4956` [lab chunk loads: pixel loading screen] → arena + Infinite Dummy, weapon equipped [EquippedBar, SimDisclaimerBar, stats zeroed] → hold attack [floating numbers, live StatReadouts, DpsGraph, distinct crits] → "30s test" [`config-locked`: panels disabled w/ lock badge; countdown ring; reset aborts] → test ends [`results`: panel slides in — est. DPS (EstimateLabel), hits, totals, DoT breakdown; "Run again" · "Reset" · "Compare"].
-Alt: non-simulated weapon → LimitationCard; equip never breaks. Alt: special-condition weapon → custom-scenario banner before enabling attack. Failure: no WebGL → ErrorState in ArenaRegion + link to data page.
+Alt: non-simulated weapon → LimitationCard; equip never breaks. Alt: special-condition weapon → custom-scenario banner before enabling attack (retired — no custom scenario ships; such weapons show their LimitationCard, B131(a)). Failure: no WebGL → ErrorState in ArenaRegion + link to data page.
 
 ### (c) Builder 1–4 with skips
 `?step=1` [defaults from settings; boss inferred from defeats] → skip any/all → CTA [step 2 with defaults; skips noted in Step 3 assumptions] → Step 2 [`recommended`; stage/class change → `regenerating` shimmer in place → new stage-legal set] → Step 3 [GatedSection + alternatives] → Step 4 [ScoreBreakdown on demand; "Save Build" → named inline, appears in /builds + homepage; button "Saved ✓" 2s → "Save as copy"; "Surprise Me" → random valid seed].
@@ -296,13 +299,14 @@ As built (B114 M7, B128): a failed lazy chunk can only be retried by reloading t
 _Amendment history: B114 M7/B128 — focus across a reloading Retry (`tc.retryFocus`)._
 
 ### 5.5 Lab honesty states
-SimDisclaimerBar: permanent, non-dismissible: "Browser simulation — values are approximations, not Terraria engine output." Visible at every breakpoint and in fullscreen (P3-S1 AC1). LimitationCard per §8. Custom-scenario banner: amber-gold PixelPanel above canvas (P3-S13 AC2).
+SimDisclaimerBar: permanent, non-dismissible: "Browser simulation — values are approximations, not Terraria engine output." Visible at every breakpoint and in fullscreen (P3-S1 AC1). LimitationCard per §8. Custom-scenario banner: amber-gold PixelPanel above canvas (P3-S13 AC2) — **retired, never rendered (B131(a)):** custom scenarios are cut per PRD §10 risk 1 ("custom scenarios → limitation cards"); 0 ship, and every non-simulated weapon shows its typed LimitationCard. The same applies to the banner's mentions in §4(b) and §10 AC4.
 
 ### 5.6 Quarantined storage (ADR D6)
 QuarantineNotice banner: "Some saved data couldn't be read and was set aside (not deleted)." Actions: View details · Try restore · Discard permanently (ConfirmDialog, destructive). Never silent.
 As built: quarantine is per storage key (ADR D6) — when any record in a domain fails, the WHOLE saved set for that key is set aside, valid records included, and the copy must say so (B118(i) M7). The planner's notice: "Your saved plans couldn't be read, so the whole saved set was set aside (not deleted) — including any plans in it that were fine. Plans you make now are saved as usual." The View details / Try restore / Discard actions queued by B108(e)/B109 are built in P7-S2 (B123(b)–(f)): View details (what, when, why — re-checked now — size, the saved text) · Try restore (re-read with the load path's decoder; into a domain holding newer data it asks merge or replace — local wins on conflict, replace confirms; a conflicted merge keeps the set-aside copy) · Discard permanently (ConfirmDialog, destructive). Copies persist across reloads until restored or discarded; the shell carries one notice for the app-wide domains that had none (settings, progress, recently viewed — it steps aside on `/settings/data`, which lists every copy); an unreadable part of an imported backup is always set aside, never dropped.
+**Origin (B125(b), ratified B126; storage format DATA_SCHEMA_SPEC §4b):** every set-aside copy says where it came from, so a backup file's bad part never reads as damage to this browser's data. View details: "This browser's own saved data: it couldn't be read when the site loaded it." vs "The backup file "<name>" (made <date>). This part of it couldn't be read when the file was restored, so it wasn't applied — this browser's own data wasn't changed by it." ("a backup file" when the name isn't known). Notices name an imported part separately: "Part of a backup file couldn't be read, so it was set aside (not restored, not deleted). Nothing saved in this browser was changed by it." (plural for several). Replace confirms state both sides (B125(d)): "What's saved here now (2 builds) is deleted; the set-aside part of "b.json" (1 build) takes its place. This can't be undone." Copies are listed by domain with "from <file>" and their set-aside date.
 
-_Amendment history (B121 sweep): §5.6 parity per B119 — B118(i) whole-set copy; B108(e)/B109 actions gap (queued P7). B123(b)–(f): the actions as built in P7-S2 (§5.6 parity rides P7-S2b per B58)._
+_Amendment history (B121 sweep): §5.6 parity per B119 — B118(i) whole-set copy; B108(e)/B109 actions gap (queued P7). B123(b)–(f): the actions as built in P7-S2 (§5.6 parity rides P7-S2b per B58). B132 closeout: origin display (B125(b)/(d), B126)._
 
 ### 5.7 Success / warning
 Inline state change is the confirmation (button morphs "Saved ✓"); toasts only when the result isn't visible in place (export copied, import succeeded); 4s auto-dismiss, `aria-live="polite"`, never steal focus. Config locked during timed test = lock badge on disabled panels; "ignore mana" active = persistent amber chip in StatReadout cluster.
@@ -358,7 +362,7 @@ Copy rule enforced structurally: ReadinessFactorCard and ScoreBreakdown accept o
 1. At 375px every route renders with zero horizontal scroll; all touch targets ≥44px.
 2. SimDisclaimerBar visible on `/lab` at all 4 breakpoints, in fullscreen, and during timed tests — screenshot audit.
 3. Copy audit: zero win/lose/probability phrasing in readiness/scoring components; every rendered estimate has an adjacent EstimateLabel with non-empty AssumptionsTip.
-4. 20 random Lab weapons yield simulation, custom-scenario banner, or LimitationCard — never blank/broken.
+4. 20 random Lab weapons yield simulation, custom-scenario banner (retired — B131(a)), or LimitationCard — never blank/broken.
 5. Marking a gate boss defeated removes every corresponding GateBadge site-wide without reload (shared Zustand store); GatedSections re-flow.
 6. All destructive actions route through ConfirmDialog (destructive styling, cancel default focus); reset-progress offers 6s undo.
 7. Every data view implements loading (skeleton, CLS <0.1), empty (designed, with action), error (with retry); UnknownValue is the only permitted rendering for unverified fields.
@@ -370,10 +374,10 @@ Copy rule enforced structurally: ReadinessFactorCard and ScoreBreakdown accept o
 
 ## 11. Design-System Deltas
 **New tokens (extend Tailwind v4 `@theme` beyond §11 palette):** `--color-destructive: #DC2626`; `--color-estimate` (warm-gold derivative); `--color-gate`; `--color-unknown` (stone-gray) + hatch utility; rarity scale `--rarity-0 … --rarity-10+` (dark-bg-adjusted); edge tokens `--edge-required/--edge-recommended/--edge-optional/--edge-alt`; motion `--ease-out-strong: cubic-bezier(0.23,1,0.32,1)`, `--dur-press:120ms`, `--dur-ui:200ms`, `--dur-panel:260ms`; z-scale `--z-hud:10`, `--z-sheet:40`, `--z-dialog:100`, `--z-toast:1000`.
-**As built:** `--spacing-header: 4rem` — the sticky site header's bar height (`h-header`, its 1-art-pixel border excluded); sticky strips under it pin at `top-header` (B119 shared-constant note, ratified B128). Breakpoints are the tokens' `xs` (375) / `md` (768) / `lg` (1024) / `xl` (1440) only — Tailwind's defaults are reset, so any other name (e.g. `sm:`) generates no CSS; `src/styles/breakpoints.test.ts` rejects one in source (B127).
+**As built:** `--edge-early` — the early-challenge-possible edge (P5-S1 delta, ratified B74(c)): the text-safe warm-red tone (`--color-negative`), always paired with its own dash pattern and the Zap icon, never colour alone. `--spacing-header: 4rem` — the sticky site header's bar height (`h-header`, its 1-art-pixel border excluded); sticky strips under it pin at `top-header` (B119 shared-constant note, ratified B128). Breakpoints are the tokens' `xs` (375) / `md` (768) / `lg` (1024) / `xl` (1440) only — Tailwind's defaults are reset, so any other name (e.g. `sm:`) generates no CSS; `src/styles/breakpoints.test.ts` rejects one in source (B127).
 **Rejected (binding-doc conflicts):** Roboto; slate/monochrome palette + #2563EB accent; light mode; paper-noise texture. **Adopted:** funnel pattern, zero-radius geometry, semantic role naming, a11y checklist tokens, "no muted colors/low energy" (gold stays vivid).
 
-_Amendment history: B127 — breakpoint names (the dead `sm` variants fixed to `md`); B128 — `--spacing-header`._
+_Amendment history: B127 — breakpoint names (the dead `sm` variants fixed to `md`); B128 — `--spacing-header`. B132 closeout: B74(c) `--edge-early`._
 
 ## 12. Signature Moments & Motion
 - **Boss-branch unlock (brand-defining; multi-variant candidate):** defeated node ring fills gold → downstream edges/nodes transition locked→recommended, 50ms stagger along graph direction (ease-out-strong 200ms; opacity-only under reduced motion).
@@ -387,3 +391,8 @@ _Amendment history: B127 — breakpoint names (the dead `sm` variants fixed to `
 **Resolved design flags:** recommender kept as a panel on `/bosses` (anchored to the map it explains); readiness re-analysis never silently replaces results (scrim + ReRunBar — the scrim is now a dashed frame, §6, B97); timed-test config lock shows WHY panels are disabled (lock badge).
 
 _Amendment history (B121 sweep): B87 cascade constants ("spec-parity for the new constants rides this amendments entry per B58 practice"); B86(c); B97 stale-frame note._
+
+
+### As built — armor & accessory databases (B131(b), P6-S1/S2)
+`/armor` (69 sets filterable by class/stage/name + 14 loose pieces; set pages with quoted bonuses, per-helmet full-set totals, AC2 compare via URL state, AC3 stage-peers for the 19 verified-stage sets) and `/accessories` (352 filterable; detail pages with B54-kind stats, quoted effects, the fully-linked combination tree, class scoping per the builder's rules). Nav: both in the desktop More menu and phone More sheet after Items (B131). Piece ids redirect to their set page anchored+focused; history entry replaced. §3.8's "armor sets keep wiki links" (B117) is superseded — armor/accessory links are in-app everywhere, incl. readiness "Show Me How to Get It" → the set page's how-to-obtain anchor.
+_Amendment history (B134): added as built._
