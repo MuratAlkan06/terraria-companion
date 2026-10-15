@@ -45,7 +45,7 @@ export function PlanChecklist({ ctx, owned, onCheck, onOwned, idPrefix }: Checkl
   const graph = ctx.base.acquisition.progression
   return (
     <div className="space-y-4" data-plan-checklist="">
-      <div className="sticky top-16 z-(--z-hud) -mx-3 space-y-1.5 border-y-2 border-panel-border bg-panel px-3 py-2 md:-mx-4 md:px-4" data-checklist-progress="">
+      <div className="sticky top-header z-(--z-hud) -mx-3 space-y-1.5 border-y-2 border-panel-border bg-panel px-3 py-2 md:-mx-4 md:px-4" data-checklist-progress="">
         <p className="text-sm font-semibold tabular-nums" data-progress={`${view.complete}/${view.total}`}>
           {copy.progressLine(view.complete, view.total)}
         </p>

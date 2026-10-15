@@ -12,7 +12,7 @@ import type { ReadinessSetup } from '../../../../storage/readiness'
 import { sameInputs, sameProgress, type ListSlot, type ReadinessSnapshot, type SingleSlot } from '../../../readinessStore'
 import type { ReadinessPageData } from './readinessData'
 import type { SegmentContext } from './ReadinessFactorCard'
-import { accessoryLabel, DEMON_HEART_SLOT, PICKER_WHAT, SLOT_LABELS } from './readinessUiCopy'
+import { accessoryLabel, ANNOUNCE_READY, DEMON_HEART_SLOT, PICKER_WHAT, SLOT_LABELS } from './readinessUiCopy'
 
 /** How the views resolve a line's segments: item pages, condition articles, set articles, node names, AssumptionsTips. */
 export function segmentContext(page: ReadinessPageData, estimates: SegmentContext['estimates']): SegmentContext {
@@ -154,6 +154,15 @@ export function staleReason(snapshot: ReadinessSnapshot | null, setup: Readiness
   if (!sameInputs(snapshot.setup, setup)) return 'setup'
   if (snapshot.progress && !sameProgress(snapshot.progress, progress)) return 'progress'
   return null
+}
+
+/**
+ * The page's polite region text (AMENDMENTS-015 B98): "Analysis ready." is withdrawn once the analysis it
+ * announced is out of date or cleared, so the region never keeps a claim that's no longer true for anyone
+ * reading it later. Emptying the region isn't announced; other messages (an import) stay as said.
+ */
+export function liveAnnouncement(announcement: string, analysisCurrent: boolean): string {
+  return announcement === ANNOUNCE_READY && !analysisCurrent ? '' : announcement
 }
 
 export function engineInput(setup: ReadinessSetup, progress: TrackedProgress, prepDone?: number): ReadinessInput {

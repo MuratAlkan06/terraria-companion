@@ -438,6 +438,13 @@ describe('Step 3 — why it works (SCORING_SPEC §4.7, §5.1; UX_SPEC §3.5 Step
       for (const id of ids) expect(html).toMatch(new RegExp(`<a [^>]*href="/plan/new\\?item=${id}"[^>]*data-plan-it="${id}"|<a [^>]*data-plan-it="${id}"[^>]*href="/plan/new\\?item=${id}"`))
     }
     expect(count(html, /data-plan-it="/g)).toBe(entries.reduce((n, e) => n + (e.pieces ? e.pieces.length : 1), 0))
+    // B120: every link says its item's name once — a per-piece link shows the name, so its completion doesn't repeat it
+    const links = [...html.matchAll(/<a [^>]*data-plan-it="(\d+)"[^>]*>([\s\S]*?)<\/a>/g)]
+    expect(links.length).toBeGreaterThan(0)
+    for (const [, id, inner] of links) {
+      const name = page.info(Number(id)).name
+      expect(text(inner).split(name).length - 1, name).toBe(1)
+    }
   })
 
   it('assumptions: the inputs used (skips marked), every build assumption; the weights version said once (B108 nit: no duplicate footer)', () => {

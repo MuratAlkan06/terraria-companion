@@ -97,11 +97,13 @@
 }
 
 /* "Unknown" marker background (UX_SPEC §5.3/§11): subtle diagonal hatch so an unverified value
-   is signalled by pattern + text, never by colour alone. */
+   is signalled by pattern + text, never by colour alone. The stripe strength keeps the Unknown text
+   >= 4.5:1 where it crosses a stripe on every text surface (AMENDMENTS-015 B98: 22% measured ~4.1:1
+   on the panel; 14% gives 4.73:1 there, 5.20:1 on surface, 5.65:1 on canvas — pinned by hatch.test.ts). */
 @utility bg-hatch-unknown {
   background-image: repeating-linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-unknown) 22%, transparent) 0 var(--pixel),
+    color-mix(in srgb, var(--color-unknown) 14%, transparent) 0 var(--pixel),
     transparent var(--pixel) calc(var(--pixel) * 3)
   );
 }

@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest'
 import type { Boss, ProgressionEdge, ProgressionNode } from '../../data-access/types'
 import bossesJson from '../../data/bosses.json'
 import progressionJson from '../../data/progression.json'
+import { countsInWorld, effectiveProgress, isNodeSatisfied } from '../../scoring/progress'
 import { crossPositions } from './cascadeCamera'
-import { buildMapGraph, layoutInputs, type NodeState, type WorldEvil } from './graph'
+import { buildMapGraph, isNodeActive, layoutInputs, type NodeState, type WorldEvil } from './graph'
 import { layoutGraph } from './layout'
 import { MAP_LAYOUT_OPTIONS } from './mapConfig'
 import {
@@ -76,6 +77,57 @@ describe('node statuses from tracked progress', () => {
     expect(statuses({ 'eater-of-worlds': 'defeated' }).get('skeletron')).toBe('recommended')
   })
 
+  it('B128: under a chosen world evil, the other world’s evil boss marked opens and recommends nothing; the in-play fork does', () => {
+    // Crimson world, only the Eater of Worlds marked: its mark doesn't count (countsInWorld), so Skeletron isn't "next" through it
+    const eow = mapProgress(graph, defeated('eater-of-worlds'), 'crimson')
+    expect(eow.nodes.get('eater-of-worlds')).toBe('defeated') // the mark itself still shows, as marked
+    expect(eow.nodes.get('skeletron')).toBe('available')
+    expect(describeStatus(graph, eow, 'skeletron')).toBe('Available.')
+    // mark the Brain of Cthulhu (the Crimson fork): Skeletron is recommended
+    const boc = mapProgress(graph, defeated('eater-of-worlds', 'brain-of-cthulhu'), 'crimson')
+    expect(boc.nodes.get('skeletron')).toBe('recommended')
+    expect(describeStatus(graph, boc, 'skeletron')).toBe('Recommended next.')
+    // the mirror world
+    expect(statuses(defeated('brain-of-cthulhu'), 'corruption').get('skeletron')).toBe('available')
+    expect(statuses(defeated('eater-of-worlds'), 'corruption').get('skeletron')).toBe('recommended')
+    // "Both": either mark counts (B96a)
+    for (const member of ['eater-of-worlds', 'brain-of-cthulhu']) expect(statuses(defeated(member)).get('skeletron'), member).toBe('recommended')
+  })
+
+  it('B128 sweep: a mark countsInWorld leaves out changes nothing but its own node — statuses, gates, links, branches', () => {
+    const progression = graph.progression
+    const order = flowOrder(graph).filter((id) => graph.nodeById.get(id)?.kind === 'boss' && !graph.nodeById.get(id)?.worldEvil)
+    const evil = raw.nodes.filter((n) => n.worldEvil).map((n) => n.id)
+    const evilMarks = [[], ...evil.map((id) => [id]), evil]
+    let uncounted = 0
+    for (let k = 0; k <= order.length; k++) {
+      for (const marks of evilMarks) {
+        const states = defeated(...order.slice(0, k), ...marks)
+        for (const world of [null, 'corruption', 'crimson'] as const) {
+          const ignored = marks.filter((id) => !countsInWorld(progression.nodes.find((n) => n.id === id)!, world))
+          const counted = Object.fromEntries(Object.entries(states).filter(([id]) => !ignored.includes(id)))
+          const p = mapProgress(graph, states, world)
+          const q = mapProgress(graph, counted, world)
+          const at = `${world ?? 'Both'} · ${Object.keys(states).join(',')}`
+          for (const node of graph.nodes) if (!ignored.includes(node.id)) expect(p.nodes.get(node.id), `${node.id} @ ${at}`).toBe(q.nodes.get(node.id))
+          for (const node of graph.nodes) if (!ignored.includes(node.id)) expect(p.branches.get(node.id), `branch ${node.id} @ ${at}`).toBe(q.branches.get(node.id))
+          expect([...p.links], at).toEqual([...q.links])
+          expect([...p.unmet], at).toEqual([...q.unmet])
+          expect([...p.openGates], at).toEqual([...q.openGates])
+          // every node "recommended next" is the next step from a node whose defeat counts in this world
+          const ep = effectiveProgress(progression, { worldEvil: world, nodeStates: states })
+          for (const [id, status] of p.nodes) {
+            if (status !== 'recommended') continue
+            const from = flowIncoming(graph, id).filter((l) => l.types.some((t) => t === 'required-gate' || t === 'recommended-next')).map((l) => l.from)
+            expect(from.some((f) => isNodeSatisfied(progression, ep, f)), `${id} @ ${at}`).toBe(true)
+          }
+          uncounted += ignored.length
+        }
+      }
+    }
+    expect(uncounted).toBeGreaterThan(0) // the sweep did exercise out-of-play marks
+  })
+
   it('links: locked into locked nodes, lit along recommended-next from done nodes, else idle', () => {
     const fresh = mapProgress(graph, {}, null)
     expect(fresh.links.get('hardmode->the-twins')).toBe('locked')
@@ -88,6 +140,26 @@ describe('node statuses from tracked progress', () => {
     // fork branches: lit for the members in play once the Eye of Cthulhu is done
     const fork = mapProgress(graph, defeated('eye-of-cthulhu'), 'crimson')
     expect([fork.branches.get('eater-of-worlds'), fork.branches.get('brain-of-cthulhu')]).toEqual(['idle', 'lit'])
+  })
+
+  it('B98: a marked boss of the other world evil (drawn dimmed) leaves no glow; the chosen world’s still does', () => {
+    // Crimson world, the Eater of Worlds marked: its line on to Skeletron stays idle (it was lit before B98)
+    const eow = mapProgress(graph, defeated('eye-of-cthulhu', 'eater-of-worlds'), 'crimson')
+    expect(eow.links.get('eater-of-worlds->skeletron')).toBe('idle')
+    // the trunk into the fork (from the Eye, in play) still glows toward the Brain's open branch
+    expect(eow.links.get('eye-of-cthulhu->eater-of-worlds')).toBe('lit')
+    expect(eow.branches.get('brain-of-cthulhu')).toBe('lit')
+    // both marked: only the Brain's line glows
+    const both = mapProgress(graph, defeated('eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu'), 'crimson')
+    expect([both.links.get('brain-of-cthulhu->skeletron'), both.links.get('eater-of-worlds->skeletron')]).toEqual(['lit', 'idle'])
+    // no world evil chosen ("Both"): both forks are in play and both lines glow, as before
+    const open = mapProgress(graph, defeated('eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu'), null)
+    expect([open.links.get('brain-of-cthulhu->skeletron'), open.links.get('eater-of-worlds->skeletron')]).toEqual(['lit', 'lit'])
+    // nothing lit is drawn dimmed, in either world
+    for (const evil of ['crimson', 'corruption'] as const) {
+      const p = mapProgress(graph, defeated('eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu'), evil)
+      for (const link of graph.links) if (p.links.get(link.id) === 'lit') expect(isNodeActive(graph.nodeById.get(link.from)!, evil), link.id).toBe(true)
+    }
   })
 
   it('M3 open gates: a required-gate line’s gate is met once its source is satisfied — even while its target waits on another gate', () => {

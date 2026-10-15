@@ -73,7 +73,7 @@ function DetailHeader({ item, sprites, unknowns }: { item: Item; sprites: Sprite
   // B113d M1: why the grey placeholder stands in, said beside it (first paint: a record without a sprite)
   const [fallback, setFallback] = useState<SpriteFallback | undefined>(item.sprite ? undefined : 'no-sprite')
   return (
-    <PixelPanel as="header" className="flex flex-col gap-4 sm:flex-row sm:items-start md:gap-6">
+    <PixelPanel as="header" className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
       <div className="grid size-28 shrink-0 place-items-center border-2 border-slot-border bg-slot shadow-pixel">
         {/* Detail page: always the full sprite file, never a thumbnail (B30). */}
         <SpriteImg src={item.sprite} sprites={sprites} placeholder="material" box={96} full maxScale={4} onFallback={setFallback} />

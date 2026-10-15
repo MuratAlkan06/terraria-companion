@@ -135,7 +135,8 @@ describe('honest errors', () => {
   })
 
   it('truncated anywhere → damaged (never a different build)', () => {
-    for (let cut = 4; cut < code.length; cut += 7) {
+    // every cut point, exhaustively (the code is short; a stride could step over the one cut that misreads)
+    for (let cut = 4; cut < code.length; cut++) {
       const r = readBuildText(buildCodeLine(code.slice(0, cut)))
       expect(r.ok, `cut at ${cut}`).toBe(false)
       expect(errorOf(r), `cut at ${cut}`).toBe('damaged')

@@ -93,7 +93,7 @@ export function CompareView({ selection, weapons, missing, data, progress, onAdd
       ) : (
         <>
           {n === 1 ? (
-            <section aria-labelledby="compare-one-title" data-compare-state="one" className="flex flex-col gap-3 border-2 border-dashed border-gold-600 bg-night-900 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <section aria-labelledby="compare-one-title" data-compare-state="one" className="flex flex-col gap-3 border-2 border-dashed border-gold-600 bg-night-900 p-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">
                 <h2 id="compare-one-title" className="font-semibold text-fg">
                   {copy.ONE_TITLE}

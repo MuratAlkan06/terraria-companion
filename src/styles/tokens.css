@@ -170,6 +170,9 @@
   --spacing-tap: 2.75rem; /* 44px minimum touch target (UX_SPEC §9) */
   --spacing-slot: 3rem; /* 48px inventory slot */
   --spacing-tabbar: 4rem; /* mobile bottom tab bar height (excl. safe area) */
+  /* Sticky site header bar height (excl. its 1-art-pixel bottom border): SiteHeader's h-header; the sticky
+     strips under it pin at top-header (AMENDMENTS-016 B119 shared-constant note). */
+  --spacing-header: 4rem;
   --pixel: 2px; /* one "art pixel" for borders and bevels */
 
   /* Pixel bevel: light top-left, dark bottom-right (zero-radius). */

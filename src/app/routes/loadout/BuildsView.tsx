@@ -35,8 +35,11 @@ export interface BuildsViewProps {
   backHref: string
   openHref: (build: SavedBuild) => string
   onDelete: (build: SavedBuild) => void
-  /** Opens the build's text export (the page owns the dialog). */
-  onExport: (build: SavedBuild) => void
+  /**
+   * Opens the build's text export (the page owns the dialog). `from`: the pressed button, where focus returns
+   * when the export closes (Safari doesn't focus a clicked button).
+   */
+  onExport: (build: SavedBuild, from?: HTMLElement) => void
   /** Saves an imported build as a NEW saved build and returns it. */
   onImport: (build: BuildRecord) => SavedBuild
 }
@@ -122,7 +125,7 @@ export function BuildsView(props: BuildsViewProps) {
                         {copy.ANALYZE}
                       </Link>
                     ) : null}
-                    <button type="button" onClick={() => props.onExport(b)} aria-label={text.exportSr(b.name)} className={buttonClass('secondary', 'min-h-tap px-3 text-sm')} data-export={b.buildId}>
+                    <button type="button" onClick={(e) => props.onExport(b, e.currentTarget)} aria-label={text.exportSr(b.name)} className={buttonClass('secondary', 'min-h-tap px-3 text-sm')} data-export={b.buildId}>
                       <ClipboardCopy aria-hidden="true" className="size-4" />
                       {text.EXPORT}
                     </button>

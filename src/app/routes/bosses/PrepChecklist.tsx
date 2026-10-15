@@ -42,7 +42,7 @@ export function PrepChecklist({ boss, itemOf, sprites, titleId }: { boss: Boss; 
         <p className="text-fg-muted">No prep steps are listed for this boss.</p>
       ) : (
         <>
-          <div className="sticky top-16 z-(--z-hud) -mx-4 border-y-2 border-panel-border bg-panel px-4 py-2 md:static md:mx-0 md:border-0 md:p-0">
+          <div className="sticky top-header z-(--z-hud) -mx-4 border-y-2 border-panel-border bg-panel px-4 py-2 md:static md:mx-0 md:border-0 md:p-0">
             {/* role="status": polite AND atomic, so a change reads as the whole line ("3 of 8 done"), not just the new number. */}
             <p id={progressId} role="status" className="text-sm font-semibold">
               <span data-prep-progress={`${done}/${entries.length}`}>

@@ -41,7 +41,7 @@ export function SiteHeader({ routes = APP_ROUTES }: SiteHeaderProps) {
   return (
     // Fully opaque so scrolled content never ghosts through the sticky bar (design review N4).
     <header className="sticky top-0 z-(--z-nav) border-b-2 border-panel-border bg-surface shadow-pixel-drop">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-3 md:px-6">
+      <div className="mx-auto flex h-header max-w-7xl items-center gap-3 px-3 md:px-6">
         <Link to="/" className="flex min-h-tap min-w-tap shrink-0 items-center gap-3 pr-1">
           <LogoMark className="size-9" />
           <span className="sr-only font-display text-base text-accent text-shadow-pixel md:not-sr-only lg:sr-only xl:not-sr-only">

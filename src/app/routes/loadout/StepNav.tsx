@@ -12,7 +12,7 @@ import { STEP_COUNT, STEPS, type Step } from './loadoutModel'
  */
 export function StepNav({ step, hrefFor }: { step: Step; hrefFor: (step: Step) => string }) {
   return (
-    <nav aria-label={copy.STEPS_LABEL} className="sticky top-16 z-(--z-hud) -mx-4 border-y-2 border-panel-border bg-surface px-4 py-2 md:-mx-6 md:px-6" data-step-nav="">
+    <nav aria-label={copy.STEPS_LABEL} className="sticky top-header z-(--z-hud) -mx-4 border-y-2 border-panel-border bg-surface px-4 py-2 md:-mx-6 md:px-6" data-step-nav="">
       <ol className="grid grid-cols-4 gap-1.5">
         {STEPS.map((n) => (
           <li key={n}>

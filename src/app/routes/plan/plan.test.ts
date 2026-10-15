@@ -244,6 +244,8 @@ describe('the plan page body: header, notices, states (UX_SPEC §3.9, §5, §7, 
     expect(html).toContain('data-delete-plan=""')
     expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*>.*Tree/)
     expect(html).toContain('data-notice="unknown-heavy"')
+    const { counts } = comp.ctx.view
+    expect(text(html)).toContain(copy.unknownHeavyTitle(counts.unknown, counts.yes + counts.gated + counts.unknown))
     expect(html).not.toContain('data-notice="drift"')
     expect(html).not.toContain('data-notice="done"')
   })
@@ -412,7 +414,8 @@ describe('B118 — planner review fixes', () => {
     const done = await computation(NE, {}, { owned: {}, checkedStepIds: [stepOf(fresh, NE)] })
     const list = renderList(done)
     const strip = /<div class="([^"]*)" data-checklist-progress="">([\s\S]*?)<\/div><section/.exec(list)
-    expect(strip?.[1]).toMatch(/\bsticky\b.*\btop-16\b/)
+    // pinned under the site header by its shared height token (B119), not a copied 64px
+    expect(strip?.[1]).toMatch(/\bsticky\b.*\btop-header\b/)
     expect(strip?.[2]).toContain('data-plan-complete=""')
     expect(text(strip?.[2] ?? '')).toContain(copy.DONE_TITLE)
     expect(text(strip?.[2] ?? '')).toContain(copy.progressLine(done.ctx.view.total, done.ctx.view.total))
@@ -531,6 +534,13 @@ describe('B118 — planner review fixes', () => {
   it('(j) nits: grammar, single accessible names, skipped recipes said inline, wiki words for described ways, no native spinners, a chooser on every multi-way step', async () => {
     expect(copy.unknownCountLine(1, 5)).toMatch(/^1 of the 5 items in this plan has Unknown availability: the dataset can’t confirm whether it is/)
     expect(copy.unknownCountLine(2, 5)).toMatch(/2 of the 5 items in this plan have Unknown/)
+    // B120: the last sentence agrees in number too; exactly half isn't titled "Mostly"
+    expect(copy.unknownCountLine(1, 2)).toMatch(/ Its step and sources still come from the data\.$/)
+    expect(copy.unknownCountLine(2, 5)).toMatch(/ Their steps and sources still come from the data\.$/)
+    expect(copy.unknownCountLine(1, 2)).not.toMatch(/Their/)
+    expect([copy.unknownHeavyTitle(1, 2), copy.unknownHeavyTitle(3, 6)]).toEqual([copy.UNKNOWN_HALF_TITLE, copy.UNKNOWN_HALF_TITLE])
+    expect([copy.unknownHeavyTitle(2, 3), copy.unknownHeavyTitle(7, 11), copy.unknownHeavyTitle(4, 4)]).toEqual([copy.UNKNOWN_HEAVY_TITLE, copy.UNKNOWN_HEAVY_TITLE, copy.UNKNOWN_HEAVY_TITLE])
+    expect(copy.UNKNOWN_HALF_TITLE).not.toMatch(/mostly/i)
     const ne = await computation(NE, {}, undefined, { choose: true })
     const page = renderPage(savedPlan(NE, ne.steps), ne)
     // every chooser button has ONE name: "Choose a way to get X" / "Change how to get X" (no "Choose a way — Choose how…")

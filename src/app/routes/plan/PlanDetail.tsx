@@ -86,7 +86,7 @@ export function PlanNotices({ ctx }: { ctx: PlanCtx }) {
         </Notice>
       ) : null}
       {items > 1 && counts.unknown * 2 >= items ? (
-        <Notice icon={<CircleHelp className="size-5 text-unknown" />} title={copy.UNKNOWN_HEAVY_TITLE} data="unknown-heavy">
+        <Notice icon={<CircleHelp className="size-5 text-unknown" />} title={copy.unknownHeavyTitle(counts.unknown, items)} data="unknown-heavy">
           <p>{copy.unknownCountLine(counts.unknown, items)}</p>
         </Notice>
       ) : null}

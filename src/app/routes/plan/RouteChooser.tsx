@@ -1,4 +1,4 @@
-import { Check, Repeat, X } from 'lucide-react'
+import { Check, CircleHelp, Repeat, X } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import { useMemo } from 'react'
 import { buttonClass } from '../../../components/buttonStyles'
@@ -7,7 +7,7 @@ import { defaultSelection, type PlanGroupNode, type PlanItemNode, type PlanNode,
 import * as copy from './planCopy'
 import { planLookup } from './planData'
 import { AvailabilityChips, NodeName, NodeSprite, RouteFacts, RouteGateChips } from './PlanBits'
-import { itemAvailability, routeGate, type RouteGateCtx } from './planRouteGates'
+import { itemAvailability, openButWaysUnknown, routeGate, type RouteGateCtx } from './planRouteGates'
 import { heldText, LABEL, ROUTE_ICON, wayLabel } from './planText'
 import type { PlanCtx } from './PlanTreeView'
 
@@ -107,52 +107,61 @@ function Routes({ ctx, node, onPick }: { ctx: PlanCtx; node: PlanItemNode; onPic
   const craftCount = node.routes.filter((r) => r.method === 'craft').length
   // this plan's demand for the item (structural, as the tree shows it)
   const scale = { amount: ctx.structural.get(node.key)?.total ?? 0, name: ctx.info(node.key).name }
+  const gates = gateCtx ? node.routes.map((route) => routeGate(gateCtx, record, route, node.routes.length)) : undefined
   let craftIndex = 0
   return (
-    <ol className="space-y-3">
-      {node.routes.map((route) => {
-        const Icon = ROUTE_ICON[route.method]
-        const using = inUse(node, route)
-        if (route.method === 'craft') craftIndex++
-        const gate = gateCtx ? routeGate(gateCtx, record, route, node.routes.length) : undefined
-        return (
-          <li key={route.key} data-route={route.key} className={cx('space-y-2 border-2 p-3', using ? 'border-gold-500 bg-night-800' : 'border-panel-border bg-night-900')}>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
-              <Icon aria-hidden="true" className="size-5 shrink-0 text-accent" />
-              <span>
-                {copy.ROUTE_KIND[route.method]}
-                {route.method === 'craft' && craftCount > 1 ? <span className="font-normal text-fg-muted"> · {copy.recipeOf(craftIndex, craftCount)}</span> : null}
-              </span>
-            </p>
-            <RouteFacts record={record} route={route} base={ctx.base} scale={scale} />
-            {gate ? (
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-route-gate-line={route.key}>
-                <span className="text-fg-muted">{copy.ROUTE_GATE}:</span>
-                <RouteGateChips gate={gate} base={ctx.base} record={record} />
-              </p>
-            ) : null}
-            {node.heldRoutes[route.key] && node.heldRoutes[route.key].kind !== 'shimmer' ? (
-              <p className="flex items-start gap-1.5 text-sm text-fg-muted" data-held={node.heldRoutes[route.key].kind}>
-                <Repeat aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+    <>
+      {gateCtx && gates && openButWaysUnknown(itemAvailability(gateCtx, record.id), gates) ? (
+        <p className="mb-3 flex items-start gap-1.5 text-sm text-fg-muted" data-ways-unknown-note="">
+          <CircleHelp aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-unknown" />
+          <span>{copy.WAYS_UNKNOWN_NOTE}</span>
+        </p>
+      ) : null}
+      <ol className="space-y-3">
+        {node.routes.map((route, i) => {
+          const Icon = ROUTE_ICON[route.method]
+          const using = inUse(node, route)
+          if (route.method === 'craft') craftIndex++
+          const gate = gates?.[i]
+          return (
+            <li key={route.key} data-route={route.key} className={cx('space-y-2 border-2 p-3', using ? 'border-gold-500 bg-night-800' : 'border-panel-border bg-night-900')}>
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
+                <Icon aria-hidden="true" className="size-5 shrink-0 text-accent" />
                 <span>
-                  <span className="font-semibold text-fg">{copy.NOT_PICKED_NOTE}:</span> {heldText(node.heldRoutes[route.key], ctx.info(node.key).name, ctx)}
+                  {copy.ROUTE_KIND[route.method]}
+                  {route.method === 'craft' && craftCount > 1 ? <span className="font-normal text-fg-muted"> · {copy.recipeOf(craftIndex, craftCount)}</span> : null}
                 </span>
               </p>
-            ) : null}
-            {using ? (
-              <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-success" data-in-use="">
-                <Check aria-hidden="true" className="size-4" />
-                {copy.IN_USE}
-              </p>
-            ) : (
-              <button type="button" onClick={() => onPick(node.key, route.key)} className={buttonClass('secondary')} data-use-route={route.key}>
-                {copy.USE_THIS}
-              </button>
-            )}
-          </li>
-        )
-      })}
-    </ol>
+              <RouteFacts record={record} route={route} base={ctx.base} scale={scale} />
+              {gate ? (
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-route-gate-line={route.key}>
+                  <span className="text-fg-muted">{copy.ROUTE_GATE}:</span>
+                  <RouteGateChips gate={gate} base={ctx.base} record={record} />
+                </p>
+              ) : null}
+              {node.heldRoutes[route.key] && node.heldRoutes[route.key].kind !== 'shimmer' ? (
+                <p className="flex items-start gap-1.5 text-sm text-fg-muted" data-held={node.heldRoutes[route.key].kind}>
+                  <Repeat aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    <span className="font-semibold text-fg">{copy.NOT_PICKED_NOTE}:</span> {heldText(node.heldRoutes[route.key], ctx.info(node.key).name, ctx)}
+                  </span>
+                </p>
+              ) : null}
+              {using ? (
+                <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-success" data-in-use="">
+                  <Check aria-hidden="true" className="size-4" />
+                  {copy.IN_USE}
+                </p>
+              ) : (
+                <button type="button" onClick={() => onPick(node.key, route.key)} className={buttonClass('secondary')} data-use-route={route.key}>
+                  {copy.USE_THIS}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    </>
   )
 }
 

@@ -41,7 +41,8 @@ export function checkBudgets(files: ReadonlyMap<string, string>, budget = DATA_C
 
 /**
  * Writes `files` into `dir`, removing stale pipeline-owned JSON files that this run no longer
- * produces (only names in `owned`; app files such as meta.ts are never touched).
+ * produces (only names in `owned`; app files such as meta.ts and the src/data/LICENSE.md data-license
+ * pointer — ADR-001 D3, B127 — are never touched).
  */
 export function writeFiles(dir: string, files: ReadonlyMap<string, string>, owned: (file: string) => boolean): void {
   mkdirSync(dir, { recursive: true })

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useLocation, useNavigate } from 'react-router'
 import { version as APP_VERSION } from '../../../../package.json'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { focusedControl } from '../../../components/focusedControl'
 import { ErrorState, SkeletonPanel } from '../../../components/States'
 import { meta } from '../../../data/meta'
 import { effectiveProgress } from '../../../scoring/progress'
@@ -144,8 +145,8 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
   const [exporting, setExporting] = useState<{ name: string; value: string } | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const exportFrom = useRef<HTMLElement | null>(null)
-  const openExport = (record: BuildRecord) => {
-    exportFrom.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
+  const openExport = (record: BuildRecord, from?: HTMLElement) => {
+    exportFrom.current = from ?? focusedControl()
     setExporting({ name: record.name, value: buildText(record, dataNames(page), { now: new Date(), appVersion: APP_VERSION, gameVersion: meta.gameVersion }) })
     setExportOpen(true)
   }
@@ -270,7 +271,7 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
   const leaving = useRef(false)
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     const block = blocksLeave(unsaved, currentLocation, nextLocation)
-    if (block) leaveFrom.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
+    if (block) leaveFrom.current = focusedControl()
     return block
   })
   const leaveReturn = () => {
@@ -322,7 +323,7 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
           backHref={builderHref}
           openHref={(b) => `${LOADOUT_PATH}${loadoutSearch(stateFromBuild(b, page.engine))}`}
           onDelete={setConfirmDelete}
-          onExport={(b) => openExport(buildRecordOf(b))}
+          onExport={(b, from) => openExport(buildRecordOf(b), from)}
           onImport={(record) => builds.create(record)}
         />
       ) : (
@@ -413,7 +414,7 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
               }
               setAnnouncement(copy.savedAnnounce(draft.name))
             }}
-            onExport={(name) => openExport(draftFrom(name, eff, result, state.pins))}
+            onExport={(name, from) => openExport(draftFrom(name, eff, result, state.pins), from)}
             onDelete={setConfirmDelete}
             compare={{
               page,

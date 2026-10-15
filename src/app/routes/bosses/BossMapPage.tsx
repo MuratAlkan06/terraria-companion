@@ -86,8 +86,8 @@ export default function BossMapPage() {
       className={cx(
         'flex flex-col',
         // Fill the viewport between the header and the tab bar (lg: no tab bar); never shorter than a usable map.
-        'h-[calc(100dvh-(--spacing(16))-var(--pixel)-var(--spacing-tabbar)-var(--pixel)-env(safe-area-inset-bottom,0px))] min-h-[32rem]',
-        'lg:h-[calc(100dvh-(--spacing(16))-var(--pixel))]',
+        'h-[calc(100dvh-var(--spacing-header)-var(--pixel)-var(--spacing-tabbar)-var(--pixel)-env(safe-area-inset-bottom,0px))] min-h-[32rem]',
+        'lg:h-[calc(100dvh-var(--spacing-header)-var(--pixel))]',
       )}
     >
       {/* Compact on phones (title + source on one row) so the map keeps the height. Aligned with the

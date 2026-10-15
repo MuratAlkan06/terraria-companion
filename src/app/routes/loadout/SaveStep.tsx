@@ -51,8 +51,11 @@ export interface SaveStepProps {
   mainWeapon?: Weapon
   openHref: (build: SavedBuild) => string
   onSave: (name: string, mode: 'overwrite' | 'new') => void
-  /** Opens the text export of this loadout under `name` (the page owns the dialog). */
-  onExport: (name: string) => void
+  /**
+   * Opens the text export of this loadout under `name` (the page owns the dialog). `from`: the pressed button,
+   * where focus returns when the export closes (Safari doesn't focus a clicked button).
+   */
+  onExport: (name: string, from?: HTMLElement) => void
   onDelete: (build: SavedBuild) => void
   /** The comparison (P4-S4): the data, the draft, and the compared build scored as saved. */
   compare?: {
@@ -167,9 +170,9 @@ export function SaveStep(props: SaveStepProps) {
           )}
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
               const trimmed = checkedName()
-              if (trimmed !== undefined) props.onExport(trimmed)
+              if (trimmed !== undefined) props.onExport(trimmed, e.currentTarget)
             }}
             aria-describedby={`${id}export-hint`}
             className={buttonClass('secondary')}

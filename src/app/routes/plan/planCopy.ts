@@ -108,8 +108,11 @@ export function basisText(stageLabel: string | null, virtual: readonly string[],
     : `Your stage (${stageLabel}) implies no defeated bosses on its own. ${marked}`
 }
 export const unknownCountLine = (unknown: number, total: number) =>
-  `${unknown} of the ${total} items in this plan ${unknown === 1 ? 'has' : 'have'} Unknown availability: the dataset can’t confirm whether ${unknown === 1 ? 'it is' : 'they are'} obtainable at your progress. Their steps and sources still come from the data.`
+  `${unknown} of the ${total} items in this plan ${unknown === 1 ? 'has' : 'have'} Unknown availability: the dataset can’t confirm whether ${unknown === 1 ? 'it is' : 'they are'} obtainable at your progress. ${unknown === 1 ? 'Its step and sources still come' : 'Their steps and sources still come'} from the data.`
 export const UNKNOWN_HEAVY_TITLE = 'Mostly Unknown availability'
+/** The notice shows from half the items up (B120): exactly half isn't "mostly". */
+export const UNKNOWN_HALF_TITLE = 'Unknown availability for half the items'
+export const unknownHeavyTitle = (unknown: number, total: number) => (unknown * 2 === total ? UNKNOWN_HALF_TITLE : UNKNOWN_HEAVY_TITLE)
 export const noSourceTitle = (name: string) => `No known source for ${name}`
 export const noSourceBody = (name: string) =>
   `The dataset lists no verified way to get ${name}, so this plan can’t say how — and won’t guess. You can still keep it as a reminder; its wiki page may describe a way.`
@@ -213,6 +216,9 @@ export const needsFor = (amount: number, name: string, crafts: number) =>
 export const ROUTE_CONDITIONS = 'Requires'
 /** Per-way gating at the player's progress (B118(f)). */
 export const ROUTE_GATE = 'At your progress'
+/** The item is open by its verified gating while every way is Unknown on its own (B120's Stinger case). */
+export const WAYS_UNKNOWN_NOTE =
+  'The plan shows this item as obtainable now because its verified requirements are met at your progress. The data can’t confirm which of these ways is open, so each one says Unknown.'
 export const ONE_OF = 'one of'
 export const OR = 'or'
 export const MEMBER_GATE = 'Availability'
@@ -274,4 +280,6 @@ export const GRIND_CTA = 'What Should I Grind For?'
 export const grindContext = (name: string) => ` — plan ${name}`
 export const PLAN_IT = 'Plan it'
 export const planItContext = (name: string) => ` — a grind plan for ${name}`
+/** A "Plan it" link whose visible text is the item's name (the builder's per-piece links): no second name (B120). */
+export const PLAN_IT_NAMED = ' — its grind plan'
 export const PLAN_PIECES = 'Plan a piece:'

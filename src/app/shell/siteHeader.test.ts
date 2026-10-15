@@ -58,6 +58,13 @@ describe('SiteHeader with six nav sections (B29)', () => {
   })
 })
 
+describe('the header height is one shared token (AMENDMENTS-016 B119)', () => {
+  it('the bar is h-header — the token the sticky strips below it pin to (top-header)', () => {
+    expect(renderHeader('/')).toMatch(/<div class="[^"]*\bh-header\b[^"]*"/)
+    expect(renderHeader('/')).not.toMatch(/\bh-16\b/)
+  })
+})
+
 describe('SiteHeader with the app’s own registry (AMENDMENTS-016 B123h)', () => {
   it('Weapons · Lab · Bosses inline (the tab bar’s sections), no Home link — the logo links home — and the rest in More', () => {
     const html = renderHeader('/', APP_ROUTES)

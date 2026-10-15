@@ -2,6 +2,7 @@ import { CircleAlert, FolderInput, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../../../../components/ConfirmDialog'
+import { focusedControl } from '../../../../components/focusedControl'
 import { QuarantineNotice } from '../../../../components/QuarantineNotice'
 import { WORLD_EVIL_LABEL } from '../../../../components/nodeMap/graph'
 import { ErrorState, SkeletonPanel } from '../../../../components/States'
@@ -24,7 +25,7 @@ import { AnalysisPane } from './AnalysisPane'
 import { importReplacesLoadout, readinessImportFromBuild } from './buildImport'
 import { loadReadinessData, peekReadinessData, type ReadinessPageData } from './readinessData'
 import { BUILD_PARAM } from './readinessLinks'
-import { engineInput, hasAnyItem, markedDefeats, staleReason, targetKey, targetLabel, type PickerTarget } from './readinessUi'
+import { engineInput, hasAnyItem, liveAnnouncement, markedDefeats, staleReason, targetKey, targetLabel, type PickerTarget } from './readinessUi'
 import * as copy from './readinessUiCopy'
 import { SetupPane } from './SetupPane'
 import { SlotPicker } from './SlotPicker'
@@ -126,7 +127,8 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
   /** The element that opened the picker, and the slot it fills (focus returns there on close). */
   const opener = useRef<{ el: HTMLElement | null; key: string } | null>(null)
   const openPicker = (target: PickerTarget) => {
-    const el = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    // Safari doesn't focus a clicked button (focus sits on <main>): then the slot's own button is the way back
+    const el = focusedControl()
     opener.current = { el, key: target.kind === 'ammo' || target.kind === 'buffs' ? `${target.kind}-add` : targetKey(target) }
     setPicker(target)
   }
@@ -351,7 +353,7 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
         <p>{copy.IMPORT_REPLACE_KEEP}</p>
       </ConfirmDialog>
       <p role="status" className="sr-only">
-        {announcement}
+        {liveAnnouncement(announcement, snapshot !== null && stale === null)}
       </p>
     </>
   )

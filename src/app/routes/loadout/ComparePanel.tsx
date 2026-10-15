@@ -401,14 +401,15 @@ function SlotRow({ row, page, savedName }: { row: SlotDiffRow; page: ReadinessPa
 }
 
 /**
- * One side of a slot row. AMENDMENTS-016 B113(e) M6: below sm the square sits above the name, so a name
- * gets the cell's whole width and wraps between words ("Band of Regeneration"), never mid-word.
+ * One side of a slot row. AMENDMENTS-016 B113(e) M6: below md the square sits above the name, so a name
+ * gets the cell's whole width and wraps between words ("Band of Regeneration"), never mid-word. (md, not the
+ * old `sm` variant — the tokens define xs/md/lg/xl only, so it never generated any CSS; B127.)
  */
 function Side({ side, page, label }: { side: SideSlot; page: ReadinessPageData; label: string }): ReactNode {
   return (
-    <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+    <div className="flex min-w-0 flex-col items-start gap-1 md:flex-row md:items-center md:gap-2">
       {side.kind === 'item' ? <ItemSquare page={page} id={side.pieces?.find((x) => x > 0) ?? side.id} /> : <ItemSlot />}
-      <p className="w-full min-w-0 text-sm break-words sm:w-auto sm:flex-1">
+      <p className="w-full min-w-0 text-sm break-words md:w-auto md:flex-1">
         <span className="block truncate text-xs text-fg-muted">{label}</span>
         {side.kind === 'item' ? <ItemName page={page} id={side.id} name={side.name} className="hyphens-auto" /> : <span className="text-fg-muted" data-side-empty={side.kind}>{copy.SIDE_EMPTY[side.kind]}</span>}
       </p>

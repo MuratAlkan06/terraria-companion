@@ -18,6 +18,7 @@ import { nodeExtent } from '../../../components/nodeMap/scene'
 import type { Boss, ProgressionEdge, ProgressionNode } from '../../../data-access/types'
 import bossesJson from '../../../data/bosses.json'
 import progressionJson from '../../../data/progression.json'
+import { countsInWorld } from '../../../scoring/progress'
 import { STAGE_IDS, type Stage } from '../../stages'
 import { finalNode, recommend, type Recommendation, type RecommendItem } from './recommend'
 import * as copy from './recommendCopy'
@@ -138,6 +139,17 @@ describe('AC1 world type: the Eater of Worlds / Brain of Cthulhu fork follows th
     const r = recommend(graph, defeated('eye-of-cthulhu', 'eater-of-worlds'), 'crimson')
     expect(keys(r.recommended)).toContain('brain-of-cthulhu')
     expect(keys(r.recommended)).not.toContain('eater-of-worlds')
+  })
+
+  it('B128: an out-of-play mark places nothing — Skeletron isn’t next through it, the Eye isn’t passed by it; the in-play fork’s mark does', () => {
+    const eow = recommend(graph, defeated('eye-of-cthulhu', 'eater-of-worlds'), 'crimson')
+    expect(keys(eow.recommended)).not.toContain('skeletron')
+    expect(eow.frontier).toEqual(['brain-of-cthulhu'])
+    // only the Eater marked: the Eye of Cthulhu is still the next step in a Crimson world
+    expect(keys(recommend(graph, defeated('eater-of-worlds'), 'crimson').recommended)).toEqual(['eye-of-cthulhu', 'king-slime'])
+    // the Brain marked: Skeletron is next, through the Brain
+    const boc = recommend(graph, defeated('eye-of-cthulhu', 'eater-of-worlds', 'brain-of-cthulhu'), 'crimson')
+    expect(boc.recommended[0]).toMatchObject({ key: 'skeletron', status: 'recommended', reason: copy.usuallyNext('Brain of Cthulhu') })
   })
 
   it('a world-evil boss is never in a list while it is out of play', () => {
@@ -339,6 +351,27 @@ describe('invariants over many tracked states (deterministic sweep)', () => {
       checkInvariants(recommend(graph, states, world, stage), states, world, `run ${run} ${world} ${JSON.stringify(states)}`)
     }
     for (const states of WALK) for (const world of WORLDS) checkInvariants(recommend(graph, defeated(...states), world), defeated(...states), world, `walk ${states.length} ${world}`)
+  })
+
+  it('B128: a defeat countsInWorld leaves out (the other world’s evil boss) changes neither list, the goal nor the progress stage', () => {
+    const random = prng(128)
+    let uncounted = 0
+    for (let run = 0; run < 400; run++) {
+      const states: Record<string, NodeState> = {}
+      const density = random()
+      for (const id of BOSSES) {
+        const roll = random()
+        if (roll < density * 0.85) states[id] = 'defeated'
+        else if (roll < density) states[id] = 'skipped'
+      }
+      const world = WORLDS[Math.floor(random() * WORLDS.length)]
+      const ignored = Object.keys(states).filter((id) => states[id] === 'defeated' && !countsInWorld(graph.nodeById.get(id)!, world))
+      const counted = Object.fromEntries(Object.entries(states).filter(([id]) => !ignored.includes(id)))
+      const pick = ({ required, recommended, goal, goalDone, progressStage, allMarked }: Recommendation) => ({ required, recommended, goal, goalDone, progressStage, allMarked })
+      expect(pick(recommend(graph, states, world)), `run ${run} ${world} ${JSON.stringify(states)}`).toEqual(pick(recommend(graph, counted, world)))
+      uncounted += ignored.length
+    }
+    expect(uncounted).toBeGreaterThan(0) // the sweep did exercise out-of-play marks
   })
 })
 

@@ -22,13 +22,16 @@ export function GrindButton({ id, name, className }: { id: number; name: string;
   )
 }
 
-/** An inline "Plan it" link (the builder's gated track: one per gated item). */
+/**
+ * An inline "Plan it" link (the builder's gated track: one per gated item). A per-piece link already shows the
+ * piece's name, so its screen-reader completion doesn't say the name again (AMENDMENTS-016 B120).
+ */
 export function PlanItLink({ id, name, label = copy.PLAN_IT, className }: { id: number; name: string; label?: string; className?: string }) {
   if (!hasRoute('plan-new')) return null
   return (
     <Link to={planNewHref(id)} data-plan-it={id} className={cx('inline-flex min-h-tap items-center gap-1.5 text-sm font-semibold text-link underline decoration-1 underline-offset-4 hover:text-accent-strong', className)}>
       {label}
-      <span className="sr-only">{copy.planItContext(name)}</span>
+      <span className="sr-only">{label === name ? copy.PLAN_IT_NAMED : copy.planItContext(name)}</span>
       <ArrowRight aria-hidden="true" className="size-4" />
     </Link>
   )

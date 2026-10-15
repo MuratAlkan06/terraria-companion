@@ -132,12 +132,12 @@ export default function LabPage() {
     <div
       className={cx(
         'flex flex-col bg-night-950',
-        fullscreen ? 'fixed inset-0 z-(--z-nav) pt-[env(safe-area-inset-top,0px)] pb-safe' : 'lg:h-[calc(100dvh-(--spacing(16))-var(--pixel))] lg:min-h-136',
+        fullscreen ? 'fixed inset-0 z-(--z-nav) pt-[env(safe-area-inset-top,0px)] pb-safe' : 'lg:h-[calc(100dvh-var(--spacing-header)-var(--pixel))] lg:min-h-136',
       )}
       data-lab-fullscreen-state={fullscreen ? 'on' : 'off'}
     >
       <h1 className="sr-only">Weapon Lab</h1>
-      <SimDisclaimerBar className={cx('z-(--z-hud)', !fullscreen && 'max-lg:sticky max-lg:top-[calc(--spacing(16)+var(--pixel))]')} />
+      <SimDisclaimerBar className={cx('z-(--z-hud)', !fullscreen && 'max-lg:sticky max-lg:top-[calc(var(--spacing-header)+var(--pixel))]')} />
       {resource.status === 'ready' ? (
         <LabWorkspace data={resource.data} fullscreen={fullscreen} onToggleFullscreen={toggle} />
       ) : resource.status === 'error' ? (

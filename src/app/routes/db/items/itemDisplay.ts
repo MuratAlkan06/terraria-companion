@@ -105,6 +105,9 @@ export function itemStatRows(item: Item): StatRow[] {
   // shared
   // B113(e): a placeable (station, furniture, block) is "consumed" by placing it — said so, not a bare "Yes"
   add('consumable', 'Consumed on use', 'consumable', field('consumable'), (v) => (v ? (isPlaceable(item) ? CONSUMED_PLACEABLE : 'Yes') : 'No'))
+  // Intentionally unseparated ("9999", not "9,999"): stack sizes read as the game and the wiki infobox print them
+  // (terraria.wiki.gg Dirt Block: "Max stack 9999", checked 2026-10-15) — the one exception to B113(e)'s thousands
+  // separators (B104 leftover, confirmed in P7-S3). items.test.ts pins it.
   add('maxStack', 'Max stack', 'maxStack', field('maxStack'), (v) => String(v))
   add('value', 'Value', 'valueCopper', field('valueCopper'), (v) => ((v as number) === 0 ? 'None' : formatCoins(v as number)))
   // a row whose value only says "carried" never renders as a bare empty cell

@@ -85,7 +85,7 @@ function DetailHeader({
   const unknowns = weaponPageUnknowns(weapon, acquisitionData?.drops)
 
   return (
-    <PixelPanel as="header" className="flex flex-col gap-4 sm:flex-row sm:items-start md:gap-6">
+    <PixelPanel as="header" className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
       <div className="grid size-28 shrink-0 place-items-center border-2 border-slot-border bg-slot shadow-pixel">
         {/* Detail page: always the full sprite file, never a thumbnail (B30). */}
         <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={96} full />

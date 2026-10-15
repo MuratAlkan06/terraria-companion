@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { buttonClass } from '../../../components/buttonStyles'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { focusedControl } from '../../../components/focusedControl'
 import { ErrorState, SkeletonPanel } from '../../../components/States'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
@@ -95,8 +96,7 @@ function PlanBody({ base, plan }: { base: PlanBase; plan: SavedPlan }) {
   const amount = plan.targetAmount ?? 1
   const choices = plan.choices ?? NO_CHOICES
   const choose = useCallback((key: string, button?: HTMLElement) => {
-    const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
-    const el = button ?? active
+    const el = button ?? focusedControl()
     opener.current = { el, key, scope: el?.closest('[data-pane], [data-compare-routes]') ?? null }
     setChooser(key)
   }, [])

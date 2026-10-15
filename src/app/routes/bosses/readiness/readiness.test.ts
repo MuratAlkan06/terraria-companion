@@ -32,7 +32,7 @@ import { AnalysisPane, type AnalysisPaneProps } from './AnalysisPane'
 import { ACQUISITION_ANCHOR, ImprovePanel } from './ImprovePanel'
 import { assembleReadinessData } from './readinessData'
 import { ReadinessFactorCard, type ReadinessFactorCardProps } from './ReadinessFactorCard'
-import { engineInput, fits, hasAnyItem, LIST_ALL_MAX, markedDefeats, recentFits, searchTypes, segmentContext, slotPool, staleReason } from './readinessUi'
+import { engineInput, fits, hasAnyItem, LIST_ALL_MAX, liveAnnouncement, markedDefeats, recentFits, searchTypes, segmentContext, slotPool, staleReason } from './readinessUi'
 import * as copy from './readinessUiCopy'
 import { SetupPane, type SetupPaneProps } from './SetupPane'
 
@@ -553,6 +553,16 @@ describe('the picker filter over the shared search index (Feature A AC1)', () =>
     const onlySeventh = { ...defaultReadinessSetup(), loadout: { ...defaultReadinessSetup().loadout, accessories: [null, null, null, null, null, null, 7] } }
     expect(hasAnyItem(onlySeventh)).toBe(false)
     expect(hasAnyItem({ ...onlySeventh, difficulty: 'master' })).toBe(true)
+  })
+
+  it('B98: "Analysis ready." leaves the live region once that analysis is out of date or cleared; other messages stay', () => {
+    expect(liveAnnouncement(copy.ANNOUNCE_READY, true)).toBe(copy.ANNOUNCE_READY)
+    expect(liveAnnouncement(copy.ANNOUNCE_READY, false)).toBe('')
+    expect(liveAnnouncement(copy.imported('My build'), false)).toBe(copy.imported('My build'))
+    expect(liveAnnouncement('', true)).toBe('')
+    // wired to the staleness the page shows: a setup edit after analyzing withdraws the claim
+    const snap = { setup: PLANTERA, progress: MECHS, at: '2026-10-14T12:00:00.000Z' }
+    expect(liveAnnouncement(copy.ANNOUNCE_READY, staleReason(snap, { ...PLANTERA, class: 'ranged' }, MECHS) === null)).toBe('')
   })
 })
 

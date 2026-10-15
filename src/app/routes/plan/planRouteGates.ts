@@ -88,6 +88,15 @@ function conditionMissing(ctx: RouteGateCtx, slugs: readonly string[]): string[]
   return [...out]
 }
 
+/**
+ * The item is obtainable now by its own verified gating (the tree's badge) while no listed way can be confirmed
+ * open on its own (every way Unknown under the per-way rules above) — e.g. Stinger, AMENDMENTS-016 B120. Both
+ * readings are honest; the chooser footnotes how they fit together.
+ */
+export function openButWaysUnknown(item: Availability, gates: readonly RouteGate[]): boolean {
+  return item.status === 'yes' && gates.length > 1 && gates.every((g) => g.kind === 'all' && g.availability.status === 'unknown')
+}
+
 export function routeGate(ctx: RouteGateCtx, record: PlanRecord, route: PlanRoute, routeCount: number): RouteGate {
   // one way: the item's own verified gating is exactly this way's
   if (routeCount === 1) return { kind: 'all', availability: availabilityOf(record, ctx.graph, ctx.ep, ctx.memo) }

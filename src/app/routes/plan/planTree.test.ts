@@ -10,7 +10,7 @@ import type { TrackedProgress } from '../../../scoring/progress'
 import { completionAnnouncement } from './planAnnouncements'
 import * as copy from './planCopy'
 import { bossGates, coveredSubtrees, generateSteps, planView, progressBasis, snapshotDrift } from './planModel'
-import { routeGate, type RouteGateCtx } from './planRouteGates'
+import { openButWaysUnknown, routeGate, type RouteGateCtx } from './planRouteGates'
 import { heldText } from './planText'
 import { buildPlanGraph, computeDemand, itemKey, PLAN_LIMITS, planSteps, stepIdOf, type PlanItemNode, type PlanLookup, type PlanRecord } from './planTree'
 import { CONDITIONS, DROPS, GRAPH, idOf, names, RECORDS, realLookup } from './planTestData'
@@ -533,6 +533,28 @@ describe('B118(f): each way’s gating, for the chooser (planRouteGates)', () =>
     const single = fx.records.get(20) as PlanRecord
     const route = (buildPlanGraph(20, 1, {}, fx).nodes.get('i:20') as PlanItemNode).routes[0]
     expect(routeGate(at(), single, route, 1)).toEqual({ kind: 'all', availability: availabilityOf(single, GRAPH, at().ep) })
+  })
+
+  it('B120: an item open by its own gating with every way Unknown is flagged for the chooser’s footnote — only then', () => {
+    const open = { status: 'yes' as const, missing: [], conditions: [] }
+    const unknownWay = { kind: 'all' as const, availability: { status: 'unknown' as const, missing: [], conditions: [] } }
+    const openWay = { kind: 'all' as const, availability: open }
+    expect(openButWaysUnknown(open, [unknownWay, unknownWay])).toBe(true)
+    expect(openButWaysUnknown(open, [unknownWay, openWay])).toBe(false) // one way confirmed open: no tension
+    expect(openButWaysUnknown(open, [unknownWay, { kind: 'any', options: [['the-twins'], ['the-destroyer']] }])).toBe(false)
+    expect(openButWaysUnknown({ ...open, status: 'unknown' }, [unknownWay, unknownWay])).toBe(false) // the tree says Unknown too
+    expect(openButWaysUnknown(open, [unknownWay])).toBe(false) // one way IS the item's gating (they agree by construction)
+  })
+
+  it('B120 on the real data: Stinger is “Obtainable now” in the tree while its drop and its described way are each Unknown', () => {
+    const lookup = realLookup()
+    const stinger = RECORDS.get(idOf('Stinger'))!
+    const node = buildPlanGraph(stinger.id, 1, {}, lookup).nodes.get(itemKey(stinger.id)) as PlanItemNode
+    const basis = progressBasis(GRAPH, { worldEvil: null, nodeStates: {} }, null)
+    const ctx: RouteGateCtx = { lookup, graph: GRAPH, conditions: { byId: CONDITIONS }, ep: basis.ep, memo: basis.memo }
+    const gates = node.routes.map((r) => routeGate(ctx, stinger, r, node.routes.length))
+    expect(node.routes.length).toBeGreaterThan(1)
+    expect(openButWaysUnknown(availabilityOf(stinger, GRAPH, basis.ep, basis.memo), gates)).toBe(true)
   })
 })
 

@@ -140,6 +140,9 @@ describe('display rules per category (getField: verified value, Unknown, or no r
     expect(rows('Master Bait')).toMatchObject({ bait: expect.stringMatching(/^\d+%$/) })
     expect(rows('Wooden Arrow')).toMatchObject({ ammoType: 'Arrows', ammoDamage: expect.any(String) })
     expect(rows('Healing Potion')).toMatchObject({ healLife: '100 HP', consumable: 'Yes', maxStack: expect.any(String) })
+    // B104 leftover (P7-S3): stack sizes print as the game and the wiki infobox do — no thousands separator
+    expect(byName('Healing Potion').maxStack).toBe(9999)
+    expect(rows('Healing Potion').maxStack).toBe('9999')
     expect(rows('Grappling Hook')).toMatchObject({ hookStats: 'Unknown' })
     expect(rows('Slimy Saddle')).toMatchObject({ mountStats: 'Unknown' })
     expect(rows('Gel')).toMatchObject({ ammoDamage: 'Unknown' })

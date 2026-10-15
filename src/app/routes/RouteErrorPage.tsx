@@ -2,11 +2,13 @@ import { RotateCw } from 'lucide-react'
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router'
 import { buttonClass } from '../../components/buttonStyles'
 import { PixelPanel } from '../../components/PixelPanel'
+import { rememberRetryFocus } from '../../components/retryFocus'
 import { useDocumentTitle } from '../useDocumentTitle'
 
 /**
  * Route-level ErrorState (UX_SPEC §5.4): cause + Retry, shell intact when used as
  * the pathless child boundary. Covers lazy-chunk load failures after a redeploy.
+ * Retry reloads the document, leaving the page's <main> as its focus target (retryFocus, B114 M7 / B128).
  */
 function describe(error: unknown): string {
   if (isRouteErrorResponse(error)) return `${error.status} ${error.statusText}`.trim()
@@ -31,7 +33,14 @@ export default function RouteErrorPage() {
         </h1>
         <p className="text-fg-muted">{describe(error)}</p>
         <div className="flex flex-wrap gap-3">
-          <button type="button" onClick={() => window.location.reload()} className={buttonClass('primary')}>
+          <button
+            type="button"
+            onClick={() => {
+              rememberRetryFocus(undefined)
+              window.location.reload()
+            }}
+            className={buttonClass('primary')}
+          >
             <RotateCw aria-hidden="true" className="size-5" />
             Retry
           </button>

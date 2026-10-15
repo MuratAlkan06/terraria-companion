@@ -14,7 +14,7 @@
  * mechanical bosses → Plantera); the wiki sentence behind the link as evidence.
  *
  * RECOMMENDED ORDER — open, unmarked bosses in play, outside the required list, placed by a link from
- * something done (the map's `done`: satisfied, or marked defeated):
+ * something done (the map's `done`: satisfied — a mark counts where countsInWorld says, AMENDMENTS-016 B128):
  * - the usual next steps: a recommended-next link (or a bare required-gate link). One the player has
  *   evidently moved past — a fight further along the main path is already marked — is left out.
  * - optional fights: an `optional` link, no later than the next main-path step's stage (Queen Bee and
@@ -116,7 +116,8 @@ export function recommend(
   const memo = new Map<string, boolean>()
   const satisfied = (id: string) => isNodeSatisfied(progression, ep, id, memo)
   const marked = (id: string) => nodeStates[id] !== undefined
-  const done = (id: string) => nodeStates[id] === 'defeated' || satisfied(id)
+  // The map's `done` (B128): satisfied — a mark of the other world's evil boss places nothing.
+  const done = satisfied
   const order = flowOrder(graph)
   const rank = new Map(order.map((id, i) => [id, i]))
   const byFlow = (a: string, b: string) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0)
@@ -223,7 +224,8 @@ export function recommend(
     }
     return seen
   }
-  const passed = (id: string) => [...mainDescendants(id)].some((d) => nodeStates[d] === 'defeated')
+  // Moved past: a defeat further along that counts in this world (ep: tracked, countsInWorld — B128).
+  const passed = (id: string) => [...mainDescendants(id)].some((d) => ep.has(d))
   /** A world-evil pair is settled once either fight in play is marked. */
   const settledFork = (id: string) => (groupOf(graph, id) ?? []).some((m) => m !== id && inPlay(m) && marked(m))
 

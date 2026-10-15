@@ -1,7 +1,8 @@
 /**
  * Tracked progress → what the map shows (PRD P5-S4 AC1/AC2; UX_SPEC §3.7, §9, §12). Pure.
  *
- * NODE STATUS — from tc.v1.progress through src/scoring/progress.ts (tracked defeats only, B69/Q9):
+ * NODE STATUS — from tc.v1.progress through src/scoring/progress.ts (tracked defeats only, B69/Q9;
+ * a mark counts where countsInWorld says, AMENDMENTS-016 B128 — as for links):
  * - `defeated` / `skipped`: as marked (a gold ring with a check / a dimmed check).
  * - `locked`: a required gate isn't satisfied yet (subdued + lock glyph, never colour alone).
  * - `reached`: a milestone whose gates are all satisfied (B24: Hardmode once the Wall of Flesh falls).
@@ -14,7 +15,8 @@
  * upstream.
  *
  * LINK STATUS: `locked` from or into a locked node (subdued: not reachable yet), `lit` for a
- * recommended-next link from a done node into an open one (the path glows), else `idle`.
+ * recommended-next link from a done, in-play node into an open one (the path glows), else `idle` — so a
+ * marked boss of the other world evil, drawn dimmed, never leaves a glow behind (AMENDMENTS-015 B98).
  * OPEN GATES: the required-gate links whose gate is met (their source satisfied) — the map swaps
  * such a link's padlock badge for a check (design review P5-S4 M3), whatever its target's status.
  *
@@ -66,9 +68,10 @@ export function mapProgress(graph: MapGraph, nodeStates: Readonly<Record<string,
   const ep = effectiveProgress(progression, { worldEvil, nodeStates })
   const memo = new Map<string, boolean>()
   const satisfied = (id: string) => isNodeSatisfied(progression, ep, id, memo)
-  // Done, as the map shows it: satisfied, or marked defeated (a world-evil boss marked defeated is
-  // done on the map even while it doesn't count for gates).
-  const done = (id: string) => nodeStates[id] === 'defeated' || satisfied(id)
+  // Done, as gates count it (AMENDMENTS-016 B128): satisfied, so a mark counts exactly where
+  // progress.countsInWorld says it does. The other world's evil boss, marked under a chosen world evil,
+  // still shows its own mark (drawn dimmed) but opens, recommends and lights nothing; under "Both" either counts.
+  const done = satisfied
 
   const nodes = new Map<string, NodeStatus>()
   const unmet = new Map<string, readonly string[]>()
@@ -94,7 +97,13 @@ export function mapProgress(graph: MapGraph, nodeStates: Readonly<Record<string,
     const targets = group && group[0] === link.to ? group : [link.to]
     const statuses = targets.map((id) => nodes.get(id))
     if (nodes.get(link.from) === 'locked' || statuses.every((s) => s === 'locked')) links.set(link.id, 'locked')
-    else if (link.types.includes('recommended-next') && done(link.from) && targets.some((id) => isOpen(nodes.get(id)) && isNodeActive(graph.nodeById.get(id)!, worldEvil))) {
+    else if (
+      link.types.includes('recommended-next') &&
+      done(link.from) &&
+      // an out-of-play source (the other world's evil boss, marked) lights nothing: its link is drawn dimmed (B98)
+      isNodeActive(graph.nodeById.get(link.from)!, worldEvil) &&
+      targets.some((id) => isOpen(nodes.get(id)) && isNodeActive(graph.nodeById.get(id)!, worldEvil))
+    ) {
       links.set(link.id, 'lit')
     } else links.set(link.id, 'idle')
   }

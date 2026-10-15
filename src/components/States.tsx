@@ -4,6 +4,7 @@ import { ChunkLoadError } from '../data-access/errors'
 import { buttonClass } from './buttonStyles'
 import { cx } from './cx'
 import { PixelPanel } from './PixelPanel'
+import { rememberRetryFocus } from './retryFocus'
 
 /**
  * Designed loading / empty / error states (UX_SPEC §3.1, §5): never blank.
@@ -90,7 +91,8 @@ export interface ErrorStateProps {
   /**
    * Retry replaces this panel (and its focused button) with the loading state, so focus moves
    * to a stable element first: the element with this id (e.g. the section heading, which needs
-   * tabIndex={-1}), else the page's <main>. Never left on <body>.
+   * tabIndex={-1}), else the page's <main>. Never left on <body> — also across a reloading Retry
+   * (resumeRetryFocus).
    */
   retryFocusId?: string
   className?: string
@@ -104,6 +106,7 @@ function retryNeedsReload(error: unknown): boolean {
 export function ErrorState({ title = 'Couldn’t load this data', error, onRetry, retryFocusId, className }: ErrorStateProps) {
   const retry = () => {
     if (retryNeedsReload(error)) {
+      rememberRetryFocus(retryFocusId)
       window.location.reload()
       return
     }
