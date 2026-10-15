@@ -25,7 +25,7 @@ import { describeNode, isNodeActive, traverse, type MapGraph, type MapMove, type
 import type { Box, GraphLayout, LayoutOptions } from './nodeMap/layout'
 import { CASCADE_LEAD_MS, cascadeRegion, crossPositions, planCascadeCamera } from './nodeMap/cascadeCamera'
 import { CONTROLS_ROW_INSET, hitPadding, MAX_ZOOM, tapFloorZoom } from './nodeMap/mapConfig'
-import { openingRect } from './nodeMap/opening'
+import { frontierRect, openingRect } from './nodeMap/opening'
 import { unionRect, type Inset, type Size, type ZoomLimits } from './nodeMap/panZoom'
 import {
   describeStatus,
@@ -55,9 +55,10 @@ import { useReducedMotion } from './useReducedMotion'
  *   tree, it lands on the tree's first node (the start), not on the tree's middle.
  * - Stage labels (./nodeMap/bandLabels): in screen space, riding their bands like sticky headers,
  *   never over a node (they slide into a gap or fade) and never into each other.
- * - Opens on `startId` (the frontier: with no tracked progress, the Pre-Hardmode start), framed per
- *   mapConfig OPENING_FRAME (./nodeMap/opening): on desktop the whole opening region — the start
- *   through the first either/or fork — fitted; on phones the start centred. "Go to start" returns there.
+ * - Opens on `startId` (the Pre-Hardmode start), framed per mapConfig OPENING_FRAME
+ *   (./nodeMap/opening): on desktop the whole opening region — the start through the first either/or
+ *   fork — fitted; on phones the start centred. "Go to start" returns there. With tracked progress the
+ *   caller passes `frontierIds` (B86d): the map opens framed on those nodes instead.
  * - Keyboard focus pans the focused node into view, clear of the floating controls.
  * - Progress (P5-S4, ./nodeMap/progressView): every node and line drawn in its tracked status
  *   (defeated / skipped / reached / recommended / available / locked), the status in words leading
@@ -134,6 +135,12 @@ export interface NodeMapProps {
    * boss page's next steps, PRD P5-S2 AC3). "Go to start" still returns to `startId`.
    */
   initialFocusId?: string
+  /**
+   * The progress frontier (AMENDMENTS-015 B86d): nodes the map first opens framed on instead of the
+   * opening view, when there is tracked progress and no `initialFocusId`. "Go to start" still returns
+   * to `startId`.
+   */
+  frontierIds?: readonly string[]
 }
 
 const ZOOM_STEP = 1.25
@@ -293,6 +300,7 @@ export function NodeMap({
   inset,
   nodeHref,
   initialFocusId,
+  frontierIds,
 }: NodeMapProps) {
   const content = useMemo(() => ({ width: layout.width, height: layout.height }), [layout])
   const limits = useMemo(() => ({ min: minZoom, max: MAX_ZOOM }), [minZoom])
@@ -343,8 +351,11 @@ export function NodeMap({
   // layout changes (orientation switch). "Go to start" returns to the same view. (Before the cascade
   // below: a cascade waiting at first paint frames itself from this view.)
   const opening = useMemo(() => openingRect(graph, layout, scene, startId), [graph, layout, scene, startId])
-  // A deep-linked node opens centred (at the opening zoom); otherwise the opening view.
-  const firstFrame = (initialFocusId ? layout.nodes.get(initialFocusId) : undefined) ?? opening
+  const frontier = useMemo(() => frontierRect(graph, layout, frontierIds), [graph, layout, frontierIds])
+  // A deep-linked node opens centred (at the opening zoom); else the progress frontier, framed; else
+  // the opening view. Only the first frame per layout uses it (centeredFor), so later progress never
+  // moves the camera on its own.
+  const firstFrame = (initialFocusId ? layout.nodes.get(initialFocusId) : undefined) ?? frontier ?? opening
   const centeredFor = useRef<GraphLayout | null>(null)
   const { center, frame, reveal } = pz
   useEffect(() => {

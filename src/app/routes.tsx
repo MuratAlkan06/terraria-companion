@@ -90,6 +90,8 @@ export const APP_ROUTES: readonly AppRoute[] = [
       order: 30,
       description: 'The boss progression map: what unlocks what',
     },
+    // P5-S5: `?recommend=1` opens "What Should I Do Next?" (the homepage hero button links to it).
+    features: ['recommend'],
   },
   {
     // P5-S2: pages for the bosses in src/schemas/bossPages.ts; any other id renders the styled 404.

@@ -20,7 +20,7 @@ import { ItemCell, PanelHeading, SourceIconLink, TipList } from './BossBits'
 import { BossDrops } from './BossDrops'
 import { bossMapHref, bossPageHref } from './bossNav'
 import type { BossPageData } from './bossPageData'
-import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, isMultiForm, nextSteps, SECTION_IDS, statField, statsView, stepPhrase, strategyGroups, TIME_LABEL } from './bossPageModel'
+import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, isMultiForm, nextSteps, quoteLead, quoteTrail, SECTION_IDS, statField, statsView, stepPhrase, strategyGroups, TIME_LABEL } from './bossPageModel'
 import { ClassGear } from './ClassGear'
 import type { GearData } from './bossPageData'
 import { PrepChecklist } from './PrepChecklist'
@@ -386,11 +386,28 @@ function NodeIcon({ node }: { node: MapNode }) {
  * One connected node: its page (if it has one), the relation in plain words (M1; the map legend's
  * icons alongside), "Show on map", and the edge's quoted note + source.
  */
-function StepItem({ connection, phrase, progress, partners = [], opens = [] }: { connection: Connection; phrase: string; progress: MapProgress; partners?: readonly MapNode[]; opens?: readonly Connection[] }) {
+function StepItem({
+  connection,
+  phrase,
+  progress,
+  nameOf,
+  partners = [],
+  opens = [],
+}: {
+  connection: Connection
+  phrase: string
+  progress: MapProgress
+  /** Node names (the quote's lead names its subject when the sentence was cut mid-way). */
+  nameOf: (id: string) => string
+  partners?: readonly MapNode[]
+  opens?: readonly Connection[]
+}) {
   const status = progress.nodes.get(connection.other.id)
   const { link, other } = connection
   const page = other.kind === 'boss' ? bossPageHref(other.id) : undefined
   const edge = link.edges[0]
+  const lead = edge?.note ? quoteLead(edge.note, edge.sourceUrl, [nameOf(edge.from), nameOf(edge.to)]) : undefined
+  const trail = edge?.note ? quoteTrail(edge.note, edge.sourceUrl) : undefined
   return (
     <li data-step={other.id} className="space-y-1 border-2 border-panel-border bg-night-900 p-3">
       <div className="flex flex-wrap items-center gap-x-2">
@@ -432,7 +449,11 @@ function StepItem({ connection, phrase, progress, partners = [], opens = [] }: {
       ))}
       {edge?.note ? (
         <div className="flex items-start gap-1">
-          <p className="min-w-0 flex-1 py-2 text-xs text-fg-muted">“{edge.note}”</p>
+          <p data-step-quote="" className="min-w-0 flex-1 py-2 text-xs text-fg-muted">
+            “{lead}
+            {edge.note}
+            {trail}”
+          </p>
           <SourceIconLink href={edge.sourceUrl} srLabel={`Source for the connection to ${other.name}`} />
         </div>
       ) : null}
@@ -488,6 +509,7 @@ function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapP
   const { boss, graph } = data
   const steps = nextSteps(graph, boss.nodeId)
   const self = graph.nodeById.get(boss.nodeId)?.name ?? boss.name
+  const nameOf = (id: string) => graph.nodeById.get(id)?.name ?? id
   const after = (c: Connection, from = self) => stepPhrase(c.link.types, 'after', { self: from, other: c.other.name })
   const before = (c: Connection) => stepPhrase(c.link.types, 'before', { self, other: c.other.name })
   const alternative = (c: Connection) => (c.other.worldEvil ? `In ${WORLD_EVIL_LABEL[c.other.worldEvil]} worlds instead` : stepPhrase(c.link.types, 'after', { self, other: c.other.name }))
@@ -497,7 +519,7 @@ function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapP
       {steps.after.length > 0 ? (
         <ul aria-label={`What ${boss.name} leads to`} className="space-y-2">
           {steps.after.map(({ connection, partners, opens }) => (
-            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} progress={progress} partners={partners} opens={opens} />
+            <StepItem key={connection.link.id} connection={connection} phrase={after(connection)} progress={progress} nameOf={nameOf} partners={partners} opens={opens} />
           ))}
         </ul>
       ) : steps.continueFrom ? (
@@ -507,7 +529,7 @@ function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapP
           </p>
           <ul aria-label="Where the path continues" className="space-y-2">
             {steps.continueFrom.next.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={after(c, steps.continueFrom?.from.name)} progress={progress} />
+              <StepItem key={c.link.id} connection={c} phrase={after(c, steps.continueFrom?.from.name)} progress={progress} nameOf={nameOf} />
             ))}
           </ul>
         </div>
@@ -519,7 +541,7 @@ function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapP
           <h3 className="text-xs font-semibold tracking-wide text-fg-muted uppercase">Either this or</h3>
           <ul aria-label={`Either ${boss.name} or`} className="space-y-2">
             {steps.alternatives.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={alternative(c)} progress={progress} />
+              <StepItem key={c.link.id} connection={c} phrase={alternative(c)} progress={progress} nameOf={nameOf} />
             ))}
           </ul>
         </div>
@@ -529,7 +551,7 @@ function NextStepsPanel({ data, progress }: { data: BossPageData; progress: MapP
           <h3 className="text-xs font-semibold tracking-wide text-fg-muted uppercase">Before this fight</h3>
           <ul aria-label={`What comes before ${boss.name}`} className="space-y-2">
             {steps.before.map((c) => (
-              <StepItem key={c.link.id} connection={c} phrase={before(c)} progress={progress} />
+              <StepItem key={c.link.id} connection={c} phrase={before(c)} progress={progress} nameOf={nameOf} />
             ))}
           </ul>
         </div>

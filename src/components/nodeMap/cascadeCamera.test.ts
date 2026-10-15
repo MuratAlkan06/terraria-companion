@@ -145,6 +145,30 @@ describe('the camera plan (H1: the payoff shows; M1: one motion at a time)', () 
     expect(result.view!.k).toBe(POINTER_MIN_ZOOM)
   })
 
+  it('B88: an undone reset on a phone (the whole tree replays, too big even at the zoom floor) is framed from its start, not centred with both ends cut', () => {
+    const layout = layoutFor('vertical')
+    const content = { width: layout.width, height: layout.height }
+    const box = { width: 375, height: 555 }
+    const staying = { bottom: 60 }
+    const viewport = uncovered(box, staying)
+    const floor = tapFloorZoom(layout, MAP_LAYOUT_OPTIONS.vertical)
+    const limits = { min: floor, max: 2 }
+    const restored = defeated('eye-of-cthulhu', 'eater-of-worlds', 'skeletron', 'wall-of-flesh', ...MECHS, 'plantera', 'golem')
+    const schedule = unlockSchedule(graph, mapProgress(graph, {}, null), mapProgress(graph, restored, null), { position: crossPositions(layout) })
+    const region = cascadeRegion(graph, layout, schedule)!
+    const view = planCascadeCamera({ region, view: centerOn(layout.nodes.get('golem')!, 0.85, content, viewport), content, box, inset: staying, uncoveredInset: staying, limits, floor, canUncover: false }).view!
+    expect(view.k).toBe(floor)
+    expect(region.height * floor).toBeGreaterThan(viewport.height) // it can't all fit
+    // the cascade's first steps — the Eye of Cthulhu's ring, its line — are on screen, at the region's top
+    const first = [...schedule.nodes].filter(([, n]) => n.step === 0).map(([id]) => id)
+    expect(first).toContain('eye-of-cthulhu')
+    for (const id of first) expect(inView(nodeExtent(graph, layout.nodes.get(id)!), view, viewport), id).toBe(true)
+    expect(onScreen(region, view).y).toBeGreaterThanOrEqual(0)
+    // the old framing (centred on the region at the floor) cut them off
+    const centred = centerOn(region, floor, content, viewport)
+    expect(first.some((id) => !inView(nodeExtent(graph, layout.nodes.get(id)!), centred, viewport))).toBe(true)
+  })
+
   it('the region already in view: the camera stays put (no pan, so no lead)', () => {
     const box = { width: 1184, height: 692 }
     const { region, result, before } = plan('horizontal', box, null, { bottom: 64 }, (content, viewport) => {

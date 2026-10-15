@@ -10,6 +10,8 @@
 import { hasBossPage } from '../../../schemas/bossPages'
 
 export const MAP_NODE_PARAM = 'node'
+/** `/bosses?recommend=1` opens the "What Should I Do Next?" panel (P5-S5; UX_SPEC §1, §10.11). */
+export const RECOMMEND_PARAM = 'recommend'
 
 export function bossPageHref(bossId: string): string | undefined {
   return hasBossPage(bossId) ? `/bosses/${bossId}` : undefined

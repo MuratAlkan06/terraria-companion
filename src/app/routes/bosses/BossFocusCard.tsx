@@ -55,6 +55,8 @@ export interface BossFocusCardProps {
   headingRef?: Ref<HTMLHeadingElement>
   /** The card's root element (the page measures it to keep the map's nodes clear of it). */
   rootRef?: Ref<HTMLElement>
+  /** The defeat control announces through the page's region (DefeatControl `onAnnounce`). */
+  onAnnounce?: (message: string) => void
   className?: string
 }
 
@@ -142,7 +144,7 @@ function MarkerProgress({ graph, nodeId, worldEvil, nodeStates }: { graph: MapGr
   )
 }
 
-export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, nodeStates, pageHref, onClose, onJump, headingRef, rootRef, className }: BossFocusCardProps) {
+export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, nodeStates, pageHref, onClose, onJump, headingRef, rootRef, onAnnounce, className }: BossFocusCardProps) {
   const node = graph.nodeById.get(nodeId)
   if (!node) return null
   const record = node.boss ?? node.node
@@ -243,7 +245,7 @@ export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, nodeState
           ) : null}
           {node.kind === 'boss' ? null : <MarkerProgress graph={graph} nodeId={nodeId} worldEvil={worldEvil} nodeStates={nodeStates} />}
         </dl>
-        {node.kind === 'boss' ? <DefeatControl graph={graph} nodeId={nodeId} worldEvil={worldEvil} nodeStates={nodeStates} /> : null}
+        {node.kind === 'boss' ? <DefeatControl graph={graph} nodeId={nodeId} worldEvil={worldEvil} nodeStates={nodeStates} onAnnounce={onAnnounce} /> : null}
 
         <ConnectionList title="Comes after" items={before} onJump={onJump} direction="in" />
         <ConnectionList title="Either this or" items={alternatives} onJump={onJump} direction="alt" />

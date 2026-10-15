@@ -24,6 +24,12 @@ export interface DefeatControlProps {
   worldEvil: WorldEvil | null
   nodeStates: Readonly<Record<string, NodeState>>
   className?: string
+  /**
+   * Announce through the caller's own polite region instead of this control's (the map's focus card:
+   * the card may close for the unlock cascade right after a mark, taking its region with it — the
+   * page's region stays, so the mark is announced once, AMENDMENTS-015 B87).
+   */
+  onAnnounce?: (message: string) => void
 }
 
 type Choice = 'not-attempted' | NodeState
@@ -40,7 +46,7 @@ function withState(nodeStates: Readonly<Record<string, NodeState>>, id: string, 
   return state ? { ...others, [id]: state } : others
 }
 
-export function DefeatControl({ graph, nodeId, worldEvil, nodeStates, className }: DefeatControlProps) {
+export function DefeatControl({ graph, nodeId, worldEvil, nodeStates, className, onAnnounce }: DefeatControlProps) {
   const name = useId()
   const setNodeState = useProgressStore((s) => s.setNodeState)
   const unsaved = useProgressStore((s) => s.persistError)
@@ -57,7 +63,9 @@ export function DefeatControl({ graph, nodeId, worldEvil, nodeStates, className 
     const after = mapProgress(graph, withState(nodeStates, nodeId, state), worldEvil)
     const opened = newlyOpened(graph, progress, after).map((id) => graph.nodeById.get(id)?.name ?? id)
     const saved = setNodeState(nodeId, state)
-    setAnnouncement(stateAnnouncement(node.name, state, opened, saved))
+    const message = stateAnnouncement(node.name, state, opened, saved)
+    if (onAnnounce) onAnnounce(message)
+    else setAnnouncement(message)
   }
 
   return (

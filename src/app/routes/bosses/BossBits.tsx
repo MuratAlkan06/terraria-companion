@@ -13,11 +13,15 @@ import { DIFFICULTY_LABEL, type ItemInfo, type Strategy, type TipSegment } from 
 
 const LINK = 'text-link underline decoration-1 underline-offset-4 hover:text-accent-strong'
 
-/** Panel heading (same scale as the weapon page's panels) + optional "curated" marker. */
+/**
+ * Panel heading (same scale as the weapon page's panels) + optional "curated" marker. In-page links
+ * land on it (the gear tab's pointer to the attack-patterns section): its scroll margin keeps it clear
+ * of the sticky app header, as the guide checklist's does.
+ */
 export function PanelHeading({ id, children, curated = false, aside }: { id: string; children: ReactNode; curated?: boolean; aside?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h2 id={id} tabIndex={-1} className="font-display text-sm leading-relaxed text-accent text-shadow-pixel focus:outline-none md:text-base">
+      <h2 id={id} tabIndex={-1} className="scroll-mt-24 font-display text-sm leading-relaxed text-accent text-shadow-pixel focus:outline-none md:text-base">
         {children}
       </h2>
       {curated || aside ? (

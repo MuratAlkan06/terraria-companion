@@ -37,13 +37,14 @@ export function stateAnnouncement(name: string, state: NodeState | null, opened:
 export const CARD_CLOSED_FOR_CASCADE = 'Details closed to show the map.'
 
 /**
- * Polite announcement when the card closes for the unlock cascade: the card's own announcement goes
- * with it, so this repeats it (`marked`: the card's node changed) or says what opened, then why the
- * card closed.
+ * Polite announcement when the card closes for the unlock cascade. The mark itself is never repeated
+ * (AMENDMENTS-015 B87 dedupe): a mark made in the card was announced through the page's own region,
+ * which outlives the card, and one made on a boss page was announced there. What the cascade shows
+ * opening is said only when it wasn't announced on this page (`opened`: empty after a mark in the
+ * card), then why the card closed.
  */
-export function cascadeUncoverAnnouncement(marked: { name: string; state: NodeState | null } | null, opened: readonly string[], saved: boolean): string {
-  const lead = marked ? stateAnnouncement(marked.name, marked.state, opened, saved) : opened.length > 0 ? `Now open: ${listNames(opened)}.` : ''
-  return [lead, CARD_CLOSED_FOR_CASCADE].filter(Boolean).join(' ')
+export function cascadeUncoverAnnouncement(opened: readonly string[]): string {
+  return [opened.length > 0 ? `Now open: ${listNames(opened)}.` : '', CARD_CLOSED_FOR_CASCADE].filter(Boolean).join(' ')
 }
 
 /** "A", "A and B", "A, B and C". */

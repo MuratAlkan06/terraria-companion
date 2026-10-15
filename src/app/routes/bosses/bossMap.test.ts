@@ -59,11 +59,11 @@ function renderWorkspace(focusId?: string): string {
 const localHrefs = (html: string) => [...html.matchAll(/href="(\/[^"]*)"/g)].map((m) => m[1])
 const PAGE_HREF = new RegExp(`^/bosses/(${BOSS_PAGE_IDS.join('|')})$`)
 
-describe('/bosses route registration (P5-S1)', () => {
-  it('ships /bosses while the "What Should I Do Next?" hero button stays absent (its panel is P5-S5)', () => {
+describe('/bosses route registration (P5-S1, P5-S5)', () => {
+  it('ships /bosses with its `recommend` feature, so the "What Should I Do Next?" hero button links to the panel', () => {
     expect(hasRoute('bosses')).toBe(true)
-    expect(APP_ROUTES.find((r) => r.id === 'bosses')?.features ?? []).not.toContain('recommend')
-    expect(heroActions().map((a) => a.label)).not.toContain('What Should I Do Next?')
+    expect(APP_ROUTES.find((r) => r.id === 'bosses')?.features ?? []).toContain('recommend')
+    expect(heroActions().find((a) => a.label === 'What Should I Do Next?')?.to).toBe('/bosses?recommend=1')
   })
 })
 
@@ -95,11 +95,17 @@ describe('BossMapWorkspace (SSR: phone layout, nothing persisted)', () => {
     for (const label of ['Zoom in', 'Zoom out', 'Fit all', 'Go to start']) expect(html).toContain(`aria-label="${label}"`)
   })
 
-  it('AC4: no dead local links; the recommender stays absent (P5-S5); the toolbar’s overflow menu ships (P5-S4 reset)', () => {
+  it('AC4: no dead local links; the overflow menu (P5-S4 reset) and the recommender toggle (P5-S5) ship in the map’s corner row', () => {
     const html = renderWorkspace()
     for (const href of localHrefs(html)) expect(href).toMatch(PAGE_HREF)
-    expect(html).not.toMatch(/What Should I Do Next/i)
     expect(html).toMatch(/<button[^>]*aria-label="More map options"[^>]*data-map-options=""/)
+    // phones: the toggle sits in the corner row with the legend toggle, and triggers the bottom sheet
+    const overlay = /<div data-map-overlay=""[\s\S]*?<\/div>/.exec(html)![0]
+    const toggle = /<button[^>]*data-recommend-toggle=""[^>]*>[\s\S]*?<\/button>/.exec(overlay)![0]
+    expect(toggle).toContain('aria-haspopup="dialog"')
+    expect(toggle).toContain('aria-expanded="false"')
+    // the visible label is the accessible name at every width (the other is display:none)
+    expect(toggle).toMatch(/<span class="lg:hidden">What next\?<\/span><span class="max-lg:hidden">What Should I Do Next\?<\/span>/)
     expect(text(html)).not.toMatch(FORWARD_PROMISE)
   })
 
@@ -551,14 +557,24 @@ describe('P5-S4 defeat tracking on the map', () => {
     }
   })
 
-  it('H1 copy: when the card closes for the cascade, its announcement goes with it — the page repeats it and says why', () => {
-    expect(copy.cascadeUncoverAnnouncement({ name: 'Wall of Flesh', state: 'defeated' }, ['Hardmode', 'Queen Slime'], true)).toBe(
-      `Wall of Flesh marked defeated. Now open: Hardmode and Queen Slime. ${copy.CARD_CLOSED_FOR_CASCADE}`,
-    )
-    // a deep link's card (marked on the boss page): what opened, then why
-    expect(copy.cascadeUncoverAnnouncement(null, ['Hardmode'], true)).toBe(`Now open: Hardmode. ${copy.CARD_CLOSED_FOR_CASCADE}`)
-    expect(copy.cascadeUncoverAnnouncement(null, [], true)).toBe(copy.CARD_CLOSED_FOR_CASCADE)
-    expect(copy.cascadeUncoverAnnouncement({ name: 'Plantera', state: 'defeated' }, [], false)).toBe(`Plantera marked defeated. ${copy.UNSAVED_NOTE} ${copy.CARD_CLOSED_FOR_CASCADE}`)
+  it('H1 copy + B87 dedupe: when the card closes for the cascade, the mark is never repeated — only what opened (if not announced here), then why', () => {
+    // a mark made in the card was announced through the page's own region: only why the card closed
+    expect(copy.cascadeUncoverAnnouncement([])).toBe(copy.CARD_CLOSED_FOR_CASCADE)
+    // a deep link's card (marked on the boss page, announced there): what the map shows opening, then why
+    expect(copy.cascadeUncoverAnnouncement(['Hardmode', 'Queen Slime'])).toBe(`Now open: Hardmode and Queen Slime. ${copy.CARD_CLOSED_FOR_CASCADE}`)
+    expect(copy.cascadeUncoverAnnouncement(['Hardmode'])).not.toMatch(/marked/)
     expect(copy.CARD_CLOSED_FOR_CASCADE).not.toMatch(FORWARD_PROMISE)
+  })
+
+  it('B87 dedupe: the card’s defeat control announces through the page’s persistent region (it outlives the card)', () => {
+    // the map page renders its own mark region and its announcer, outside the card
+    const html = renderWorkspace('wall-of-flesh')
+    const card = /<section[^>]*data-focus-card="wall-of-flesh"[\s\S]*?<\/section>/.exec(html)![0]
+    expect(html.indexOf('data-mark-announcer=""')).toBeGreaterThan(html.indexOf(card) + card.length)
+    expect(html).toMatch(/<p role="status" class="sr-only" data-mark-announcer=""><\/p>/)
+    expect(html).toMatch(/<p role="status" class="sr-only" data-map-announcer=""><\/p>/)
+    // the boss pages' control keeps its own region
+    const own = renderToStaticMarkup(createElement(DefeatControl, { graph, nodeId: 'wall-of-flesh', worldEvil: null, nodeStates: {} }))
+    expect(own).toContain('data-defeat-announcer=""')
   })
 })

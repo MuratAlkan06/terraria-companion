@@ -11,7 +11,7 @@ import weaponsDetailJson from '../../../data/weapons.detail.json'
 import weaponsListJson from '../../../data/weapons.list.json'
 import { getField } from '../../../schemas/getField'
 import type { StorageBackend } from '../../../storage'
-import { pathFor } from '../../routes'
+import { APP_ROUTES, pathFor } from '../../routes'
 import HomePage from '../HomePage'
 import { FeaturedRow, MAX_UPSCALE } from './FeaturedRow'
 import { heroActions } from './heroActions'
@@ -181,8 +181,11 @@ describe('HomePage render (SSR markup)', () => {
     expect(html).toContain(`href="${boss?.wikiUrl}" target="_blank" rel="noopener noreferrer"`)
     expect(html).toContain(`${boss?.name}<span class="sr-only"> on the Terraria Wiki (opens in a new tab)</span></a>`)
     expect(html).toContain('via Terraria Wiki')
-    // No dead local links: bosses have no local pages yet.
-    expect(html).not.toMatch(/href="\/bosses/)
+    // The featured boss card links its wiki article, never a local boss URL (the hero's only /bosses
+    // link is the P5-S5 recommender button).
+    const featured = html.slice(html.indexOf('id="featured-title"'), html.indexOf('Recently viewed'))
+    expect(featured).not.toMatch(/href="\/bosses/)
+    expect(html.match(/href="\/bosses[^"]*"/g)).toEqual(['href="/bosses?recommend=1"'])
   })
 
   it('B33: an editorial (curated) field reads "curated" with a toggletip, never "editorial guidance"', () => {
@@ -251,21 +254,37 @@ describe('HomePage render (SSR markup)', () => {
     expect(html).not.toContain('/weapons/999999')
   })
 
-  it('AC3 (P3-S1 shipped): a working "Test Weapons" button links into /lab; unshipped actions and rails stay absent', () => {
+  it('AC3 (P3-S1, P5-S5 shipped): "Test Weapons" links into /lab and "What Should I Do Next?" into the recommender; unshipped actions and rails stay absent', () => {
     const html = renderHome(day(13))
     const start = html.indexOf('data-hero-actions')
     const actions = html.slice(start, html.indexOf('</ul>', start))
-    // Exactly one action, a real link to the registered Lab route — never a disabled control.
-    expect(heroActions().map((a) => [a.label, a.to])).toEqual([['Test Weapons', pathFor('lab')]])
+    // Real links to registered routes — never a disabled control.
+    expect(heroActions().map((a) => [a.label, a.to])).toEqual([
+      ['Test Weapons', pathFor('lab')],
+      ['What Should I Do Next?', `${pathFor('bosses')}?recommend=1`],
+    ])
     expect(pathFor('lab')).toBe('/lab')
-    expect(actions.match(/<a [^>]*>/g)).toHaveLength(1)
+    expect(actions.match(/<a [^>]*>/g)).toHaveLength(2)
     expect(actions).toMatch(/<a [^>]*href="\/lab"[^>]*>.*Test Weapons<\/a>/s)
+    // P5-S5: the /bosses route lists its `recommend` feature, so the button opens the panel there
+    expect(actions).toMatch(/<a [^>]*href="\/bosses\?recommend=1"[^>]*>.*What Should I Do Next\?<\/a>/s)
     expect(actions).not.toMatch(/disabled/)
-    // /loadout doesn't exist and /bosses ships without its recommender panel (P5-S5): their buttons are
-    // absent (PRD P1-S2 AC3), as is the saved-builds rail.
-    expect(html).not.toMatch(/Build My Loadout|What Should I Do Next/i)
+    // /loadout doesn't exist: its button is absent (PRD P1-S2 AC3), as is the saved-builds rail.
+    expect(html).not.toMatch(/Build My Loadout/i)
     expect(html).not.toMatch(/saved builds/i)
-    expect(html).not.toMatch(/href="\/(loadout|builds|bosses)/)
+    expect(html).not.toMatch(/href="\/(loadout|builds)/)
+  })
+
+  it('P5-S5: the recommender button exists only while /bosses lists the `recommend` feature (absent, never disabled)', () => {
+    const bosses = APP_ROUTES.find((r) => r.id === 'bosses')!
+    const features = bosses.features
+    try {
+      ;(bosses as { features?: readonly string[] }).features = []
+      expect(heroActions().map((a) => a.label)).not.toContain('What Should I Do Next?')
+    } finally {
+      ;(bosses as { features?: readonly string[] }).features = features
+    }
+    expect(heroActions().map((a) => a.label)).toContain('What Should I Do Next?')
   })
 
   it('B43: below 375px the featured cards stack full-width and each stacks its slot above the text (no slot shrink)', () => {

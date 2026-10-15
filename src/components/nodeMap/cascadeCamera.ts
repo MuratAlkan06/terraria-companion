@@ -11,7 +11,7 @@
  */
 import type { MapGraph } from './graph'
 import type { GraphLayout } from './layout'
-import { frameRect, OBSTRUCTION_GAP, revealRect, uncovered, unionRect, type Inset, type Rect, type Size, type View, type ZoomLimits } from './panZoom'
+import { boundView, frameRect, OBSTRUCTION_GAP, revealRect, uncovered, unionRect, type Inset, type Rect, type Size, type View, type ZoomLimits } from './panZoom'
 import { UNLOCK_DURATION_MS, UNLOCK_STAGGER_MS, type UnlockSchedule } from './progressView'
 import { nodeExtent } from './scene'
 
@@ -65,11 +65,19 @@ export function fitZoom(rect: Rect, viewport: Size, margin = CASCADE_MARGIN): nu
 
 /**
  * The view that shows the rect in the viewport with the least change: the smallest pan where it fits
- * at the current zoom, else framed (zoomed out to fit, centred; never below the zoom floor).
+ * at the current zoom, else framed (zoomed out to fit, centred; never below the zoom floor). A rect
+ * too big for the viewport even at the floor (an undone reset replaying the whole tree on a phone,
+ * AMENDMENTS-015 B88) is framed at the floor from its START — top-left, where the cascade's first
+ * steps play and its siblings' ripple begins — on each axis it overflows, instead of centred with both
+ * ends cut off.
  */
 export function showRegion(rect: Rect, view: View, content: Size, viewport: Size, limits: ZoomLimits, margin = CASCADE_MARGIN): View {
-  if (fitZoom(rect, viewport, margin) >= view.k) return revealRect(view, rect, content, viewport, margin)
-  return frameRect(rect, view.k, content, viewport, limits, margin)
+  const fit = fitZoom(rect, viewport, margin)
+  if (fit >= view.k) return revealRect(view, rect, content, viewport, margin)
+  if (fit >= limits.min) return frameRect(rect, view.k, content, viewport, limits, margin)
+  const k = limits.min
+  const axis = (start: number, size: number, space: number) => (size * k > space - margin * 2 ? margin - start * k : (space - size * k) / 2 - start * k)
+  return boundView({ k, x: axis(rect.x, rect.width, viewport.width), y: axis(rect.y, rect.height, viewport.height) }, content, viewport)
 }
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height

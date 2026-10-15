@@ -1,9 +1,10 @@
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { BottomSheet } from '../../../components/BottomSheet'
 import { cx } from '../../../components/cx'
 import { NodeMap, type NodeMapHandle } from '../../../components/NodeMap'
 import { NodeMapLegend } from '../../../components/NodeMapLegend'
-import { buildMapGraph, edgeLegendForms, frontierId, layoutInputs, WORLD_EVIL_LABEL, type WorldEvil } from '../../../components/nodeMap/graph'
+import { buildMapGraph, edgeLegendForms, frontierId, layoutInputs, WORLD_EVIL_LABEL, type NodeState, type WorldEvil } from '../../../components/nodeMap/graph'
 import { layoutGraph } from '../../../components/nodeMap/layout'
 import { INITIAL_ZOOM, MAP_LAYOUT_OPTIONS, POINTER_MIN_ZOOM, tapFloorZoom } from '../../../components/nodeMap/mapConfig'
 import type { Inset } from '../../../components/nodeMap/panZoom'
@@ -14,14 +15,18 @@ import { ErrorState } from '../../../components/States'
 import { useBreakpoint, useMediaQuery } from '../../../components/useMediaQuery'
 import { STAGES } from '../../stages'
 import { useProgressStore } from '../../progressStore'
+import { useSelectedStage } from '../../settingsStore'
 import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
 import { useSearchParams } from 'react-router'
 import { BossFocusCard } from './BossFocusCard'
 import { loadBossMapData, peekBossMapData, type BossMapData } from './bossMapData'
-import { bossPageHref, MAP_NODE_PARAM } from './bossNav'
+import { bossPageHref, MAP_NODE_PARAM, RECOMMEND_PARAM } from './bossNav'
 import { cascadeUncoverAnnouncement } from './focusCardCopy'
 import { MapOptionsMenu, ResetProgressFlow } from './MapOptionsMenu'
+import { recommend } from './recommend'
+import { CLOSE_PANEL, PANEL_TITLE } from './recommendCopy'
+import { RecommendContent, RecommendDrawer, RecommendToggle } from './RecommendPanel'
 
 /**
  * /bosses — Boss Node Map v1 (PRD P5-S1; UX_SPEC §3.7, §4d, §7, §9).
@@ -40,7 +45,12 @@ import { MapOptionsMenu, ResetProgressFlow } from './MapOptionsMenu'
  *   unlock cascade (UX_SPEC §12).
  * - `?node=<id>` (a boss page's "show on the map" links): the map opens centred on that node with its
  *   card open (for a node with a page, the card links back to it).
- * - No "What Should I Do Next?" panel (P5-S5): not shipped, so absent (UX_SPEC §3.2 rule).
+ * - With tracked progress and no `?node=`, the map opens framed on the progress frontier — the
+ *   recommender's next steps (AMENDMENTS-015 B86d); a fresh profile keeps the opening view.
+ * - "What Should I Do Next?" (P5-S5, ./RecommendPanel + ./recommend): the toolbar toggle (from md;
+ *   the map's corner row on phones) opens the recommender — a docked side drawer from lg, a bottom
+ *   sheet below. Its state is the URL's `?recommend=1` (deep-linkable: the homepage button), replaced
+ *   in place as it opens and closes. Its node links move the map to a node and open its card.
  */
 const TITLE_ID = 'boss-map-title'
 const DETAILS_ID = 'boss-map-details'
@@ -53,8 +63,23 @@ export default function BossMapPage() {
   const resource = useResource('boss-map', loadBossMapData, peekBossMapData)
   const showLoader = useDelayedFlag(resource.status === 'loading')
   // `?node=<id>`: opened from a boss page's next steps — centre that node and open its card.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const focusId = searchParams.get(MAP_NODE_PARAM) ?? undefined
+  // `?recommend=1`: the recommender panel is open (the URL is its state).
+  const recommendOpen = searchParams.get(RECOMMEND_PARAM) === '1'
+  const setRecommendOpen = useCallback(
+    (open: boolean) =>
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (open) next.set(RECOMMEND_PARAM, '1')
+          else next.delete(RECOMMEND_PARAM)
+          return next
+        },
+        { replace: true, preventScrollReset: true },
+      ),
+    [setSearchParams],
+  )
 
   return (
     <div
@@ -86,7 +111,7 @@ export default function BossMapPage() {
         />
       </header>
       {resource.status === 'ready' ? (
-        <BossMapWorkspace key={focusId ?? ''} data={resource.data} focusId={focusId} />
+        <BossMapWorkspace key={focusId ?? ''} data={resource.data} focusId={focusId} recommendOpen={recommendOpen} onRecommendOpenChange={setRecommendOpen} />
       ) : resource.status === 'error' ? (
         <div className="mx-auto w-full max-w-7xl px-4 py-4 md:px-6">
           <ErrorState title="Couldn’t load the boss map" error={resource.error} onRetry={resource.retry} retryFocusId={TITLE_ID} />
@@ -145,9 +170,31 @@ function pageOf(graph: ReturnType<typeof buildMapGraph>, id: string): string | u
   return graph.nodeById.get(id)?.kind === 'boss' ? bossPageHref(id) : undefined
 }
 
-export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId?: string }) {
+/** A polite region's text, cleared before each message so the same words are announced again. */
+function useAnnouncer(): [string, (message: string) => void] {
+  const [text, setText] = useState('')
+  const timer = useRef(0)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const announce = useCallback((message: string) => {
+    window.clearTimeout(timer.current)
+    setText('')
+    timer.current = window.setTimeout(() => setText(message), 50)
+  }, [])
+  return [text, announce]
+}
+
+export interface BossMapWorkspaceProps {
+  data: BossMapData
+  focusId?: string
+  /** The recommender panel is open (`?recommend=1`). */
+  recommendOpen?: boolean
+  onRecommendOpenChange?: (open: boolean) => void
+}
+
+export function BossMapWorkspace({ data, focusId, recommendOpen = false, onRecommendOpenChange }: BossMapWorkspaceProps) {
   const horizontal = useBreakpoint('lg')
   const legendDocked = useBreakpoint('md')
+  const wide = useBreakpoint('xl')
   const coarse = useMediaQuery('(any-pointer: coarse)')
   const orientation = horizontal ? 'horizontal' : 'vertical'
   const options = MAP_LAYOUT_OPTIONS[orientation]
@@ -165,13 +212,18 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
   const shownNodeStates = useProgressStore((s) => s.shownNodeStates)
   const markNodeStatesShown = useProgressStore((s) => s.markNodeStatesShown)
   const setWorldEvil = useProgressStore((s) => s.setWorldEvil)
-  const unsaved = useProgressStore((s) => s.persistError)
   const startId = useMemo(() => frontierId(layout.layers.flat(), nodeStates), [layout, nodeStates])
+  const selectedStage = useSelectedStage()
+  // "What Should I Do Next?" (P5-S5): tracked progress only, the selected stage as context (B69/Q6).
+  const recommendation = useMemo(() => recommend(graph, nodeStates, worldEvil, selectedStage), [graph, nodeStates, worldEvil, selectedStage])
 
-  const [legendOpen, setLegendOpen] = useState(legendDocked)
   // `via`: a node pressed on the map is revealed with the least movement; one reached from the
   // card's connections or a page's "show on the map" link ("jump") is centred, since it may be far away.
   const initialFocus = focusId && graph.nodeById.has(focusId) ? focusId : undefined
+  // The recommender docks beside the map from lg; below xl it leaves the map too little room beside
+  // the docked legend, so the legend starts (and, when the drawer opens, goes) collapsed there.
+  const drawer = horizontal
+  const [legendOpen, setLegendOpen] = useState(() => legendDocked && !(recommendOpen && drawer && !wide))
   const [selection, setSelection] = useState<{ id: string; via: 'map' | 'jump' } | null>(() => (initialFocus ? { id: initialFocus, via: 'jump' } : null))
   const nodeHref = useCallback((id: string) => pageOf(graph, id), [graph])
   const selectedId = selection?.id ?? null
@@ -188,10 +240,59 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
   const openReset = useCallback(() => setResetOpen(true), [])
   const returnToOptions = useCallback(() => optionsRef.current, [])
 
-  // The card's heading takes focus whenever the card opens or switches node.
+  // The recommender: its drawer's heading takes focus as it opens (a deep link's too); closing it
+  // returns focus to the toggle. (Before the card's: a deep link opening both gives the card focus.)
+  const recommendId = useId()
+  const recommendTitleId = useId()
+  const recommendHeadingRef = useRef<HTMLHeadingElement>(null)
+  const recommendToggleRef = useRef<HTMLButtonElement>(null)
+  const setRecommendOpen = useCallback((open: boolean) => onRecommendOpenChange?.(open), [onRecommendOpenChange])
   useEffect(() => {
-    if (selectedId) headingRef.current?.focus({ preventScroll: true })
-  }, [selectedId])
+    if (recommendOpen && drawer) recommendHeadingRef.current?.focus({ preventScroll: true })
+  }, [recommendOpen, drawer])
+  const toggleRecommend = useCallback(() => {
+    if (!recommendOpen && drawer && !wide) setLegendOpen(false)
+    setRecommendOpen(!recommendOpen)
+  }, [recommendOpen, drawer, wide, setRecommendOpen])
+  const closeRecommend = useCallback(() => {
+    setRecommendOpen(false)
+    recommendToggleRef.current?.focus()
+  }, [setRecommendOpen])
+  // A node link in the panel: the map moves to the node and opens its card (focus goes to the card,
+  // as for every jump). Below lg the modal sheet closes first; the jump happens once it has (its
+  // close auto-focus, kept from the toggle) — while it traps focus, the card's heading couldn't take it,
+  // and the map moves only after the sheet has gone (one motion at a time).
+  const sheetJump = useRef<string | null>(null)
+  const jumpTo = useCallback(
+    (id: string) => {
+      setSelection({ id, via: 'jump' })
+      if (!legendDocked) setLegendOpen(false)
+    },
+    [legendDocked],
+  )
+  const onRecommendJump = useCallback(
+    (id: string) => {
+      if (drawer) return jumpTo(id)
+      sheetJump.current = id
+      setRecommendOpen(false)
+    },
+    [drawer, jumpTo, setRecommendOpen],
+  )
+  const onSheetCloseAutoFocus = useCallback(
+    (event: Event) => {
+      const id = sheetJump.current
+      if (!id) return
+      sheetJump.current = null
+      event.preventDefault()
+      jumpTo(id)
+    },
+    [jumpTo],
+  )
+
+  // The card's heading takes focus whenever the card opens, switches node, or is jumped to again.
+  useEffect(() => {
+    if (selection) headingRef.current?.focus({ preventScroll: true })
+  }, [selection])
   // Keep the selected node clear of the card (runs again once the card's size is known).
   useEffect(() => {
     if (selection) mapRef.current?.show([selection.id], { mode: selection.via === 'jump' ? 'center' : 'reveal' })
@@ -211,20 +312,31 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
     if (id) mapRef.current?.focus(id)
   }, [selectedId])
   const onJump = useCallback((id: string) => setSelection({ id, via: 'jump' }), [])
+  // The card's defeat control announces through the page's own region (it outlives the card), noting
+  // the node states its mark produced (AMENDMENTS-015 B87 dedupe).
+  const [markAnnouncement, setMarkAnnouncement] = useState('')
+  const cardMarked = useRef<Readonly<Record<string, NodeState>> | null>(null)
+  const onCardAnnounce = useCallback((message: string) => {
+    cardMarked.current = useProgressStore.getState().progress.nodeStates
+    setMarkAnnouncement(message)
+  }, [])
   // The unlock cascade can't fit beside the card (design review P5-S4 H1): the card closes — it was
   // where the mark was made, or a deep link's — and says so politely; focus inside it goes to its node.
-  const [announcement, setAnnouncement] = useState('')
+  // The mark is never repeated: after a mark in the card, only why it closed; after one made on a boss
+  // page (already announced there), what the map shows opening, then why.
+  const [announcement, announce] = useAnnouncer()
   const onCascadeUncover = useCallback(() => {
     const id = selectedId
     if (!id) return
-    const progressBefore = mapProgress(graph, shownNodeStates, worldEvil)
-    const opened = newlyOpened(graph, progressBefore, mapProgress(graph, nodeStates, worldEvil)).map((o) => graph.nodeById.get(o)?.name ?? o)
-    const marked = shownNodeStates[id] !== nodeStates[id] ? { name: graph.nodeById.get(id)?.name ?? id, state: nodeStates[id] ?? null } : null
-    setAnnouncement(cascadeUncoverAnnouncement(marked, opened, !unsaved))
+    const fromCard = cardMarked.current === nodeStates
+    const opened = fromCard
+      ? []
+      : newlyOpened(graph, mapProgress(graph, shownNodeStates, worldEvil), mapProgress(graph, nodeStates, worldEvil)).map((o) => graph.nodeById.get(o)?.name ?? o)
+    announce(cascadeUncoverAnnouncement(opened))
     const focusInCard = cardElement?.contains(document.activeElement) ?? false
     setSelection(null)
     if (focusInCard) mapRef.current?.focus(id)
-  }, [selectedId, graph, shownNodeStates, nodeStates, worldEvil, unsaved, cardElement])
+  }, [selectedId, graph, shownNodeStates, nodeStates, worldEvil, cardElement, announce])
   // Changing the world evil re-routes the either/or fork: bring the pair into view to show it.
   const onWorldEvil = useCallback(
     (value: WorldEvil | null) => {
@@ -266,6 +378,31 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
     </button>
   )
 
+  const recommendContent = (
+    <RecommendContent recommendation={recommendation} worldEvil={worldEvil} sprites={data.sprites} onJump={onRecommendJump} idPrefix={recommendId} />
+  )
+  // The recommender's toggle: beside the legend toggle (toolbar from md, the map's corner on phones).
+  // From lg it opens the docked drawer; below, a bottom sheet it triggers.
+  const recommendToggle = drawer ? (
+    <RecommendToggle
+      ref={recommendToggleRef}
+      aria-expanded={recommendOpen}
+      aria-controls={recommendOpen ? recommendId : undefined}
+      onClick={toggleRecommend}
+    />
+  ) : (
+    <BottomSheet
+      open={recommendOpen}
+      onOpenChange={setRecommendOpen}
+      title={PANEL_TITLE}
+      closeLabel={CLOSE_PANEL}
+      trigger={<RecommendToggle className={legendDocked ? undefined : 'shadow-pixel-drop'} />}
+      onCloseAutoFocus={onSheetCloseAutoFocus}
+    >
+      {recommendContent}
+    </BottomSheet>
+  )
+
   return (
     <>
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6">
@@ -273,6 +410,7 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
         {legendDocked ? (
           <>
             {legendToggle}
+            {recommendToggle}
             <MapOptionsMenu onReset={openReset} triggerRef={optionsRef} className="ml-auto" />
             <div ref={setToastHost} className="contents" />
           </>
@@ -314,12 +452,15 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
             inset={cardInset}
             nodeHref={nodeHref}
             initialFocusId={initialFocus}
+            // B86d: with tracked progress, open on the frontier (undefined on a fresh profile).
+            frontierIds={recommendation.frontier}
           />
           {legendDocked ? null : (
             // Over the map on phones: the map's stage labels keep clear of it, its strip is reserved.
             <div data-map-overlay="" className="absolute bottom-2 left-2 z-(--z-hud) flex gap-2">
               {legendToggle}
               <MapOptionsMenu onReset={openReset} triggerRef={optionsRef} className="shadow-pixel-drop" />
+              {recommendToggle}
             </div>
           )}
           {legendDocked ? null : <div ref={setToastHost} className="contents" />}
@@ -346,6 +487,7 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
               onJump={onJump}
               headingRef={headingRef}
               rootRef={setCardElement}
+              onAnnounce={onCardAnnounce}
               className={cx(
                 'absolute z-(--z-hud)',
                 // From lg it stops above the zoom-control row (48px + an 8px gap) at the bottom-right.
@@ -354,7 +496,15 @@ export function BossMapWorkspace({ data, focusId }: { data: BossMapData; focusId
             />
           ) : null}
         </div>
+        {recommendOpen && drawer ? (
+          <RecommendDrawer id={recommendId} titleId={recommendTitleId} headingRef={recommendHeadingRef} onClose={closeRecommend}>
+            {recommendContent}
+          </RecommendDrawer>
+        ) : null}
       </div>
+      <p role="status" className="sr-only" data-mark-announcer="">
+        {markAnnouncement}
+      </p>
       <p role="status" className="sr-only" data-map-announcer="">
         {announcement}
       </p>

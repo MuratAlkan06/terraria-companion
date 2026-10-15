@@ -33,3 +33,16 @@ export function openingRect(graph: MapGraph, layout: GraphLayout, scene: Scene, 
   if (!startId) return undefined
   return OPENING_FRAME[layout.orientation] === 'region' ? openingRegion(graph, layout, scene, startId) : layout.nodes.get(startId)
 }
+
+/**
+ * The PROGRESS FRONTIER's rect (AMENDMENTS-015 B86d; UX_SPEC §4d "map pans to frontier"): the nodes
+ * the player is up to — the recommender's next steps — with their world tags. The map opens framed on
+ * it instead of the opening view once anything is tracked. Undefined when none of the ids is laid out.
+ */
+export function frontierRect(graph: MapGraph, layout: GraphLayout, ids: readonly string[] | undefined): Box | undefined {
+  if (!ids) return undefined
+  return unionRect(ids.flatMap((id) => {
+    const box = layout.nodes.get(id)
+    return box ? [nodeExtent(graph, box)] : []
+  }))
+}
