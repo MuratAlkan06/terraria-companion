@@ -17,7 +17,7 @@ import LicensingPage, { CONTACT_PLACEHOLDER, TakedownSection } from '../Licensin
 import { FONT_CREDITS, LIBRARY_CREDITS, LIBRARY_LICENSES_FILE, LIBRARY_LICENSES_PATH, OFL_TEXT_PATH } from './credits'
 
 const ROOT = '../../../../'
-/** Root legal files; `LICENSE*` picks up a code license file if the owner adds one. */
+/** Root legal files; `LICENSE*` picks up the code license file (the owner's grant). */
 const ROOT_FILES = import.meta.glob<string>(['../../../../NOTICE', '../../../../README.md', '../../../../LICENSE*', '../../../../LICENSES/*', '../../../../public/licenses/*', '../../../data/LICENSE.md'], {
   query: '?raw',
   import: 'default',
@@ -59,6 +59,12 @@ function section(md: string, heading: string): string {
   const next = rest.search(new RegExp(`^#{1,${level}} `, 'm'))
   return next < 0 ? rest : rest.slice(0, next)
 }
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** The root code license file, if present, and the license it names ("MIT License" → "MIT"). */
+const CODE_LICENSE = Object.entries(ROOT_FILES).find(([k]) => /^(?:\.\.\/){4}LICENSE(?:\.[a-z]+)?$/.test(k))?.[1]
+const CODE_LICENSE_NAME = CODE_LICENSE === undefined ? undefined : /^(\S+) License$/m.exec(CODE_LICENSE)?.[1]
 
 const PAGE = renderToStaticMarkup(createElement(LicensingPage))
 const PAGE_TEXT = text(PAGE)
@@ -258,10 +264,13 @@ describe('root legal files', () => {
     for (const path of links) expect(ROOT_FILES[ROOT + path], path).toBeDefined()
   })
 
-  it('NOTICE: the code-license line matches whether a LICENSE file exists; every license file it names exists; every credited package is listed', () => {
+  it('NOTICE: the code-license line matches whether a LICENSE file exists and names its license; every license file it names exists; every credited package is listed', () => {
     const notice = file('NOTICE')
-    const codeLicense = Object.keys(ROOT_FILES).some((k) => /^(?:\.\.\/){4}LICENSE(?:\.[a-z]+)?$/.test(k))
-    expect(notice.includes('LICENSE: not yet chosen by the owner')).toBe(!codeLicense)
+    expect(notice.includes('LICENSE: not yet chosen by the owner')).toBe(CODE_LICENSE === undefined)
+    if (CODE_LICENSE !== undefined) {
+      expect(CODE_LICENSE_NAME, 'LICENSE names its license on a "<Name> License" line').toBeDefined()
+      expect(notice).toContain(`\nLICENSE: ${CODE_LICENSE_NAME}\n`)
+    }
     const refs = (notice.match(/LICENSES\/[\w.-]+/g) ?? []).map((r) => r.replace(/\.$/, ''))
     expect(refs.length).toBeGreaterThan(0)
     for (const ref of refs) expect(ROOT_FILES[ROOT + ref], ref).toBeDefined()
@@ -269,18 +278,33 @@ describe('root legal files', () => {
     for (const s of ['CC BY-NC-SA 4.0', 'trademarks of Re-Logic', 'not affiliated with', 'SIL Open Font License 1.1']) expect(notice).toContain(s)
   })
 
-  it('the contact placeholder appears in the page, NOTICE and README exactly while no takedown contact is set', () => {
-    const unset = SITE.takedownContact === null
+  it('the contact placeholder appears in the page, NOTICE and README exactly while no takedown contact is set; a set contact is in all three', () => {
+    const contact = SITE.takedownContact
+    const unset = contact === null
     expect(file('NOTICE').includes(CONTACT_PLACEHOLDER)).toBe(unset)
     expect(file('README.md').includes(CONTACT_PLACEHOLDER)).toBe(unset)
     expect(PAGE_TEXT.includes(CONTACT_PLACEHOLDER)).toBe(unset)
+    if (contact !== null) {
+      // the same address everywhere: NOTICE names it, README links it (Legal + runbook), the page links it as a 44px target
+      expect(file('NOTICE')).toContain(`Takedown contact: ${contact.href.replace(/^mailto:/, '')}`)
+      expect(section(file('README.md'), '## Legal')).toContain(`](${contact.href})`)
+      expect(section(file('README.md'), '## Takedown runbook (sprites)')).toContain(`](${contact.href})`)
+      expect(PAGE).toMatch(new RegExp(`<a href="${escapeRegExp(contact.href)}"[^>]*min-h-tap`))
+      expect(PAGE_TEXT).toContain(`Contact: ${contact.label}`)
+      expect(PAGE_TEXT).not.toContain('Pending:')
+    }
   })
 
-  it('README: a Legal section mirroring NOTICE, linking every license file it names', () => {
+  it('README: a Legal section mirroring NOTICE (including the code license), linking every license file it names', () => {
     const readme = file('README.md')
     const legal = section(readme, '## Legal')
-    for (const s of ['CC BY-NC-SA 4.0', 'ShareAlike', 'trademarks of Re-Logic', 'not affiliated', 'SIL OFL 1.1', 'Code license: not yet chosen by the owner']) expect(legal).toContain(s)
-    for (const ref of legal.match(/\]\((LICENSES\/[\w.-]+|NOTICE)\)/g) ?? []) {
+    for (const s of ['CC BY-NC-SA 4.0', 'ShareAlike', 'trademarks of Re-Logic', 'not affiliated', 'SIL OFL 1.1']) expect(legal).toContain(s)
+    expect(legal.includes('Code license: not yet chosen by the owner')).toBe(CODE_LICENSE === undefined)
+    if (CODE_LICENSE !== undefined) {
+      expect(legal).toContain(`**Code license — ${CODE_LICENSE_NAME}.**`)
+      expect(legal).toContain('[`LICENSE`](LICENSE)')
+    }
+    for (const ref of legal.match(/\]\((LICENSE|LICENSES\/[\w.-]+|NOTICE)\)/g) ?? []) {
       const path = ref.slice(2, -1)
       expect(ROOT_FILES[ROOT + path], path).toBeDefined()
     }

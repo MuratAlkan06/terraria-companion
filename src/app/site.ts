@@ -13,9 +13,13 @@ export const SITE = {
   licenseUrl: 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
   licenseName: 'CC BY-NC-SA 4.0',
   /**
-   * Takedown contact (ADR D3). PLACEHOLDER: no address has been published yet.
-   * Set `href` (mailto: or URL) and `label` before public deployment; the
-   * licensing page renders a visible "placeholder" notice while this is null.
+   * Takedown contact (ADR D3): the repository's GitHub Issues page, set by the owner for the
+   * deploy-prep commit. Swappable (e.g. for a mailto: address): change it together with the
+   * "Takedown contact" lines in NOTICE and README.md — licensing.test.ts requires all three to agree.
+   * While null, the licensing page renders a visible placeholder and a pending note instead.
    */
-  takedownContact: null as { label: string; href: string } | null,
+  takedownContact: {
+    label: 'this project’s GitHub Issues',
+    href: 'https://github.com/MuratAlkan06/terraria-companion/issues',
+  } as { label: string; href: string } | null,
 } as const

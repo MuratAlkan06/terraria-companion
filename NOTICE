@@ -5,12 +5,11 @@ Terraria Companion is a free, non-commercial, unofficial fan project. It combine
 project's own work with third-party material under several licenses, summarized here.
 The site's /about/licensing page carries the same information for visitors.
 
-LICENSE: not yet chosen by the owner
-------------------------------------
-The application source code has no license file. Choosing one is the owner's decision
-and is pending (ADR-001 D3 planned MIT; the owner has not confirmed it). Until a LICENSE
-file is added, the source code is not offered under any license. The third-party material
-below keeps its own licenses either way.
+LICENSE: MIT
+------------
+The application source code is licensed under the MIT License (Copyright (c) 2026
+Murat Alkan); full text in LICENSE. The MIT License does not cover the third-party
+material below, which keeps its own licenses.
 
 
 1. Terraria Wiki content — CC BY-NC-SA 4.0
@@ -39,7 +38,9 @@ downloaded locally from the wiki (npm run pipeline:sprites), never committed (se
 File: page, SHA-1 and rights ("re-logic"). Sprite takedown requests are honored: the
 procedure is in README.md, "Takedown runbook".
 
-Takedown contact: [contact pending — see below]
+Takedown contact: https://github.com/MuratAlkan06/terraria-companion/issues
+(the project's GitHub Issues page). An email address chosen by the owner later can
+replace it; takedownContact in src/app/site.ts, this line and README.md change together.
 
 
 3. Fonts — SIL Open Font License 1.1
@@ -79,10 +80,3 @@ used during development and are not shipped.
 ----------------
 Site decoration (backgrounds, logo, interface art) and the placeholder sprites shown in
 fallback mode are original pixel art made for this project.
-
-
-Pending owner inputs
---------------------
-- Takedown / contact address: not published. Set takedownContact in src/app/site.ts
-  and replace the placeholder above and in README.md before any public deployment.
-- Code license: not chosen (see the top of this file).

@@ -1,6 +1,6 @@
 # RELEASE — Terraria Companion v1: final report (P7-S7)
 
-Status: release candidate, NOT released · 2026-10-15 · branch `feat/p1-app-shell` (local only — no remote) ·
+Status: release candidate, NOT released · 2026-10-15 · branch `feat/p1-app-shell` (public: https://github.com/MuratAlkan06/terraria-companion) ·
 data: Terraria 1.4.5.8 (Desktop), `src/data/meta.json` generated 2026-10-15T18:21:41Z.
 
 - **Gate state:** the release gate returned REVISE (AMENDMENTS-016 B131). Both halves of that REVISE are closed.
@@ -247,15 +247,18 @@ None. Every B131(e) item is delivered (§7), including the whole pre-B85 list.
   in B145 (B131(d)).
 
 ## 6. Awaiting the owner
-1. **Takedown / contact address** (B127, owner input 1): set `takedownContact` in `src/app/site.ts` and replace the
-   placeholders in `NOTICE` and `README.md` — a test requires all three to agree.
-2. **Code license** (B127, owner input 2): ADR-001 D3 planned MIT, but a license grant is the owner's to make.
-   Confirm MIT (then a `LICENSE` file lands and NOTICE's line updates — a test follows the file) or choose another.
-3. **Remote and CI:** no git remote exists and none is created without authorization. Once authorized: push,
-   branch protection, and the CI ADR D8 plans — typecheck, tests (sim determinism, migrations, schema validation),
-   budget checks (ADR D7) and deploy.
-4. **Deployment:** static `dist/` to Cloudflare Pages (GitHub Pages as the alternate, ADR D8) — after 1 and 2; see
-   README "Before any public deployment".
+1. **Takedown / contact address** (B127, owner input 1) — **resolved in the deploy-prep commit.** `takedownContact`
+   in `src/app/site.ts` is the repository's GitHub Issues page
+   (https://github.com/MuratAlkan06/terraria-companion/issues); `NOTICE`, `README.md` and the Licensing page carry
+   it, and a test requires all three to agree. An email address chosen by the owner later can replace it.
+2. **Code license** (B127, owner input 2) — **resolved in the deploy-prep commit.** The owner confirmed MIT (ADR-001
+   D3's plan): the root `LICENSE` holds the MIT License text (Copyright (c) 2026 Murat Alkan), and `NOTICE` and
+   `README.md` name it — a test follows the file.
+3. **Remote and CI** — **resolved.** The repository is public at https://github.com/MuratAlkan06/terraria-companion.
+   `.github/workflows/ci.yml` (landing with the deploy-prep commit) runs lint, typecheck, the test suite and the
+   build on Node 22 for pushes to `main` and for pull requests.
+4. **Deployment** — **open; the only remaining item:** static `dist/` to Cloudflare Pages (GitHub Pages as the
+   alternate, ADR D8); see README "Before any public deployment".
 
 Nothing in the P6 slice awaits the owner: the armor and accessory pages are delivered in 41bbb32 (§2, §5), not cut.
 

@@ -47,8 +47,11 @@ Full details: [`NOTICE`](NOTICE), [`LICENSES/`](LICENSES/) and the site's `/abou
   full license text of every bundled package at `dist/licenses/third-party-software.txt`, served at
   `/licenses/third-party-software.txt`; the few indirect packages that ship no license file are named there
   without a text.
-- **Code license: not yet chosen by the owner.** There is no `LICENSE` file for the source code.
-- **Takedown contact:** [contact pending — see below]
+- **Code license — MIT.** The application source code is under the MIT License: [`LICENSE`](LICENSE). It does
+  not cover the third-party material above, which keeps its own licenses.
+- **Takedown contact:** this project's
+  [GitHub Issues page](https://github.com/MuratAlkan06/terraria-companion/issues). An email address chosen by the
+  owner later can replace it (see below).
 
 ## Takedown runbook (sprites)
 
@@ -80,15 +83,14 @@ hand-edit target is this file
 6. **Close the loop.** Reply to the requester from the takedown contact and record the request (date, scope,
    what was removed) in the amendments chain (`docs/AMENDMENTS-*.md`).
 
-Takedown contact: [contact pending — see below]
+Takedown contact: this project's
+[GitHub Issues page](https://github.com/MuratAlkan06/terraria-companion/issues).
 
 ### Before any public deployment
 
-Owner inputs still open:
+The owner inputs are in place: the code license is MIT ([`LICENSE`](LICENSE)) and the takedown contact is the
+Issues page above. What remains is the deployment itself — see [`docs/RELEASE.md`](docs/RELEASE.md) §6.
 
-- **Takedown / contact address.** Set `takedownContact` in `src/app/site.ts` (the licensing page then shows
-  it in place of its placeholder) and replace the `[contact pending — see below]` placeholders in this file
-  and in `NOTICE`.
-- **Code license.** Choose one and add a `LICENSE` file (ADR-001 D3 planned MIT; not confirmed by the owner),
-  then update `NOTICE`, this section and, if wanted, the licensing page (it says the data license does not
-  cover the source code).
+**Changing the takedown contact.** An email address chosen by the owner later can replace the Issues page: set
+`takedownContact` in `src/app/site.ts` (the licensing page shows it) and update the "Takedown contact" lines in
+this file and in `NOTICE` in the same commit — a test requires all three to agree.
