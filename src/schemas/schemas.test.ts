@@ -13,6 +13,7 @@ import {
   Enemy,
   Gaps,
   Item,
+  ItemDetailIndex,
   LabBehavior,
   LabModifiers,
   LoadoutSlots,
@@ -379,6 +380,31 @@ describe('P2-S7 schema deltas (ammo, buffs provenance, B22, B30, B31)', () => {
     const doc = { id: 'i:97', name: 'Musket Ball', type: 'item', tags: ['bullets'] }
     expect(SearchDoc.safeParse({ ...doc, wikiUrl: 'https://terraria.wiki.gg/wiki/Musket_Ball' }).success).toBe(true)
     expect(SearchDoc.safeParse({ ...doc, wikiUrl: 'https://example.com/Musket_Ball' }).success).toBe(false)
+  })
+})
+
+describe('P6-S0 schema deltas (item corpus, B20 fishing items, B84 drops together, item shards)', () => {
+  const item = { id: 2294, name: 'Golden Fishing Rod', slug: 'golden-fishing-rod', type: 'item', tags: ['tool'], wikiUrl: 'https://terraria.wiki.gg/wiki/Fishing_poles', acquisition: [], isStation: false, _prov: { ...prov, verified: false, unverifiedFields: ['acquisition'] } }
+
+  it('the corpus categories are ItemCategory members; tool fishing power and bait power are optional positive ints', () => {
+    for (const category of ['vanity', 'dye', 'pet', 'furniture', 'block', 'fishing', 'grab-bag', 'permanent-booster']) expect(Item.safeParse({ ...item, category }).success, category).toBe(true)
+    expect(Item.safeParse({ ...item, category: 'placeable' }).success).toBe(false)
+    expect(Item.safeParse({ ...item, category: 'tool', toolStats: { fishingPowerPct: 50 } }).success).toBe(true)
+    expect(Item.safeParse({ ...item, category: 'tool', toolStats: { fishingPowerPct: 0 } }).success).toBe(false)
+    expect(Item.safeParse({ ...item, category: 'fishing', baitPowerPct: 666 }).success).toBe(true)
+  })
+
+  it('B84 dropsWith: optional, non-empty when present', () => {
+    const drop = { id: '758-treasure-bag-plantera-741638a5', itemId: 758, source: { npcName: 'Treasure Bag (Plantera)', treasureBag: true }, quantity: { min: 1, max: 1 }, rates: { expert: 0.125 }, conditions: [], _prov: prov }
+    expect(DropSource.safeParse(drop).success).toBe(true)
+    expect(DropSource.safeParse({ ...drop, dropsWith: ['771-treasure-bag-plantera-741638a5'] }).success).toBe(true)
+    expect(DropSource.safeParse({ ...drop, dropsWith: [] }).success).toBe(false)
+  })
+
+  it('items.detail.index.json names only the core file and items.detail.<n>.json shards', () => {
+    expect(ItemDetailIndex.safeParse({ shardSize: 1000, files: [{ file: 'items.detail.json', ids: [43] }, { file: 'items.detail.2.json', ids: [2290] }] }).success).toBe(true)
+    expect(ItemDetailIndex.safeParse({ shardSize: 1000, files: [{ file: 'items.list.json', ids: [] }] }).success).toBe(false)
+    expect(ItemDetailIndex.safeParse({ shardSize: 1000, files: [] }).success).toBe(false)
   })
 })
 
