@@ -1,0 +1,132 @@
+[
+  {
+    "id": 54,
+    "name": "Hermes Boots",
+    "slug": "hermes-boots",
+    "type": "accessory",
+    "rarity": 1,
+    "categories": ["mobility"],
+    "effects": [
+      {
+        "kind": "special",
+        "text": "The wearer can run super fast",
+        "simulated": false,
+        "sourceUrl": "https://terraria.wiki.gg/wiki/Hermes_Boots"
+      }
+    ],
+    "combinedFrom": [],
+    "upgradesTo": [405],
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Hermes_Boots",
+    "acquisition": [{ "method": "loot", "containers": ["Gold Chest"], "locations": ["Underground", "Cavern"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Hermes_Boots", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Hermes_Boots", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 128,
+    "name": "Rocket Boots",
+    "slug": "rocket-boots",
+    "type": "accessory",
+    "rarity": 3,
+    "valueCopper": 50000,
+    "categories": ["mobility"],
+    "effects": [
+      {
+        "kind": "special",
+        "text": "Allows flight",
+        "simulated": false,
+        "sourceUrl": "https://terraria.wiki.gg/wiki/Rocket_Boots"
+      }
+    ],
+    "combinedFrom": [],
+    "upgradesTo": [405],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Rocket_Boots",
+    "acquisition": [
+      { "method": "purchase", "npcName": "Goblin Tinkerer", "priceCopper": 50000, "conditions": ["goblin-army-defeated"] }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Rocket_Boots", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Goblin_Tinkerer", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 405,
+    "name": "Spectre Boots",
+    "slug": "spectre-boots",
+    "type": "accessory",
+    "rarity": 4,
+    "categories": ["mobility"],
+    "effects": [
+      {
+        "kind": "special",
+        "text": "Allows flight",
+        "simulated": false,
+        "sourceUrl": "https://terraria.wiki.gg/wiki/Spectre_Boots"
+      },
+      {
+        "kind": "special",
+        "text": "The wearer can run super fast",
+        "simulated": false,
+        "sourceUrl": "https://terraria.wiki.gg/wiki/Spectre_Boots"
+      }
+    ],
+    "combinedFrom": [54, 128],
+    "upgradesTo": [],
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Spectre_Boots",
+    "acquisition": [{ "method": "craft", "recipeIds": ["405-47ddeac8"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Spectre_Boots", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Spectre_Boots", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 216,
+    "name": "Shackle",
+    "slug": "shackle",
+    "type": "accessory",
+    "rarity": 1,
+    "categories": ["defense"],
+    "effects": [{ "kind": "stat", "stat": "defense-flat", "value": 1 }],
+    "combinedFrom": [],
+    "upgradesTo": [],
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Shackle",
+    "acquisition": [{ "method": "drop", "dropIds": ["216-zombie-741638a5"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Shackle", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Zombie", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]

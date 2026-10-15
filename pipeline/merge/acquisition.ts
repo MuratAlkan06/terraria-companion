@@ -1,0 +1,155 @@
+/**
+ * Acquisition routes + §7b gating for one Cargo Items row — shared by the weapons (P2-S2) and ammo
+ * (P2-S7) builders, so every item dataset links recipes / drops / vendors by the same rules:
+ *
+ * - craft = recipes producing the item (incl. Shimmer transmutations); drop = drop records yielding
+ *   it (NPCs, bosses, bags, chests, crates); purchase = one route per `vendor:<NPC>` Cargo tag (price
+ *   from a single-coin `buy` cell). Purchase conditions: with the B68/B78 acquisition sources
+ *   (merge/sources.ts) they are the reviewed NPC availability ∪ the item's shop-row conditions when
+ *   both are derivable, else Unknown; without them (unit tests of the P2-S2 behavior) always Unknown.
+ * - other (B78) = the item is in the curated gatherable base-material registry: its verbatim evidence
+ *   sentence + article.
+ * - fishing (P6-S0, AMENDMENTS-004 B20) = the item's routes in the "Fishing catches" article
+ *   (merge/fishing.ts): where + mapped conditions; a route with an unmapped condition lists its
+ *   conditions as Unknown. The article becomes a source of the record (RouteResult.sources).
+ * - A wiki self-conflict (AMENDMENTS-004 B19, overlays/withheld.json) withholds the whole acquisition
+ *   (Unknown + source-mismatch); route hints in the Cargo tags / listcat that no record backs are
+ *   reported as gaps, never inferred.
+ * - gating: the deriver's result. With the acquisition sources the deriver already took every vendor
+ *   route into account (derivable or explicitly unknown); without them it is adjusted for the item's
+ *   own purchase routes (Unknown conditions ⇒ a derived craft/drop gate is exact only when gate-free).
+ */
+import type { Acquisition, GapEntry, ProvSource } from '../../src/schemas'
+import type { CargoRow } from '../fetch/cargo'
+import { tally, type ReasonTally } from './drops'
+import type { FishingRoute } from './fishing'
+import type { GatingResult } from './gating'
+import { OverlayError } from './registry'
+import { gatherAcquisition, type GatherRoute, type VendorRoute } from './sources'
+
+const str = (v: CargoRow[string] | undefined) => (v === null || v === undefined ? '' : String(v))
+
+/** A `buy` cell holding exactly one coin amount → copper (the coin template's data-sort-value). */
+export function coinPrice(cell: string): number | undefined {
+  const coins = [...cell.matchAll(/class="coin"[^>]*data-sort-value="(\d+)"/g)]
+  if (coins.length !== 1) return undefined
+  const v = Number(coins[0][1])
+  return Number.isInteger(v) && v > 0 ? v : undefined
+}
+
+/** AMENDMENTS-004 B19: a wiki self-conflict on an item field (overlays/withheld.json). */
+export interface WithheldField {
+  field: 'acquisition'
+  detail: string
+  /** The conflicting Cargo Items tag; must still be present (else the entry is stale). */
+  cargoTag: string
+  sources: string[]
+}
+
+export interface RouteContext {
+  id: number
+  /** Display name (gap details, reason tallies). */
+  name: string
+  /** What the record is, for reason text ("weapon", "ammo item"). */
+  noun: string
+  row: CargoRow
+  wikiUrl: string
+  recipesBy: ReadonlyMap<number, readonly string[]>
+  dropsBy: ReadonlyMap<number, readonly string[]>
+  withheld?: WithheldField
+  gating: (itemId: number) => GatingResult
+  /** Lists a field as Unknown (absent + listed) with a reason for the report. */
+  unknown: (field: string, why: string) => void
+  /** Withholds a field because sources conflict (Unknown + source-mismatch gap). */
+  mismatch: (field: string, detail: string, sources: string[]) => void
+  gaps: { add(entry: GapEntry): void }
+  reasons: ReasonTally
+  /**
+   * B68/B78 acquisition sources (merge/sources.ts): the vendor model (purchase conditions) and the
+   * gatherable registry. The deriver passed as `gating` must be built from the same sources.
+   */
+  sources?: RouteSources
+}
+
+/** The B68/B78 acquisition-source view `itemRoutes` reads (merge/sources.ts AcquisitionSources). */
+export interface RouteSources {
+  vendorRoute: (itemId: number, itemName: string, vendorTag: string) => VendorRoute
+  gather: ReadonlyMap<number, GatherRoute>
+  /** P6-S0 B20: fishing routes per item + the "Fishing catches" article provenance. */
+  fishing?: ReadonlyMap<number, readonly FishingRoute[]>
+  fishingSource?: ProvSource
+}
+
+export interface RouteResult {
+  acquisition: Acquisition[]
+  /** Vendor NPC names (purchase routes). */
+  vendors: string[]
+  gating: GatingResult
+  /** Provenance the routes add to the record (the "Fishing catches" article for fishing routes). */
+  sources: ProvSource[]
+}
+
+export function itemRoutes(c: RouteContext): RouteResult {
+  const { id, name, row, wikiUrl, withheld } = c
+  const ref = `i:${id}`
+  const acquisition: Acquisition[] = []
+  const recipeIds = [...(c.recipesBy.get(id) ?? [])].sort()
+  const dropIds = [...(c.dropsBy.get(id) ?? [])].sort()
+  const tagList = str(row.tag).split('^').map((t) => t.trim()).filter(Boolean)
+  const lower = tagList.map((t) => t.toLowerCase())
+  const listcat = str(row.listcat).split('^').map((t) => t.trim().toLowerCase()).filter(Boolean)
+  if (withheld && !tagList.includes(withheld.cargoTag)) throw new OverlayError(`[E_SCHEMA] overlay withheld/i:${id}: Cargo Items no longer carries the conflicting tag "${withheld.cargoTag}" — the conflict was resolved upstream; remove the entry`)
+  const vendors = withheld ? [] : [...new Set(tagList.filter((t) => /^vendor:/i.test(t) && !/^vendor:seed:/i.test(t)).map((t) => t.slice('vendor:'.length).trim()))].sort()
+  if (withheld) {
+    // B19: never pick a side on conflicting wiki sources — the whole acquisition is Unknown
+    c.mismatch('acquisition', withheld.detail, [...new Set([wikiUrl, ...withheld.sources])])
+  } else {
+    if (recipeIds.length > 0) acquisition.push({ method: 'craft', recipeIds })
+    if (dropIds.length > 0) acquisition.push({ method: 'drop', dropIds })
+  }
+  const price = vendors.length === 1 ? coinPrice(str(row.buy)) : undefined
+  for (const npcName of vendors) {
+    const i = acquisition.length
+    const route = c.sources?.vendorRoute(id, name, npcName)
+    acquisition.push({ method: 'purchase', npcName, ...(price ? { priceCopper: price } : {}), conditions: route?.ok ? route.conditions : [] })
+    if (!route) c.unknown(`acquisition.${i}.conditions`, 'shop availability conditions are not structured on the wiki')
+    else if (!route.ok) c.unknown(`acquisition.${i}.conditions`, route.blocker === 'vendor-availability-unknown' ? `the vendor's availability is not derivable (overlays/vendors.json unavailable)` : `the item's shop row is missing or its availability is not a reviewed condition (overlays/vendors.json)`)
+    if (!price) c.unknown(`acquisition.${i}.priceCopper`, vendors.length > 1 ? 'one wiki buy price for several vendors' : 'the wiki buy price is not a single coin amount (e.g. Defender Medals)')
+  }
+  // B78: a curated gatherable base material (its evidence sentence is the route text)
+  const gathered = withheld ? undefined : c.sources?.gather.get(id)
+  if (gathered) acquisition.push(gatherAcquisition(gathered))
+  // P6-S0 B20: fishing routes (the "Fishing catches" article)
+  const fished = withheld ? [] : (c.sources?.fishing?.get(id) ?? [])
+  const sources: ProvSource[] = fished.length > 0 && c.sources?.fishingSource ? [c.sources.fishingSource] : []
+  for (const f of fished) {
+    const i = acquisition.length
+    acquisition.push({ ...f.acquisition, biomes: [...f.acquisition.biomes], conditions: [...f.acquisition.conditions] })
+    if (f.unmapped.length > 0) c.unknown(`acquisition.${i}.conditions`, `a fishing condition the registry does not model (${f.unmapped.join(', ')})`)
+  }
+  if (acquisition.length === 0 && !withheld) c.unknown('acquisition', `no recipe, drop, named vendor or fishing catch on the wiki for this ${c.noun}`)
+  // route hints with no backing record (reported, never inferred)
+  const hints: string[] = []
+  // a withheld acquisition (B19) is itself the finding; route hints would restate the conflicting tag
+  if (!withheld) {
+    if (listcat.includes('craftable items') && recipeIds.length === 0) hints.push('listed as craftable but no desktop recipe resolves')
+    if ((lower.some((t) => ['drop', 'bag loot', 'treasure bag loot', 'loot'].includes(t)) || listcat.some((x) => /(drop|loot) items$/.test(x))) && dropIds.length === 0) hints.push('tagged drop/loot but no Cargo Drops row resolves')
+    if (lower.some((t) => ['vendor', 'buy', 'buyable'].includes(t)) && vendors.length === 0) hints.push('tagged as sold but no vendor NPC is named')
+    if (lower.some((t) => /^vendor:seed:/.test(t))) hints.push('sold only in secret-seed worlds (not modeled)')
+    if ((lower.includes('fished') || listcat.includes('fished items')) && fished.length === 0) hints.push('tagged as fished, but the "Fishing catches" article lists no catch of it')
+    if (lower.includes('plunder') || listcat.includes('plunder items')) hints.push('plunder (not modeled)')
+  }
+  for (const h of hints) tally(c.reasons, `acquisition: ${h}`, name)
+  if (hints.length > 0) c.gaps.add({ ref, field: 'acquisition', kind: 'missing-field', detail: `${name}: ${hints.join('; ')}`, sources: [wikiUrl] })
+
+  // gating (§7b) — a withheld acquisition is an unverified input, so gating is Unknown too
+  let gating: GatingResult = withheld ? { ok: false, blockers: ['acquisition-withheld'] } : c.gating(id)
+  // own purchase routes take part in §7b too: their conditions are Unknown, so they never derive,
+  // and an Unknown route could be the less gated one — a derived craft/drop gate is only exact
+  // when it is already gate-free (same rule as the deriver's minimum over routes)
+  if (vendors.length > 0 && !c.sources) {
+    if (!gating.ok) gating = { ok: false, blockers: [...new Set([...gating.blockers.filter((b) => b !== 'cycle'), 'vendor-conditions-unknown' as const])].sort() }
+    else if (gating.gatedBy.bosses.length > 0 || gating.gatedBy.conditions.length > 0) gating = { ok: false, blockers: ['alternative-route-unverified', 'vendor-conditions-unknown'] }
+  }
+  return { acquisition, vendors, gating, sources }
+}

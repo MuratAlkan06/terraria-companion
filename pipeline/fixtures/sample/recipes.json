@@ -1,0 +1,148 @@
+[
+  {
+    "id": "36-4cee494e",
+    "resultItemId": 36,
+    "resultAmount": 1,
+    "stations": [],
+    "ingredients": [{ "amount": 10, "ref": { "kind": "item", "itemId": 9 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Work_Bench", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "39-43666ca8",
+    "resultItemId": 39,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 36 }],
+    "ingredients": [{ "amount": 10, "ref": { "kind": "item", "itemId": 9 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Wooden_Bow", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "35-0b7b8271",
+    "resultItemId": 35,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 36 }],
+    "ingredients": [{ "amount": 5, "ref": { "kind": "item", "itemId": 22 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Iron_Anvil", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "48-5d2fabc3",
+    "resultItemId": 48,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 36 }],
+    "ingredients": [
+      { "amount": 2, "ref": { "kind": "group", "groupId": "any-iron-bar" } },
+      { "amount": 8, "ref": { "kind": "item", "itemId": 9 } }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Chest", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "371-2620fd38",
+    "resultItemId": 371,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 35 }],
+    "ingredients": [{ "amount": 10, "ref": { "kind": "item", "itemId": 381 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "372-2620fd38",
+    "resultItemId": 372,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 35 }],
+    "ingredients": [{ "amount": 10, "ref": { "kind": "item", "itemId": 381 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "373-2620fd38",
+    "resultItemId": 373,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 35 }],
+    "ingredients": [{ "amount": 10, "ref": { "kind": "item", "itemId": 381 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "374-efeed241",
+    "resultItemId": 374,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 35 }],
+    "ingredients": [{ "amount": 20, "ref": { "kind": "item", "itemId": 381 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "375-48241b25",
+    "resultItemId": 375,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 35 }],
+    "ingredients": [{ "amount": 15, "ref": { "kind": "item", "itemId": 381 } }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Cobalt_armor", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": "405-47ddeac8",
+    "resultItemId": 405,
+    "resultAmount": 1,
+    "stations": [{ "kind": "item", "itemId": 398 }],
+    "ingredients": [
+      { "amount": 1, "ref": { "kind": "item", "itemId": 54 } },
+      { "amount": 1, "ref": { "kind": "item", "itemId": 128 } }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Spectre_Boots", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]

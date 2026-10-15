@@ -1,6 +1,8 @@
 # PRD & Slice Plan — Terraria Companion Website (v1)
 
 > **AMENDED BY [AMENDMENTS-001.md](./AMENDMENTS-001.md) (binding — read together).**
+> **B58 parity sweep (AMENDMENTS-016 B121, 2026-10-15):** acceptance criteria are kept verbatim; where AMENDMENTS-015 (B85+) / AMENDMENTS-016 rule on how an AC is read or met, an indented "Amended" note follows it with the B-number. The amendments chain stays binding and wins on any conflict.
+> **Release closeout (AMENDMENTS-016 B131/B132, 2026-10-15):** the release gate's scope rulings are recorded as "Cut (B131(b))" / "Amended" notes on the affected slices (P3-S13 AC2, P3-S14, P4-S2, P4-S4, P6-S1/S2, P6-S4, P6-S7, P6-S9, P7-S3/S4/S5) and annotated under §10's cut line. Final report: [RELEASE.md](./RELEASE.md).
 
 Status: Draft for P0 freeze · 2026-10-12 · Refines docs/TASK_CONTRACT.md phases P1–P7 into slices. Source of truth: docs/REQUIREMENTS.md. Authored by product-architect agent.
 
@@ -185,6 +187,7 @@ Cross-cutting modifier params (apply to any archetype): bounce, chain, DoT/debuf
 1. A homing-flagged weapon's projectiles visibly curve toward the nearest dummy per homing-strength param.
 2. The same weapon with homing disabled in test settings flies straight (proves it's a modifier layer, not bespoke code).
 3. Homing works on at least one ranged and one magic weapon without new archetype code.
+   > Amended (B116): these ACs stand proven on ENGINE TEST weapons only — 0 of the 149 simulable weapons home (audit pinned: the 27 homing weapons are all limitation-carded, detection by modifier + narrow keywords with an exact-27-ids tripwire). The Lab shows the homing switch DISABLED, with its reason, on homing weapons' limitation cards (UX_SPEC §3.4); the real-data toggle activates if a verified-homing weapon ever becomes simulable.
 
 **P3-S9 "Minions + Sentries"**
 1. Summoning spawns a persistent minion that autonomously attacks the dummy; summoning again respects slot count settings.
@@ -212,13 +215,16 @@ Cross-cutting modifier params (apply to any archetype): bounce, chain, DoT/debuf
 **P3-S13 "Lab Coverage Gate: special cases + limitation cards"**
 1. Every weapon in the dataset resolves to exactly one of: archetype+params (simulated), custom scenario, or explained-limitation card — a visible coverage report page shows counts per bucket and a 0 count for "unhandled".
 2. At least 2 custom scenarios exist for condition-dependent weapons, each explaining its special setup in-UI.
+   > Amended (B131(a), adopting the release gate's ruling): RETIRED per §10 risk 1's own cut line ("custom scenarios → limitation cards") — custom scenarios: 0, cut per §10. The requirement behind it holds: 0 unhandled and 339 typed limitation cards, each saying what the weapon does in-game and why it isn't simulated; B115 already bans inventing simulation parameters for a scenario.
 3. Every limitation card states *what the weapon actually does in-game* (verified text + source link) and *why it isn't simulated*.
 4. Selecting 20 random weapons in the Lab produces zero broken/blank behaviors.
+   > Amended (B115, B116 — supersedes AMENDMENTS-001 A3's coverage targets for this gate): A3's aspirational ≥60%-simulable target is RETIRED — reality is 149/488 (30.5%) honestly simulable with verified parameters, the rest carrying typed refusals and limitation cards, which IS the honesty contract; the 60% figure predated the triple-verification bar and would pressure dishonest parameter invention. The P3-S13 gate is a build-failing check: (a) the simulable count may never decrease (floor 149, raise-only; lowering needs a ruling); (b) every simulable weapon has a passing golden (149 ammo-named goldens; goldens pin data as well as engine); (c) every non-simulable weapon has a typed reason (`E_LAB_UNHANDLED`; DATA_SCHEMA_SPEC §6 `E_LAB_COVERAGE`). Resolved (B122): A3's ≥80%-per-floor-archetype target is RETIRED with B115's rationale (Q1). AC1's coverage report PAGE (UX_SPEC §1 `/lab/coverage`) is RETIRED as duplicative (Q2) — the Lab's "488 · 149 simulated · 339 not" line, the per-weapon limitation cards and the typed refusals deliver AC1's substance at the point of use; the per-bucket counts (149 archetype / 0 custom scenario / 339 limitation / 0 unhandled) live in `gaps.json` and the gap report.
 
 **P3-S14 "Equip Context: armor/accessories/buffs in Lab"** [D: armor + accessory + buff datasets with stat effects — may ship after P4 data lands]
 1. Equipping armor/accessories/buffs in the Lab changes displayed damage/crit/speed per their verified stat effects.
 2. Only stat-affecting effects apply; unmodeled effects are listed as "not simulated" on the equip panel.
 3. Removing all equips returns stats exactly to base values.
+   > Cut (B131(b)), per §10 — risk 1 lists P3-S14 among the first P3 cuts and the global cut line drops "Lab equip-context" before the floor. The Lab tests each weapon on its own stats; equipment bonuses are counted, as estimates, by the builder's profile and the readiness analysis.
 
 ### P4 — Loadout Builder + Weapon Comparison
 
@@ -228,6 +234,7 @@ Cross-cutting modifier params (apply to any archetype): bounce, chain, DoT/debuf
 3. Each weapon column lists pros/cons derived from data (e.g., piercing → multi-target pro).
 4. "Send to Weapon Lab" opens the Lab with the first selected weapon equipped.
 5. Comparison state is shareable/restorable via URL within the session.
+   > Amended (B99, B101–B103): 2–3 weapons, COMPARE_MAX = 3, `?w=` (B99(a) — this AC wins over the looser brief). AC1 rows the data can't honestly hold (range, ease of use, reforges, single- vs multi-target beyond explosives) are named in a "Not compared here" footnote and appear if/when verified data exists (B99(c)). AC2: uniform est. figures, plus an in-cell qualifier line for weapons breaking the held-attack assumption or used up on use (B101(a), B102; SCORING_SPEC §2.2). AC3: pros/cons by fixed rules over verified fields (B99(e)). AC4: met per weapon — each column links the Lab for its own weapon (labLinks is single-weapon, B99(e)); "Open in Builder" passes no stage (B108(c)).
 
 **P4-S2 "Loadout Builder: Inputs + Recommendation (Steps 1–2)"** [D: armor, accessory, ammo, buff/potion datasets with stage + class + acquisition fields]
 1. Step 1 collects stage, class, difficulty, goal, current/next boss, available equipment — every input skippable with sensible defaults.
@@ -235,18 +242,23 @@ Cross-cutting modifier params (apply to any archetype): bounce, chain, DoT/debuf
 3. Every recommended item is a real database entity; clicking it opens its detail page.
 4. Changing stage or class regenerates a stage-legal loadout (no post-boss items for a pre-boss stage).
 5. Hovering any item shows the standard Terraria-style tooltip.
+   > Amended (B106, B108): the current/next boss input is a TARGET — that boss and every fight it opens stay out of the stage's assumed defeats, so their gear sits on the gated track (target group first); marked defeats still count (B106). Accessory slots honor "empty beats zero" — a 0-point accessory whose specials belong to another class never fills a slot (B108(a); SCORING_SPEC §4.4). With a world evil chosen, other-world items are out of play and counted (B108(b)). Arriving from the comparison without a stage, the builder prompts for one instead of defaulting (B108(c)). AC4: swaps that stop being stage-legal are cleared with a visible notice (B106, B108(e)).
+   > Amended (B131(b)): AC3's interim exception — armor and accessory picks link their wiki articles while no armor/accessory pages exist — EXPIRES when P6-S1/S2 land; those links then go internal.
 
 **P4-S3 "Loadout Explanation + Honesty Layer (Step 3)"**
 1. A synergy explanation panel describes how the pieces work together and each item's contribution.
 2. The loadout shows a damage/defense/mobility profile summary, labeled as estimates.
 3. Boss-gated items are visibly badged with the gating boss; each has an "easier alternative" shown that is obtainable now.
 4. No recommendation ever hides a progression dependency (verified by selecting "Early Pre-Hardmode" and confirming zero Hardmode items appear ungated).
+   > Amended (B108(d), B113(a), B114): AC2's profile is four est.-labeled bars (damage, defense, mobility, survivability; class synergy runs to 100), each running to a PICK-INDEPENDENT reference — the highest figure found among gear verified obtainable at the stage, shown as a tick; a full bar must be earnable, never the default, and a bar never compares a build with itself (SCORING_SPEC §5.5; UX_SPEC §3.5).
 
 **P4-S4 "Loadout Compare + Scoring + Save (Step 4)"**
 1. Two or more loadouts render side by side with est. damage, defense, mobility, class bonuses, survivability.
 2. Scoring per goal (boss DPS / exploration / defense / general) shows its math on demand ("how was this scored?"), and no UI copy claims a universal "best".
 3. "Surprise Me" generates a valid random stage-legal loadout.
 4. "Save Build" persists the loadout locally; saved builds survive reload and appear on the homepage.
+   > Amended (B122 Q3): AC1's "two or more loadouts" is met by the draft beside one saved build (two); N-way saved-build comparison is out of v1 scope.
+   > Amended (B111, B113(b), B114, B106/B107): AC2's goal scoring compares builds as ONE signed difference ("Under Survivability weights: saved +24.4 est."; ties "same"), each figure split between the builds in proportion to their values; per-build weighted sums appear only inside "How was this scored?" and the 100.0 anchor is gone (SCORING_SPEC §5.3). AC3: Surprise Me warns before replacing fixed picks, re-draws on input change and is reproducible from its `?surprise=` seed (B111 R2). AC4: the homepage rail appears once a build exists — with none it is absent, since the hero's "Build My Loadout" already invites (B111 R6). Saved builds are SavedBuild v2 (target boss, owned items, user-emptied slots; v1 reads unchanged — DATA_SCHEMA_SPEC §8a).
 
 ### P5 — Boss Progression + Feature A
 
@@ -267,6 +279,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 
 **P5-S4 "Defeat Tracking + Visual Unlocks"**
 1. Each node can be marked defeated / not attempted / skipped-optional; state persists across reload.
+   > Amended (B86(a)): "each node" = each BOSS — milestones and events are derived from their bosses, never markable (consistent with B24).
 2. Marking a gate boss defeated visibly unlocks downstream branches (style change + newly "recommended" highlighting).
 3. A reset-progress control exists with a confirmation step.
 4. Tracking state is readable by other features (stage inference) — verified by Feature A reflecting it.
@@ -276,6 +289,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 2. Output explicitly separates "required before you can progress" from "recommended order" — with reasons.
 3. Changing tracked defeats changes the recommendation correctly (e.g., defeating WoF switches recommendations to early-Hardmode).
 4. With nothing tracked, it gives a sensible fresh-start recommendation instead of an error.
+   > Amended (B89): recommendations follow TRACKED defeats only (the panel explains the map beside it); AC1's "selected stage" is display context, never an assumed defeat. The recommender rules are specified in UX_SPEC §3.7.
 
 **P5-S6 "Boss Readiness Checker v1 (Feature A core)"** — see §9 for full integration ACs
 1. User picks a boss, stage, difficulty, class, and assembles a loadout from real database entities via search (same components as P4 builder).
@@ -288,6 +302,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 2. "Show Me How to Get It" jumps to the item's acquisition instructions (deep-links into Feature B's planner once P6-S5 ships).
 3. Suggestions respect class choice and difficulty (Expert/Master accessory slot counts).
 4. The analysis + loadout persist locally and restore on return.
+   > Amended (B94(5), B97(a), B117): gated upgrades list nearest gate first within each "after you defeat X" group, the rest counted; with a world evil chosen, upgrades behind the other world's evil boss are left out and counted. AC2: "Show Me How to Get It" opens the planner (`/plan/new?item=:id`) for single items (B117, superseding B112's interim item-page anchor); armor sets link to their in-app set pages (B134, superseding B117's wiki links for sets).
 
 ### P6 — Encyclopedia, Crafting Trees, Feature B, Armor/Accessory Views, Guides
 
@@ -300,6 +315,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 1. Accessories list/filter by category (mobility/defense/offense/utility) and stage; each shows exact effects and best-fit loadout notes.
 2. An accessory with an upgrade path (e.g., the Ankh Shield chain) renders its full tinkering/combination tree with every node clickable.
 3. All effects text is verified-with-source or marked Unknown.
+   > B131(b): P6-S1 and P6-S2 are BUILT, not cut — the original owner spec promises these databases; cutting them would change the contract. Delivered in 41bbb32 (B134 as-built note below) (docs/RELEASE.md §5). B131(c): B112's "P6-S1/S2" label meant the encyclopedia foundation (the item corpus UI that delivers P6-S3), not these slices.
 
 **P6-S3 "Item Encyclopedia Categories"** [D: full item corpus]
 1. Every REQUIREMENTS §7 category browses with its items; each item page shows effect, acquisition, and progression fit.
@@ -311,23 +327,27 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 2. Clicking any ingredient node expands it in place or opens its item page (user choice preserved).
 3. Items with alternative recipes/sources show the alternatives at the relevant node.
 4. A deep chain (e.g., Zenith or Cell Phone) renders completely without UI breakage.
+   > Amended (B131(b)): met by the Acquisition Planner's tree (the same recipe data, Feature B AC1) IF the plan PREVIEW shows the tree before saving — the P6 slice verifies this and adds it if missing; no separate "Crafting tree" tab, one tree renderer.
 
 **P6-S5 "Acquisition Planner v1 (Feature B core)"** — see §9 for full integration ACs
 1. User searches/selects any obtainable item; "Make My Plan" generates a step-by-step plan from their stated progression stage and owned items.
 2. The plan shows: acquisition method, recipe, every ingredient + quantity, station, ingredient locations, drops with verified rates (or Unknown), and required events/biomes/bosses/NPCs/world conditions.
 3. Boss prerequisites appear as explicit plan steps linking to boss pages; nothing boss-gated is presented as obtainable-now.
 4. "Where Do I Find This?" surfaces location/source info for any step; "Find an Easier Route" offers an alternative method where one exists, with the tradeoff explained.
+   > Amended (B117–B119): AC1's plan takes a quantity ("how many"). AC4 ships as "Compare routes" — no "easier" claims without data: every listed way shows its per-way gates (SCORING_SPEC §2.5), and the default route is "choices, not rankings" (a single source auto; craft-only = data-order "recipe 1 of N", labeled; mixed sources = the user chooses; Shimmer/circular/reversal recipes never auto-picked, always choosable with the reason shown).
 
 **P6-S6 "Grinding Checklist + Persistence (Feature B completion)"**
 1. User enters owned quantities per ingredient; remaining amounts auto-calculate and update when steps are checked off.
 2. Tasks group by biome/enemy/boss/activity so a single farming trip covers multiple needs.
 3. Plans and check-off progress persist locally and restore exactly on return; multiple concurrent plans are supported.
 4. Completing all steps marks the plan done; un-checking reopens it correctly.
+   > Amended (B117, B118, B119): AC2 groups by boss / drop source / vendor / activity — A5's biome grouping deviated honestly (biomes are free text). AC4: a step is complete when checked OR complete by cause (owned, no longer needed, boss counted); ONE "N of M complete" semantics on the plan page and the list; the completion banner is visible at the point of the final check and announced (B118(a)–(c)). Check state is per plan.
 
 **P6-S7 "Weapon Detail v2: Guidance & Relations"**
 1. Weapon pages gain: when-to-use guidance, recommended class/build, similar/upgrade weapons, synergies, and stage-peer comparison links.
 2. Every related weapon link navigates correctly; every guidance claim about mechanics has a source or is labeled as editorial guidance.
 3. "Compare with stage peers" opens the P4 comparison tool pre-filled.
+   > Cut (B131(b)), per §10 — risk 3's cut order is "P6-S9 → P6-S7 → …" and the global cut line drops "Weapon Detail v2". Weapon pages stay v1 (stats, acquisition, provenance, Unknown markers) with Compare, Test in Weapon Lab and What Should I Grind For?.
 
 **P6-S8 "Guides v1: Pre-Hardmode Path (5 topics)"**
 1. New world, exploring safely, better equipment, armor/defense, and first-boss-prep guides exist with tips, checklists, and item links into the database.
@@ -336,6 +356,7 @@ Same 4 criteria as P5-S2, applied to Queen Slime, the three mechanical bosses, P
 
 **P6-S9 "Guides v2: Hardmode Path (5 topics)"**
 Same criteria for: damage classes, arena building, entering Hardmode, key resources, path to the final boss; optional advanced sections collapsible.
+   > Cut (B131(b)), per §10 — risk 3 cuts P6-S9 first and the global cut line drops "Guides v2". The 5 pre-Hardmode guides (P6-S8) ship.
 
 ### P7 — Extras, Polish, Verification (each extra ships only if genuinely working)
 
@@ -344,6 +365,7 @@ Same criteria for: damage classes, arena building, entering Hardmode, key resour
 **P7-S3 "Saved Characters (multiple local profiles)"** — switch profiles; each keeps its own stage/defeats/builds/checklists; explicitly *not* a unified playthrough tracker.
 **P7-S4 "Quick Compare vs Equipped"** — from any weapon page, compare against the active loadout's weapon in one click.
 **P7-S5 "Random Challenge Generator"** — generates challenges referencing only real, stage-legal items; reroll works; zero invented items.
+> Cut (B131(b)), per §10 — P7 extras are the first thing the global cut line drops: **P7-S3** (also "drops first if contested", §11 — adjacent to the all-in-one-tracker exclusion), **P7-S4** (a weapon page's "Compare" opens `/compare` with that weapon; builds compare in Step 4) and **P7-S5** (also adjacent to the owner's explicit exclusions). P7-S1 and P7-S2 (+ P7-S2b, B123(a)) ship. B131(c): B127's "P7-S4" (licensing) and B128's "P7-S3" (the cross-browser sweep) are session labels, distinct from these PRD slices.
 **P7-S6 "Polish & Hardening Pass"** — responsive audit of all routes at 3 breakpoints; every data view has loading/empty/error states; large-list performance verified; all estimate labels audited present.
 **P7-S7 "Release Gate & Honest Final Report"** — run instructions verified from clean checkout; working-feature list matches reality (spot-audited); gap report lists every known missing/unknown datum and unimplemented item; zero dead major buttons site-wide.
 
@@ -370,6 +392,7 @@ Same criteria for: damage classes, arena building, entering Hardmode, key resour
 3. **Labeled estimates, no outcome claims:** every numeric output carries an "estimate" label with assumptions; copy review confirms zero instances of predicted fight outcomes, win chances, or "you will beat/lose" phrasing — only factor explanations.
 4. **Local persistence:** boss choice, loadout, and last analysis survive reload and browser restart; clearing is an explicit user action.
 5. **Integration, not a demo page:** reachable from boss pages, the progression map, and the loadout builder ("check readiness"); works for all classes, both world evils, and all three difficulties.
+> Amended (B94–B97): AC2 — the ANALYSIS counts every item in the user's loadout whatever its derived gating (ownership is ground truth), and says the gate in an info line; "never present a gated item as available" binds the Improve suggestions, which never include one (B94(1); SCORING_SPEC §6). "Tracked defeats" are counted with the map's semantics: under "Both", a mark of either evil boss counts (B96(a), B97). AC4: a stage change keeps the analysis current (stage is context only, B97(b)). AC5: /readiness also has its own desktop nav entry (B96(b); UX_SPEC §2).
 
 **Feature B — Item Acquisition Planner (binding, in addition to P6-S5/S6):**
 1. **Real database links:** plans are generated from the live recipes/drops datasets; every ingredient, enemy, boss, station, and biome in a plan links to its database page; the recursive tree is the same data as the P6-S4 crafting tree viewer.
@@ -377,6 +400,7 @@ Same criteria for: damage classes, arena building, entering Hardmode, key resour
 3. **Labeled estimates / verified rates:** drop rates display only verified values with provenance, otherwise "Unknown"; any time/effort estimate is labeled as an estimate; alternative methods are compared with stated tradeoffs, never a bare "best".
 4. **Local persistence:** plans, owned quantities, and check-off state persist across sessions; multiple plans coexist; deleting a plan requires confirmation.
 5. **Integration, not a demo page:** reachable from every item detail page ("What Should I Grind For?"), from Feature A's "Show Me How to Get It", and from loadout builder gated-item badges.
+> Amended (B117–B119): AC2 is applied verbatim — "obtainable now" = stated stage + tracked defeats, the builder's semantics (with no stage, tracked only); the plan states this basis and its difference from Feature A in a "based on" note (SCORING_SPEC §2.4). Per-way availability is conservative: a vendor/chest/fishing/wiki-described way among several, or an "Any X" group with divergent cheapest gates, is Unknown — never "obtainable now" (B119; SCORING_SPEC §2.5). AC3: "Compare routes" states each way's gates; no "easier" claims without data (B117). AC5: Feature A's "Show Me How to Get It" opens the planner for single items (B117). /plan has its own desktop nav entry (UX_SPEC §2).
 
 ## 10. Top 5 Scope Risks + Cut-Line Recommendation
 
@@ -388,6 +412,14 @@ Same criteria for: damage classes, arena building, entering Hardmode, key resour
 
 **Global cut line (drop top-down; foundation at bottom is never cut):**
 P7 extras (S1–S5) → Guides v2 → Weapon Detail v2 → Feature B checklist advanced (P6-S6 grouping/multi-plan) → Loadout Step 4 → Readiness v2 (P5-S7) → Guides v1 → Encyclopedia breadth (P6-S3 reduced to materials+potions+ammo) → Loadout Step 3 → Lab equip-context/dummy-roster-v2/homing → **[FLOOR: Homepage + search/data + Weapon Lab core + boss map/pages/tracking + Feature A v1 + Feature B v1 + comparison + builder Steps 1–2 — and if even that is too large, the §14 foundation four alone.]**
+
+> **As cut at release (B131(a)/(b), 2026-10-15 — cuts taken from the top of this line and from the per-risk cut orders above; the FLOOR ships whole):**
+> - **P7 extras:** P7-S3 saved characters, P7-S4 quick compare vs equipped, P7-S5 random challenge generator — CUT (first on the line; P7-S3 also "drops first if contested", §11; P7-S5 also adjacent to the owner's explicit exclusions). P7-S1 favorites and P7-S2 export/import (+ P7-S2b) SHIP.
+> - **Guides v2:** P6-S9 — CUT (risk 3's first cut). Guides v1 (P6-S8, 5 pre-Hardmode guides) SHIP.
+> - **Weapon Detail v2:** P6-S7 — CUT (risk 3's second cut). Weapon detail v1 SHIPS.
+> - **Lab equip-context:** P3-S14 — CUT (risk 1). Dummy roster v2 (P3-S12) and the homing layer (P3-S8, switch disabled with its reason — B116) SHIP.
+> - **Custom scenarios → limitation cards** (risk 1's first P3 cut): APPLIED — 0 custom scenarios; P3-S13 AC2 retired (B131(a)).
+> - Everything else on the line SHIPS (P6-S6 advanced checklist, Loadout Steps 3–4, Readiness v2, full encyclopedia breadth). **P6-S1/S2 armor & accessory databases are BUILT, not cut** (the owner spec promises them); **P6-S4** is met by the planner's tree in the plan preview (B131(b)). docs/RELEASE.md §3 lists the cuts with what ships instead.
 
 ## 11. Assumptions (explicit)
 
@@ -405,3 +437,7 @@ P7 extras (S1–S5) → Guides v2 → Weapon Detail v2 → Feature B checklist a
 ## 13. Verification Targets
 
 Each slice's ACs are its verification checklist, plus: P3-S13 coverage report, P7-S6 audit, P7-S7 release gate. Required artifacts: this PRD, the dataset gap report (P2-S2), Lab coverage report (P3-S13), final honest report (P7-S7).
+> Amended (B115, B116): the P3-S13 coverage gate runs at build time (`pipeline:build` / `pipeline:validate`, DATA_SCHEMA_SPEC §6) with the gap report's lab-coverage counts; the separate coverage-report PAGE is retired (B122 Q2), so the "Lab coverage report" artifact is the gate plus `gaps.json` / pipeline/reports/gap-report.md. The P7-S7 final honest report is [RELEASE.md](./RELEASE.md) (B132), with the review ledger as its appendix (B131(d)).
+
+
+> **Amended (B134):** P6-S1/S2 shipped as built per B131(b) — set-grouped armor browse/detail with compare and stage-peers; accessory browse/detail with combination trees. P4-S2 AC3's wiki-link exception for armor/accessories has EXPIRED (links in-app). P6-S4's crafting-tree AC is satisfied by the plan preview's full read-only recursive tree (test-pinned, planPreview.test.ts).

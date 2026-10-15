@@ -1,0 +1,4745 @@
+{
+  "overlay": "lab-params",
+  "authoredAt": "2026-10-13",
+  "notes": [
+    "P3-S0 Weapon Lab archetype params \u2014 the RESIDUAL, reviewed decisions. Everything derivable is computed by pipeline/merge/labParams.ts (its header is the tooling doc): family = the wiki category of the weapon article; classification from Module:Iteminfo/data useStyle (quoted from the Use Style IDs article), class, noMelee, channel, shoot, useAmmo, mana; swing reach/arc, magic-bolt velocity/pierce, bow-gun ammo class derived; single-projectile / no-spread / ammo-unchanged defaults only when the article screen is clean.",
+    "PARAM SEMANTICS (AMENDMENTS-008 B37, binding \u2014 see src/sim/README.md 'Cadence' and 'Param semantics'): pierce = extra dummies passed through AFTER the first hit (0 = stops at the first); projectilesPerUse = projectiles per activation (shot) within one attack \u2014 bursts come from useTime < useAnimation, never from projectilesPerUse; an ammo projectile's speed comes only from the ammo's velocityBonusTps / velocityMultiplier (bow-gun entries carry no speed); magic-bolt speed = params.projectile.velocityTps (derived from Iteminfo shootSpeed x (1 + Projectileinfo extraUpdates)), never weapon.shootSpeedTps.",
+    "An entry exists only for a weapon the article screen flagged (the build fails on an entry for a clean weapon \u2014 residuals only). decision 'archetype': a reviewer read the article and confirms the archetype fits; residual values (projectilesPerUse, spreadDegrees, inheritsAmmoProjectile, pierce, lifetimeTicks, damageMultiplierPct) must each be stated by one of the quotes (number / number word, degrees, pierce wording, seconds, '<n>% of the weapon's damage') \u2014 checked by the build. slightSpread: true = AMENDMENTS-010 B47 (a gun whose quote says slight / small spread with no angle \u2192 the labeled 10\u00b0 modeling convention, listed in _prov.modeledFields). decision 'limitation': `reason` is emitted on the Lab's limitation card; the quotes document the behavior the params cannot express.",
+    "Every quote is checked verbatim against the cached revision of the cited article; the weapon's own article must be cited. `why` is pipeline-only reviewer rationale. NEVER guess: a weapon whose behavior the wiki does not pin down stays a limitation (e.g. guns whose non-slight spread angle is unstated, homing whose strength is undocumented). Modeling conventions (B44 swing geometry, B46 thrust reach, B47 slight spread) are ratified rulings, always labeled \u2014 never silent.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "B48 coverage-expansion slice (AMENDMENTS-010, 2026-10-13): reuse delay is part of the sim cadence (reviewed: Clockwork Assault Rifle simulable; Sky Fracture / Betsy's Wrath stay limitations for other reasons); thrust weapons use the B46 reach convention only where the article states no range (a stated spear range is a hard limitation pending a ruling); damage over time comes from the infobox debuff rows (Frost Staff, Stylish Scissors, Brand of the Inferno reviewed); the B47 slight-spread convention covers Minishark, Megashark, S.D.M.G.",
+    "AMENDMENTS-012 B56 (2026-10-13): a range the thrust weapon's article states ('maximum range of approximately N tiles') is its reach \u2014 extracted by pipeline/merge/labParams.ts and checked verbatim on the cached revision (wiki data with normal provenance, not _prov.modeledFields); the B46 convention applies only where no range is stated. The nine plain spears (Trident, Spear, Mythril Halberd, Adamantite Glaive, Cobalt Naginata, Palladium Pike, Orichalcum Halberd, Titanium Trident, Swordfish) have reviewed entries for their screen flags only \u2014 their reach is never an overlay value.",
+    "P3-S0 remaining-archetype slice (2026-10-13): families returning (Boomerangs + Flails + Yoyos), whip (Whips), minion-sentry (Minion + Sentry summon items), explosive-aoe (Explosives + Launchers) and piercing-beam (no wiki category: held magic/ranged weapons outside every category family). Their sim interpreters ship with the Lab (P3-S6\u2013S11): complete params are RECORDED (coverage report) and the weapon is emitted as a limitation whose reason names what the Lab does not model; the same build emits the params once the interpreter registers. Values are stated (yoyo infobox Reach, Whips list table, tooltips, verbatim 'maximum range' / fuse sentences, or a reviewed quote here that states the value) or derived (Projectileinfo minionSlots + quoted rules); a value only an unratified convention could supply stays MISSING (Manhattan sentry ranges \u2014 AMENDMENTS-013 B63 P-4 rejected). Limitation entries may record bounceCount / chainTargets / tickRateTicks (quote-checked) for the NotImplemented sim stubs.",
+    "AMENDMENTS-013 B63 conventions (2026-10-13), applied by pipeline/merge/labFamilies.ts as labeled modeling conventions (recorded on the decision; _prov.modeledFields once the archetype is simulated): whip arc 180\u00b0 forward (P-1); summon attack rate from an article-stated average / random cooldown or a time that is not whole ticks, rounded half-to-even to ticks (P-2); a contact minion's stated immunity frames as an UPPER-BOUND rate \u2014 maximum rate; actual depends on minion AI pathing (P-3; not applied where the article says the frames do not come into play); a square blast area's inscribed circle, radius = half the side (P-5). The four AI-class definitions are binding (P-6; labFamilies.ts header).",
+    "Category-less weapons (orchestrator ruling, 2026-10-13): a weapon in no Lab family (no wiki weapon-type category, no held-beam signal) keeps the default limitation card unless a reviewed limitation entry here gives its specific reason \u2014 evidence-checked like every entry (verbatim quotes on the cached revision, its own article cited); such a weapon takes no archetype entry and no recorded extras. Reviewed: Grenade, Star Cannon, Blowpipe, Flamethrower, Snowball Cannon (consumable / ammo-driven uniques); Sticky Grenade, Bouncy Grenade, Happy Grenade (AMENDMENTS-015 B85(c): the grenade family's own reasons, P3-S11 design review).",
+    "inGameBehavior (design review P3-S6/S7): reviewed \u201cWhat it does in-game\u201d texts for limitation cards whose tooltip carries no behavior line \u2014 Light Disc, Sergeant United Shield, Combat Wrench, Trimarang and Flaming Mace have only their flavor-text quote (e.g. \u2018Greetings, programs!\u2019), which is not behavior (UX_SPEC \u00a78). Each is a verbatim excerpt of the weapon's own article (checked on the cached revision); the build rejects an entry for a simulated weapon or one whose tooltip already describes its behavior. Every other flavor-only card falls back to \u201cNo verified description yet.\u201d \u2014 or, where its limitation reason describes the behavior, \u201cNo separate description verified \u2014 see below.\u201d (the flavor line is never used). A reason never repeats its reviewed inGameBehavior text (Light Disc: design review P5-S1)."
+  ],
+  "entries": [
+    {
+      "itemId": 6,
+      "name": "Iron Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Iron Shortsword",
+          "quote": "The Iron Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Iron Shortsword",
+          "quote": "In Journey Mode, the Iron Shortsword replaces the Copper Shortsword for newly created characters."
+        }
+      ],
+      "why": "Flag 'spawns' matched 'created' in the starting-inventory note (acquisition), not weapon behavior; the article states no special stab behavior."
+    },
+    {
+      "itemId": 46,
+      "name": "Light's Bane",
+      "decision": "limitation",
+      "reason": "Each swing also creates a slash projectile (50% damage, a double-size 100% slash on a crit roll) that the swing parameters do not model.",
+      "evidence": [
+        {
+          "page": "Light's Bane",
+          "quote": "When swung, it creates a dark slash near the tip of the sword."
+        }
+      ],
+      "why": "slash projectile + crit-dependent big slash"
+    },
+    {
+      "itemId": 55,
+      "name": "Enchanted Boomerang",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Enchanted Boomerang",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Enchanted Boomerang",
+          "quote": "This allows it to hit enemies multiple times"
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent)."
+    },
+    {
+      "itemId": 64,
+      "name": "Vilethorn",
+      "decision": "limitation",
+      "reason": "It extends a thorn from the player's position rather than firing a bolt \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Vilethorn",
+          "quote": "When used, it extends a thorn from the player's position"
+        }
+      ],
+      "why": "segment projectile"
+    },
+    {
+      "itemId": 65,
+      "name": "Starfury",
+      "decision": "limitation",
+      "reason": "Swings summon stars that fall from the sky to the cursor (150% damage) \u2014 not modeled by the swing parameters.",
+      "evidence": [
+        {
+          "page": "Starfury",
+          "quote": "When swung, it occasionally summons a star projectile that falls from the sky to the cursor."
+        }
+      ],
+      "why": "sky projectile"
+    },
+    {
+      "itemId": 98,
+      "name": "Minishark",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
+      "evidence": [
+        {
+          "page": "Minishark",
+          "quote": "When used, it rapidly fires bullets at a slight spread, with each shot having a 1/3 (33.33%) chance of not consuming any ammunition."
+        }
+      ],
+      "why": "AMENDMENTS-010 B47: 'slight spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. Ammo saving is not modeled (labeled 'ammo'); 'penetration' and 'damage could be reduced' are defense / accessory advice."
+    },
+    {
+      "itemId": 112,
+      "name": "Flower of Fire",
+      "decision": "limitation",
+      "reason": "Its fireball bounces off blocks and can set enemies On Fire! \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flower of Fire",
+          "quote": "fires a slow, non-piercing fireball that can bounce off blocks up to five times"
+        }
+      ],
+      "why": "bounce + DoT",
+      "bounceCount": 5
+    },
+    {
+      "itemId": 113,
+      "name": "Magic Missile",
+      "decision": "limitation",
+      "reason": "Its missile follows the cursor while held and then homes \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Magic Missile",
+          "quote": "When used, it fires a magic missile that follows the cursor"
+        }
+      ],
+      "why": "cursor control + homing"
+    },
+    {
+      "itemId": 119,
+      "name": "Flamarang",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Flamarang",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Flamarang",
+          "quote": "This allows it to hit enemies multiple times"
+        },
+        {
+          "page": "Flamarang",
+          "quote": "It has a 1/2 (50%) chance of inflicting the On Fire! debuff to enemies for 3 seconds on hit."
+        },
+        {
+          "page": "Flamarang",
+          "quote": "This weapon works very well against Queen Bee when she is stationary and spawning Bees"
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent). On Fire! is the derived DoT modifier (infobox debuff rows); \"spawning\" is advice about Queen Bee."
+    },
+    {
+      "itemId": 120,
+      "name": "Molten Fury",
+      "decision": "limitation",
+      "reason": "It converts Wooden Arrows into Flaming Arrows that inflict On Fire! \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Molten Fury",
+          "quote": "When used, it converts Wooden Arrows into Flaming Arrows, causing them to inflict the On Fire! debuff on hit."
+        }
+      ],
+      "why": "conversion + DoT"
+    },
+    {
+      "itemId": 121,
+      "name": "Volcano",
+      "decision": "limitation",
+      "reason": "Hits create an explosion that damages the target and two more enemies, and can set enemies On Fire! \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Volcano",
+          "quote": "When swung, it creates an explosion upon enemy hits"
+        }
+      ],
+      "why": "on-hit explosion + debuff"
+    },
+    {
+      "itemId": 127,
+      "name": "Space Gun",
+      "decision": "limitation",
+      "reason": "Its lasers gain damage and pierce as they travel \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Space Gun",
+          "quote": "The lasers will increase in damage, pierce, knockback and size (only visually) as they travel."
+        }
+      ],
+      "why": "distance-dependent damage"
+    },
+    {
+      "itemId": 155,
+      "name": "Muramasa",
+      "decision": "limitation",
+      "reason": "Hits create an extra slash (50% damage) that the swing parameters do not model.",
+      "evidence": [
+        {
+          "page": "Muramasa",
+          "quote": "When swung, it creates a blue slash upon enemy hits."
+        }
+      ],
+      "why": "on-hit slash"
+    },
+    {
+      "itemId": 157,
+      "name": "Aqua Scepter",
+      "decision": "limitation",
+      "reason": "It sprays arcing water streams that pierce \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Aqua Scepter",
+          "quote": "fires arcing streams of water in quick succession, with each stream being able to hit up to 5 targets"
+        }
+      ],
+      "why": "arcing stream"
+    },
+    {
+      "itemId": 165,
+      "name": "Water Bolt",
+      "decision": "limitation",
+      "reason": "Its slow water ball pierces and bounces off blocks \u2014 the Lab does not model bouncing.",
+      "evidence": [
+        {
+          "page": "Water Bolt",
+          "quote": "When used, it fires a slow-moving piercing water ball projectile that can bounce off blocks."
+        }
+      ],
+      "why": "bounce"
+    },
+    {
+      "itemId": 166,
+      "name": "Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        },
+        {
+          "page": "Bomb",
+          "quote": "It can be tricky to use the standard Bomb, as it will roll and bounce off the terrain."
+        }
+      ],
+      "why": "The fuse is stated in the lead (extracted); the radius sentence covers blocks and \"the radius\" of the damage sentence; every enemy in it takes 100 damage (falloff none). Rolling / bouncing on terrain decides where it lands, not its blast; \"explosive\" is the archetype."
+    },
+    {
+      "itemId": 167,
+      "name": "Dynamite",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Dynamite",
+          "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
+        }
+      ],
+      "why": "\"explosive\" is the archetype; every enemy in the area takes 250 damage (falloff none). The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 168,
+      "name": "Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive: thrown, it bounces and rolls, then explodes on hitting an enemy or after 3 seconds, whichever comes first, damaging an 8\u00d78-tile square around it. The Lab's thrown explosives go off either on impact or on a fuse, not both, so it isn't simulated.",
+      "evidence": [
+        {
+          "page": "Grenade",
+          "quote": "The Grenade is an explosive consumable ranged weapon"
+        },
+        {
+          "page": "Grenade",
+          "quote": "A thrown Grenade will bounce slightly and roll until it either hits a valid target or 3 seconds have elapsed, after which it will explode."
+        },
+        {
+          "page": "Grenade",
+          "quote": "The Grenade explosion deals damage within a 8\u00d78-tile square area centered on the Grenade."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: thrown consumable explosive (bounce + roll, impact OR a 3 s fuse, square blast). P3-S11: the explosive-aoe params hold one trigger (impact, or timed with fuseTicks \u2014 schema: fuseTicks iff timed), so its impact-or-3-s trigger is not expressible; the family rule (no category) blocks it too"
+    },
+    {
+      "itemId": 186,
+      "name": "Breathing Reed",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Breathing Reed",
+          "quote": "The Breathing Reed is a tool that aids in underwater breathing, and also functions as a broadsword."
+        }
+      ],
+      "why": "Flag 'held' = the breathing function while the item is selected; its attack is a plain broadsword swing."
+    },
+    {
+      "itemId": 190,
+      "name": "Blade of Grass",
+      "decision": "limitation",
+      "reason": "Swings fire a homing leaf projectile and can poison enemies \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Blade of Grass",
+          "quote": "When swung, it fires a Leaf Blade projectile that travels upwards in a circle and homes in on enemies."
+        }
+      ],
+      "why": "homing projectile + debuff"
+    },
+    {
+      "itemId": 191,
+      "name": "Thorn Chakram",
+      "decision": "limitation",
+      "reason": "It can bounce off blocks before returning \u2014 the Lab does not model bouncing.",
+      "evidence": [
+        {
+          "page": "Thorn Chakram",
+          "quote": "Unlike most boomerangs, it does not necessarily return immediately upon contact with objects, but instead can bounce off blocks before returning."
+        }
+      ],
+      "why": "bounce (no count stated)"
+    },
+    {
+      "itemId": 197,
+      "name": "Star Cannon",
+      "decision": "limitation",
+      "reason": "It fires the Fallen Stars it consumes as ammunition; each star pierces any number of enemies and flies until it hits a block (up to a minute) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Star Cannon",
+          "quote": "The Star Cannon is a pre-Hardmode ranged weapon that consumes and fires Fallen Stars."
+        },
+        {
+          "page": "Star Cannon",
+          "quote": "The projectiles are not affected by gravity, pierce an infinite amount of enemies, and dissipate after 1 minute or upon impact with a block."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: ammo-driven unique \u2014 the consumed Fallen Star is the projectile, infinite pierce + 1-minute lifetime"
+    },
+    {
+      "itemId": 218,
+      "name": "Flamelash",
+      "decision": "limitation",
+      "reason": "Its fireball follows the cursor while held and then homes \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flamelash",
+          "quote": "When used, it fires a fireball that follows the cursor"
+        }
+      ],
+      "why": "cursor control + homing"
+    },
+    {
+      "itemId": 219,
+      "name": "Phoenix Blaster",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Phoenix Blaster",
+          "quote": "The Phoenix Blaster is a pre-Hardmode gun and the direct upgrade to the Handgun, with increased damage and velocity but slightly less knockback."
+        }
+      ],
+      "why": "'increased damage' compares it with the Handgun; the article states no special shot behavior."
+    },
+    {
+      "itemId": 235,
+      "name": "Sticky Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Sticky Bomb",
+          "quote": "The Sticky Bomb is an explosive that functions like the Bomb, but sticks onto any block on contact."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Functions like the Bomb\" \u2192 the Bomb's stated fuse, radius and uniform damage (each value quoted from the Bomb article); sticking to blocks is placement."
+    },
+    {
+      "itemId": 272,
+      "name": "Demon Scythe",
+      "decision": "limitation",
+      "reason": "Its scythe starts static and gradually accelerates \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Demon Scythe",
+          "quote": "When used, it fires a sickle projectile that is initially static before gradually accelerating."
+        }
+      ],
+      "why": "accelerating projectile"
+    },
+    {
+      "itemId": 273,
+      "name": "Night's Edge",
+      "decision": "limitation",
+      "reason": "Its swing is an aura (plus a second aura toward the cursor) with its own reach and hit limits, not the sprite-based swing the Lab models.",
+      "evidence": [
+        {
+          "page": "Night's Edge",
+          "quote": "When swung, a circular purple aura follows the swing, reaching slightly farther than the sword itself."
+        }
+      ],
+      "why": "1.4.4 aura swing; item has noMelee"
+    },
+    {
+      "itemId": 274,
+      "name": "Dark Lance",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Dark Lance",
+          "quote": "The Dark Lance inflicts the Shadowflame debuff for 4\u20135 seconds and creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
+    },
+    {
+      "itemId": 277,
+      "name": "Trident",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Trident",
+          "quote": "The Trident is a pre-Hardmode spear"
+        },
+        {
+          "page": "Trident",
+          "quote": "When held while submerged in water or lava, the player is granted increased movement speed and jump height."
+        },
+        {
+          "page": "Trident",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Trident",
+          "quote": "The Trident emits light when used underwater."
+        }
+      ],
+      "why": "'held' is the held item's movement effect in water or lava (not an attack; the Lab arena has no liquids); 'emits' is light, not a projectile; 'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes). Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 280,
+      "name": "Spear",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Spear",
+          "quote": "The Spear is a pre-Hardmode spear"
+        },
+        {
+          "page": "Spear",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Spear",
+          "quote": "Its knockback can hold back multiple enemies at once, notably Demon Eyes, Eaters of Souls, and Crimeras."
+        }
+      ],
+      "why": "'hold' matched 'Its knockback can hold back multiple enemies' (knockback \u2014 the Lab's dummies never move), not a held use; 'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes). Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 281,
+      "name": "Blowpipe",
+      "decision": "limitation",
+      "reason": "It fires Seeds and darts as ammunition, but the wiki doesn't class it as a bow, repeater or gun \u2014 the only ammo-fired weapons the Lab simulates.",
+      "evidence": [
+        {
+          "page": "Blowpipe",
+          "quote": "The Blowpipe is a pre-Hardmode ranged weapon"
+        },
+        {
+          "page": "Blowpipe",
+          "quote": "When used, it fires Seeds and darts as ammunition."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: ammo-driven unique (seed/dart ammo class); the bow-gun family is Bows + Repeaters + Guns by category, and the Blowpipe is in none"
+    },
+    {
+      "itemId": 284,
+      "name": "Wooden Boomerang",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Wooden Boomerang",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Wooden Boomerang",
+          "quote": "This allows it to hit enemies multiple times"
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent)."
+    },
+    {
+      "itemId": 368,
+      "name": "Excalibur",
+      "decision": "limitation",
+      "reason": "Its swing is an aura reaching about twice the sword's length with its own hit limit, not the sprite-based swing the Lab models.",
+      "evidence": [
+        {
+          "page": "Excalibur",
+          "quote": "When swung, a large yellow aura follows the swing, reaching about twice the distance of the sword itself."
+        }
+      ],
+      "why": "aura swing"
+    },
+    {
+      "itemId": 390,
+      "name": "Mythril Halberd",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Mythril Halberd",
+          "quote": "The Mythril Halberd is a Hardmode spear."
+        },
+        {
+          "page": "Mythril Halberd",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 406,
+      "name": "Adamantite Glaive",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Adamantite Glaive",
+          "quote": "The Adamantite Glaive is a Hardmode spear."
+        },
+        {
+          "page": "Adamantite Glaive",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 426,
+      "name": "Breaker Blade",
+      "decision": "limitation",
+      "reason": "It deals 250% damage to enemies at 90% health or higher; the Lab's dummies have no health, so this cannot be represented.",
+      "evidence": [
+        {
+          "page": "Breaker Blade",
+          "quote": "It deals 250% damage (175 base damage) to enemies at 90% health or higher."
+        }
+      ],
+      "why": "health-dependent damage"
+    },
+    {
+      "itemId": 434,
+      "name": "Clockwork Assault Rifle",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Clockwork Assault Rifle",
+          "quote": "When used, it fires in three-shot bursts, with each burst consuming one piece of ammunition."
+        },
+        {
+          "page": "Clockwork Assault Rifle",
+          "quote": "It also has a reuseDelay of 14, adding a cooldown of 14 ticks"
+        }
+      ],
+      "why": "Three-shot bursts = useTime 4 inside useAnimation 12 (B37: bursts come from use time, one bullet per shot); the 14-tick reuse delay is in the sim cadence (B48(a)). The game uses one ammo per burst, the sim counts one per shot (labeled 'ammo' approximation). The Ichor / Crystal Bullet / necklace notes are ammo and accessory advice."
+    },
+    {
+      "itemId": 486,
+      "name": "Ruler",
+      "decision": "limitation",
+      "reason": "It stabs four times per use at varying angles; the Lab's thrust models one stab per use.",
+      "evidence": [
+        {
+          "page": "Ruler",
+          "quote": "It swings four times in quick succession per use, with slightly varying angles with each stab."
+        }
+      ],
+      "why": "multi-stab use (useTime 5 < useAnimation 20)"
+    },
+    {
+      "itemId": 495,
+      "name": "Rainbow Rod",
+      "decision": "limitation",
+      "reason": "Its missile follows the cursor while held and then homes \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Rainbow Rod",
+          "quote": "When used, it fires a rainbow missile that follows the cursor"
+        }
+      ],
+      "why": "cursor control + homing"
+    },
+    {
+      "itemId": 506,
+      "name": "Flamethrower",
+      "decision": "limitation",
+      "reason": "Each use burns one Gel for five bursts of fire that spread into a cone, pierce three enemies (15% less damage per enemy) and inflict Hellfire \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flamethrower",
+          "quote": "When used, it consumes one Gel and releases five bursts of fire in quick succession."
+        },
+        {
+          "page": "Flamethrower",
+          "quote": "The fire expands as it travels, creating a cone-like area of effect, before dissipating shortly after."
+        },
+        {
+          "page": "Flamethrower",
+          "quote": "The fire has 15 armor penetration, inflicts the Hellfire debuff for 20 seconds, and can pierce through three enemies."
+        },
+        {
+          "page": "Flamethrower",
+          "quote": "The fire's damage decreases by 15% per enemy pierced."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: ammo-driven unique (gel) \u2014 five-burst use, expanding cone, pierce with damage falloff, Hellfire debuff"
+    },
+    {
+      "itemId": 514,
+      "name": "Laser Rifle",
+      "decision": "limitation",
+      "reason": "Its lasers gain damage and pierce as they travel \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Laser Rifle",
+          "quote": "The lasers will increase in damage, pierce, knockback, and size (only visually) as they travel."
+        }
+      ],
+      "why": "distance-dependent damage"
+    },
+    {
+      "itemId": 518,
+      "name": "Crystal Storm",
+      "decision": "limitation",
+      "reason": "It fires a slight spread of shards that slow down and bounce \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Crystal Storm",
+          "quote": "The Crystal Storm is a Hardmode spell book that rapidly fires a slight spread of small crystal shards."
+        }
+      ],
+      "why": "spread + bounce"
+    },
+    {
+      "itemId": 519,
+      "name": "Cursed Flames",
+      "decision": "limitation",
+      "reason": "Its fireballs fall, bounce and inflict Cursed Inferno \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cursed Flames",
+          "quote": "The Cursed Flames are a Hardmode spell book that fire gravity-affected bouncing green fireballs."
+        },
+        {
+          "page": "Cursed Flames",
+          "quote": "The fireballs can bounce off blocks four times and pierce enemies once"
+        }
+      ],
+      "why": "bounce + DoT",
+      "bounceCount": 4
+    },
+    {
+      "itemId": 533,
+      "name": "Megashark",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
+      "evidence": [
+        {
+          "page": "Megashark",
+          "quote": "When used, it fires bullets very rapidly in a small spread."
+        }
+      ],
+      "why": "AMENDMENTS-010 B47 (names the Megashark): 'small spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. The 50% ammo saving is not modeled (labeled 'ammo')."
+    },
+    {
+      "itemId": 534,
+      "name": "Shotgun",
+      "decision": "limitation",
+      "reason": "It fires a random 4\u20135 bullets per shot in a spread the wiki does not measure \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Shotgun",
+          "quote": "When used, it fires a spread of 4\u20135 bullets, consuming one piece of ammunition."
+        }
+      ],
+      "why": "random count + unstated spread"
+    },
+    {
+      "itemId": 537,
+      "name": "Cobalt Naginata",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Cobalt Naginata",
+          "quote": "The Cobalt Naginata is a Hardmode spear."
+        },
+        {
+          "page": "Cobalt Naginata",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 550,
+      "name": "Gungnir",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Gungnir",
+          "quote": "When thrust, it creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
+    },
+    {
+      "itemId": 561,
+      "name": "Light Disc",
+      "decision": "limitation",
+      "reason": "Neither its bouncing nor several discs out at once is modeled.",
+      "evidence": [
+        {
+          "page": "Light Disc",
+          "quote": "It does not necessarily return immediately upon contact with objects, but instead can bounce off blocks before returning."
+        },
+        {
+          "page": "Light Disc",
+          "quote": "with a maximum of six Light Discs that can be thrown out at one time"
+        }
+      ],
+      "why": "bounce (no count) + simultaneous throws"
+    },
+    {
+      "itemId": 578,
+      "name": "Hallowed Repeater",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Hallowed Repeater",
+          "quote": "The Hallowed Repeater is a Hardmode, post-one mechanical boss repeater."
+        },
+        {
+          "page": "Hallowed Repeater",
+          "quote": "Its DPS can be surpassed by the Chlorophyte Shotbow, which fires multiple arrows per shot."
+        }
+      ],
+      "why": "'multiple arrows' describes the Chlorophyte Shotbow, not this repeater."
+    },
+    {
+      "itemId": 653,
+      "name": "Ebonwood Sword",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Ebonwood Sword",
+          "quote": "The Ebonwood Sword is a pre-Hardmode broadsword."
+        }
+      ],
+      "why": "Flag 'spawns' matched acquisition advice (\"create an artificial Corruption\"), not weapon behavior."
+    },
+    {
+      "itemId": 670,
+      "name": "Ice Boomerang",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Ice Boomerang",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Ice Boomerang",
+          "quote": "This allows it to hit enemies multiple times"
+        },
+        {
+          "page": "Ice Boomerang",
+          "quote": "It can also inflict the Frostburn debuff for 3 seconds"
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent). Frostburn is the derived DoT modifier (infobox debuff rows)."
+    },
+    {
+      "itemId": 671,
+      "name": "Keybrand",
+      "decision": "limitation",
+      "reason": "Its damage depends on the target's missing health (the Lab's dummies have no health), and releasing the attack throws the sword \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Keybrand",
+          "quote": "It deals increased damage against enemies depending on their missing health"
+        }
+      ],
+      "why": "health-dependent damage"
+    },
+    {
+      "itemId": 672,
+      "name": "Cutlass",
+      "decision": "limitation",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Cutlass",
+          "quote": "Striking enemies with the weapon increases its damage by 12% per hit, up to a maximum of 50%."
+        }
+      ],
+      "why": "stacking damage bonus"
+    },
+    {
+      "itemId": 674,
+      "name": "True Excalibur",
+      "decision": "limitation",
+      "reason": "Its swing is an aura reaching about twice the sword's length with its own hit limit, not the sprite-based swing the Lab models.",
+      "evidence": [
+        {
+          "page": "True Excalibur",
+          "quote": "When swung, a large yellow aura with a pink edge follows the swing, reaching about twice the distance of the sword itself."
+        }
+      ],
+      "why": "aura swing"
+    },
+    {
+      "itemId": 675,
+      "name": "True Night's Edge",
+      "decision": "limitation",
+      "reason": "Its swing is an aura, and it also fires a spinning blade (50% damage, up to 3 hits) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "True Night's Edge",
+          "quote": "The sword will also fire a spinning green blade that deals 50% of the weapon's damage"
+        }
+      ],
+      "why": "aura + projectile"
+    },
+    {
+      "itemId": 676,
+      "name": "Frostbrand",
+      "decision": "limitation",
+      "reason": "Swings fire a piercing Frost Bolt on its own cooldown that inflicts Frostbite \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Frostbrand",
+          "quote": "When swung, it fires a Frost Bolt projectile that pierces two enemies before dissipating on the third hit"
+        }
+      ],
+      "why": "cooldown projectile + DoT"
+    },
+    {
+      "itemId": 679,
+      "name": "Tactical Shotgun",
+      "decision": "limitation",
+      "reason": "It fires six bullets in a spread whose angle the wiki does not state \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Tactical Shotgun",
+          "quote": "When used, it fires six bullets in a spread, consuming one piece of ammunition."
+        }
+      ],
+      "why": "unstated spread"
+    },
+    {
+      "itemId": 682,
+      "name": "Marrow",
+      "decision": "limitation",
+      "reason": "It converts every arrow into Bone Arrows that shatter into shards \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Marrow",
+          "quote": "When used, it converts any type of arrow into high-velocity Bone Arrows"
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 683,
+      "name": "Unholy Trident",
+      "decision": "limitation",
+      "reason": "Its tridents lose speed, ignore 25 defense and inflict Shadowflame \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Unholy Trident",
+          "quote": "fires high-velocity purple tridents which lose speed as they travel and have 25 armor penetration"
+        }
+      ],
+      "why": "motion + armor penetration + DoT"
+    },
+    {
+      "itemId": 723,
+      "name": "Beam Sword",
+      "decision": "limitation",
+      "reason": "Swings fire a bouncing Sword Beam on its own cooldown \u2014 not modeled by the swing parameters.",
+      "evidence": [
+        {
+          "page": "Beam Sword",
+          "quote": "When swung, it fires a yellow Sword Beam projectile that can pierce one enemy and bounce off blocks three times before dissipating."
+        }
+      ],
+      "why": "cooldown projectile + bounce",
+      "bounceCount": 3
+    },
+    {
+      "itemId": 724,
+      "name": "Ice Blade",
+      "decision": "limitation",
+      "reason": "Swings fire an Ice Bolt on its own 0.92-second cooldown, independent of the swings \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Ice Blade",
+          "quote": "The Ice Bolt projectile has a cooldown of 0.92 seconds."
+        }
+      ],
+      "why": "cooldown projectile"
+    },
+    {
+      "itemId": 725,
+      "name": "Ice Bow",
+      "decision": "limitation",
+      "reason": "It converts every arrow into Frost Arrows \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Ice Bow",
+          "quote": "When used, it converts any type of arrow into high-velocity Frost Arrows."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 726,
+      "name": "Frost Staff",
+      "decision": "archetype",
+      "archetype": "magic-bolt",
+      "evidence": [
+        {
+          "page": "Frost Staff",
+          "quote": "When used, it fires a frost bolt that pierces one enemy and does not pass through blocks."
+        },
+        {
+          "page": "Frost Staff",
+          "quote": "The Frost Staff also inflicts the Frostbite debuff for 7 seconds on hit."
+        }
+      ],
+      "why": "One straight bolt that pierces one enemy (Projectileinfo penetrate 2 agrees); Frostbite (100%, 7 s) comes from the infobox debuff rows (B48(c))."
+    },
+    {
+      "itemId": 739,
+      "name": "Amethyst Staff",
+      "decision": "limitation",
+      "reason": "Its bolt homes onto the closest enemy; the homing strength is not documented, so homing cannot be modeled.",
+      "evidence": [
+        {
+          "page": "Amethyst Staff",
+          "quote": "fires a purple bolt which does not pierce and homes onto the closest enemy within a 31.25-tile radius"
+        }
+      ],
+      "why": "homing"
+    },
+    {
+      "itemId": 740,
+      "name": "Topaz Staff",
+      "decision": "limitation",
+      "reason": "Its bolt explodes when it dissipates, damaging other nearby enemies \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Topaz Staff",
+          "quote": "fires a yellow bolt which does not pierce and explodes upon dissipating"
+        }
+      ],
+      "why": "AoE"
+    },
+    {
+      "itemId": 741,
+      "name": "Sapphire Staff",
+      "decision": "limitation",
+      "reason": "It fires two bolts in a helix, each dealing 60% of the weapon's damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Sapphire Staff",
+          "quote": "fires 2 blue bolts which move in a helix pattern and do not pierce, and each deal 60% of the weapon's damage"
+        }
+      ],
+      "why": "damage multiplier + motion"
+    },
+    {
+      "itemId": 742,
+      "name": "Emerald Staff",
+      "decision": "limitation",
+      "reason": "Its bolt slows down, lingers in place and leaves a damaging trail \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Emerald Staff",
+          "quote": "fires a high-velocity green bolt which gradually slows down and then lingers in place"
+        }
+      ],
+      "why": "motion + trail"
+    },
+    {
+      "itemId": 743,
+      "name": "Ruby Staff",
+      "decision": "limitation",
+      "reason": "It fires a second bolt halfway through each use by a rule outside its use-time data, which the Lab's shot timing cannot reproduce; each bolt deals 50% of the weapon's damage.",
+      "evidence": [
+        {
+          "page": "Ruby Staff",
+          "quote": "quickly fires a red bolt, which deals 50% of the weapon's damage"
+        },
+        {
+          "page": "Ruby Staff",
+          "quote": "The Ruby Staff fires a 2nd bolt halfway into each use"
+        }
+      ],
+      "why": "Iteminfo useTime = useAnimation = 28, yet two bolts per use in sequence: B37 forbids expressing a sequential burst through projectilesPerUse. The 50% multiplier itself is expressible since B48(b)."
+    },
+    {
+      "itemId": 744,
+      "name": "Diamond Staff",
+      "decision": "archetype",
+      "archetype": "magic-bolt",
+      "pierce": 1,
+      "lifetimeTicks": 300,
+      "evidence": [
+        {
+          "page": "Diamond Staff",
+          "quote": "fires a bright white bolt which can pierce once and has a large hitbox"
+        },
+        {
+          "page": "Diamond Staff",
+          "quote": "automatically dissipates after 5 seconds"
+        }
+      ],
+      "why": "One straight bolt; the article states pierce once (Projectileinfo penetrate 1 is changed by its AI) and a 5-second lifetime. Its large hitbox is the sim's labeled point-projectile approximation; gem-robe enchantments are armor effects outside the weapon."
+    },
+    {
+      "itemId": 756,
+      "name": "Mushroom Spear",
+      "decision": "limitation",
+      "reason": "Each thrust also summons seven lingering mushrooms (33% damage each) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Mushroom Spear",
+          "quote": "When thrust, it summons seven spinning mushrooms that linger in midair and deal 33.33% of the weapon's damage (20 base damage) but do not inflict knockback."
+        }
+      ],
+      "why": "extra lingering projectiles"
+    },
+    {
+      "itemId": 757,
+      "name": "Terra Blade",
+      "decision": "limitation",
+      "reason": "Its swing is an aura, and it also fires a piercing slash whose damage drops 25% per target \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Terra Blade",
+          "quote": "The sword will also fire a green slash projectile that pierces infinitely, dealing the weapon's damage but reducing its damage by 25% of its current damage for each target it pierces."
+        }
+      ],
+      "why": "aura + falloff projectile"
+    },
+    {
+      "itemId": 788,
+      "name": "Nettle Burst",
+      "decision": "limitation",
+      "reason": "It extends a snaking vine from the player's position \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Nettle Burst",
+          "quote": "When used, it extends a snaking vine from the player's position"
+        }
+      ],
+      "why": "segment projectile"
+    },
+    {
+      "itemId": 795,
+      "name": "Blood Butcherer",
+      "decision": "limitation",
+      "reason": "Its bleeding debuff stacks up to 5 times; the Lab's damage-over-time model refreshes instead of stacking.",
+      "evidence": [
+        {
+          "page": "Blood Butcherer",
+          "quote": "Repeated attacks will cause the debuff to stack up to 5 times"
+        }
+      ],
+      "why": "stacking DoT"
+    },
+    {
+      "itemId": 800,
+      "name": "The Undertaker",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "The Undertaker",
+          "quote": "The Undertaker is a pre-Hardmode gun."
+        },
+        {
+          "page": "The Undertaker",
+          "quote": "The Undertaker has a lower damage per shot but fires much faster."
+        }
+      ],
+      "why": "'damage per shot' compares it with the Musket; the article states no special shot behavior."
+    },
+    {
+      "itemId": 802,
+      "name": "The Rotted Fork",
+      "decision": "limitation",
+      "reason": "Each thrust also creates a shockwave at the spear's tip that extends its reach \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "The Rotted Fork",
+          "quote": "When thrust, it creates a small shockwave at its tip."
+        }
+      ],
+      "why": "shockwave projectile (the stated range includes it)"
+    },
+    {
+      "itemId": 921,
+      "name": "Shadewood Sword",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Shadewood Sword",
+          "quote": "The Shadewood Sword is a pre-Hardmode broadsword and a variation of the Wooden Sword."
+        }
+      ],
+      "why": "Flag 'spawns' matched acquisition advice (\"create an artificial Crimson\"), not weapon behavior."
+    },
+    {
+      "itemId": 964,
+      "name": "Boomstick",
+      "decision": "limitation",
+      "reason": "It fires a random 3\u20134 bullets per shot in a spread the wiki does not measure \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Boomstick",
+          "quote": "When used, it fires a spread of 3\u20134 bullets, consuming one piece of ammunition."
+        }
+      ],
+      "why": "random count + unstated spread"
+    },
+    {
+      "itemId": 989,
+      "name": "Enchanted Sword",
+      "decision": "limitation",
+      "reason": "Swings fire an Enchanted Beam on its own 0.75-second cooldown, independent of the swings \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Enchanted Sword",
+          "quote": "The Enchanted Beam projectile has a cooldown of 0.75 seconds without modifiers."
+        }
+      ],
+      "why": "cooldown projectile"
+    },
+    {
+      "itemId": 1121,
+      "name": "Bee Gun",
+      "decision": "limitation",
+      "reason": "It fires a burst of homing bees \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bee Gun",
+          "quote": "When used, it fires a burst of Bee projectiles that home in on enemies"
+        }
+      ],
+      "why": "homing burst"
+    },
+    {
+      "itemId": 1122,
+      "name": "Possessed Hatchet",
+      "decision": "limitation",
+      "reason": "It homes in on enemies, any number can be thrown at once, and it hits at most 10 targets \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Possessed Hatchet",
+          "quote": "When thrown, it homes in on enemies within 50 tiles and inflicts the Hemorrhage debuff on hit."
+        },
+        {
+          "page": "Possessed Hatchet",
+          "quote": "The Possessed Hatchet can hit up to 10 targets."
+        }
+      ],
+      "why": "homing + unlimited throws"
+    },
+    {
+      "itemId": 1123,
+      "name": "Bee Keeper",
+      "decision": "limitation",
+      "reason": "Hits summon homing bees (extra damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bee Keeper",
+          "quote": "It also summons a burst of 1\u20133 Bee projectiles on hit"
+        }
+      ],
+      "why": "on-hit projectiles"
+    },
+    {
+      "itemId": 1155,
+      "name": "Wasp Gun",
+      "decision": "limitation",
+      "reason": "It fires a random 2\u20134 homing wasps \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Wasp Gun",
+          "quote": "When used, it fires 2\u20134 homing wasp projectiles that ricochet or hit enemies a maximum of three times before dissipating."
+        }
+      ],
+      "why": "homing burst"
+    },
+    {
+      "itemId": 1156,
+      "name": "Piranha Gun",
+      "decision": "limitation",
+      "reason": "Its three piranhas latch onto enemies and keep damaging them while the attack is held \u2014 not a beam.",
+      "evidence": [
+        {
+          "page": "Piranha Gun",
+          "quote": "It fires a spread of three returning Mechanical Piranha projectiles that inflict the Hemorrhage debuff for 4\u20136 seconds on hit."
+        }
+      ],
+      "why": "latching projectiles"
+    },
+    {
+      "itemId": 1157,
+      "name": "Pygmy Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Pygmy Staff",
+          "quote": "It fires a spear towards nearby enemies that inflicts the Acid Venom debuff for 5\u201310 seconds"
+        }
+      ],
+      "why": "Throws spears. No attack rate stated."
+    },
+    {
+      "itemId": 1166,
+      "name": "Bone Sword",
+      "decision": "limitation",
+      "reason": "Each hit releases a lobbed bone projectile (75% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bone Sword",
+          "quote": "Upon hitting an enemy, it releases a non-piercing lobbed bone projectile that is affected by gravity"
+        }
+      ],
+      "why": "on-hit projectile"
+    },
+    {
+      "itemId": 1178,
+      "name": "Leaf Blower",
+      "decision": "limitation",
+      "reason": "Its leaves spread and then swirl in a spiral \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Leaf Blower",
+          "quote": "When used, it rapidly fires a spread of leaf projectiles that begin swirling after traveling for about 15 tiles"
+        }
+      ],
+      "why": "spread + motion"
+    },
+    {
+      "itemId": 1186,
+      "name": "Palladium Pike",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Palladium Pike",
+          "quote": "The Palladium Pike is a Hardmode spear."
+        },
+        {
+          "page": "Palladium Pike",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 1193,
+      "name": "Orichalcum Halberd",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Orichalcum Halberd",
+          "quote": "The Orichalcum Halberd is a Hardmode spear."
+        },
+        {
+          "page": "Orichalcum Halberd",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 1200,
+      "name": "Titanium Trident",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Titanium Trident",
+          "quote": "The Titanium Trident is a Hardmode spear."
+        },
+        {
+          "page": "Titanium Trident",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 1226,
+      "name": "Chlorophyte Claymore",
+      "decision": "limitation",
+      "reason": "Its swing is an aura that also covers behind the player, and every third use deals 150% damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Claymore",
+          "quote": "On every third use, a sparkling glow appears at tip of the sword and the swing becomes empowered"
+        }
+      ],
+      "why": "aura + empowered swings"
+    },
+    {
+      "itemId": 1227,
+      "name": "Chlorophyte Saber",
+      "decision": "limitation",
+      "reason": "It stabs five times per use at varying angles, each stab dealing 70% damage and inflicting Spored \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "When used, the sword is thrusted in repeated stabbing motions with slightly varying angles for each thrust, akin to Gladius and Starlight."
+        },
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "Each thrust deals 70% of the weapon's damage (56 base damage)"
+        },
+        {
+          "page": "Chlorophyte Saber",
+          "quote": "and inflicts the Spored debuff on enemies and other players in PvP for 5 seconds"
+        }
+      ],
+      "why": "multi-stab use + Spored (dps unverified)"
+    },
+    {
+      "itemId": 1228,
+      "name": "Chlorophyte Partisan",
+      "decision": "limitation",
+      "reason": "Each thrust also fires a Spore Cloud that pierces every enemy and slows down \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Partisan",
+          "quote": "When thrust, it fires a Spore Cloud projectile that deals the weapon's damage and knockback, lasts for a short time, can pass through blocks, and pierces an infinite number of enemies."
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
+      "itemId": 1229,
+      "name": "Chlorophyte Shotbow",
+      "decision": "limitation",
+      "reason": "It fires a random 2\u20133 arrows per shot \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chlorophyte Shotbow",
+          "quote": "When used, it fires 2\u20133 arrows per shot, consuming one piece of ammunition."
+        }
+      ],
+      "why": "random count"
+    },
+    {
+      "itemId": 1254,
+      "name": "Sniper Rifle",
+      "decision": "limitation",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Sniper Rifle",
+          "quote": "It also converts Musket Balls and Tungsten Bullets into High Velocity Bullets, giving them the special effects but not affecting their damage."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 1255,
+      "name": "Venus Magnum",
+      "decision": "limitation",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Venus Magnum",
+          "quote": "When used, it converts Musket Balls and Tungsten Bullets into High Velocity Bullets, giving them the special effects but not affecting their damage."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 1260,
+      "name": "Rainbow Gun",
+      "decision": "limitation",
+      "reason": "It fires a curving rainbow that persists and deals continuous damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Rainbow Gun",
+          "quote": "fires a curving rainbow which persists for 40 seconds or until another rainbow is fired"
+        }
+      ],
+      "why": "persistent hazard"
+    },
+    {
+      "itemId": 1264,
+      "name": "Flower of Frost",
+      "decision": "limitation",
+      "reason": "Its ball of frost bounces off blocks and inflicts Frostbite \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flower of Frost",
+          "quote": "When used, it fires a non-piercing ball of frost that can bounce off blocks up to seven times"
+        }
+      ],
+      "why": "bounce + DoT",
+      "bounceCount": 7
+    },
+    {
+      "itemId": 1265,
+      "name": "Uzi",
+      "decision": "limitation",
+      "reason": "It converts Musket Balls and Tungsten Bullets into High Velocity Bullets \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Uzi",
+          "quote": "into High Velocity Bullets, giving them the special effects but not affecting their damage."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 1266,
+      "name": "Magnet Sphere",
+      "decision": "limitation",
+      "reason": "Its sphere fires beams at nearby enemies as it travels \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Magnet Sphere",
+          "quote": "When used, it fires a slow-moving cyan sphere that rapidly fires instantaneous, non-piercing beams at the closest enemy as it travels."
+        }
+      ],
+      "why": "spawning projectile"
+    },
+    {
+      "itemId": 1295,
+      "name": "Heat Ray",
+      "decision": "archetype",
+      "archetype": "magic-bolt",
+      "pierce": 0,
+      "evidence": [
+        {
+          "page": "Heat Ray",
+          "quote": "When used, it fires yellow lasers that instantly travel their maximum distance."
+        },
+        {
+          "page": "Heat Ray",
+          "quote": "The lasers do not pierce enemies."
+        }
+      ],
+      "why": "Straight, non-piercing laser; its near-instant travel comes from 100 extra updates (velocity derivation). The tank on the player's back is visual."
+    },
+    {
+      "itemId": 1296,
+      "name": "Staff of Earth",
+      "decision": "limitation",
+      "reason": "Its boulder rolls with gravity and its damage depends on its speed \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Staff of Earth",
+          "quote": "The Boulder's base damage and knockback depend on its velocity."
+        }
+      ],
+      "why": "velocity-dependent damage"
+    },
+    {
+      "itemId": 1297,
+      "name": "Golem Fist",
+      "decision": "limitation",
+      "reason": "On impact after extending more than 9.375 tiles it creates a shockwave (100% damage) that hits nearby enemies, and it can confuse them \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Golem Fist",
+          "quote": "Upon hitting enemies or blocks, it creates a shockwave that deals 100% of the weapon's damage and knockback to nearby enemies if extended by more than 9.375 tiles."
+        }
+      ],
+      "why": "shockwave"
+    },
+    {
+      "itemId": 1304,
+      "name": "Zombie Arm",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Zombie Arm",
+          "quote": "The Zombie Arm is a pre-Hardmode broadsword"
+        },
+        {
+          "page": "Zombie Arm",
+          "quote": "It will also randomly release visual Zombie gore when swung."
+        }
+      ],
+      "why": "The released gore is visual; 'more damage' refers to Expert-mode zombies wielding it, not to the weapon."
+    },
+    {
+      "itemId": 1306,
+      "name": "Ice Sickle",
+      "decision": "limitation",
+      "reason": "Swings fire a slowing, piercing sickle (67% damage) \u2014 not modeled by the swing parameters.",
+      "evidence": [
+        {
+          "page": "Ice Sickle",
+          "quote": "When swung, it fires a spinning blue sickle projectile that deals 67% of the weapon's damage"
+        }
+      ],
+      "why": "projectile with damage multiplier"
+    },
+    {
+      "itemId": 1308,
+      "name": "Poison Staff",
+      "decision": "limitation",
+      "reason": "It fires a random 3\u20134 fangs in a spread that inflict Poisoned \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Poison Staff",
+          "quote": "When used, it fires a burst of 3\u20134 Poison Fangs in a roughly 30\u00b0 spread."
+        }
+      ],
+      "why": "random count + DoT"
+    },
+    {
+      "itemId": 1309,
+      "name": "Slime Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ground-melee",
+      "evidence": [
+        {
+          "page": "Slime Staff",
+          "quote": "It bounces towards enemies, dealing contact damage."
+        }
+      ],
+      "why": "Baby Slime: ground movement + contact damage. No exact attack rate is stated (only the 12-tick immunity cap): the cap is its upper-bound rate (AMENDMENTS-013 B63 P-3, modeled)."
+    },
+    {
+      "itemId": 1313,
+      "name": "Book of Skulls",
+      "decision": "limitation",
+      "reason": "Its skulls home in on enemies and pierce \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Book of Skulls",
+          "quote": "When used, it fires slow-moving skull projectiles which home in on enemies"
+        }
+      ],
+      "why": "homing"
+    },
+    {
+      "itemId": 1314,
+      "name": "KO Cannon",
+      "decision": "archetype",
+      "archetype": "returning",
+      "throwRangeTiles": 12,
+      "evidence": [
+        {
+          "page": "KO Cannon",
+          "quote": "When used, it fires a boxing glove attached to the player via a chain."
+        },
+        {
+          "page": "KO Cannon",
+          "quote": "The glove retracts on contact with blocks or enemies, or after traveling 12 tiles."
+        },
+        {
+          "page": "KO Cannon",
+          "quote": "Although generally not able to strike multiple targets simultaneously"
+        },
+        {
+          "page": "KO Cannon",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Tooltip \"Shoots\" / \"fires\" = the glove is the launched flail head; \"multiple\" is negated; \"chain\" = its chain. The article notes its fire rate depends only on the distance to impact (no cooldown) \u2014 the auto-return cadence the returning interpreter models. Remix/Zenith-seed changes are not the desktop default."
+    },
+    {
+      "itemId": 1319,
+      "name": "Snowball Cannon",
+      "decision": "limitation",
+      "reason": "It fires Snowballs that are greatly affected by gravity \u2014 the Lab's shots fly straight, so their arc isn't modeled.",
+      "evidence": [
+        {
+          "page": "Snowball Cannon",
+          "quote": "The Snowball Cannon is a pre-Hardmode ranged weapon which uses Snowballs as ammunition."
+        },
+        {
+          "page": "Snowball Cannon",
+          "quote": "Snowballs fired from the Snowball Cannon are greatly affected by gravity"
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation: ammo-driven unique (snowball) \u2014 gravity-arced shots (non-straight projectile motion)"
+    },
+    {
+      "itemId": 1324,
+      "name": "Bananarang",
+      "decision": "limitation",
+      "reason": "Up to ten can be in the air at once (most boomerangs must return before the next throw) \u2014 the returning parameters have no such count.",
+      "evidence": [
+        {
+          "page": "Bananarang",
+          "quote": "Unlike most boomerangs, it does not have to return to the player before being fired, with a maximum of ten Bananarangs that can be thrown out at one time."
+        }
+      ],
+      "why": "simultaneous throws (schema delta: max active count)"
+    },
+    {
+      "itemId": 1325,
+      "name": "Chain Knife",
+      "decision": "archetype",
+      "archetype": "returning",
+      "throwRangeTiles": 9.4,
+      "evidence": [
+        {
+          "page": "Chain Knife",
+          "quote": "When used, it fires a knife attached to a chain that can extend up to 9.4 tiles."
+        },
+        {
+          "page": "Chain Knife",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag on-hit matched \"Chain\" (the weapon name / its chain); conditional-damage = modifier advice. The knife on a chain IS the launched flail; its range is stated (9.4 tiles). The Remix/Zenith-seed changes are not the desktop default."
+    },
+    {
+      "itemId": 1327,
+      "name": "Death Sickle",
+      "decision": "limitation",
+      "reason": "Swings fire a sickle that slows to a stop and lingers \u2014 not modeled by the swing parameters.",
+      "evidence": [
+        {
+          "page": "Death Sickle",
+          "quote": "When swung, it fires a spinning purple sickle that can pass through blocks."
+        }
+      ],
+      "why": "decelerating projectile"
+    },
+    {
+      "itemId": 1336,
+      "name": "Golden Shower",
+      "decision": "limitation",
+      "reason": "It sprays arcing streams that pierce and inflict Ichor \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Golden Shower",
+          "quote": "The Golden Shower is a Hardmode spell book that fires arcing golden ichor streams in quick succession."
+        }
+      ],
+      "why": "arcing stream + debuff"
+    },
+    {
+      "itemId": 1444,
+      "name": "Shadowbeam Staff",
+      "decision": "limitation",
+      "reason": "Its beam bounces off blocks and loses 10% damage per enemy hit \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Shadowbeam Staff",
+          "quote": "The beam can pierce infinite enemies, but for each enemy hit, its damage is reduced by 10%."
+        }
+      ],
+      "why": "pierce falloff + bounce"
+    },
+    {
+      "itemId": 1445,
+      "name": "Inferno Fork",
+      "decision": "limitation",
+      "reason": "Its fireball leaves a lingering explosion and inflicts Hellfire \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Inferno Fork",
+          "quote": "When used, it fires a fireball that causes a lingering explosion upon contact with an enemy or a block."
+        }
+      ],
+      "why": "AoE + DoT"
+    },
+    {
+      "itemId": 1446,
+      "name": "Spectre Staff",
+      "decision": "limitation",
+      "reason": "It fires a homing orb \u2014 homing strength is not documented, so it is not modeled.",
+      "evidence": [
+        {
+          "page": "Spectre Staff",
+          "quote": "When used, it fires a homing orb that pierces two enemies but cannot pass through blocks."
+        }
+      ],
+      "why": "homing"
+    },
+    {
+      "itemId": 1513,
+      "name": "Paladin's Hammer",
+      "decision": "limitation",
+      "reason": "It is thrown and returns to the player like a boomerang, with a shockwave when it hits blocks \u2014 the Lab does not model thrown weapons that return.",
+      "evidence": [
+        {
+          "page": "Paladin's Hammer",
+          "quote": "When used, it swings once before being thrown at a high velocity, piercing an infinite number of enemies, and returning to the player"
+        }
+      ],
+      "why": "returning archetype"
+    },
+    {
+      "itemId": 1553,
+      "name": "S.D.M.G.",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "slightSpread": true,
+      "evidence": [
+        {
+          "page": "S.D.M.G.",
+          "quote": "When used, it very rapidly fires bullets in a small spread."
+        }
+      ],
+      "why": "AMENDMENTS-010 B47 (names the S.D.M.G.): 'small spread' with no stated angle \u2192 the labeled 10\u00b0 modeling convention. 'homing' / 'piercing' / 'emit' describe bullet types and light (ammo advice); the 66% ammo saving is not modeled (labeled 'ammo')."
+    },
+    {
+      "itemId": 1572,
+      "name": "Staff of the Frost Hydra",
+      "decision": "limitation",
+      "reason": "Its Frost Blasts lose 15% damage for each enemy pierced \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Staff of the Frost Hydra",
+          "quote": "The Frost Blasts have a 15% damage penalty per enemy pierced"
+        }
+      ],
+      "why": "per-pierce falloff"
+    },
+    {
+      "itemId": 1782,
+      "name": "Candy Corn Rifle",
+      "decision": "limitation",
+      "reason": "Its shots pierce, ricochet off blocks up to four times and fall with gravity \u2014 the Lab does not model ricochets.",
+      "evidence": [
+        {
+          "page": "Candy Corn Rifle",
+          "quote": "When used, it rapidly fires Candy Corn shots that pierce up to two enemies and ricochet up to four times"
+        }
+      ],
+      "why": "bounce",
+      "bounceCount": 4
+    },
+    {
+      "itemId": 1801,
+      "name": "Bat Scepter",
+      "decision": "limitation",
+      "reason": "It fires a burst of homing bats \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bat Scepter",
+          "quote": "When used, it fires a burst of 2\u20133 homing bats"
+        }
+      ],
+      "why": "homing burst"
+    },
+    {
+      "itemId": 1802,
+      "name": "Raven Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "melee-contact",
+      "evidence": [
+        {
+          "page": "Raven Staff",
+          "quote": "It flies and charges through enemies."
+        }
+      ],
+      "why": "Flying charges. No attack rate stated."
+    },
+    {
+      "itemId": 1825,
+      "name": "Bloody Machete",
+      "decision": "limitation",
+      "reason": "It falls downward after a medium range and returns only on contact with a block or enemy \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bloody Machete",
+          "quote": "When thrown, it falls downward after reaching a medium range, then returns to the player upon contact with a block or an enemy."
+        }
+      ],
+      "why": "non-boomerang trajectory"
+    },
+    {
+      "itemId": 1826,
+      "name": "The Horseman's Blade",
+      "decision": "limitation",
+      "reason": "Its swing is an aura, and hits summon homing pumpkin heads \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "The Horseman's Blade",
+          "quote": "Upon striking an enemy, The Horseman's Blade summons a Flaming Jack, a homing pumpkin head projectile that can pass through blocks."
+        }
+      ],
+      "why": "on-hit homing projectile"
+    },
+    {
+      "itemId": 1827,
+      "name": "Bladed Glove",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Bladed Glove",
+          "quote": "The Bladed Glove is a pre-Hardmode broadsword"
+        },
+        {
+          "page": "Bladed Glove",
+          "quote": "It has a very short range, but an exceptionally high attack speed."
+        }
+      ],
+      "why": "Flag 'spawns' matched the transcluded drop note; the autoswing one-tick speedup it mentions is the sim's cadence rule."
+    },
+    {
+      "itemId": 1835,
+      "name": "Stake Launcher",
+      "decision": "limitation",
+      "reason": "Its stakes lose 10% damage for each enemy pierced \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Stake Launcher",
+          "quote": "The Stake Launcher applies a 10% damage penalty to the next hit for each enemy pierced."
+        }
+      ],
+      "why": "pierce falloff"
+    },
+    {
+      "itemId": 1918,
+      "name": "Fruitcake Chakram",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Fruitcake Chakram",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Fruitcake Chakram",
+          "quote": "This allows it to hit enemies multiple times"
+        },
+        {
+          "page": "Fruitcake Chakram",
+          "quote": "It does not bounce off blocks, unlike the Thorn Chakram."
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent). The bounce flag is a negation (\"does not bounce\")."
+    },
+    {
+      "itemId": 1928,
+      "name": "Christmas Tree Sword",
+      "decision": "limitation",
+      "reason": "Swings fire a star ornament that keeps releasing more ornaments \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Christmas Tree Sword",
+          "quote": "When swung, it fires a star ornament that releases a ball ornament every 0.17 seconds while traveling."
+        }
+      ],
+      "why": "spawning projectile"
+    },
+    {
+      "itemId": 1929,
+      "name": "Chain Gun",
+      "decision": "limitation",
+      "reason": "It fires with a wide spread whose angle the wiki does not state, so its accuracy cannot be modeled without guessing.",
+      "evidence": [
+        {
+          "page": "Chain Gun",
+          "quote": "When used, it very rapidly fires bullets in a wide spread."
+        }
+      ],
+      "why": "unstated spread"
+    },
+    {
+      "itemId": 1930,
+      "name": "Razorpine",
+      "decision": "limitation",
+      "reason": "It fires a random 2\u20134 needles in a spread that later fall \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Razorpine",
+          "quote": "When used, it rapidly fires 2\u20134 high-velocity pine needles in a spread"
+        }
+      ],
+      "why": "random count + spread"
+    },
+    {
+      "itemId": 1931,
+      "name": "Blizzard Staff",
+      "decision": "limitation",
+      "reason": "Its icicles rain from the sky toward the cursor \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Blizzard Staff",
+          "quote": "When used, it causes a wide spread of icicles to rain from the sky, directed towards the cursor."
+        }
+      ],
+      "why": "sky projectiles"
+    },
+    {
+      "itemId": 1947,
+      "name": "North Pole",
+      "decision": "limitation",
+      "reason": "Each thrust also fires an icy spear projectile and a trail of falling snowflakes (70% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "North Pole",
+          "quote": "When thrust, it fires an icy spear projectile that is unaffected by gravity until after traveling for 0.5 seconds."
+        },
+        {
+          "page": "North Pole",
+          "quote": "The spear also releases a trail of damaging snowflakes that rain down, dissipating upon contact with an enemy or block."
+        }
+      ],
+      "why": "extra projectiles"
+    },
+    {
+      "itemId": 2188,
+      "name": "Venom Staff",
+      "decision": "limitation",
+      "reason": "It fires a random 4\u20137 fangs in a spread that inflict Acid Venom \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Venom Staff",
+          "quote": "When used, it fires a burst of 4\u20137 Venom Fangs in a spread."
+        }
+      ],
+      "why": "random count + DoT"
+    },
+    {
+      "itemId": 2223,
+      "name": "Pulse Bow",
+      "decision": "limitation",
+      "reason": "It converts every arrow into a bouncing Pulse Bolt \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Pulse Bow",
+          "quote": "When used, it converts any type of arrow into a high-velocity Pulse Bolt."
+        },
+        {
+          "page": "Pulse Bow",
+          "quote": "can either pierce enemies or bounce off blocks up to five times"
+        }
+      ],
+      "why": "conversion + bounce",
+      "bounceCount": 5
+    },
+    {
+      "itemId": 2269,
+      "name": "Revolver",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Revolver",
+          "quote": "Firing the Revolver just as it comes off cooldown will gradually increase its attack speed (up to 100%) and critical strike chance (up to 20%)."
+        },
+        {
+          "page": "Revolver",
+          "quote": "This effect will not be triggered if the player is autofiring the weapon."
+        }
+      ],
+      "why": "The timing bonus needs released, well-timed clicks; the Lab holds the attack, under which the article says the effect is not triggered."
+    },
+    {
+      "itemId": 2270,
+      "name": "Gatligator",
+      "decision": "limitation",
+      "reason": "Its bullets fly in a roughly 30\u00b0 spread at a varying velocity \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Gatligator",
+          "quote": "When used, it rapidly fires bullets in a roughly 30\u00b0 spread, at a varying velocity."
+        }
+      ],
+      "why": "approximate spread + varying velocity"
+    },
+    {
+      "itemId": 2330,
+      "name": "Purple Clubberfish",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Purple Clubberfish",
+          "quote": "It has a 1/2 (50%) chance to inflict the Confused debuff for 1\u20133 seconds on hit."
+        }
+      ],
+      "why": "Confused deals no damage over time (buffs registry: no DoT), so the damage dealt is the plain swing."
+    },
+    {
+      "itemId": 2331,
+      "name": "Obsidian Swordfish",
+      "decision": "limitation",
+      "reason": "Each thrust also fires 1\u20133 falling embers (50% damage, Hellfire) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Obsidian Swordfish",
+          "quote": "When thrust, it fires 1\u20133 piercing gravity-affected embers that each deal 50% of the weapon's damage (35 base damage) and inflict the Hellfire debuff for 3-6 seconds."
+        }
+      ],
+      "why": "random-count extra projectiles"
+    },
+    {
+      "itemId": 2332,
+      "name": "Swordfish",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Swordfish",
+          "quote": "The Swordfish is a pre-Hardmode spear obtainable through fishing in the Ocean biome."
+        },
+        {
+          "page": "Swordfish",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the article describes no stab behavior beyond a plain thrust. Its stated range is the reach (AMENDMENTS-012 B56), extracted and quote-checked by the build \u2014 not an overlay value."
+    },
+    {
+      "itemId": 2364,
+      "name": "Hornet Staff",
+      "decision": "limitation",
+      "reason": "Its stingers are inaccurate \u2014 the summon parameters have no spread.",
+      "evidence": [
+        {
+          "page": "Hornet Staff",
+          "quote": "The Hornet minion has decent single-target damage but an inaccurate attack."
+        }
+      ],
+      "why": "inaccuracy (unstated angle)"
+    },
+    {
+      "itemId": 2365,
+      "name": "Imp Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Imp Staff",
+          "quote": "It hovers near enemies, shooting fireballs that inflict the On Fire! debuff for 3\u20136 seconds and can pierce up to 4 times"
+        }
+      ],
+      "why": "Shoots fireballs. Its rate is stated only as an average (once every 1.13 s): the average, rounded half-to-even to ticks, is its rate (AMENDMENTS-013 B63 P-2, modeled)."
+    },
+    {
+      "itemId": 2366,
+      "name": "Queen Spider Staff",
+      "decision": "limitation",
+      "reason": "Its eggs hatch into 2\u20134 spiders that attack enemies \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Queen Spider Staff",
+          "quote": "they will break and spawn 2\u20134 Baby Spiders that attack enemies"
+        }
+      ],
+      "why": "spawned spiders"
+    },
+    {
+      "itemId": 2424,
+      "name": "Anchor",
+      "decision": "limitation",
+      "reason": "It is fired in an arc and creates a shockwave (60% damage) when it hits blocks, and it can confuse enemies \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Anchor",
+          "quote": "When used, it fires an Anchor in an arc, which is attached to the player via a rope."
+        },
+        {
+          "page": "Anchor",
+          "quote": "it creates a shockwave upon colliding with blocks that deals 60% of the weapon's damage (42 base damage)"
+        }
+      ],
+      "why": "gravity arc + shockwave"
+    },
+    {
+      "itemId": 2535,
+      "name": "Optic Staff",
+      "decision": "limitation",
+      "reason": "It summons a pair of minions per slot with two different attacks (a dash and lasers) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Optic Staff",
+          "quote": "The pair of minions, named Spazmamini and Retanimini, fly towards enemies to dash through them and fire lasers at them, respectively."
+        }
+      ],
+      "why": "two minions, two AI classes"
+    },
+    {
+      "itemId": 2551,
+      "name": "Spider Staff",
+      "decision": "limitation",
+      "reason": "Its spiders latch onto enemies and keep damaging them \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Spider Staff",
+          "quote": "It runs towards enemies and latches onto them, repeatedly dealing damage while latched and inflicting the Acid Venom debuff for 2\u20134 seconds."
+        }
+      ],
+      "why": "latching"
+    },
+    {
+      "itemId": 2584,
+      "name": "Pirate Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ground-melee",
+      "evidence": [
+        {
+          "page": "Pirate Staff",
+          "quote": "It runs and jumps towards enemies, attacking with a sword up close."
+        }
+      ],
+      "why": "Ground movement + sword up close. Only an immunity cap is stated: no attack rate."
+    },
+    {
+      "itemId": 2586,
+      "name": "Sticky Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive: thrown, it sticks to the first block it touches, then explodes on touching an enemy or, if none comes, after a delay. The Lab's thrown explosives go off either on impact or on a fuse, not both, so it isn't simulated.",
+      "evidence": [
+        {
+          "page": "Sticky Grenade",
+          "quote": "The Sticky Grenade is an explosive consumable ranged weapon."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Like the Sticky Bomb, it will not roll, and will instead stick to the first block it touches until it explodes."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Like normal Grenades, they will detonate upon touching an enemy, or the player that threw it."
+        },
+        {
+          "page": "Sticky Grenade",
+          "quote": "Since the explosion is delayed, a good strategy is to toss one on the ground and wait for enemies to step on it."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): thrown consumable explosive that sticks to the first block, detonates on touching an enemy, else after a delay its article does not state. The explosive-aoe params hold one trigger (impact, or timed with fuseTicks \u2014 schema: fuseTicks iff timed), so its touch-or-delay trigger is not expressible (the impact-trigger-with-fallback-fuse schema extension is queued under B85(c))"
+    },
+    {
+      "itemId": 2608,
+      "name": "Falcon Blade",
+      "decision": "limitation",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Falcon Blade",
+          "quote": "Striking enemies with the weapon increases its damage by 12% per hit, up to a maximum of 50%."
+        }
+      ],
+      "why": "stacking damage bonus"
+    },
+    {
+      "itemId": 2611,
+      "name": "Flairoon",
+      "decision": "limitation",
+      "reason": "It releases homing bubbles while it travels \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flairon",
+          "quote": "When used, it is launched like a launched flail that also releases homing bubbles while traveling."
+        }
+      ],
+      "why": "spawned homing projectiles"
+    },
+    {
+      "itemId": 2621,
+      "name": "Tempest Staff",
+      "decision": "limitation",
+      "reason": "Its Sharknado both deals contact damage and fires Mini Sharkrons \u2014 two attacks the summon parameters do not combine.",
+      "evidence": [
+        {
+          "page": "Tempest Staff",
+          "quote": "It hovers near enemies, dealing contact damage and firing Mini Sharkron projectiles"
+        }
+      ],
+      "why": "two attacks"
+    },
+    {
+      "itemId": 2622,
+      "name": "Razorblade Typhoon",
+      "decision": "limitation",
+      "reason": "Its typhoon homes in and bounces infinitely \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Razorblade Typhoon",
+          "quote": "When used, it fires a high-velocity homing typhoon."
+        }
+      ],
+      "why": "homing + bounce"
+    },
+    {
+      "itemId": 2623,
+      "name": "Bubble Gun",
+      "decision": "limitation",
+      "reason": "It fires a large spread of slowing bubbles \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bubble Gun",
+          "quote": "When used, it rapidly fires a large spread of short-range bubbles, with three bubbles per use."
+        }
+      ],
+      "why": "spread + motion"
+    },
+    {
+      "itemId": 2624,
+      "name": "Tsunami",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "projectilesPerUse": 5,
+      "spreadDegrees": 0,
+      "inheritsAmmoProjectile": true,
+      "evidence": [
+        {
+          "page": "Tsunami",
+          "quote": "When used, it fires a volley of five parallel arrows, consuming one arrow per use."
+        }
+      ],
+      "why": "Five parallel arrows per shot: projectilesPerUse 5 with no angular spread (parallel); the vertical offset between the arrows is not modeled (point projectiles)."
+    },
+    {
+      "itemId": 2749,
+      "name": "Xeno Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Xeno Staff",
+          "quote": "It hovers above enemies, firing blue lasers that hit the target instantaneously."
+        }
+      ],
+      "why": "Fires lasers. Its rate is stated only as an average (0.45 s): the average is its rate (AMENDMENTS-013 B63 P-2, modeled)."
+    },
+    {
+      "itemId": 2750,
+      "name": "Meteor Staff",
+      "decision": "limitation",
+      "reason": "Its meteors fall from the sky and explode \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Meteor Staff",
+          "quote": "When used, it rapidly summons meteors from the sky which fall in the direction of the cursor and explode upon impact with an enemy or block."
+        }
+      ],
+      "why": "sky projectiles + AoE"
+    },
+    {
+      "itemId": 2795,
+      "name": "Laser Machinegun",
+      "decision": "limitation",
+      "reason": "It is a held weapon that fires two inaccurate lasers and speeds up while held \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Laser Machinegun",
+          "quote": "When used, it fires two inaccurate blue lasers that do not pierce enemies or pass through blocks."
+        }
+      ],
+      "why": "held use + inaccuracy"
+    },
+    {
+      "itemId": 2797,
+      "name": "Xenopopper",
+      "decision": "limitation",
+      "reason": "It fires bubbles that each pop into a bullet aimed at the cursor \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Xenopopper",
+          "quote": "When used, it fires a burst of 4\u20135 purple bubbles, consuming one bullet."
+        }
+      ],
+      "why": "spawning projectiles"
+    },
+    {
+      "itemId": 2880,
+      "name": "Influx Waver",
+      "decision": "limitation",
+      "reason": "Swings fire a sword projectile that teleports between enemies to hit three times \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Influx Waver",
+          "quote": "Upon contact with enemies, the sword projectile will teleport onto nearby enemies two times, hitting three times in total."
+        }
+      ],
+      "why": "chaining projectile"
+    },
+    {
+      "itemId": 2882,
+      "name": "Charged Blaster Cannon",
+      "decision": "limitation",
+      "reason": "Its attack depends on how long it is charged \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Charged Blaster Cannon",
+          "quote": "It possesses multiple firing modes with escalating speed, damage, and method of attack depending on how long the"
+        }
+      ],
+      "why": "charge"
+    },
+    {
+      "itemId": 2888,
+      "name": "The Bee's Knees",
+      "decision": "limitation",
+      "reason": "It converts Wooden Arrows into Bee Arrows that release homing bees \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "The Bee's Knees",
+          "quote": "When used, it converts Wooden Arrows into a line of Bee Arrows."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 2896,
+      "name": "Sticky Dynamite",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 300,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Sticky Dynamite",
+          "quote": "Sticky Dynamite is an explosive that functions like Dynamite, but sticks onto any block on contact."
+        },
+        {
+          "page": "Dynamite",
+          "quote": "Dynamite is an explosive that explodes 5 seconds after being thrown."
+        },
+        {
+          "page": "Dynamite",
+          "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
+        }
+      ],
+      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 3006,
+      "name": "Life Drain",
+      "decision": "limitation",
+      "reason": "It damages enemies near the cursor through an invisible aura \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Life Drain",
+          "quote": "When used, it creates an invisible aura that deals continuous damage to all enemies near the cursor's position"
+        }
+      ],
+      "why": "aura"
+    },
+    {
+      "itemId": 3012,
+      "name": "Chain Guillotines",
+      "decision": "limitation",
+      "reason": "Each use fires two chained blades in rapid succession \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chain Guillotines",
+          "quote": "When used, they fire two blades attached to chains in rapid succession, with a maximum range of 32 tiles."
+        }
+      ],
+      "why": "two heads per use"
+    },
+    {
+      "itemId": 3013,
+      "name": "Fetid Baghnakhs",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Fetid Baghnakhs",
+          "quote": "The Fetid Baghnakhs are a Hardmode broadsword"
+        },
+        {
+          "page": "Fetid Baghnakhs",
+          "quote": "They have a very short range, but an exceptionally high attack speed."
+        }
+      ],
+      "why": "'damage-increasing accessories' is loadout advice; the autoswing one-tick speedup is the sim's cadence rule."
+    },
+    {
+      "itemId": 3018,
+      "name": "Seedler",
+      "decision": "limitation",
+      "reason": "Swings fire nuts that explode into several thorns (70% damage each) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Seedler",
+          "quote": "When swung, it fires Seedler Nut projectiles that travel in a downwards arc before exploding into 4\u20137 Seedler Thorns"
+        }
+      ],
+      "why": "splitting projectile"
+    },
+    {
+      "itemId": 3019,
+      "name": "Hellwing Bow",
+      "decision": "limitation",
+      "reason": "It fires inaccurately and converts Wooden Arrows into piercing flaming bats \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Hellwing Bow",
+          "quote": "The Hellwing Bow is a pre-Hardmode, post-Skeletron bow that fires arrows inaccurately."
+        }
+      ],
+      "why": "conversion + inaccuracy"
+    },
+    {
+      "itemId": 3029,
+      "name": "Daedalus Stormbow",
+      "decision": "limitation",
+      "reason": "Its arrows rain from the sky toward the cursor (2\u20134 per use) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Daedalus Stormbow",
+          "quote": "When used, it causes a wide spread of arrows to rain from the sky, directed towards the cursor."
+        }
+      ],
+      "why": "sky projectiles"
+    },
+    {
+      "itemId": 3051,
+      "name": "Crystal Vile Shard",
+      "decision": "limitation",
+      "reason": "It extends a crystal spike from the player's position \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Crystal Vile Shard",
+          "quote": "When used, it extends a crystal spike from the player's position"
+        }
+      ],
+      "why": "segment projectile"
+    },
+    {
+      "itemId": 3052,
+      "name": "Shadowflame Bow",
+      "decision": "limitation",
+      "reason": "It converts every arrow into piercing Shadowflame Arrows that inflict Shadowflame \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Shadowflame Bow",
+          "quote": "When used, it converts any type of arrow into Shadowflame Arrows."
+        }
+      ],
+      "why": "conversion + DoT"
+    },
+    {
+      "itemId": 3063,
+      "name": "Meowmere",
+      "decision": "limitation",
+      "reason": "Swings fire a bouncing cat head (125% damage) that emits explosions \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Meowmere",
+          "quote": "When swung, it fires a cat head projectile with a visual rainbow trail every 0.23 seconds."
+        },
+        {
+          "page": "Meowmere",
+          "quote": "is affected by gravity, and can pierce enemies or bounce off blocks up to four times"
+        }
+      ],
+      "why": "bouncing projectile with damage multiplier",
+      "bounceCount": 4
+    },
+    {
+      "itemId": 3065,
+      "name": "Star Wrath",
+      "decision": "limitation",
+      "reason": "Swings make three stars fall toward the cursor \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Star Wrath",
+          "quote": "When swung, it causes three pink stars to fall toward the cursor."
+        }
+      ],
+      "why": "sky projectiles"
+    },
+    {
+      "itemId": 3069,
+      "name": "Wand of Sparking",
+      "decision": "limitation",
+      "reason": "Its spark curves, pierces once and can set enemies On Fire! \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Wand of Sparking",
+          "quote": "When used, it fires a spark that travels in a slight curve for about 23 tiles before dissipating."
+        }
+      ],
+      "why": "motion + DoT"
+    },
+    {
+      "itemId": 3106,
+      "name": "Psycho Knife",
+      "decision": "limitation",
+      "reason": "Standing still puts the player in stealth (+300% melee damage until a hit) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Psycho Knife",
+          "quote": "When holding the Psycho Knife and standing still"
+        },
+        {
+          "page": "Psycho Knife",
+          "quote": "the player will quickly enter stealth"
+        }
+      ],
+      "why": "stealth damage bonus"
+    },
+    {
+      "itemId": 3115,
+      "name": "Bouncy Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Bouncy Bomb",
+          "quote": "The Bouncy Bomb is an explosive that functions like the Bomb, but bounces off blocks more intensely."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Functions like the Bomb\" \u2192 the Bomb's quoted values; bouncing on blocks is movement before the timed blast."
+    },
+    {
+      "itemId": 3116,
+      "name": "Bouncy Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive: thrown, it bounces off blocks, keeping much of its momentum, and explodes on touching an enemy. The Lab's thrown explosives come to rest where they land and go off there (or on a dummy they touch first), so one that bounces on until it meets an enemy isn't simulated.",
+      "evidence": [
+        {
+          "page": "Bouncy Grenade",
+          "quote": "The Bouncy Grenade is an explosive consumable ranged weapon made of Pink Gel and Grenades."
+        },
+        {
+          "page": "Bouncy Grenade",
+          "quote": "Instead of rolling or sticking in place upon contact with tiles, it will bounce and retain much of its momentum."
+        },
+        {
+          "page": "Bouncy Grenade",
+          "quote": "Like normal Grenades, they will detonate upon touching an enemy, or the player that threw it."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): thrown consumable explosive that bounces, keeping its momentum, and detonates on touching an enemy; its article states no fuse. The Lab's impact trigger also goes off on landing (explosive-impact), which a bouncing grenade does not, and a timed one needs a stated fuse \u2014 neither fits (B85(c) schema extension queued)"
+    },
+    {
+      "itemId": 3196,
+      "name": "Bomb Fish",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Bomb Fish",
+          "quote": "The Bomb Fish is an explosive that functions identically to the Sticky Bomb, but does not slow down in water."
+        },
+        {
+          "page": "Sticky Bomb",
+          "quote": "The Sticky Bomb is an explosive that functions like the Bomb, but sticks onto any block on contact."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Functions identically to the Sticky Bomb\" (which \"functions like the Bomb\") \u2192 the Bomb's quoted values."
+    },
+    {
+      "itemId": 3209,
+      "name": "Crystal Serpent",
+      "decision": "limitation",
+      "reason": "Its charge shatters into bouncing sparks \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Crystal Serpent",
+          "quote": "When used, it fires a pink charge that shatters into 3\u20135 smaller sparks upon impact with an enemy or block"
+        }
+      ],
+      "why": "splitting projectile"
+    },
+    {
+      "itemId": 3211,
+      "name": "Bladetongue",
+      "decision": "limitation",
+      "reason": "Hits inflict Ichor and fire an ichor stream (50% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Bladetongue",
+          "quote": "On enemy hits, it inflicts the Ichor debuff for 5\u20139 seconds and fires an ichor stream at a random angle in front of the player."
+        }
+      ],
+      "why": "on-hit projectile + debuff"
+    },
+    {
+      "itemId": 3249,
+      "name": "Deadly Sphere Staff",
+      "decision": "limitation",
+      "reason": "Every three attacks it stops to cycle through one of three forms \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Deadly Sphere Staff",
+          "quote": "Once every three attacks, it briefly stops in place to cycle through one of three forms before continuing to attack."
+        }
+      ],
+      "why": "form cycle"
+    },
+    {
+      "itemId": 3258,
+      "name": "Slap Hand",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Slap Hand",
+          "quote": "It is notable for having extremely high base knockback"
+        }
+      ],
+      "why": "Its distinguishing trait is knockback, which the Lab ignores (Target Dummies never move); the swing is plain."
+    },
+    {
+      "itemId": 3262,
+      "name": "Code 1",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Code 1",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3269,
+      "name": "Medusa Head",
+      "decision": "limitation",
+      "reason": "It automatically strikes up to three enemies within 20 tiles of the player, four times per second \u2014 not a beam the player aims.",
+      "evidence": [
+        {
+          "page": "Medusa Head",
+          "quote": "The Medusa Head is a Hardmode magic weapon that continuously fires close-range yellow beams up to four times per second, hitting up to three enemies per attack within a 20-tile radius of the player."
+        }
+      ],
+      "why": "auto-targeting aura"
+    },
+    {
+      "itemId": 3278,
+      "name": "Wooden Yoyo",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Wooden Yoyo",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3279,
+      "name": "Malaise",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Malaise",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3280,
+      "name": "Artery",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Artery",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3281,
+      "name": "Amazon",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Amazon",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3282,
+      "name": "Cascade",
+      "decision": "limitation",
+      "reason": "On every 2nd hit it also shoots a fiery explosion (200% damage) at the nearest enemy, and it can set enemies On Fire! \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cascade",
+          "quote": "On every 2nd yoyo hit, the Cascade shoots a fiery explosion towards the nearest enemy within a 13-tile radius."
+        }
+      ],
+      "why": "extra projectile every 2nd hit + debuff with a non-whole chance"
+    },
+    {
+      "itemId": 3283,
+      "name": "Chik",
+      "decision": "limitation",
+      "reason": "Every 3rd hit deals 200% damage and shoots a spread of five crystal shards \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Chik",
+          "quote": "On every 3rd yoyo hit, the Chik deals 200% damage"
+        }
+      ],
+      "why": "periodic damage multiplier + shards"
+    },
+    {
+      "itemId": 3284,
+      "name": "Code 2",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Code 2",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3285,
+      "name": "Rally",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Rally",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3286,
+      "name": "Yelets",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Yelets",
+          "quote": "It inflicts the Acid Venom debuff for 2 seconds on hit."
+        },
+        {
+          "page": "Yelets",
+          "quote": "Therefore, it cannot drop from statue-spawned enemies, since they never drop coins."
+        },
+        {
+          "page": "Yelets",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Acid Venom is the derived DoT modifier (infobox debuff rows); \"spawned\" is about drops; conditional-damage = modifier advice."
+    },
+    {
+      "itemId": 3287,
+      "name": "Red's Throw",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Red's Throw",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3288,
+      "name": "Valkyrie Yoyo",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Valkyrie Yoyo",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3289,
+      "name": "Amarok",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Amarok",
+          "quote": "It has a 67/100 (67%) chance to inflict the Frostbite debuff for 2\u20135 seconds upon hit."
+        },
+        {
+          "page": "Amarok",
+          "quote": "Therefore, it cannot drop from statue-spawned enemies, since they never drop coins."
+        },
+        {
+          "page": "Amarok",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Frostbite is the derived DoT modifier (infobox debuff rows, B48(c)); \"spawned\" is about drops; conditional-damage = modifier advice."
+    },
+    {
+      "itemId": 3290,
+      "name": "Hel-Fire",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Hel-Fire",
+          "quote": "It inflicts the Hellfire debuff for 3\u20138 seconds upon hit."
+        },
+        {
+          "page": "Hel-Fire",
+          "quote": "It releases light-emitting particles and is fully bright in the dark when used."
+        },
+        {
+          "page": "Hel-Fire",
+          "quote": "Therefore, it cannot drop from statue-spawned enemies, since they never drop coins."
+        },
+        {
+          "page": "Hel-Fire",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Hellfire is the derived DoT modifier (infobox debuff rows); the particles are visual light; \"spawned\" is about drops; conditional-damage = modifier advice."
+    },
+    {
+      "itemId": 3291,
+      "name": "Kraken",
+      "decision": "limitation",
+      "reason": "A whirlpool around it enlarges its hitbox, and every 4th hit fires three piercing waves \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Kraken",
+          "quote": "While in use, it constantly emits a whirlpool loop around the yoyo, which increases its hit detection range significantly."
+        },
+        {
+          "page": "Kraken",
+          "quote": "On every 4th yoyo hit, it fires a spread of three wave projectiles towards its target"
+        }
+      ],
+      "why": "hitbox aura + periodic projectiles"
+    },
+    {
+      "itemId": 3292,
+      "name": "The Eye of Cthulhu",
+      "decision": "limitation",
+      "reason": "Every 7th hit deals 200% damage and spawns an afterimage that dashes at a nearby enemy \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "The Eye of Cthulhu",
+          "quote": "On every 7th yoyo hit, The Eye of Cthulhu deals 200% damage"
+        }
+      ],
+      "why": "periodic damage multiplier + afterimage"
+    },
+    {
+      "itemId": 3315,
+      "name": "Format:C",
+      "decision": "limitation",
+      "reason": "Its critical hits deal 250% damage instead of the usual 200% \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Format:C",
+          "quote": "It has a base 24% critical strike chance, as opposed to the usual 4%, and deals 250% damage on critical hits, as opposed to the usual 200%."
+        }
+      ],
+      "why": "critical damage multiplier"
+    },
+    {
+      "itemId": 3316,
+      "name": "Gradient",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Gradient",
+          "quote": "It leaves behind a visual gradient trail when used."
+        },
+        {
+          "page": "Gradient",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "The trail is visual; conditional-damage = reforge-modifier advice. Reach from the infobox."
+    },
+    {
+      "itemId": 3317,
+      "name": "Valor",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Valor",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "Flag conditional-damage matched the reforge-modifier advice sentence (not weapon behavior; AMENDMENTS-012 B59 precedent). The article states no other behavior; reach comes from its infobox \"Reach\" row."
+    },
+    {
+      "itemId": 3349,
+      "name": "Exotic Scimitar",
+      "decision": "limitation",
+      "reason": "Each hit raises its damage by 12% (up to +50%, decaying over time) \u2014 a stacking bonus the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Exotic Scimitar",
+          "quote": "Striking enemies with the weapon increases its damage by 12% per hit, up to a maximum of 50%."
+        }
+      ],
+      "why": "stacking damage bonus"
+    },
+    {
+      "itemId": 3351,
+      "name": "Classy Cane",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Classy Cane",
+          "quote": "In addition, hitting an enemy or NPC with the Classy Cane drops 1\u201349 Copper Coins."
+        }
+      ],
+      "why": "Coin drops and town-NPC damage do not change the damage dealt to a Target Dummy."
+    },
+    {
+      "itemId": 3352,
+      "name": "Stylish Scissors",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Stylish Scissors",
+          "quote": "Letting go of \u2692 Use / Attack while swinging the weapon will throw the scissors in the direction of the cursor."
+        },
+        {
+          "page": "Stylish Scissors",
+          "quote": "The weapon and its projectiles both inflict the Bleeding debuff for 4\u20136 seconds on hit."
+        }
+      ],
+      "why": "The throw happens only when the attack is released mid-swing; the Lab holds the attack (labeled auto-reuse assumption), so every use is a swing. Bleeding (100%, 4\u20136 s) comes from the infobox debuff rows (B48(c))."
+    },
+    {
+      "itemId": 3377,
+      "name": "Amber Staff",
+      "decision": "limitation",
+      "reason": "Its bolt deals 80% of the weapon's damage and bounces, losing speed \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Amber Staff",
+          "quote": "fires an orange bolt which deals 80% of the weapon's damage"
+        },
+        {
+          "page": "Amber Staff",
+          "quote": "can either pierce through enemies or bounce off blocks up to 2 times"
+        }
+      ],
+      "why": "damage multiplier + bounce",
+      "bounceCount": 2
+    },
+    {
+      "itemId": 3389,
+      "name": "Terrarian",
+      "decision": "limitation",
+      "reason": "It rapidly fires orbs at nearby enemies that bounce off blocks \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Terrarian",
+          "quote": "It rapidly fires short-lived green orbs towards nearby enemies that bounce off blocks."
+        }
+      ],
+      "why": "extra projectiles"
+    },
+    {
+      "itemId": 3474,
+      "name": "Stardust Cell Staff",
+      "decision": "limitation",
+      "reason": "Its homing mini-cells attach to the target and stack a damage-over-time debuff (up to 10 at once) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Stardust Cell Staff",
+          "quote": "A maximum of 10 mini-cells can be attached to one target at a time"
+        }
+      ],
+      "why": "stacking DoT"
+    },
+    {
+      "itemId": 3475,
+      "name": "Vortex Beater",
+      "decision": "limitation",
+      "reason": "It is a held weapon that fires inaccurately and adds homing explosive rockets \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Vortex Beater",
+          "quote": "When used, it very rapidly fires bullets with inaccurate spread."
+        }
+      ],
+      "why": "held use + extra projectiles"
+    },
+    {
+      "itemId": 3483,
+      "name": "Platinum Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Platinum Shortsword",
+          "quote": "The Platinum Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Platinum Shortsword",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        }
+      ],
+      "why": "'increase the average damage' is modifier advice (the Lab uses base stats, no prefixes); the invincibility-frame note is about speed modifiers."
+    },
+    {
+      "itemId": 3507,
+      "name": "Copper Shortsword",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Copper Shortsword",
+          "quote": "The Copper Shortsword is a pre-Hardmode shortsword."
+        },
+        {
+          "page": "Copper Shortsword",
+          "quote": "Newly created characters spawn with a Copper Shortsword (Iron Shortsword in Journey Mode)."
+        }
+      ],
+      "why": "Flag 'spawns' matched 'created' in the starting-inventory note (acquisition), not weapon behavior; the article states no special stab behavior."
+    },
+    {
+      "itemId": 3531,
+      "name": "Stardust Dragon Staff",
+      "decision": "limitation",
+      "reason": "Further uses lengthen the one dragon instead of adding minions \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Stardust Dragon Staff",
+          "quote": "It flies towards enemies, dealing contact damage and dashing to catch up with its target."
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Abigail's Flower, Desert Tiger Staff, and Stardust Dragon Staff enhance a single minion instead of summoning multiple copies, making a single minion consume multiple slots."
+        }
+      ],
+      "why": "stacking single minion"
+    },
+    {
+      "itemId": 3540,
+      "name": "Phantasm",
+      "decision": "limitation",
+      "reason": "It is a held bow that fires bursts that speed up over time and spawn homing arrows on hit \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Phantasm",
+          "quote": "Its fire rate will gradually increase while in use."
+        }
+      ],
+      "why": "held use + ramping rate"
+    },
+    {
+      "itemId": 3541,
+      "name": "Last Prism",
+      "decision": "limitation",
+      "reason": "Its six beams converge into one over 3 seconds, tripling the damage, while its mana use rises \u2014 not modeled.",
+      "tickRateTicks": 5,
+      "evidence": [
+        {
+          "page": "Last Prism",
+          "quote": "When used, it projects six rainbow-colored beams each dealing the weapon's listed damage, which immediately begin to rotate and converge into one concentrated beam over a duration of 3 seconds."
+        },
+        {
+          "page": "Last Prism",
+          "quote": "of global invincibility frames on hit, meaning they can hit for up to 12 times per second"
+        }
+      ],
+      "why": "converging beams (ramp-up); the beam hit rate (5 ticks) is recorded for later"
+    },
+    {
+      "itemId": 3547,
+      "name": "Bouncy Dynamite",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 300,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Bouncy Dynamite",
+          "quote": "Bouncy Dynamite is an explosive that functions like Dynamite, but bounces off blocks more intensely."
+        },
+        {
+          "page": "Dynamite",
+          "quote": "Dynamite is an explosive that explodes 5 seconds after being thrown."
+        },
+        {
+          "page": "Dynamite",
+          "quote": "The explosion also deals 250 damage to all enemies, critters, and players (but not NPCs) within 7.8 tiles horizontally and vertically of the Dynamite."
+        }
+      ],
+      "why": "\"Functions like Dynamite\" \u2192 Dynamite's quoted fuse and uniform damage; bouncing is movement. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 3548,
+      "name": "Happy Grenade",
+      "decision": "limitation",
+      "reason": "A consumable explosive grenade: half the damage of an ordinary Grenade, with a confetti effect. The wiki doesn't state when it detonates.",
+      "evidence": [
+        {
+          "page": "Happy Grenade",
+          "quote": "The Happy Grenade is an explosive consumable ranged weapon that inflicts half the damage of an ordinary Grenade and displays a confetti effect."
+        }
+      ],
+      "why": "no weapon-type category (wiki: Ranged weapons + Weapon items only), so no Lab family; reviewed category-less limitation (AMENDMENTS-015 B85(c), grenade family; same standard as Grenade): a grenade variant whose article states its damage relative to the Grenade and its confetti effect but not its trigger (no impact or fuse sentence; re-checked on rev 929707: infobox, lead, Notes, Tips and History \u2014 its only explosion line is History's \"Now properly explodes and deals damage in Multiplayer\"; the Explosives (class) page's generic \"explosion upon impact, e.g. Grenades\" names no Happy Grenade) \u2014 never guessed from the Grenade's; even stated, a grenade's impact-or-fuse trigger is not expressible in the explosive-aoe params (B85(c) schema extension queued)"
+    },
+    {
+      "itemId": 3569,
+      "name": "Lunar Portal Staff",
+      "decision": "limitation",
+      "reason": "Its lasers sweep across enemies and pierce all of them \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lunar Portal Staff",
+          "quote": "It continuously fires beams that sweep across enemies, which pierce infinite enemies but cannot pass through blocks."
+        }
+      ],
+      "why": "sweeping beams"
+    },
+    {
+      "itemId": 3570,
+      "name": "Lunar Flare",
+      "decision": "limitation",
+      "reason": "Its flares rain down toward the cursor and explode \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lunar Flare",
+          "quote": "When used, it summons a spread of three lunar flares that rain down towards the cursor."
+        }
+      ],
+      "why": "sky projectiles + AoE"
+    },
+    {
+      "itemId": 3571,
+      "name": "Rainbow Crystal Staff",
+      "decision": "limitation",
+      "reason": "It fires spreads of three beams whose stars explode \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Rainbow Crystal Staff",
+          "quote": "It fires spreads of three multicolored light beams towards enemies, but cannot target through blocks."
+        }
+      ],
+      "why": "spread + exploding stars"
+    },
+    {
+      "itemId": 3772,
+      "name": "Mandible Blade",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Mandible Blade",
+          "quote": "The Mandible Blade is a pre-Hardmode broadsword"
+        },
+        {
+          "page": "Mandible Blade",
+          "quote": "while swinging will throw the weapon in direction of the cursor"
+        }
+      ],
+      "why": "The throw happens only when the attack is released mid-swing; the Lab holds the attack (labeled auto-reuse assumption), so every use is a swing."
+    },
+    {
+      "itemId": 3787,
+      "name": "Sky Fracture",
+      "decision": "limitation",
+      "reason": "Its swords appear 1.25\u20133.75 tiles around the player rather than at the player \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Sky Fracture",
+          "quote": "When used, it summons three energy swords in quick succession around the player, aiming at the cursor's location."
+        },
+        {
+          "page": "Sky Fracture",
+          "quote": "The sword projectiles can spawn between 1.25 to 3.75 tiles away from the player's center,"
+        }
+      ],
+      "why": "Spawn offset around the player (the magic-bolt archetype fires from the player). Its 18-tick reuse delay is in the sim cadence since B48(a); velocity, pierce and lifetime are derivable."
+    },
+    {
+      "itemId": 3788,
+      "name": "Onyx Blaster",
+      "decision": "limitation",
+      "reason": "It fires a spread of bullets plus an exploding crystal (200% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Onyx Blaster",
+          "quote": "It also fires an onyx crystal that explodes upon impact with an enemy or a block, or after traveling for 0.33 seconds."
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
+      "itemId": 3818,
+      "name": "Flameburst Rod",
+      "decision": "limitation",
+      "reason": "Its fireballs explode on contact and can inflict On Fire! or Hellfire \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flameburst sentry summons",
+          "quote": "Each Flameburst Tower shoots fireballs towards enemies, which explode on contact and have a chance to inflict the On Fire! or Hellfire debuff."
+        }
+      ],
+      "why": "exploding shots + two debuffs"
+    },
+    {
+      "itemId": 3819,
+      "name": "Flameburst Cane",
+      "decision": "limitation",
+      "reason": "Its fireballs explode on contact and can inflict On Fire! or Hellfire \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flameburst sentry summons",
+          "quote": "Each Flameburst Tower shoots fireballs towards enemies, which explode on contact and have a chance to inflict the On Fire! or Hellfire debuff."
+        }
+      ],
+      "why": "exploding shots + two debuffs"
+    },
+    {
+      "itemId": 3820,
+      "name": "Flameburst Staff",
+      "decision": "limitation",
+      "reason": "Its fireballs explode on contact and can inflict On Fire! or Hellfire \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Flameburst sentry summons",
+          "quote": "Each Flameburst Tower shoots fireballs towards enemies, which explode on contact and have a chance to inflict the On Fire! or Hellfire debuff."
+        }
+      ],
+      "why": "exploding shots + two debuffs"
+    },
+    {
+      "itemId": 3823,
+      "name": "Brand of the Inferno",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Brand of the Inferno",
+          "quote": "It has a 1/4 (25%) chance of inflicting the Hellfire debuff for five seconds on hit and also allows the player to parry incoming damage while equipped with a shield."
+        },
+        {
+          "page": "Brand of the Inferno",
+          "quote": "While holding the Brand of the Inferno with any equipped shield (excluding the Huntress's Buckler), pressing the \u26b7 Open / Activate button will cause the player to raise the shield."
+        }
+      ],
+      "why": "The parry needs an equipped shield and the separate Open / Activate button; the Lab equips nothing and only holds attack (base weapon), so it never parries and Striking Moment never applies. Hellfire (25%, 5 s) comes from the infobox debuff rows (B48(c))."
+    },
+    {
+      "itemId": 3824,
+      "name": "Ballista Rod",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Ballista sentry summons",
+          "quote": "Each Ballista sentry fires Ballista Shot projectiles towards enemies, which pierce three times."
+        }
+      ],
+      "why": "Sentry firing piercing bolts. No attack rate or range stated."
+    },
+    {
+      "itemId": 3825,
+      "name": "Ballista Cane",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Ballista sentry summons",
+          "quote": "Each Ballista sentry fires Ballista Shot projectiles towards enemies, which pierce three times."
+        }
+      ],
+      "why": "Sentry firing piercing bolts. No attack rate or range stated."
+    },
+    {
+      "itemId": 3826,
+      "name": "Ballista Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Ballista sentry summons",
+          "quote": "Each Ballista sentry fires Ballista Shot projectiles towards enemies, which pierce three times."
+        }
+      ],
+      "why": "Sentry firing piercing bolts. No attack rate or range stated."
+    },
+    {
+      "itemId": 3827,
+      "name": "Flying Dragon",
+      "decision": "limitation",
+      "reason": "Swings fire piercing crescent projectiles every 20 ticks \u2014 not modeled by the swing parameters.",
+      "evidence": [
+        {
+          "page": "Flying Dragon",
+          "quote": "When swung, it fires red crescent-shaped projectiles every 20 ticks"
+        },
+        {
+          "page": "Flying Dragon",
+          "quote": "which pierce four enemies, pass through blocks, and dissipate after one second."
+        }
+      ],
+      "why": "projectile on own timer"
+    },
+    {
+      "itemId": 3829,
+      "name": "Lightning Aura Rod",
+      "decision": "limitation",
+      "reason": "Its 9-tile aura repeatedly damages enemies inside it and bypasses their defense \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lightning Aura sentry summons",
+          "quote": "Each Lightning Aura sentry consists of an aura with a radius of 9 tiles, which damages enemies repeatedly while within."
+        }
+      ],
+      "why": "aura + armor penetration"
+    },
+    {
+      "itemId": 3830,
+      "name": "Lightning Aura Cane",
+      "decision": "limitation",
+      "reason": "Its 9-tile aura repeatedly damages enemies inside it and bypasses their defense \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lightning Aura sentry summons",
+          "quote": "Each Lightning Aura sentry consists of an aura with a radius of 9 tiles, which damages enemies repeatedly while within."
+        }
+      ],
+      "why": "aura + armor penetration"
+    },
+    {
+      "itemId": 3831,
+      "name": "Lightning Aura Staff",
+      "decision": "limitation",
+      "reason": "Its 9-tile aura repeatedly damages enemies inside it and bypasses their defense \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lightning Aura sentry summons",
+          "quote": "Each Lightning Aura sentry consists of an aura with a radius of 9 tiles, which damages enemies repeatedly while within."
+        }
+      ],
+      "why": "aura + armor penetration"
+    },
+    {
+      "itemId": 3832,
+      "name": "Explosive Trap Rod",
+      "decision": "limitation",
+      "reason": "It is a trap that explodes when enemies come near, hitting a 9\u00d79-tile area \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Explosive Trap sentry summons",
+          "quote": "Each Explosive Trap sentry causes an explosion when enemies are nearby."
+        }
+      ],
+      "why": "proximity trap"
+    },
+    {
+      "itemId": 3833,
+      "name": "Explosive Trap Cane",
+      "decision": "limitation",
+      "reason": "It is a trap that explodes when enemies come near, hitting a 9\u00d79-tile area \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Explosive Trap sentry summons",
+          "quote": "Each Explosive Trap sentry causes an explosion when enemies are nearby."
+        }
+      ],
+      "why": "proximity trap"
+    },
+    {
+      "itemId": 3834,
+      "name": "Explosive Trap Staff",
+      "decision": "limitation",
+      "reason": "It is a trap that explodes when enemies come near, hitting a 9\u00d79-tile area \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Explosive Trap sentry summons",
+          "quote": "Each Explosive Trap sentry causes an explosion when enemies are nearby."
+        }
+      ],
+      "why": "proximity trap"
+    },
+    {
+      "itemId": 3852,
+      "name": "Tome of Infinite Wisdom",
+      "decision": "limitation",
+      "reason": "It fires bursts of pages and has a tornado secondary attack \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Tome of Infinite Wisdom",
+          "quote": "When used with \u2692 Use / Attack, it fires bursts of four high-velocity pages that dissipate upon contact with enemies or blocks."
+        }
+      ],
+      "why": "burst + secondary attack"
+    },
+    {
+      "itemId": 3854,
+      "name": "Phantom Phoenix",
+      "decision": "limitation",
+      "reason": "It is a held bow that fires two spread arrows and a Phoenix (200% damage) every third use \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Phantom Phoenix",
+          "quote": "When used, it fires a slight spread of two arrows, alongside a large Phoenix projectile on every third use."
+        }
+      ],
+      "why": "held use + extra projectile"
+    },
+    {
+      "itemId": 3859,
+      "name": "Aerial Bane",
+      "decision": "limitation",
+      "reason": "It converts every arrow into splitting, exploding arrows \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Aerial Bane",
+          "quote": "When used, it converts any type of arrow into Aerial Bane arrows."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 3870,
+      "name": "Betsy's Wrath",
+      "decision": "limitation",
+      "reason": "Its fireballs arc, explode in an area and inflict Betsy's Curse (40 armor penetration) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Betsy's Wrath",
+          "quote": "When used, it fires three fireballs that travel in arcs."
+        },
+        {
+          "page": "Betsy's Wrath",
+          "quote": "The fireballs explode upon impact with an enemy or a block and inflict the Betsy's Curse debuff, which adds 40 armor penetration against affected entities for 10 seconds."
+        }
+      ],
+      "why": "Arcing explosive projectiles + armor-penetration debuff; the 10-tick reuse delay is in the sim cadence since B48(a)."
+    },
+    {
+      "itemId": 4058,
+      "name": "Skull Bow",
+      "decision": "limitation",
+      "reason": "It converts Bone Arrows into the Marrow's Bone Arrows \u2014 an ammo conversion the Lab does not model.",
+      "evidence": [
+        {
+          "page": "Skull Bow",
+          "quote": "it can convert Bone Arrows (ID 474) into Bone Arrows from the Marrow (ID 117)."
+        }
+      ],
+      "why": "conversion"
+    },
+    {
+      "itemId": 4061,
+      "name": "Storm Spear",
+      "decision": "limitation",
+      "reason": "Each thrust also fires an electric bolt (160% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Storm Spear",
+          "quote": "When thrust, it fires an electric bolt that deals 160% of the weapon's damage (21 base damage) and inflicts 50% its knockback (base knockback of 3 (Very weak))."
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
+      "itemId": 4062,
+      "name": "Thunder Zapper",
+      "decision": "limitation",
+      "reason": "Its lightning bolt travels in a zigzag \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Thunder Zapper",
+          "quote": "When used, it fires a lightning bolt that travels in a zigzag pattern horizontally"
+        }
+      ],
+      "why": "zigzag motion"
+    },
+    {
+      "itemId": 4269,
+      "name": "Sanguine Staff",
+      "decision": "limitation",
+      "reason": "Its bat flies in a loop between the player and its target, hitting once per loop \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Sanguine Staff",
+          "quote": "It flies in an elliptical loop between the player and the target enemy."
+        }
+      ],
+      "why": "loop path"
+    },
+    {
+      "itemId": 4273,
+      "name": "Vampire Frog Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ground-melee",
+      "evidence": [
+        {
+          "page": "Vampire Frog Staff",
+          "quote": "It hops towards enemies to deal contact damage."
+        }
+      ],
+      "why": "Ground hops + contact damage. Only an immunity cap is stated: no attack rate."
+    },
+    {
+      "itemId": 4281,
+      "name": "Finch Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "melee-contact",
+      "evidence": [
+        {
+          "page": "Finch Staff",
+          "quote": "It flies towards enemies to deal contact damage."
+        }
+      ],
+      "why": "Flying contact. No attack rate stated."
+    },
+    {
+      "itemId": 4347,
+      "name": "Gray Zapinator",
+      "decision": "limitation",
+      "reason": "Its laser behaves erratically with random effects \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Gray Zapinator",
+          "quote": "The weapon fires a blue laser beam that behaves very erratically."
+        }
+      ],
+      "why": "random behavior"
+    },
+    {
+      "itemId": 4348,
+      "name": "Orange Zapinator",
+      "decision": "limitation",
+      "reason": "Its laser behaves erratically with random effects \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Orange Zapinator",
+          "quote": "The weapon fires a blue laser beam that behaves very erratically."
+        }
+      ],
+      "why": "random behavior"
+    },
+    {
+      "itemId": 4381,
+      "name": "Blood Rain Bow",
+      "decision": "limitation",
+      "reason": "Its arrows become streams of blood raining from the sky \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Blood Rain Bow",
+          "quote": "When used, it converts any type of arrow into a spread of 1\u20133 streams of blood"
+        },
+        {
+          "page": "Blood Rain Bow",
+          "quote": "to rain from the sky, directed towards the cursor."
+        }
+      ],
+      "why": "sky projectiles"
+    },
+    {
+      "itemId": 4423,
+      "name": "Scarab Bomb",
+      "decision": "limitation",
+      "reason": "Its explosion is a 21-tile long, 3-tile wide shaft aimed away from the player \u2014 not a blast radius.",
+      "evidence": [
+        {
+          "page": "Scarab Bomb",
+          "quote": "The Scarab Bomb is an explosive that functions like the Sticky Bomb, but instead creates a 21-tile long and 3-tile wide shaft."
+        }
+      ],
+      "why": "directional shaft"
+    },
+    {
+      "itemId": 4463,
+      "name": "Gladius",
+      "decision": "limitation",
+      "reason": "It stabs three times per use at varying angles; the Lab's thrust models one stab per use.",
+      "evidence": [
+        {
+          "page": "Gladius",
+          "quote": "It attacks three times in quick succession per use, with slightly varying angles with each stab."
+        }
+      ],
+      "why": "multi-stab use (useTime 6 < useAnimation 18)"
+    },
+    {
+      "itemId": 4607,
+      "name": "Desert Tiger Staff",
+      "decision": "limitation",
+      "reason": "Further uses strengthen the one tiger instead of adding minions, and it pounces every six seconds for extra damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Desert Tiger Staff",
+          "quote": "the tiger can perform a pounce attack at nearby enemies, dealing 50% extra damage"
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Abigail's Flower, Desert Tiger Staff, and Stardust Dragon Staff enhance a single minion instead of summoning multiple copies, making a single minion consume multiple slots."
+        }
+      ],
+      "why": "stacking single minion + pounce"
+    },
+    {
+      "itemId": 4672,
+      "name": "Leather Whip",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Leather Whip",
+          "quote": "It has a 50% multihit penalty, and inflicts 4 tag damage on enemies."
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage; \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 4678,
+      "name": "Durendal",
+      "decision": "limitation",
+      "reason": "Its enchanted energy adds 30 damage to the next minion hit, and it grants a whip speed buff \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Durendal",
+          "quote": "Marks enemies with enchanted energy."
+        },
+        {
+          "page": "Durendal",
+          "quote": "Grants the Durendal's Blessing buff, increasing whip speed by 25% for 3 seconds."
+        }
+      ],
+      "why": "mark effect + speed buff"
+    },
+    {
+      "itemId": 4679,
+      "name": "Morning Star",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Morning Star",
+          "quote": "It has a 5% multihit penalty and performs the following effects on hit: 8 tag damage 10% tag critical strike chance"
+        },
+        {
+          "page": "Morning Star",
+          "quote": "due to its summon tag damage bonus and crit boost"
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage and tag critical strike chance (\"damage bonus\" = its tag damage, compared in advice); \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 4680,
+      "name": "Dark Harvest",
+      "decision": "limitation",
+      "reason": "Its dark energy makes minion hits damage up to three nearby enemies, and it grants a whip speed buff \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Dark Harvest",
+          "quote": "Marks enemies with dark energy."
+        },
+        {
+          "page": "Dark Harvest",
+          "quote": "Grants the Harvest Time buff, increasing whip speed by 35% for 3 seconds."
+        }
+      ],
+      "why": "mark effect + speed buff"
+    },
+    {
+      "itemId": 4703,
+      "name": "Quad-Barrel Shotgun",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "projectilesPerUse": 8,
+      "spreadDegrees": 45,
+      "inheritsAmmoProjectile": true,
+      "evidence": [
+        {
+          "page": "Quad-Barrel Shotgun",
+          "quote": "When used, it fires eight bullets at a 45\u00b0 spread, consuming one piece of ammunition."
+        }
+      ],
+      "why": "Eight bullets over a stated 45\u00b0 spread; how the bullets are distributed inside it is the sim's labeled even-fan approximation."
+    },
+    {
+      "itemId": 4758,
+      "name": "Blade Staff",
+      "decision": "limitation",
+      "reason": "Its dagger ignores 25 points of enemy defense \u2014 armor penetration is not modeled.",
+      "evidence": [
+        {
+          "page": "Blade Staff",
+          "quote": "It also has 25 armor penetration."
+        }
+      ],
+      "why": "armor penetration (src/sim: not modeled)"
+    },
+    {
+      "itemId": 4760,
+      "name": "Sergeant United Shield",
+      "decision": "limitation",
+      "reason": "It homes in on up to five enemies, losing 20% damage per enemy struck, and grants a shield parry \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Sergeant United Shield",
+          "quote": "When thrown, it homes in on enemies within 50 tiles and will attempt to hit up to five enemies before returning to the player, but loses 20% of its damage for each enemy struck."
+        }
+      ],
+      "why": "homing + falloff + parry"
+    },
+    {
+      "itemId": 4764,
+      "name": "Shroomerang",
+      "decision": "archetype",
+      "archetype": "returning",
+      "evidence": [
+        {
+          "page": "Shroomerang",
+          "quote": "Both modifiers increase the average damage output by the same amount."
+        },
+        {
+          "page": "Shroomerang",
+          "quote": "This allows it to hit enemies multiple times"
+        }
+      ],
+      "why": "\"multiple times\" = repeated hits during the boomerang's return pass (the returning archetype); conditional-damage = reforge-modifier advice (B59 precedent)."
+    },
+    {
+      "itemId": 4818,
+      "name": "Combat Wrench",
+      "decision": "limitation",
+      "reason": "It pierces enemies on the way out and slows down gradually instead of turning around on a hit \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Combat Wrench",
+          "quote": "It can pierce multiple targets before returning."
+        },
+        {
+          "page": "Combat Wrench",
+          "quote": "Unlike most other boomerangs which instantly turn around after hitting enemies, the Combat Wrench has to gradually decelerate first."
+        }
+      ],
+      "why": "outbound pierce + deceleration"
+    },
+    {
+      "itemId": 4824,
+      "name": "Wet Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Liquid bombs",
+          "quote": "Liquid bombs are explosive items that function like the Bomb, but their explosion will either place or remove liquids, instead of destroying blocks."
+        },
+        {
+          "page": "Liquid bombs",
+          "quote": "However, all liquid bombs will bounce off Shimmer."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Function like the Bomb\" except for the liquids \u2192 the Bomb's quoted values. The shared infobox lists each liquid bomb's own projectile (not extra ones); the bounce is off Shimmer."
+    },
+    {
+      "itemId": 4825,
+      "name": "Lava Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Liquid bombs",
+          "quote": "Liquid bombs are explosive items that function like the Bomb, but their explosion will either place or remove liquids, instead of destroying blocks."
+        },
+        {
+          "page": "Liquid bombs",
+          "quote": "However, all liquid bombs will bounce off Shimmer."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Function like the Bomb\" except for the liquids \u2192 the Bomb's quoted values. The shared infobox lists each liquid bomb's own projectile (not extra ones); the bounce is off Shimmer."
+    },
+    {
+      "itemId": 4826,
+      "name": "Honey Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Liquid bombs",
+          "quote": "Liquid bombs are explosive items that function like the Bomb, but their explosion will either place or remove liquids, instead of destroying blocks."
+        },
+        {
+          "page": "Liquid bombs",
+          "quote": "However, all liquid bombs will bounce off Shimmer."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Function like the Bomb\" except for the liquids \u2192 the Bomb's quoted values. The shared infobox lists each liquid bomb's own projectile (not extra ones); the bounce is off Shimmer."
+    },
+    {
+      "itemId": 4827,
+      "name": "Dry Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Liquid bombs",
+          "quote": "Liquid bombs are explosive items that function like the Bomb, but their explosion will either place or remove liquids, instead of destroying blocks."
+        },
+        {
+          "page": "Liquid bombs",
+          "quote": "However, all liquid bombs will bounce off Shimmer."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Function like the Bomb\" except for the liquids \u2192 the Bomb's quoted values. The shared infobox lists each liquid bomb's own projectile (not extra ones); the bounce is off Shimmer."
+    },
+    {
+      "itemId": 4908,
+      "name": "Dirt Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Dirt Bomb",
+          "quote": "The Dirt Bomb is an explosive that functions like the Bomb, but its explosion will place Dirt Blocks in open spaces, instead of destroying blocks."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "\"Functions like the Bomb\" except for the tiles \u2192 the Bomb's quoted values; \"create\"/\"hold\" describe the dirt and water."
+    },
+    {
+      "itemId": 4909,
+      "name": "Sticky Dirt Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 180,
+      "blastRadiusTiles": 4,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Sticky Dirt Bomb",
+          "quote": "The Sticky Dirt Bomb is an explosive that functions like the Dirt Bomb, but sticks onto any block on contact."
+        },
+        {
+          "page": "Dirt Bomb",
+          "quote": "The Dirt Bomb is an explosive that functions like the Bomb, but its explosion will place Dirt Blocks in open spaces, instead of destroying blocks."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The Bomb is an explosive that explodes 3 seconds after being thrown."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion breaks nearly all blocks, background walls, and furniture within a 4-tile radius, except explosion-proof objects."
+        },
+        {
+          "page": "Bomb",
+          "quote": "The explosion also deals 100 damage to all enemies, critters, and players in the radius, but not NPCs."
+        }
+      ],
+      "why": "Like the Dirt Bomb (like the Bomb) \u2192 the Bomb's quoted values; sticking is placement."
+    },
+    {
+      "itemId": 4911,
+      "name": "Cool Whip",
+      "decision": "limitation",
+      "reason": "Its hits create a homing snowflake that keeps attacking and inflict Frostbite \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cool Whip",
+          "quote": "Grants the A Nice Buff buff, creating a homing snowflake projectile that lasts for 3 seconds"
+        }
+      ],
+      "why": "spawned projectile + debuff"
+    },
+    {
+      "itemId": 4912,
+      "name": "Firecracker",
+      "decision": "limitation",
+      "reason": "Its blazing energy makes the next minion hit explode for 2.75\u00d7 damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Firecracker",
+          "quote": "Marks enemies with blazing energy."
+        }
+      ],
+      "why": "mark explosion multiplier"
+    },
+    {
+      "itemId": 4913,
+      "name": "Snapthorn",
+      "decision": "limitation",
+      "reason": "It grants a whip speed buff and can inflict Poisoned \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Snapthorn",
+          "quote": "Grants the Jungle's Fury buff, increasing whip speed by 12% for 3 seconds."
+        }
+      ],
+      "why": "speed buff + debuff"
+    },
+    {
+      "itemId": 4914,
+      "name": "Kaleidoscope",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Kaleidoscope",
+          "quote": "It has a 20% multihit penalty and performs the following effects on hit: 20 tag damage 10% tag critical strike chance"
+        },
+        {
+          "page": "Kaleidoscope",
+          "quote": "Enemies emit multicolored sparkles when hit by a minion or sentry while tagged by the Kaleidoscope."
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage and tag critical strike chance (the sparkles are visual); \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 4953,
+      "name": "Eventide",
+      "decision": "limitation",
+      "reason": "It fires bursts of arrows plus a Twilight Lance (200% damage) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Eventide",
+          "quote": "When used, it fires a burst of four arrows and one Twilight Lance projectile"
+        }
+      ],
+      "why": "extra projectile"
+    },
+    {
+      "itemId": 5005,
+      "name": "Terraprisma",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "hover-strike",
+      "evidence": [
+        {
+          "page": "Terraprisma",
+          "quote": "It flies towards enemies, performing a quick stab before repeatedly attacking with a swinging or stabbing motion."
+        }
+      ],
+      "why": "Close-range repeated stabs/swings. Its stated rate (\"once every 0.67 seconds\") is not a whole number of ticks: rounded half-to-even to ticks (AMENDMENTS-013 B63 P-2, modeled)."
+    },
+    {
+      "itemId": 5065,
+      "name": "Resonance Scepter",
+      "decision": "limitation",
+      "reason": "It creates damaging auras at the cursor \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Resonance Scepter",
+          "quote": "When used, it creates pink circular auras at the cursor's location"
+        }
+      ],
+      "why": "aura"
+    },
+    {
+      "itemId": 5069,
+      "name": "Flinx Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ground-melee",
+      "evidence": [
+        {
+          "page": "Flinx Staff",
+          "quote": "It runs towards enemies, bouncing upwards upon contact before attempting to hit its target again."
+        }
+      ],
+      "why": "Runs + contact hits. Only an immunity cap is stated: no attack rate."
+    },
+    {
+      "itemId": 5074,
+      "name": "Spinal Tap",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Spinal Tap",
+          "quote": "It has a 10% multihit penalty and performs the following effects on hit: 7 tag damage"
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage; \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 5094,
+      "name": "Tentacle Spike",
+      "decision": "limitation",
+      "reason": "Hits embed stacking spikes that deal damage over time \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Tentacle Spike",
+          "quote": "When swung, it sticks tentacle spikes into enemies on hit, which linger on the enemy and deal 3 damage per second for 9 seconds."
+        }
+      ],
+      "why": "stacking DoT"
+    },
+    {
+      "itemId": 5096,
+      "name": "Ham Bat",
+      "decision": "limitation",
+      "reason": "Its damage is multiplied while the player has a food buff \u2014 not modeled by the Lab.",
+      "evidence": [
+        {
+          "page": "Ham Bat",
+          "quote": "While the player has a food buff, the Ham Bat receives a damage multiplier, which scales with tier of the food buff."
+        }
+      ],
+      "why": "buff-dependent damage"
+    },
+    {
+      "itemId": 5097,
+      "name": "Bat Bat",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Bat Bat",
+          "quote": "When swung, it restores 1 health to the user upon hitting an enemy."
+        }
+      ],
+      "why": "Healing the player does not change the damage dealt."
+    },
+    {
+      "itemId": 5114,
+      "name": "Abigail's Flower",
+      "decision": "limitation",
+      "reason": "Further uses strengthen the one Abigail instead of adding minions, and she also emits damaging flashes \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Abigail's Flower",
+          "quote": "When Abigail's Flower is used more than once, multiple Abigails do not spawn; instead, the existing Abigail becomes stronger and faster for each additional summon."
+        }
+      ],
+      "why": "stacking single minion + flashes"
+    },
+    {
+      "itemId": 5117,
+      "name": "Pew-matic Horn",
+      "decision": "limitation",
+      "reason": "It converts bullets into random items whose damage varies \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Pew-matic Horn",
+          "quote": "When used, it converts any bullet into a randomized item fired as a projectile."
+        }
+      ],
+      "why": "random conversion"
+    },
+    {
+      "itemId": 5118,
+      "name": "Weather Pain",
+      "decision": "limitation",
+      "reason": "Its Hurtnado homes in and hovers to deal continuous damage \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Weather Pain",
+          "quote": "The Hurtnado has 10 armor penetration, bounces off blocks, and homes in on nearby enemies"
+        }
+      ],
+      "why": "homing hazard"
+    },
+    {
+      "itemId": 5119,
+      "name": "Houndius Shootius",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Houndius Shootius",
+          "quote": "It shoots fireballs towards enemies, which dissipate upon contact with enemies or blocks."
+        }
+      ],
+      "why": "Sentry shooting fireballs. No attack rate stated; its range is a Manhattan distance (62.5 tiles), not a radius (AMENDMENTS-013 B63 P-4 rejected): both stay missing."
+    },
+    {
+      "itemId": 5129,
+      "name": "Flymeal",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Flymeal",
+          "quote": "Like the Classy Cane, it has the special ability to attack town NPCs."
+        },
+        {
+          "page": "Flymeal",
+          "quote": "It also inflicts the Stinky debuff for 5 seconds."
+        }
+      ],
+      "why": "The 2x / defense-ignoring damage applies to town NPCs (not Target Dummies); Stinky deals no damage over time."
+    },
+    {
+      "itemId": 5147,
+      "name": "Wand of Frosting",
+      "decision": "limitation",
+      "reason": "Its spark curves, pierces once and can inflict Frostburn \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Wand of Frosting",
+          "quote": "When used, it fires a blue spark that travels in a slight curve for about 23 tiles before dissipating."
+        }
+      ],
+      "why": "motion + DoT"
+    },
+    {
+      "itemId": 5282,
+      "name": "Ash Wood Bow",
+      "decision": "archetype",
+      "archetype": "bow-gun",
+      "evidence": [
+        {
+          "page": "Ash Wood Bow",
+          "quote": "The Ash Wood Bow is a pre-Hardmode bow and a variation of the Wooden Bow."
+        },
+        {
+          "page": "Ash Wood Bow",
+          "quote": "In the Remix and Zenith seeds, the Ash Wood Bow receives the following changes"
+        }
+      ],
+      "why": "The stat decrease applies only in the Remix/Zenith seeds."
+    },
+    {
+      "itemId": 5284,
+      "name": "Ash Wood Sword",
+      "decision": "archetype",
+      "archetype": "swing-melee",
+      "evidence": [
+        {
+          "page": "Ash Wood Sword",
+          "quote": "The Ash Wood Sword is a pre-Hardmode broadsword and a variation of the Wooden Sword."
+        },
+        {
+          "page": "Ash Wood Sword",
+          "quote": "In the Remix and Zenith seeds, the Ash Wood Sword receives the following changes"
+        }
+      ],
+      "why": "The stat decrease applies only in the Remix/Zenith seeds; the dataset carries the normal-world stats."
+    },
+    {
+      "itemId": 5294,
+      "name": "Hive-Five",
+      "decision": "limitation",
+      "reason": "Hits have a 1/3 chance to summon a homing bee \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Hive-Five",
+          "quote": "Upon enemy hits, it has a 1/3 (33.33%) chance of summoning a homing Bee projectile."
+        }
+      ],
+      "why": "spawned homing projectiles"
+    },
+    {
+      "itemId": 5298,
+      "name": "Trimarang",
+      "decision": "limitation",
+      "reason": "Up to three can be in the air at once (most boomerangs must return before the next throw) \u2014 the returning parameters have no such count.",
+      "evidence": [
+        {
+          "page": "Trimarang",
+          "quote": "Unlike most boomerangs, it does not have to return to the player before being fired, with a maximum of three Trimarangs that can be thrown out at one time."
+        }
+      ],
+      "why": "simultaneous throws (schema delta: max active count)"
+    },
+    {
+      "itemId": 5382,
+      "name": "Waffle's Iron",
+      "decision": "limitation",
+      "reason": "Swings fire a gravity-affected waffle, and hits can inflict Hellfire (damage over time) \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Waffle's Iron",
+          "quote": "When swung, it fires a waffle projectile once per swing, which is significantly affected by gravity."
+        }
+      ],
+      "why": "projectile + DoT"
+    },
+    {
+      "itemId": 5456,
+      "name": "Mushroom Staff",
+      "decision": "limitation",
+      "reason": "If its target is far away it dives at it with an exploding impact (133% damage) and teleports back \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Mushroom Staff",
+          "quote": "If the nearest target is too far away, the Mushroom Boi will dive towards it, creating a red explosion on impact that deals 133% of the weapon's damage (10 base damage)"
+        }
+      ],
+      "why": "conditional dive attack"
+    },
+    {
+      "itemId": 5463,
+      "name": "Barnacle Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Barnacle Staff",
+          "quote": "fires poison spit at enemies, which inflicts the Poisoned debuff for 5\u201310 seconds"
+        }
+      ],
+      "why": "Sentry spitting poison. Its stated rate (once every 0.83 s) is not a whole number of ticks; no range stated."
+    },
+    {
+      "itemId": 5473,
+      "name": "Cobwhip",
+      "decision": "limitation",
+      "reason": "Its hits release a small spider that keeps attacking for 3 seconds \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cobwhip",
+          "quote": "Releases a small spider that lasts for 3 seconds, which repeatedly deals 2 damage on contact and has 30 armor penetration"
+        }
+      ],
+      "why": "spawned entity"
+    },
+    {
+      "itemId": 5474,
+      "name": "Soulscourge",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Soulscourge",
+          "quote": "It has a 40% multihit penalty and performs the following effects on hit: 5 tag damage"
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage; \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 5475,
+      "name": "Vasculash",
+      "decision": "archetype",
+      "archetype": "whip",
+      "evidence": [
+        {
+          "page": "Vasculash",
+          "quote": "It has a 40% multihit penalty and performs the following effects on hit: 5 tag damage"
+        }
+      ],
+      "why": "The on-hit effects are the whip's own tag damage; \"Your summons will focus struck enemies\" (tooltip) is whip tagging itself. No other behavior stated. Range, tag damage/crit and multihit penalty come from the Whips list table + tooltip; the swing arc is not stated (missing)."
+    },
+    {
+      "itemId": 5476,
+      "name": "Starcrash",
+      "decision": "limitation",
+      "reason": "Its primed energy calls down a meteor on the next minion hit \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Starcrash",
+          "quote": "Marks enemies with primed energy."
+        }
+      ],
+      "why": "mark meteor"
+    },
+    {
+      "itemId": 5477,
+      "name": "Vulgar Display of Flower",
+      "decision": "limitation",
+      "reason": "Its volatile energy releases homing petals on minion hits \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Vulgar Display of Flower",
+          "quote": "Marks enemies with volatile energy."
+        }
+      ],
+      "why": "mark petals"
+    },
+    {
+      "itemId": 5478,
+      "name": "Electric Eel",
+      "decision": "limitation",
+      "reason": "It inflicts its own damage-over-time debuff, and its electric energy adds damage to minion hits \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Electric Eel",
+          "quote": "Inflicts its own unique debuff for 4 seconds to enemies, causing them to take 50 damage per second"
+        }
+      ],
+      "why": "unique DoT + mark"
+    },
+    {
+      "itemId": 5479,
+      "name": "Constellation",
+      "decision": "limitation",
+      "reason": "Its cosmic energy releases homing Shooting Stars on later hits \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Constellation",
+          "quote": "Marks enemies with cosmic energy."
+        }
+      ],
+      "why": "mark + spawned projectiles"
+    },
+    {
+      "itemId": 5480,
+      "name": "Possession",
+      "decision": "limitation",
+      "reason": "It swings four times per use, and its prophetic energy spawns beams on minion hits \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Possession",
+          "quote": "Uniquely among whips, it swings four times per use."
+        }
+      ],
+      "why": "four swings per use + mark"
+    },
+    {
+      "itemId": 5542,
+      "name": "Freeze Bomb",
+      "decision": "limitation",
+      "reason": "Its explosion deals no damage to enemies \u2014 it only freezes water.",
+      "evidence": [
+        {
+          "page": "Freeze Bomb",
+          "quote": "The Freeze Bomb has a fuse timer of 3 seconds and its explosion deals only 1 damage to the player who threw it, but no damage to enemies, critters and NPCs."
+        }
+      ],
+      "why": "no enemy damage"
+    },
+    {
+      "itemId": 5594,
+      "name": "Power Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Power Bomb",
+          "quote": "The explosion also deals 200 classless damage to all enemies, critters, and players (but not NPCs) within 8.75 tiles horizontally and vertically of the Power Bomb."
+        }
+      ],
+      "why": "The fuse is stated in the article (extracted); every enemy in the area takes 200 damage (falloff none); \"less damage\" compares it with other explosives. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 5595,
+      "name": "Sticky Power Bomb",
+      "decision": "archetype",
+      "archetype": "explosive-aoe",
+      "trigger": "timed",
+      "fuseTicks": 300,
+      "falloff": "none",
+      "evidence": [
+        {
+          "page": "Sticky Power Bomb",
+          "quote": "The Sticky Power Bomb is a Hardmode explosive that functions like the Power Bomb, but sticks onto any block on contact."
+        },
+        {
+          "page": "Power Bomb",
+          "quote": "It explodes 5 seconds after being thrown"
+        },
+        {
+          "page": "Power Bomb",
+          "quote": "The explosion also deals 200 classless damage to all enemies, critters, and players (but not NPCs) within 8.75 tiles horizontally and vertically of the Power Bomb."
+        }
+      ],
+      "why": "\"Functions like the Power Bomb\" \u2192 its quoted fuse and uniform damage. The damage area is a square around the explosive (\"N tiles horizontally and vertically\"): its inscribed circle (radius = half the side) is the blast radius (AMENDMENTS-013 B63 P-5, modeled)."
+    },
+    {
+      "itemId": 5663,
+      "name": "Cattiva",
+      "decision": "limitation",
+      "reason": "Only one Cattiva can be summoned; further uses neither add nor strengthen it \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cattiva",
+          "quote": "It runs and jumps towards enemies, dealing contact damage."
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Cattiva and Foxparks can only be summoned once."
+        }
+      ],
+      "why": "summon-once rule"
+    },
+    {
+      "itemId": 5664,
+      "name": "Foxparks",
+      "decision": "limitation",
+      "reason": "Only one Foxparks can be summoned, and the player can trigger its flamethrower skill \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Foxparks",
+          "quote": "It does not deal contact damage, but runs and shoots fireballs towards enemies that inflict the On Fire! debuff for 5\u201310 seconds."
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Cattiva and Foxparks can only be summoned once."
+        }
+      ],
+      "why": "summon-once rule + player-triggered skill"
+    },
+    {
+      "itemId": 5687,
+      "name": "Slime Spear",
+      "decision": "archetype",
+      "archetype": "thrust",
+      "evidence": [
+        {
+          "page": "Slime Spear",
+          "quote": "The Slime Spear is a pre-Hardmode spear that inflicts the Slime debuff for 3 seconds on hit."
+        },
+        {
+          "page": "Slime (debuff)",
+          "quote": "It doubles the damage over time inflicted by the following flame debuffs"
+        }
+      ],
+      "why": "Slime deals no damage over time (buff registry: no DoT); it only doubles flame debuffs, which the Lab never applies (base weapon, no accessories). 'fire' matched 'fire-based debuffs' (accessory advice); 'increase the average damage' is modifier advice. Its article states no range, so the B46 reach convention applies."
+    },
+    {
+      "itemId": 5688,
+      "name": "Slime Whip",
+      "decision": "limitation",
+      "reason": "It inflicts the Slime debuff, and its tip can set enemies On Fire! \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Slime Whip",
+          "quote": "The whole whip inflicts the Slime debuff for 3 seconds, and the tip of the whip additionally inflicts the On Fire! debuff for 3\u20135 seconds."
+        }
+      ],
+      "why": "two debuffs (one tip-only)"
+    },
+    {
+      "itemId": 6148,
+      "name": "Trusty Cattiva",
+      "decision": "limitation",
+      "reason": "Only one Cattiva can be summoned; further uses neither add nor strengthen it \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Cattiva",
+          "quote": "It runs and jumps towards enemies, dealing contact damage."
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Cattiva and Foxparks can only be summoned once."
+        }
+      ],
+      "why": "summon-once rule"
+    },
+    {
+      "itemId": 6149,
+      "name": "Trusty Foxparks",
+      "decision": "limitation",
+      "reason": "Only one Foxparks can be summoned, and the player can trigger its flamethrower skill \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Foxparks",
+          "quote": "It does not deal contact damage, but runs and shoots fireballs towards enemies that inflict the On Fire! debuff for 5\u201310 seconds."
+        },
+        {
+          "page": "Minion-summoning weapons",
+          "quote": "Cattiva and Foxparks can only be summoned once."
+        }
+      ],
+      "why": "summon-once rule + player-triggered skill"
+    },
+    {
+      "itemId": 6152,
+      "name": "Daybloom Staff",
+      "decision": "limitation",
+      "reason": "It fires a short-ranged burst of slowing pellets with slight inaccuracy \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Daybloom Staff",
+          "quote": "fires a short-ranged burst of 4 non-piercing yellow pellets toward the cursor with slight inaccuracy"
+        }
+      ],
+      "why": "burst + inaccuracy"
+    },
+    {
+      "itemId": 6153,
+      "name": "Glacier Fang",
+      "decision": "limitation",
+      "reason": "Its icicles are charged by holding the attack and fall with gravity \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Glacier Fang",
+          "quote": "The Glacier Fang is a pre-Hardmode wand that fires chargeable icicles toward the cursor, affected by gravity."
+        }
+      ],
+      "why": "charge + gravity"
+    },
+    {
+      "itemId": 6155,
+      "name": "Lightning Strike",
+      "decision": "limitation",
+      "reason": "Its spark calls down a lightning bolt from the sky \u2014 not modeled.",
+      "evidence": [
+        {
+          "page": "Lightning Strike",
+          "quote": "It fires a spark that attaches itself to an enemy and calls down a lightning bolt from the sky to its location shortly after."
+        }
+      ],
+      "why": "sky strike"
+    },
+    {
+      "itemId": 6161,
+      "name": "Clay Bud Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ground-melee",
+      "evidence": [
+        {
+          "page": "Clay Bud Staff",
+          "quote": "The Clay Bud walks and jumps into enemies, dealing contact damage to them when slamming down with its arms."
+        }
+      ],
+      "why": "Walks/jumps + contact slam. Only an immunity cap is stated: no attack rate."
+    },
+    {
+      "itemId": 6164,
+      "name": "Ruinous Staff",
+      "decision": "archetype",
+      "archetype": "minion-sentry",
+      "aiClass": "ranged-shot",
+      "evidence": [
+        {
+          "page": "Ruinous Staff",
+          "quote": "while firing high-velocity Forbidden Bolt projectiles towards it which gradually slow down"
+        }
+      ],
+      "why": "Fires bolts. Its rate is a random 1.75\u20131.92 s cooldown (average 1.83 s): the stated average, rounded half-to-even to ticks, is its rate (AMENDMENTS-013 B63 P-2, modeled)."
+    }
+  ],
+  "inGameBehavior": [
+    {
+      "itemId": 561,
+      "name": "Light Disc",
+      "page": "Light Disc",
+      "quote": "It does not necessarily return immediately upon contact with objects, but instead can bounce off blocks before returning. Unlike most boomerangs, it does not have to return to the player before being fired, with a maximum of six Light Discs that can be thrown out at one time."
+    },
+    {
+      "itemId": 4760,
+      "name": "Sergeant United Shield",
+      "page": "Sergeant United Shield",
+      "quote": "When thrown, it homes in on enemies within 50 tiles and will attempt to hit up to five enemies before returning to the player, but loses 20% of its damage for each enemy struck."
+    },
+    {
+      "itemId": 4818,
+      "name": "Combat Wrench",
+      "page": "Combat Wrench",
+      "quote": "It can pierce multiple targets before returning."
+    },
+    {
+      "itemId": 5298,
+      "name": "Trimarang",
+      "page": "Trimarang",
+      "quote": "Unlike most boomerangs, it does not have to return to the player before being fired, with a maximum of three Trimarangs that can be thrown out at one time."
+    },
+    {
+      "itemId": 5012,
+      "name": "Flaming Mace",
+      "page": "Flaming Mace",
+      "quote": "It has a 1/6 (16.67%) chance to inflict the On Fire! debuff on hit. While the player is in water or the flail's head is submerged, the fire is extinguished and the weapon effectively becomes a regular Mace."
+    }
+  ]
+}

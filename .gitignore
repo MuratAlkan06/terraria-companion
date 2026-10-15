@@ -8,7 +8,17 @@ dist-ssr/
 *.local
 .DS_Store
 coverage/
+pipeline/out/
+# Wiki fetch cache (ADR-001 D2: raw cache gitignored; resumable, never committed)
+pipeline/raw/
+# Item sprites are Re-Logic IP: downloaded locally by `npm run pipeline:sprites`, never
+# committed (AMENDMENTS-001 A10). Only the manifest (per-file wiki source + rights) is tracked.
+public/sprites/*
+!public/sprites/manifest.json
+# AMENDMENTS-016 B104: the runtime split of the manifest (index + parts) is tracked like the manifest itself.
+!public/sprites/manifest.*.json
 *.log
 npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
+.playwright-mcp/

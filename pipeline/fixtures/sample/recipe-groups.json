@@ -1,0 +1,21 @@
+[
+  {
+    "id": "any-iron-bar",
+    "name": "Any Iron Bar",
+    "memberItemIds": [22, 704],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        {
+          "kind": "curated",
+          "overlay": "recipe-groups",
+          "url": "https://terraria.wiki.gg/wiki/Alternative_crafting_ingredients",
+          "fetchedAt": "2026-10-12"
+        }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]

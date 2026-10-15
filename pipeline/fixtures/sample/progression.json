@@ -1,0 +1,123 @@
+{
+  "nodes": [
+    {
+      "id": "eater-of-worlds",
+      "kind": "boss",
+      "bossId": "eater-of-worlds",
+      "name": "Eater of Worlds",
+      "stage": "early-prehm",
+      "worldEvil": "corruption",
+      "wikiUrl": "https://terraria.wiki.gg/wiki/Eater_of_Worlds",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Eater_of_Worlds", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": ["stage"]
+      }
+    },
+    {
+      "id": "brain-of-cthulhu",
+      "kind": "boss",
+      "bossId": "brain-of-cthulhu",
+      "name": "Brain of Cthulhu",
+      "stage": "early-prehm",
+      "worldEvil": "crimson",
+      "wikiUrl": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Brain_of_Cthulhu", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": ["stage"]
+      }
+    },
+    {
+      "id": "wall-of-flesh",
+      "kind": "boss",
+      "bossId": "wall-of-flesh",
+      "name": "Wall of Flesh",
+      "stage": "late-prehm",
+      "wikiUrl": "https://terraria.wiki.gg/wiki/Wall_of_Flesh",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": ["stage"]
+      }
+    },
+    {
+      "id": "hardmode",
+      "kind": "milestone",
+      "name": "Hardmode",
+      "stage": "early-hm",
+      "wikiUrl": "https://terraria.wiki.gg/wiki/Hardmode",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Hardmode", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": ["stage"]
+      }
+    },
+    {
+      "id": "pirate-invasion",
+      "kind": "event",
+      "name": "Pirate Invasion",
+      "stage": "early-hm",
+      "wikiUrl": "https://terraria.wiki.gg/wiki/Pirate_Invasion",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Pirate_Invasion", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": ["stage"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "eater-of-worlds",
+      "to": "brain-of-cthulhu",
+      "type": "alternative-route",
+      "note": "The Eater of Worlds is the Corruption counterpart to The Crimson's Brain of Cthulhu.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Eater_of_Worlds",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Eater_of_Worlds", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": []
+      }
+    },
+    {
+      "from": "wall-of-flesh",
+      "to": "hardmode",
+      "type": "required-gate",
+      "note": "A world permanently changes into Hardmode after the Wall of Flesh is defeated for the first time.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Hardmode",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Hardmode", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": []
+      }
+    },
+    {
+      "from": "hardmode",
+      "to": "pirate-invasion",
+      "type": "required-gate",
+      "note": "The Pirate Invasion is a Hardmode invasion event.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Pirate_Invasion",
+      "_prov": {
+        "gameVersion": "1.4.5.8",
+        "sources": [{ "kind": "curated", "overlay": "progression-graph", "url": "https://terraria.wiki.gg/wiki/Pirate_Invasion", "fetchedAt": "2026-10-12" }],
+        "verified": true,
+        "unverifiedFields": [],
+        "editorialFields": []
+      }
+    }
+  ]
+}

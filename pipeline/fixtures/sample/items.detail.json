@@ -1,0 +1,354 @@
+[
+  {
+    "id": 9,
+    "name": "Wood",
+    "slug": "wood",
+    "type": "item",
+    "category": "material",
+    "rarity": 0,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wood",
+    "acquisition": [
+      {
+        "method": "other",
+        "description": "Generally obtained by cutting down trees using an axe or a chainsaw.",
+        "sourceUrl": "https://terraria.wiki.gg/wiki/Wood"
+      }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Wood", "fetchedAt": "2026-10-12" }],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 36,
+    "name": "Work Bench",
+    "slug": "work-bench",
+    "type": "item",
+    "category": "station",
+    "rarity": 0,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": true,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Work_Bench",
+    "acquisition": [{ "method": "craft", "recipeIds": ["36-4cee494e"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Work_Bench", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Work_Bench", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 22,
+    "name": "Iron Bar",
+    "slug": "iron-bar",
+    "type": "item",
+    "category": "material",
+    "rarity": 0,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Iron_Bar",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Iron_Bar", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 704,
+    "name": "Lead Bar",
+    "slug": "lead-bar",
+    "type": "item",
+    "category": "material",
+    "rarity": 0,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Lead_Bar",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Lead_Bar", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 35,
+    "name": "Iron Anvil",
+    "slug": "iron-anvil",
+    "type": "item",
+    "category": "station",
+    "rarity": 0,
+    "valueCopper": 5000,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": true,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Iron_Anvil",
+    "acquisition": [
+      { "method": "craft", "recipeIds": ["35-0b7b8271"] },
+      { "method": "purchase", "npcName": "Merchant", "priceCopper": 5000, "conditions": [] }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Iron_Anvil", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Iron_Anvil", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Merchant", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 48,
+    "name": "Chest",
+    "slug": "chest",
+    "type": "item",
+    "category": "other",
+    "rarity": 0,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Chest",
+    "acquisition": [{ "method": "craft", "recipeIds": ["48-5d2fabc3"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Chest", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Chest", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 381,
+    "name": "Cobalt Bar",
+    "slug": "cobalt-bar",
+    "type": "item",
+    "category": "material",
+    "rarity": 3,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Cobalt_Bar",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Cobalt_Bar", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 398,
+    "name": "Tinkerer's Workshop",
+    "slug": "tinkerers-workshop",
+    "type": "item",
+    "category": "station",
+    "rarity": 0,
+    "valueCopper": 100000,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": true,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Tinkerer%27s_Workshop",
+    "acquisition": [
+      { "method": "purchase", "npcName": "Goblin Tinkerer", "priceCopper": 100000, "conditions": ["goblin-army-defeated"] }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Tinkerer%27s_Workshop", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Goblin_Tinkerer", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 40,
+    "name": "Wooden Arrow",
+    "slug": "wooden-arrow",
+    "type": "item",
+    "category": "ammo",
+    "rarity": 0,
+    "valueCopper": 5,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "ammoStats": { "ammoClass": "arrow", "damage": 5, "knockback": 2, "velocityBonusTps": 11.25 },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wooden_Arrow",
+    "acquisition": [{ "method": "purchase", "npcName": "Merchant", "priceCopper": 5, "conditions": [] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Wooden_Arrow", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Merchant", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 97,
+    "name": "Musket Ball",
+    "slug": "musket-ball",
+    "type": "item",
+    "category": "ammo",
+    "rarity": 0,
+    "valueCopper": 7,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "ammoStats": { "ammoClass": "bullet", "damage": 7, "knockback": 2, "velocityBonusTps": 15 },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Musket_Ball",
+    "acquisition": [
+      { "method": "purchase", "npcName": "Arms Dealer", "priceCopper": 7, "conditions": [] },
+      { "method": "drop", "dropIds": ["97-shadow-orb-741638a5"] }
+    ],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Musket_Ball", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Shadow_Orb", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Arms_Dealer", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 70,
+    "name": "Worm Food",
+    "slug": "worm-food",
+    "type": "item",
+    "category": "summoning",
+    "rarity": 1,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "summonsBossNode": "eater-of-worlds",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Worm_Food",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Worm_Food", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 1331,
+    "name": "Bloody Spine",
+    "slug": "bloody-spine",
+    "type": "item",
+    "category": "summoning",
+    "rarity": 1,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "summonsBossNode": "brain-of-cthulhu",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Bloody_Spine",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Bloody_Spine", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 267,
+    "name": "Guide Voodoo Doll",
+    "slug": "guide-voodoo-doll",
+    "type": "item",
+    "category": "summoning",
+    "rarity": 0,
+    "maxStack": 9999,
+    "isStation": false,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "summonsBossNode": "wall-of-flesh",
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Guide_Voodoo_Doll",
+    "acquisition": [{ "method": "drop", "dropIds": ["267-voodoo-demon-741638a5"] }],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Guide_Voodoo_Doll", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Voodoo_Demon", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 292,
+    "name": "Ironskin Potion",
+    "slug": "ironskin-potion",
+    "type": "item",
+    "category": "potion",
+    "rarity": 1,
+    "maxStack": 9999,
+    "consumable": true,
+    "isStation": false,
+    "tags": [],
+    "buffGrants": [{ "buffId": "ironskin", "durationTicks": 28800 }],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Ironskin_Potion",
+    "acquisition": [],
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [{ "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Ironskin_Potion", "fetchedAt": "2026-10-12" }],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  }
+]

@@ -1,0 +1,196 @@
+[
+  {
+    "id": 3278,
+    "name": "Wooden Yoyo",
+    "slug": "wooden-yoyo",
+    "type": "weapon",
+    "rarity": 0,
+    "tags": [],
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wooden_Yoyo",
+    "acquisition": [],
+    "damageClass": "melee",
+    "damage": 9,
+    "critPct": 0,
+    "useTimeTicks": 25,
+    "knockback": 2.5,
+    "shootSpeedTps": 60,
+    "labBehavior": {
+      "kind": "archetype",
+      "params": {
+        "archetype": "returning",
+        "variant": "yoyo",
+        "throwRangeTiles": 8.125,
+        "returnMode": "tethered",
+        "control": "cursor-follow"
+      }
+    },
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Wooden_Yoyo", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "lab-archetypes", "url": "https://terraria.wiki.gg/wiki/Wooden_Yoyo", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "lab-archetypes", "url": "https://terraria.wiki.gg/wiki/Yoyos", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": ["acquisition", "gatedBy", "stage"],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 39,
+    "name": "Wooden Bow",
+    "slug": "wooden-bow",
+    "type": "weapon",
+    "rarity": 0,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wooden_Bow",
+    "acquisition": [{ "method": "craft", "recipeIds": ["39-43666ca8"] }],
+    "damageClass": "ranged",
+    "damage": 4,
+    "critPct": 0,
+    "useTimeTicks": 30,
+    "knockback": 0,
+    "ammoClass": "arrow",
+    "shootSpeedTps": 22.875,
+    "labBehavior": {
+      "kind": "archetype",
+      "params": { "archetype": "bow-gun", "ammoClass": "arrow" }
+    },
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Wooden_Bow", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Recipes", "url": "https://terraria.wiki.gg/wiki/Wooden_Bow", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": [
+        "labBehavior.params.projectilesPerUse",
+        "labBehavior.params.spreadDegrees",
+        "labBehavior.params.inheritsAmmoProjectile"
+      ],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 98,
+    "name": "Minishark",
+    "slug": "minishark",
+    "type": "weapon",
+    "rarity": 2,
+    "valueCopper": 350000,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Minishark",
+    "acquisition": [{ "method": "purchase", "npcName": "Arms Dealer", "priceCopper": 350000, "conditions": [] }],
+    "damageClass": "ranged",
+    "damage": 6,
+    "critPct": 0,
+    "useTimeTicks": 8,
+    "knockback": 0,
+    "ammoClass": "bullet",
+    "shootSpeedTps": 26.25,
+    "labBehavior": {
+      "kind": "archetype",
+      "params": { "archetype": "bow-gun", "ammoClass": "bullet" }
+    },
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Minishark", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "npc-shops", "url": "https://terraria.wiki.gg/wiki/Arms_Dealer", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": [
+        "labBehavior.params.projectilesPerUse",
+        "labBehavior.params.spreadDegrees",
+        "labBehavior.params.inheritsAmmoProjectile"
+      ],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 3069,
+    "name": "Wand of Sparking",
+    "slug": "wand-of-sparking",
+    "type": "weapon",
+    "rarity": 1,
+    "valueCopper": 10000,
+    "tags": [],
+    "stage": "early-prehm",
+    "gatedBy": { "bosses": [], "conditions": [], "stage": "early-prehm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Wand_of_Sparking",
+    "acquisition": [{ "method": "loot", "containers": ["Chest"], "locations": [] }],
+    "damageClass": "magic",
+    "damage": 14,
+    "critPct": 10,
+    "useTimeTicks": 26,
+    "knockback": 0,
+    "manaCost": 2,
+    "shootSpeedTps": 26.25,
+    "labBehavior": {
+      "kind": "archetype",
+      "params": {
+        "archetype": "magic-bolt",
+        "projectile": { "lifetimeTicks": 60, "pierce": 1 }
+      }
+    },
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Wand_of_Sparking", "fetchedAt": "2026-10-12" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wand_of_Sparking", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "lab-archetypes", "url": "https://terraria.wiki.gg/wiki/Wand_of_Sparking", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": false,
+      "unverifiedFields": [
+        "labBehavior.params.projectilesPerUse",
+        "labBehavior.params.spreadDegrees",
+        "labBehavior.params.projectile.velocityTps"
+      ],
+      "editorialFields": []
+    }
+  },
+  {
+    "id": 434,
+    "name": "Clockwork Assault Rifle",
+    "slug": "clockwork-assault-rifle",
+    "type": "weapon",
+    "rarity": 4,
+    "tags": [],
+    "stage": "early-hm",
+    "gatedBy": { "bosses": ["wall-of-flesh"], "conditions": [], "stage": "early-hm" },
+    "wikiUrl": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle",
+    "acquisition": [
+      { "method": "drop", "dropIds": ["434-wall-of-flesh-741638a5", "434-treasure-bag-wall-of-flesh-741638a5"] }
+    ],
+    "damageClass": "ranged",
+    "damage": 17,
+    "critPct": 0,
+    "useTimeTicks": 4,
+    "useAnimationTicks": 12,
+    "knockback": 0,
+    "ammoClass": "bullet",
+    "shootSpeedTps": 29.0625,
+    "labBehavior": {
+      "kind": "limitation",
+      "inGameBehavior": "Three round burst. Only the first shot consumes ammo.",
+      "reason": "Burst fire is not modeled by the bow-gun archetype parameters.",
+      "sourceUrl": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle"
+    },
+    "_prov": {
+      "gameVersion": "1.4.5.8",
+      "sources": [
+        { "kind": "cargo:Items", "url": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle", "fetchedAt": "2026-10-12" },
+        { "kind": "iteminfo", "url": "https://terraria.wiki.gg/wiki/Module:Iteminfo/data", "rev": 1023241, "fetchedAt": "2026-10-13" },
+        { "kind": "cargo:Drops", "url": "https://terraria.wiki.gg/wiki/Wall_of_Flesh", "fetchedAt": "2026-10-12" },
+        { "kind": "curated", "overlay": "lab-archetypes", "url": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle", "fetchedAt": "2026-10-12" }
+      ],
+      "verified": true,
+      "unverifiedFields": [],
+      "editorialFields": []
+    }
+  }
+]

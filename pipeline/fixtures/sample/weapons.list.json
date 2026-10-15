@@ -1,0 +1,7 @@
+[
+  { "id": 3278, "name": "Wooden Yoyo", "slug": "wooden-yoyo", "type": "weapon", "rarity": 0, "tags": [], "wikiUrl": "https://terraria.wiki.gg/wiki/Wooden_Yoyo", "damageClass": "melee", "damage": 9, "useTimeTicks": 25, "labKind": "archetype" },
+  { "id": 39, "name": "Wooden Bow", "slug": "wooden-bow", "type": "weapon", "stage": "early-prehm", "rarity": 0, "tags": [], "wikiUrl": "https://terraria.wiki.gg/wiki/Wooden_Bow", "damageClass": "ranged", "damage": 4, "useTimeTicks": 30, "labKind": "limitation" },
+  { "id": 98, "name": "Minishark", "slug": "minishark", "type": "weapon", "stage": "early-prehm", "rarity": 2, "tags": [], "wikiUrl": "https://terraria.wiki.gg/wiki/Minishark", "damageClass": "ranged", "damage": 6, "useTimeTicks": 8, "labKind": "limitation" },
+  { "id": 3069, "name": "Wand of Sparking", "slug": "wand-of-sparking", "type": "weapon", "stage": "early-prehm", "rarity": 1, "tags": [], "wikiUrl": "https://terraria.wiki.gg/wiki/Wand_of_Sparking", "damageClass": "magic", "damage": 14, "useTimeTicks": 26, "labKind": "limitation" },
+  { "id": 434, "name": "Clockwork Assault Rifle", "slug": "clockwork-assault-rifle", "type": "weapon", "stage": "early-hm", "rarity": 4, "tags": [], "wikiUrl": "https://terraria.wiki.gg/wiki/Clockwork_Assault_Rifle", "damageClass": "ranged", "damage": 17, "useTimeTicks": 4, "useAnimationTicks": 12, "labKind": "limitation" }
+]

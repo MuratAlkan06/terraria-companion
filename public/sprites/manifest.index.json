@@ -1,0 +1,13 @@
+{"fallbackMode":false,"rightsNote":"Item sprites are Terraria content © Re-Logic, downloaded from terraria.wiki.gg (each file links its wiki file page). They are not covered by the wiki text license (CC BY-NC-SA 4.0), are never committed to the repository (AMENDMENTS-001 A10) and are replaced by original placeholder art when fallbackMode is true (ADR-001 D3).","parts":[
+{"part":"accessories","file":"manifest.accessories.json","dir":"accessories","count":352},
+{"part":"armor","file":"manifest.armor.json","dir":"armor","count":256},
+{"part":"bosses","file":"manifest.bosses.json","dir":"bosses","count":18},
+{"part":"items.0","file":"manifest.items.0.json","dir":"items","ids":[0,999],"count":655},
+{"part":"items.1","file":"manifest.items.1.json","dir":"items","ids":[1000,1999],"count":822},
+{"part":"items.2","file":"manifest.items.2.json","dir":"items","ids":[2000,2999],"count":915},
+{"part":"items.3","file":"manifest.items.3.json","dir":"items","ids":[3000,3999],"count":737},
+{"part":"items.4","file":"manifest.items.4.json","dir":"items","ids":[4000,4999],"count":872},
+{"part":"items.5","file":"manifest.items.5.json","dir":"items","ids":[5000,5999],"count":879},
+{"part":"items.6","file":"manifest.items.6.json","dir":"items","ids":[6000,6999],"count":137},
+{"part":"weapons","file":"manifest.weapons.json","dir":"weapons","count":488}
+]}

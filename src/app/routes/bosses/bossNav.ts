@@ -1,0 +1,27 @@
+/**
+ * Navigation helpers for the boss section (UX_SPEC §3.7). Zod-free: the search links (shell) use them.
+ *
+ * - Boss pages exist only for the bosses in src/schemas/bossPages.ts (P5-S2/S3: every registry boss);
+ *   every other node (events, milestones) keeps the map's focus card, so `bossPageHref` is undefined
+ *   for it (never a dead link).
+ * - `bossMapHref(nodeId)` opens the map centred on a node with its focus card open (`?node=`), the
+ *   "back into the map at the right position" link of a page's next nodes (PRD P5-S2 AC3).
+ */
+import { hasBossPage } from '../../../schemas/bossPages'
+
+export const MAP_NODE_PARAM = 'node'
+/** `/bosses?recommend=1` opens the "What Should I Do Next?" panel (P5-S5; UX_SPEC §1, §10.11). */
+export const RECOMMEND_PARAM = 'recommend'
+
+export function bossPageHref(bossId: string): string | undefined {
+  return hasBossPage(bossId) ? `/bosses/${bossId}` : undefined
+}
+
+export function bossMapHref(nodeId?: string): string {
+  return nodeId ? `/bosses?${MAP_NODE_PARAM}=${encodeURIComponent(nodeId)}` : '/bosses'
+}
+
+/** The readiness checker prefilled with a boss (Feature A AC5: reachable from boss pages and the map; UX_SPEC §1). */
+export function readinessHref(bossId: string): string {
+  return `/readiness?boss=${encodeURIComponent(bossId)}`
+}
