@@ -10,6 +10,7 @@
 import { SWING_MAX_TIP_STEP_TILES } from '../constants'
 import type { ActiveUse, ArchetypeInterpreter, Behavior, KernelApi } from '../contracts'
 import { DEG_TO_RAD, segmentAabbEntry } from '../geometry'
+import { cos, sin } from '../trig'
 import type { BladePose } from '../types'
 import { fireVolley, projectileDamage, shapeFromSpec, volleyApproximations, type Volley } from './shared'
 
@@ -54,8 +55,8 @@ export const swingMelee: ArchetypeInterpreter<'swing-melee'> = {
         const { x, y } = k.player
         for (let j = 0; j <= steps; j++) {
           const a = a0 + ((a1 - a0) * j) / steps
-          const tipX = x + Math.cos(a) * reach
-          const tipY = y + Math.sin(a) * reach
+          const tipX = x + cos(a) * reach
+          const tipY = y + sin(a) * reach
           for (const dummy of k.dummies) {
             const t = segmentAabbEntry(x, y, tipX, tipY, dummy.box)
             if (t !== null) k.strike(use.melee, dummy, { x: x + (tipX - x) * t, y: y + (tipY - y) * t })

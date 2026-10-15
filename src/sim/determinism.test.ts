@@ -310,7 +310,9 @@ describe('seeded reproducibility', () => {
 })
 
 /**
- * 30 s @ 144 fps fingerprints (Node 23.11 / V8; README changelog, AMENDMENTS-008 B38).
+ * 30 s @ 144 fps fingerprints (README changelog, AMENDMENTS-008 B38). Since AMENDMENTS-016 B147 the sim's
+ * trig is its own (src/sim/trig.ts), so these are the same on every platform and engine — CI (ubuntu x64,
+ * Node 22) checks them against the macOS arm64 pins.
  * - The first four were computed BEFORE the 2026-10-13 reuse-delay change (B48(a)) and re-pinned
  *   unchanged after it: weapons without a reuse delay behave bit-identically.
  * - staff: re-pinned 2026-10-13 for the B35 `slow-cast` default — mana-limited at max mana 60: 10 paid
@@ -329,13 +331,16 @@ describe('seeded reproducibility', () => {
  *   sentry and a bomb; Boss-Sized; Armored): pinned 2026-10-14 as new scenarios; the kernel's dummy
  *   motion step (a no-op for a dummy without a path), the missed-projectile count and the render state's
  *   prev / path fields left all sixteen earlier fingerprints unchanged — README changelog.
+ * - burst rifle: re-pinned 2026-10-15 for the B147 deterministic trig (digest '9bcbb3a6' → 'b8de35b9'; totals,
+ *   hits, crits and uses unchanged) — the one scenario where some angle's sin/cos differs in the last bit
+ *   between the engine's trig and V8's arm64 Math. The other twenty-two are unchanged — README changelog.
  */
 const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
   'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
   'shotgun (spread, gravity, pierce, armored row)': { total: 5278, dot: 0, hits: 360, crits: 48, uses: 45, digest: '97dabadc' },
   'staff (inaccuracy, homing, DoT ranges, mana regen)': { total: 799, dot: 97, hits: 42, crits: 4, uses: 42, digest: '876a8729' },
   'burst staff (useTime < useAnimation, slow-cast)': { total: 4073, dot: 0, hits: 258, crits: 13, uses: 43, digest: 'b6630161' },
-  'burst rifle (reuse delay, slight spread)': { total: 3278, dot: 0, hits: 207, crits: 11, uses: 70, digest: '9bcbb3a6' },
+  'burst rifle (reuse delay, slight spread)': { total: 3278, dot: 0, hits: 207, crits: 11, uses: 70, digest: 'b8de35b9' },
   'boomerang (turns at its first hit, dummy row)': { total: 1073, dot: 0, hits: 86, crits: 3, uses: 86, digest: 'd0de41e8' },
   'launched flail (turns on strike, DoT chance)': { total: 1129, dot: 109, hits: 67, crits: 7, uses: 67, digest: '92a82efb' },
   'yoyo (tethered dwell at the auto-aim point)': { total: 3288, dot: 0, hits: 180, crits: 15, uses: 1, digest: '2bfbdb43' },

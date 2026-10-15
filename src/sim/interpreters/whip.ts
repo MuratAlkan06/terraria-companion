@@ -23,6 +23,7 @@
 import { SWING_MAX_TIP_STEP_TILES, WHIP_TAG_DURATION_TICKS } from '../constants'
 import type { ActiveUse, ArchetypeInterpreter, Behavior, KernelApi, PrepareResult, WhipTag } from '../contracts'
 import { DEG_TO_RAD, segmentAabbEntry } from '../geometry'
+import { cos, sin } from '../trig'
 import type { BladePose } from '../types'
 import { swingAngle } from './swingMelee'
 
@@ -81,8 +82,8 @@ export const whip: ArchetypeInterpreter<'whip'> = {
         const { x, y } = k.player
         for (let j = 0; j <= steps; j++) {
           const a = a0 + ((a1 - a0) * j) / steps
-          const tipX = x + Math.cos(a) * range
-          const tipY = y + Math.sin(a) * range
+          const tipX = x + cos(a) * range
+          const tipY = y + sin(a) * range
           for (const dummy of k.dummies) {
             const t = segmentAabbEntry(x, y, tipX, tipY, dummy.box)
             if (t === null) continue

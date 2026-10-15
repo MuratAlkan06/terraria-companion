@@ -47,6 +47,7 @@ import type { ArchetypeParams } from '../../schemas'
 import { PROJECTILE_APPROXIMATIONS, type ApproximationId } from '../approximations'
 import type { AgentBrain, AgentState, ArchetypeInterpreter, Behavior, DummyState, HitOwner, KernelApi, PrepareResult, ProjectileShape } from '../contracts'
 import { aabbCenter, segmentAabbEntry } from '../geometry'
+import { cos, sin } from '../trig'
 import type { MinionAiClass, NotSimulable, SummonKind, Vec2 } from '../types'
 import { fitsSlots, slotCapacity } from '../world'
 import { projectileDamage, shapeFromSpec, tilesPerTick } from './shared'
@@ -144,7 +145,7 @@ function cyclePose(k: KernelApi, a: AgentState, cfg: SummonConfig, target: Dummy
   const towards = target ? -near : k.facing
   if (!target || cfg.aiClass === 'ranged-shot') {
     // ranged (and idle): hovering behind and above the player, with a slow bob
-    return { x: k.player.x - towards * (SUMMON_POSE.ranged.back + lane), y: k.player.y - SUMMON_POSE.ranged.up - 0.25 * Math.sin(2 * Math.PI * p) }
+    return { x: k.player.x - towards * (SUMMON_POSE.ranged.back + lane), y: k.player.y - SUMMON_POSE.ranged.up - 0.25 * sin(2 * Math.PI * p) }
   }
   const c = centreOf(target)
   const face = near < 0 ? target.box.minX : target.box.maxX
@@ -152,16 +153,16 @@ function cyclePose(k: KernelApi, a: AgentState, cfg: SummonConfig, target: Dummy
     case 'melee-contact': {
       const q = 2 * Math.PI * p
       const { halfWidth, height } = SUMMON_POSE.loop
-      return { x: c.x + towards * halfWidth * Math.sin(q), y: c.y - (height * (1 - Math.cos(q))) / 2 - lane }
+      return { x: c.x + towards * halfWidth * sin(q), y: c.y - (height * (1 - cos(q))) / 2 - lane }
     }
     case 'ground-melee': {
-      const hop = Math.sin(Math.PI * p)
+      const hop = sin(Math.PI * p)
       return { x: face + near * (0.5 + lane / 2 + SUMMON_POSE.hop.back * hop), y: target.box.maxY - 0.5 - SUMMON_POSE.hop.height * hop }
     }
     case 'hover-strike': {
       const { out, up, lunge } = SUMMON_POSE.hover
       const strike = 1 - Math.min(1, Math.min(p, 1 - p) / 0.2)
-      return { x: face + near * (out - lunge * strike), y: c.y - up - lane + 0.6 * strike + 0.15 * Math.sin(4 * Math.PI * p) * (1 - strike) }
+      return { x: face + near * (out - lunge * strike), y: c.y - up - lane + 0.6 * strike + 0.15 * sin(4 * Math.PI * p) * (1 - strike) }
     }
   }
 }

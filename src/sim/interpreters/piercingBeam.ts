@@ -18,6 +18,7 @@
 import type { ArchetypeParams, Weapon } from '../../schemas'
 import type { ArchetypeInterpreter, Behavior, KernelApi, PrepareResult } from '../contracts'
 import { aabbFromCenter, angleTo, rayExitDistance, segmentAabbEntry } from '../geometry'
+import { cos, sin } from '../trig'
 import type { BladePose, NotSimulable } from '../types'
 import { fireVolley, projectileDamage, shapeFromSpec, volleyApproximations, type Volley } from './shared'
 
@@ -92,8 +93,8 @@ function channelBeam(weapon: Weapon, params: BeamParams, refuse: Refuse): Prepar
       const source = k.persistentSource(BEAM_SOURCE_KEY, 'projectile', damage, tickRate)
       const { angle, length } = beamLine(k)
       const { x, y } = k.player
-      const tipX = x + Math.cos(angle) * length
-      const tipY = y + Math.sin(angle) * length
+      const tipX = x + cos(angle) * length
+      const tipY = y + sin(angle) * length
       const contacts: Array<{ t: number; index: number }> = []
       k.dummies.forEach((dummy, index) => {
         const t = segmentAabbEntry(x, y, tipX, tipY, dummy.box)

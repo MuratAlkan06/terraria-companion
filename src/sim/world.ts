@@ -509,7 +509,9 @@ export class World implements KernelApi {
     for (const dummy of this.dummies) {
       // Any part of its hitbox inside the circle: the distance is to the hitbox point nearest the centre.
       const near = nearestPointInAabb(at.x, at.y, dummy.box)
-      const keptPct = blastKeptPct(Math.sqrt((near.x - at.x) ** 2 + (near.y - at.y) ** 2), radiusTiles, falloff)
+      const dx = near.x - at.x
+      const dy = near.y - at.y // squared by multiplication: `**` is Math.pow, not an IEEE-754 basic op (B147)
+      const keptPct = blastKeptPct(Math.sqrt(dx * dx + dy * dy), radiusTiles, falloff)
       const damage = blastDamage(p.source.baseDamage, keptPct)
       if (damage <= 0) continue // outside, or the falloff left it nothing: not hit
       if (this.hit(p.source, dummy, near, damage, keptPct)) hits++

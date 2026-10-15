@@ -72,6 +72,26 @@ libraries include, and serves them at /licenses/third-party-software.txt):
 - Zustand (zustand) — MIT
 - Tailwind CSS (tailwindcss; its generated CSS ships with the site) — MIT
 
+Ported into the project's own source code (not an npm package, so the generated file
+above does not include it):
+
+- fdlibm (FreeBSD msun) — Sun Microsystems notice. sin, cos and atan2 (k_sin.c,
+  k_cos.c, e_rem_pio2.c, s_sin.c, s_cos.c, s_atan.c, e_atan2.c) ported to TypeScript in
+  src/sim/trig.ts, for the Weapon Lab simulation. Source:
+  https://github.com/freebsd/freebsd-src/tree/main/lib/msun
+  The original notice, preserved as its license requires (src/sim/trig.ts keeps it too):
+
+    ====================================================
+    Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+    Developed at SunSoft, a Sun Microsystems, Inc. business.
+    Permission to use, copy, modify, and distribute this
+    software is freely granted, provided that this notice
+    is preserved.
+    ====================================================
+
+  (e_rem_pio2.c, k_cos.c: optimized by Bruce D. Evans.)
+
 Build and test tools (such as Vite, TypeScript, Vitest, oxlint, tsx and luaparse) are
 used during development and are not shipped.
 

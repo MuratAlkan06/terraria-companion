@@ -4,6 +4,7 @@ import type { ApproximationId } from '../approximations'
 import { DEFAULT_PROJECTILE_LIFETIME_TICKS, TICKS_PER_SECOND } from '../constants'
 import type { KernelApi, ProjectileShape } from '../contracts'
 import { angleTo, DEG_TO_RAD } from '../geometry'
+import { cos, sin } from '../trig'
 
 /** ProjectileSpec → kernel shape. `pierce` = extra dummies passed through (absent ⇒ 0). */
 export function shapeFromSpec(spec: ProjectileSpec | undefined): ProjectileShape {
@@ -48,7 +49,7 @@ export function fireVolley(k: KernelApi, v: Volley): void {
     let angle = base
     if (v.count > 1) angle = base - spread / 2 + (spread * i) / (v.count - 1)
     else if (spread > 0) angle = base + (k.rng.next() - 0.5) * spread
-    k.spawnProjectile({ x: k.player.x, y: k.player.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, damage: v.damage, ...v.shape })
+    k.spawnProjectile({ x: k.player.x, y: k.player.y, vx: cos(angle) * speed, vy: sin(angle) * speed, damage: v.damage, ...v.shape })
   }
 }
 

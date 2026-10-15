@@ -25,6 +25,16 @@ describe('ADR-001 D5 layer separation', () => {
       expect(/(?<![.\w$])(window|document|requestAnimationFrame|performance|localStorage)\s*[.(]/.test(text), file).toBe(false)
     }
   })
+
+  it('calls no platform transcendental (AMENDMENTS-016 B147): sin/cos/atan2 come from ./trig, squares are products', () => {
+    // Math's transcendentals (and `**`, i.e. Math.pow) are not bit-reproducible across platforms; the IEEE-754
+    // basic ops, Math.sqrt (correctly rounded), abs/min/max/floor/ceil/round/trunc/imul and `%` are.
+    const banned = /\bMath\.(sin|cos|tan|asin|acos|atan2?|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log1p|log2|log10|pow|cbrt|hypot)\b|\*\*/
+    for (const [file, text] of Object.entries(sources)) {
+      const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1') // comments out (keep "https://")
+      expect(banned.exec(code)?.[0], file).toBeUndefined()
+    }
+  })
 })
 
 describe('labeled approximations (AssumptionsTip source)', () => {

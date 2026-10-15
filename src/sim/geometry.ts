@@ -1,8 +1,9 @@
 /**
  * Minimal 2-D geometry for hit detection. Pure functions over plain numbers (tiles).
- * Determinism note: only IEEE-exact ops plus Math.sin/cos/atan2/sqrt — bit-identical within one JS
- * engine; cross-engine transcendental differences are a documented limitation (README).
+ * Determinism note (AMENDMENTS-016 B147): only IEEE-754 basic ops, Math.sqrt (correctly rounded by
+ * IEEE-754) and the sim's own sin/cos/atan2 (./trig) — bit-identical on every platform and engine.
  */
+import { atan2, cos, sin } from './trig'
 import type { Vec2 } from './types'
 
 export interface Aabb {
@@ -60,14 +61,14 @@ export function length(x: number, y: number): number {
 
 /** Unit vector at `angle` radians. */
 export function unit(angle: number): Vec2 {
-  return { x: Math.cos(angle), y: Math.sin(angle) }
+  return { x: cos(angle), y: sin(angle) }
 }
 
 /** Angle of the vector from `from` to `to`; 0 (facing +x) when they coincide. */
 export function angleTo(from: Vec2, to: Vec2): number {
   const dx = to.x - from.x
   const dy = to.y - from.y
-  return dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx)
+  return dx === 0 && dy === 0 ? 0 : atan2(dy, dx)
 }
 
 /**
@@ -75,8 +76,8 @@ export function angleTo(from: Vec2, to: Vec2): number {
  * `from` is outside or on its edge going out).
  */
 export function rayExitDistance(from: Vec2, angle: number, box: Aabb): number {
-  const dx = Math.cos(angle)
-  const dy = Math.sin(angle)
+  const dx = cos(angle)
+  const dy = sin(angle)
   let t = Infinity
   if (dx > 0) t = Math.min(t, (box.maxX - from.x) / dx)
   else if (dx < 0) t = Math.min(t, (box.minX - from.x) / dx)

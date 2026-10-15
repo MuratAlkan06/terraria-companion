@@ -1,8 +1,9 @@
 /**
- * Licensing page credits (P7-S4): the bundled fonts (SIL OFL 1.1) and the open-source libraries whose code
- * or generated CSS ships in the site. One list, so the page, the root NOTICE file and the tests agree — the
- * tests pin every runtime dependency in package.json to an entry here and every license id to the one the
- * installed package declares.
+ * Licensing page credits (P7-S4): the bundled fonts (SIL OFL 1.1), the open-source libraries whose code
+ * or generated CSS ships in the site, and the open-source code ported into the site's own source (B148). One
+ * list, so the page, the root NOTICE file and the tests agree — the tests pin every runtime dependency in
+ * package.json to an entry here and every license id to the one the installed package declares, and every
+ * source file carrying a third-party `@license` notice to a ported credit that quotes it verbatim.
  */
 
 /** The OFL text for both fonts, served with the site from public/ (copy of LICENSES/OFL-1.1.txt). */
@@ -65,4 +66,33 @@ export const LIBRARY_CREDITS: readonly LibraryCredit[] = [
   { name: 'Zod', pkgs: ['zod'], license: 'MIT', use: 'data checks', url: 'https://zod.dev/' },
   { name: 'Zustand', pkgs: ['zustand'], license: 'MIT', use: 'app state', url: 'https://github.com/pmndrs/zustand' },
   { name: 'Tailwind CSS', pkgs: ['tailwindcss'], license: 'MIT', use: 'styles (its generated CSS ships with the site)', url: 'https://tailwindcss.com/' },
+]
+
+/**
+ * Open-source code ported into the site's own source rather than installed as a package — so it has no
+ * package.json entry, no installed license id and no place in the build's generated license file. Its
+ * license is a notice whose condition is that the notice is preserved: the page and NOTICE quote it.
+ */
+export interface PortedCredit {
+  name: string
+  /** Repository files the code was ported into; each carries the original notice in an `@license` comment. */
+  files: readonly string[]
+  /** The license, in words (there is no installed package to declare an id). */
+  license: string
+  /** The original license notice, verbatim, its lines joined by single spaces. */
+  notice: string
+  use: string
+  url: string
+}
+
+export const PORTED_CREDITS: readonly PortedCredit[] = [
+  {
+    name: 'fdlibm (FreeBSD msun)',
+    files: ['src/sim/trig.ts'],
+    license: 'Sun Microsystems notice',
+    notice:
+      'Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved. Developed at SunSoft, a Sun Microsystems, Inc. business. Permission to use, copy, modify, and distribute this software is freely granted, provided that this notice is preserved.',
+    use: 'sine, cosine and arctangent in the Weapon Lab simulation',
+    url: 'https://github.com/freebsd/freebsd-src/tree/main/lib/msun',
+  },
 ]

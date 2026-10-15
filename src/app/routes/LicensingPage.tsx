@@ -5,7 +5,7 @@ import { PixelPanel } from '../../components/PixelPanel'
 import { meta } from '../../data/meta'
 import { SITE } from '../site'
 import { useDocumentTitle } from '../useDocumentTitle'
-import { FONT_CREDITS, LIBRARY_CREDITS, LIBRARY_LICENSES_PATH, OFL_NAME, OFL_TEXT_PATH } from './licensing/credits'
+import { FONT_CREDITS, LIBRARY_CREDITS, LIBRARY_LICENSES_PATH, OFL_NAME, OFL_TEXT_PATH, PORTED_CREDITS } from './licensing/credits'
 
 /**
  * /about/licensing (ADR D3, AMENDMENTS-001 A8 AC5; completed in P7-S4): CC BY-NC-SA 4.0 attribution and
@@ -187,6 +187,17 @@ export default function LicensingPage() {
               </NewTabLink>{' '}
               <span className="min-w-0 text-fg-muted">
                 — {lib.use} · <NoBreak>{lib.license}</NoBreak>
+              </span>
+            </li>
+          ))}
+          {PORTED_CREDITS.map((code) => (
+            // ported code (B148): full width, quoting its notice — the license's one condition is that it is preserved
+            <li key={code.name} data-ported-credit={code.files.join(' ')} className="md:col-span-2">
+              <NewTabLink href={code.url} tap>
+                {code.name}
+              </NewTabLink>{' '}
+              <span className="block text-fg-muted">
+                Used for {code.use}, ported into {code.files.join(', ')}. {code.license}: &ldquo;{code.notice}&rdquo;
               </span>
             </li>
           ))}

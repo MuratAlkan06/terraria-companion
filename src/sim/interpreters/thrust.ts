@@ -6,6 +6,7 @@
  */
 import type { ActiveUse, ArchetypeInterpreter, Behavior, KernelApi } from '../contracts'
 import { segmentAabbEntry } from '../geometry'
+import { cos, sin } from '../trig'
 
 /** Extension fraction at progress p: 0 → 1 (p = 0.5) → 0. */
 export const thrustProfile = (p: number): number => 1 - Math.abs(2 * p - 1)
@@ -31,8 +32,8 @@ export const thrust: ArchetypeInterpreter<'thrust'> = {
         const p1 = (use.elapsed + 1) / use.durationTicks
         const len = maxExtension(p0, p1) * reach
         const { x, y } = k.player
-        const tipX = x + Math.cos(use.aimAngle) * len
-        const tipY = y + Math.sin(use.aimAngle) * len
+        const tipX = x + cos(use.aimAngle) * len
+        const tipY = y + sin(use.aimAngle) * len
         for (const dummy of k.dummies) {
           const t = segmentAabbEntry(x, y, tipX, tipY, dummy.box)
           if (t !== null) k.strike(use.melee, dummy, { x: x + (tipX - x) * t, y: y + (tipY - y) * t })

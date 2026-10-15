@@ -247,8 +247,18 @@ Order (wiki Damage): **variance → defense → crit**.
   checked by the build-failing coverage gate (`pipeline/validate/labCoverage.ts`, which also holds the
   simulable-count floor). An engine change that moves any of them re-pins them in the same change
   (`npx tsx pipeline/validate/pinLabGoldens.ts` writes exactly the failing entries), with a changelog entry.
-- Limitation: `Math.sin/cos/atan2` are engine-implemented, so results are bit-identical within one
-  JS engine (V8 in Node and Chrome); low-order bits could differ across engines (e.g. Firefox).
+- **Platform-independent by construction (AMENDMENTS-016 B147).** Every number the sim computes comes from
+  IEEE-754 basic operations (+, −, ×, ÷: each rounded once, never fused), `Math.sqrt` (correctly rounded by
+  IEEE-754), exact operations (`abs` / `min` / `max` / `floor` / `ceil` / `round` / `trunc` / `imul`, `%`) and the
+  sim's own `sin` / `cos` / `atan2` (`trig.ts`: a port of FreeBSD msun / fdlibm whose constants are built from
+  their bit patterns). It never uses `Math`'s transcendentals or `**` (Math.pow): their last bits depend on
+  the platform (V8's arm64 and x64 builds differ). So results are bit-identical on every CPU, OS and
+  conforming JS engine. `boundaries.test.ts` fails if a sim source calls a platform transcendental, and CI
+  (ubuntu x64) re-checks every golden pinned on macOS arm64. Precision (`trig.test.ts`, against a 320-bit
+  reference): `sin` / `cos` within 1 ulp (measured worst 0.663 / 0.702 ulp), `atan2` within 1.5 ulp (measured
+  worst 1.002 ulp: fdlibm rounds y ÷ x first); past |x| = 2^20·π/2 (≈ 1.6 × 10^6 rad, far beyond any sim
+  angle) `sin` / `cos` stay deterministic but lose accuracy. The Lab's rendering keeps native `Math`: it
+  draws pixels and computes no results.
 
 ## Extending
 
@@ -432,7 +442,26 @@ Homing and multiHit are refused (`modifier-not-implemented`).
 ## Changelog
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
-`determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+`determinism.test.ts`, 30 s at 144 fps; the same on every platform since B147; AMENDMENTS-008 B38).
+
+- **2026-10-15: deterministic trig — cross-platform determinism (AMENDMENTS-016 B147).** CI's first run
+  (ubuntu x64, Node 22) failed one golden: the burst rifle's event digest was `b8de35b9` there and `9bcbb3a6`
+  as pinned on macOS arm64, with identical totals. Cause: `Math.sin` / `Math.cos` are not bit-reproducible
+  across platforms. V8 compiles its trig into the binary, and its arm64 and x64 builds differ in the last
+  bits — linux arm64 (Node 22) reproduced the macOS pins, and only x64 diverged. One spread angle's velocity,
+  and with it the event stream, moved by a bit. Change: new `trig.ts`, with `sin`, `cos` and `atan2` ported
+  from FreeBSD msun (fdlibm). It uses IEEE-754 basic ops only, and builds its constants from their hex bit
+  patterns. Every sim call site routes through it: geometry `angleTo` / `rayExitDistance` / `unit`, the
+  swing / thrust / whip / beam blade lines, `fireVolley`, the returning flight and the summon poses. The blast
+  distance now squares by multiplication instead of `**`. `boundaries.test.ts` now fails on any platform
+  transcendental in a sim source, and `trig.test.ts` pins the engine's bits and measures precision against
+  a 320-bit reference (see "Determinism contract"). The Lab's rendering keeps native `Math`. Fingerprints:
+  the burst rifle is re-pinned, `{ total: 3278, dot: 0, hits: 207, crits: 11, uses: 70, digest: '9bcbb3a6' }`
+  → digest `'b8de35b9'` (the value CI computed; only the digest moved). The other 22 `GOLDEN_30S` scenarios,
+  the seven P3-S12 roster pins among them, are **unchanged**. Per-weapon goldens: 1 of 149 re-pinned via
+  `pinLabGoldens.ts`, i:4703 Quad-Barrel Shotgun, digest `c9ca82cf` → `20e1444f` (totals, hits, crits and
+  uses unchanged); the other 148 are unchanged. Cross-platform proof: the whole suite passes with these pins
+  on macOS arm64 (Node 23) and in `node:22` linux/arm64 and linux/amd64 containers.
 
 - **2026-10-15: per-weapon goldens + the coverage gate (PRD P3-S13, AMENDMENTS-016 B115); P3-S8 homing
   audit.** No engine change: every `GOLDEN_30S` fingerprint is **unchanged** (none re-pinned). New pins: the

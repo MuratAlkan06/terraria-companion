@@ -35,6 +35,7 @@ import type { ActiveUse, ArchetypeInterpreter, Behavior, KernelApi, ProjectileGu
 import type { ApproximationId } from '../approximations'
 import type { NotSimulable, Vec2 } from '../types'
 import { PROJECTILE_APPROXIMATIONS } from '../approximations'
+import { cos, sin } from '../trig'
 import { tilesPerTick } from './shared'
 
 type ReturningParams = Extract<ArchetypeParams, { archetype: 'returning' }>
@@ -90,7 +91,7 @@ interface FlightConfig {
 function flightGuide(k: KernelApi, use: ActiveUse, cfg: FlightConfig): ProjectileGuide {
   let back = false
   const passHits = new Map<number, number>()
-  const fixedTarget: Vec2 = { x: k.player.x + Math.cos(use.aimAngle) * cfg.rangeTiles, y: k.player.y + Math.sin(use.aimAngle) * cfg.rangeTiles }
+  const fixedTarget: Vec2 = { x: k.player.x + cos(use.aimAngle) * cfg.rangeTiles, y: k.player.y + sin(use.aimAngle) * cfg.rangeTiles }
   /**
    * A new pass: the pass-scoped blocks (once per pass, the hitsPerPass cap) lift, so every dummy may
    * be hit again — except one the flight just struck to turn (a flail retracting from it). A re-hit
@@ -178,8 +179,8 @@ export const returning: ArchetypeInterpreter<'returning'> = {
         k.spawnProjectile({
           x: k.player.x,
           y: k.player.y,
-          vx: Math.cos(use.aimAngle) * cfg.speed,
-          vy: Math.sin(use.aimAngle) * cfg.speed,
+          vx: cos(use.aimAngle) * cfg.speed,
+          vy: sin(use.aimAngle) * cfg.speed,
           damage,
           gravity: false,
           lifetimeTicks: Infinity, // it ends when caught

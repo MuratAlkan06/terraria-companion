@@ -1,9 +1,10 @@
 /**
  * P7-S4 licensing, credits and legal completeness: the /about/licensing page (data attribution + share-alike,
- * Re-Logic notice, takedown contact in both states, font and library credits), the root legal files (NOTICE,
- * LICENSES/, README legal section + takedown runbook) and the OFL text served from public/ — each pinned to
- * its source of truth (package.json, the installed packages, the font packages' own LICENSE files, the sprite
- * flip point the app actually fetches), plus a copy audit over every rendered sentence.
+ * Re-Logic notice, takedown contact in both states, font, library and ported-code credits), the root legal files
+ * (NOTICE, LICENSES/, README legal section + takedown runbook) and the OFL text served from public/ — each pinned
+ * to its source of truth (package.json, the installed packages, the font packages' own LICENSE files, the
+ * `@license` notices in the shipped source, the sprite flip point the app actually fetches), plus a copy audit
+ * over every rendered sentence.
  */
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -14,7 +15,7 @@ import { meta } from '../../../data/meta'
 import { auditCopy } from '../../../scoring/copyAudit'
 import { SITE } from '../../site'
 import LicensingPage, { CONTACT_PLACEHOLDER, TakedownSection } from '../LicensingPage'
-import { FONT_CREDITS, LIBRARY_CREDITS, LIBRARY_LICENSES_FILE, LIBRARY_LICENSES_PATH, OFL_TEXT_PATH } from './credits'
+import { FONT_CREDITS, LIBRARY_CREDITS, LIBRARY_LICENSES_FILE, LIBRARY_LICENSES_PATH, OFL_TEXT_PATH, PORTED_CREDITS } from './credits'
 
 const ROOT = '../../../../'
 /** Root legal files; `LICENSE*` picks up the code license file (the owner's grant). */
@@ -33,6 +34,17 @@ const SOURCES = import.meta.glob<string>(['../../../main.tsx', '../../../data-ac
   import: 'default',
   eager: true,
 })
+/** The shipped source (tests excluded), keyed by repository path ("src/sim/trig.ts"): where ported code keeps its notice. */
+const SHIPPED_SOURCE = Object.fromEntries(
+  Object.entries(import.meta.glob<string>(['../../../**/*.{ts,tsx}', '!../../../**/*.test.ts'], { query: '?raw', import: 'default', eager: true })).map(([k, v]) => [
+    k.replace(/^(?:\.\.\/){3}/, 'src/'),
+    v,
+  ]),
+)
+/** A `@license` JSDoc tag at the start of a comment line. */
+const LICENSE_TAG = /^[ \t]*\*[ \t]*@license\b/m
+/** Prose with its line breaks, comment stars and indentation collapsed to single spaces (a wrapped notice, read as one line). */
+const unwrap = (s: string) => s.replace(/^[ \t]*\*[ \t]?/gm, '').replace(/\s+/g, ' ')
 
 const file = (path: string): string => {
   const text = ROOT_FILES[ROOT + path]
@@ -147,6 +159,17 @@ describe('/about/licensing page', () => {
     for (const row of rows) expect(row).toContain('items-baseline')
   })
 
+  it('open-source software: each ported-code credit (B148) with its use, where it was ported, its license and its notice verbatim', () => {
+    expect(PORTED_CREDITS.length).toBeGreaterThan(0)
+    for (const c of PORTED_CREDITS) {
+      // in the software list, after the libraries
+      expect(PAGE.indexOf(`data-ported-credit="${c.files.join(' ')}"`)).toBeGreaterThan(PAGE.lastIndexOf('data-library-credit='))
+      expect(PAGE.indexOf(`data-ported-credit="${c.files.join(' ')}"`)).toBeLessThan(PAGE.indexOf(`href="${LIBRARY_LICENSES_PATH}"`))
+      expect(PAGE).toContain(`href="${c.url}"`)
+      expect(PAGE_TEXT).toContain(`${c.name} (opens in a new tab) Used for ${c.use}, ported into ${c.files.join(', ')}. ${c.license}: “${c.notice}”`)
+    }
+  })
+
   it('open-source software: links the license texts generated at build (B127), and says what the file holds', () => {
     expect(LIBRARY_LICENSES_PATH).toBe(`/${LIBRARY_LICENSES_FILE}`)
     // the file the build emits (vite.config.test.ts checks the build output itself)
@@ -170,8 +193,8 @@ describe('/about/licensing page', () => {
   })
 
   it('standalone links (credit rows, the license texts, a published contact) carry the 44px touch target (UX_SPEC §9)', () => {
-    const rows = [...PAGE.matchAll(/<li data-(?:font|library)-credit="[^"]+"[^>]*><a [^>]*>/g)].map((m) => m[0])
-    expect(rows).toHaveLength(FONT_CREDITS.length + LIBRARY_CREDITS.length)
+    const rows = [...PAGE.matchAll(/<li data-(?:font|library|ported)-credit="[^"]+"[^>]*><a [^>]*>/g)].map((m) => m[0])
+    expect(rows).toHaveLength(FONT_CREDITS.length + LIBRARY_CREDITS.length + PORTED_CREDITS.length)
     for (const row of rows) expect(row).toContain('min-h-tap')
     expect(PAGE).toMatch(new RegExp(`<a href="${OFL_TEXT_PATH}"[^>]*min-h-tap`))
     expect(PAGE).toMatch(new RegExp(`<a href="${LIBRARY_LICENSES_PATH}"[^>]*min-h-tap`))
@@ -194,6 +217,22 @@ describe('credits match what ships', () => {
     expect(deps.filter((d) => !CREDITED_PACKAGES.includes(d))).toEqual([])
     expect(CREDITED_PACKAGES.filter((p) => !all.has(p))).toEqual([])
     expect(new Set(CREDITED_PACKAGES).size).toBe(CREDITED_PACKAGES.length)
+  })
+
+  it('ported code (B148): the files with a third-party @license notice in the shipped source are exactly the credited ones', () => {
+    const withNotice = Object.keys(SHIPPED_SOURCE).filter((path) => LICENSE_TAG.test(SHIPPED_SOURCE[path] ?? ''))
+    expect(withNotice.length).toBeGreaterThan(0)
+    expect(withNotice.sort()).toEqual(PORTED_CREDITS.flatMap((c) => c.files).sort())
+  })
+
+  it('ported code (B148): each credit quotes the notice its files preserve, verbatim', () => {
+    for (const c of PORTED_CREDITS) {
+      for (const f of c.files) {
+        const source = SHIPPED_SOURCE[f]
+        expect(source, f).toBeDefined()
+        expect(unwrap(source ?? ''), f).toContain(c.notice)
+      }
+    }
   })
 
   it('each credited license id is the one the installed package declares', () => {
@@ -264,7 +303,7 @@ describe('root legal files', () => {
     for (const path of links) expect(ROOT_FILES[ROOT + path], path).toBeDefined()
   })
 
-  it('NOTICE: the code-license line matches whether a LICENSE file exists and names its license; every license file it names exists; every credited package is listed', () => {
+  it('NOTICE: the code-license line matches whether a LICENSE file exists and names its license; every license file it names exists; every credited package and ported file is listed, with each ported notice verbatim', () => {
     const notice = file('NOTICE')
     expect(notice.includes('LICENSE: not yet chosen by the owner')).toBe(CODE_LICENSE === undefined)
     if (CODE_LICENSE !== undefined) {
@@ -275,6 +314,12 @@ describe('root legal files', () => {
     expect(refs.length).toBeGreaterThan(0)
     for (const ref of refs) expect(ROOT_FILES[ROOT + ref], ref).toBeDefined()
     for (const p of CREDITED_PACKAGES) expect(notice, p).toContain(p)
+    for (const c of PORTED_CREDITS) {
+      expect(notice).toContain(`${c.name} — ${c.license}`)
+      for (const f of c.files) expect(notice, f).toContain(f)
+      expect(notice).toContain(c.url)
+      expect(unwrap(notice)).toContain(c.notice)
+    }
     for (const s of ['CC BY-NC-SA 4.0', 'trademarks of Re-Logic', 'not affiliated with', 'SIL Open Font License 1.1']) expect(notice).toContain(s)
   })
 
