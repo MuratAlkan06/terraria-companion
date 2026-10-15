@@ -32,6 +32,9 @@ import {
 } from './weaponFilters'
 import { rememberListSearch, weaponHref, WEAPONS_SOURCE_URL, type FromListState } from './weaponNav'
 
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): every row is a weapon; any other sprite loads on demand. */
+const SPRITE_DIRS = ['weapons'] as const
+
 /**
  * /weapons (PRD P2-S3 AC1/AC2, UX_SPEC §3.3): every weapon in a window-virtualized list of
  * EntityCards, filterable by class / stage / rarity (combinable, URL-synced, chip-removable).
@@ -46,7 +49,7 @@ interface ListData {
 async function loadListData(): Promise<ListData> {
   const [list, sprites] = await Promise.all([
     loadList('weapons'),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
@@ -56,7 +59,7 @@ async function loadListData(): Promise<ListData> {
 
 function peekListData(): ListData | undefined {
   const list = peekList('weapons')
-  return list ? { list: sortForBrowse(list), sprites: peekSpriteIndex() ?? null } : undefined
+  return list ? { list: sortForBrowse(list), sprites: peekSpriteIndex(SPRITE_DIRS) ?? null } : undefined
 }
 
 const FROM_LIST: FromListState = { fromList: true }

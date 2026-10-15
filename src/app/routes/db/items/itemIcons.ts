@@ -1,0 +1,47 @@
+/** Category glyphs for the item encyclopedia (constants only, so ItemBits stays a components-only module). */
+import {
+  Anchor,
+  Anvil,
+  Apple,
+  Armchair,
+  BrickWall,
+  Compass,
+  Crosshair,
+  Crown,
+  Fish,
+  FlaskRound,
+  Gem,
+  Gift,
+  Heart,
+  Package,
+  Palette,
+  PawPrint,
+  Pickaxe,
+  Rabbit,
+  Shirt,
+  type LucideIcon,
+} from 'lucide-react'
+import type { ItemCategory } from '../../../../schemas'
+
+/** Lucide glyph per category (UX_SPEC §9: Lucide SVG only, never emoji; the label always carries the meaning). */
+export const CATEGORY_ICON: Readonly<Record<ItemCategory, LucideIcon>> = {
+  material: Gem,
+  potion: FlaskRound,
+  summoning: Crown,
+  mount: Rabbit,
+  hook: Anchor,
+  tool: Pickaxe,
+  ammo: Crosshair,
+  station: Anvil,
+  'exploration-utility': Compass,
+  food: Apple,
+  fishing: Fish,
+  'grab-bag': Gift,
+  'permanent-booster': Heart,
+  pet: PawPrint,
+  vanity: Shirt,
+  dye: Palette,
+  furniture: Armchair,
+  block: BrickWall,
+  other: Package,
+}

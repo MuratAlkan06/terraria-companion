@@ -7,7 +7,11 @@ import { PixelCanvas } from './pixelCanvas'
  * Shown when a record has no `sprite` (absent ⇒ placeholder, DATA_SCHEMA_SPEC §2.2) or when the
  * sprite manifest's `fallbackMode` is on. Deliberately muted stone silhouettes, so a placeholder
  * never passes for the real item art — and never for a specific in-game creature (B32). Rendered
- * by <SpritePlaceholder>.
+ * by <SpritePlaceholder> (and the Lab arena's fallback texture).
+ *
+ * AMENDMENTS-016 B113d (M1): the rule holds for EVERY variant — the palette is stone greys only (the
+ * night-950 outline aside); no gold, earth or other hue, so no category's fallback reads as real art.
+ * The keys keep their roles (blade / wood / grip / gem) as distinct grey steps.
  */
 export type SpritePlaceholderVariant = 'melee' | 'ranged' | 'magic' | 'summon' | 'other' | 'unknown' | 'material' | 'creature'
 
@@ -15,11 +19,11 @@ export const PLACEHOLDER_PALETTE: PixelPalette = {
   k: 'var(--color-night-950)',
   b: 'var(--color-stone-300)',
   B: 'var(--color-stone-500)',
-  g: 'var(--color-gold-500)',
-  h: 'var(--color-earth-500)',
-  w: 'var(--color-earth-400)',
+  g: 'var(--color-stone-400)',
+  h: 'var(--color-stone-600)',
+  w: 'var(--color-stone-400)',
   s: 'var(--color-stone-200)',
-  m: 'var(--color-gold-300)',
+  m: 'var(--color-stone-300)',
 }
 
 const draw = (paint: (c: PixelCanvas) => PixelCanvas): readonly string[] => paint(new PixelCanvas(16, 16)).outline('k').rows()

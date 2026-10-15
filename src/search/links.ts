@@ -2,7 +2,8 @@
  * Where a search result goes (PRD P2-S4 AC1; slice scope 3; AMENDMENTS-009 B42b).
  *
  * - Types with a local detail route navigate in-app: weapons → /weapons/:id; bosses with a page
- *   (P5-S2, src/schemas/bossPages.ts) → /bosses/:id.
+ *   (P5-S2, src/schemas/bossPages.ts) → /bosses/:id; items (every Item record — the P6 encyclopedia,
+ *   AMENDMENTS-016) → /items/:id.
  * - Any other doc opens its own terraria.wiki.gg article — the doc's `wikiUrl` (AMENDMENTS-007
  *   B31: the pipeline emits it on every search doc) — in a new tab, with an external-link
  *   indicator on the row. Never a dead local link, never a disabled row. When an entity page
@@ -12,6 +13,7 @@
  *   page, never a guessed article URL.
  */
 import { bossPageHref } from '../app/routes/bosses/bossNav'
+import { itemHref } from '../app/routes/db/items/itemNav'
 import { weaponHref } from '../app/routes/db/weapons/weaponNav'
 import type { SearchDoc, SearchDocType } from '../schemas'
 
@@ -30,6 +32,11 @@ const LOCAL_ROUTES: Partial<Record<SearchDocType, (ref: string) => string | unde
   boss: (ref) => {
     const match = BOSS_REF.exec(ref)
     return match ? bossPageHref(match[1]) : undefined
+  },
+  // P6 encyclopedia (AMENDMENTS-016): every Item record has its page — the "Wiki ↗" rows for items retire.
+  item: (ref) => {
+    const match = ITEM_REF.exec(ref)
+    return match ? itemHref(Number(match[1])) : undefined
   },
 }
 

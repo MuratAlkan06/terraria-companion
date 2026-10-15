@@ -18,6 +18,7 @@ import type {
   ProgressionNode,
   Recipe,
   RecipeGroup,
+  SpriteEntry,
   SpriteManifest,
   SpriteManifestFile,
   Weapon,
@@ -59,6 +60,22 @@ type ListBase = 'id' | 'name' | 'slug' | 'type' | 'stage' | 'rarity' | 'sprite' 
 export type AccessoryListRecord = Pick<Accessory, ListBase | 'categories'>
 /** armor.list.json record (projection of the detail record; no `_prov`). */
 export type ArmorListRecord = Pick<ArmorPiece, ListBase | 'slot' | 'defense' | 'setId'>
+/** items.list.json record (P6 encyclopedia browse; projection of the Item detail record; no `_prov`). */
+export type ItemListRecord = Pick<Item, ListBase | 'category'>
+
+/** items.detail.index.json as emitted (src/schemas ItemDetailIndex): the file holding each Item record. */
+export interface ItemDetailIndexFile {
+  shardSize: number
+  files: ReadonlyArray<{ file: string; ids: readonly number[] }>
+}
+
+/** The item index as the loader uses it. */
+export interface ItemIndex {
+  /** Data file holding each Item id ("items.detail.json" = the core file, else an ID-range shard). */
+  fileOf: ReadonlyMap<number, string>
+  /** Every Item record id (the encyclopedia's pages). */
+  ids: ReadonlySet<number>
+}
 export interface DetailRecordMap {
   weapons: Weapon
 }
@@ -100,7 +117,16 @@ export interface ProgressionData {
 export interface SpriteIndex {
   /** D3 takedown lever: when true every sprite renders as placeholder art. */
   fallbackMode: boolean
-  byPath: ReadonlyMap<string, SpriteManifestFile>
+  /**
+   * Entries of the manifest parts loaded so far (AMENDMENTS-016 B104: the app loads only the parts it
+   * draws from). Live: it grows as parts load — read a sprite that may not be loaded through `load`.
+   */
+  byPath: ReadonlyMap<string, SpriteEntry>
+  /**
+   * Loads (once per session) the manifest part that lists `path` and resolves its entry; undefined when no
+   * part lists it. Absent on a complete static index (e.g. one built from the whole manifest in tests).
+   */
+  load?: (path: string) => Promise<SpriteEntry | undefined>
 }
 
 export type {
@@ -118,6 +144,7 @@ export type {
   ProgressionNode,
   Recipe,
   RecipeGroup,
+  SpriteEntry,
   SpriteManifest,
   SpriteManifestFile,
   Weapon,

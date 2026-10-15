@@ -10,6 +10,10 @@
  *
  *   tsx pipeline/cli/sprites.ts [--refresh] [--corpus]
  *
+ * AMENDMENTS-011 B55 (the P6 encyclopedia slice, AMENDMENTS-016): every armor piece and accessory sprite of the
+ * manifest (public/sprites/armor/<id>.<ext>, public/sprites/accessories/<id>.<ext>) — the builder overview and
+ * the boss pages draw them.
+ *
  * P6-S0 item corpus: the corpus items items.detail.json holds (every item a boss record references —
  * summon and prep-checklist items the shipped boss pages / readiness checker render) are downloaded by
  * default; `--corpus` adds every other corpus item of the manifest (≈ 4,900 files ≈ 90 min at the D2
@@ -85,17 +89,22 @@ async function main(): Promise<number> {
   const imageBySha = new Map([sync.weaponImages, sync.ammoImages, sync.equipmentImages, sync.potionImages, sync.corpusImages].flatMap((f) => [...f.found.values()].map((i) => [i.sha1, i] as const)))
   const coreIds = new Set((JSON.parse(readFileSync(join(repoRoot, 'src/data/items.detail.json'), 'utf8')) as { id: number }[]).map((i) => i.id))
   const taken = new Set([...itemTargets, ...potionTargets].map((t) => t.dest))
-  const corpusTargets = manifest.files
-    .filter((f) => f.path.startsWith('/sprites/items/'))
-    .flatMap((f) => {
-      const id = Number(f.ref.slice(2))
-      const dest = join(SPRITES_DIR, f.path.replace(/^\/sprites\//, ''))
-      const image = imageBySha.get(f.sha1)
-      if ((!values.corpus && !coreIds.has(id)) || taken.has(dest) || !image) return []
-      return [{ id, label: `items/${id}`, name: info.items.get(id)?.name ?? `item ${id}`, image, dest }]
-    })
-    .sort((a, b) => a.id - b.id)
-  const targets = [...weaponTargets, ...bossTargets, ...itemTargets, ...potionTargets, ...corpusTargets]
+  const manifestTargets = (dir: string, wanted: (id: number) => boolean) =>
+    manifest.files
+      .filter((f) => f.path.startsWith(`/sprites/${dir}/`))
+      .flatMap((f) => {
+        const id = Number(f.ref.slice(2))
+        const dest = join(SPRITES_DIR, f.path.replace(/^\/sprites\//, ''))
+        const image = imageBySha.get(f.sha1)
+        if (!wanted(id) || taken.has(dest) || !image) return []
+        return [{ id, label: `${dir}/${id}`, name: info.items.get(id)?.name ?? `item ${id}`, image, dest }]
+      })
+      .sort((a, b) => a.id - b.id)
+  const corpusTargets = manifestTargets('items', (id) => values.corpus || coreIds.has(id))
+  // AMENDMENTS-011 B55 (rides the P6 encyclopedia slice, AMENDMENTS-016): armor piece + accessory sprites, every one
+  const armorTargets = manifestTargets('armor', () => true)
+  const accessoryTargets = manifestTargets('accessories', () => true)
+  const targets = [...weaponTargets, ...bossTargets, ...itemTargets, ...potionTargets, ...corpusTargets, ...armorTargets, ...accessoryTargets]
 
   const downloader = new WikiClient({ cacheDir: RAW_DIR, refresh: values.refresh, log: (l) => console.log(l) })
   const indexPath = join(RAW_DIR, 'sprites-index.json')
@@ -187,8 +196,8 @@ async function main(): Promise<number> {
     requests: { syncPlan: planRequests, downloads: s.networkRequests, attempts: s.attempts, retries: s.retries, networkMs: s.networkMs, firstRequestAt: s.firstRequestAt ?? null, lastRequestAt: s.lastRequestAt ?? null },
   }
   writeFileSync(join(RAW_DIR, 'sprites-record.json'), `${JSON.stringify(record, null, 2)}\n`)
-  console.log(`\nsprites summary (weapons + bosses + ammo items + potions + ${values.corpus ? 'every corpus item' : 'core corpus items'})`)
-  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items + ${potionTargets.length} potions + ${corpusTargets.length} corpus items): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
+  console.log(`\nsprites summary (weapons + bosses + ammo items + potions + ${values.corpus ? 'every corpus item' : 'core corpus items'} + armor + accessories)`)
+  console.log(`  ${present}/${targets.length} sprite files present and verified in public/sprites/{weapons,bosses,items,armor,accessories} (gitignored; ${weaponTargets.length} weapons + ${bossTargets.length} bosses + ${itemTargets.length} ammo items + ${potionTargets.length} potions + ${corpusTargets.length} corpus items + ${armorTargets.length} armor pieces + ${accessoryTargets.length} accessories): ${presentByVerification.exact} byte-exact, ${presentByVerification['cdn-optimized']} CDN-optimized renditions (orig_size = wiki size)`)
   for (const t of thumbnails) console.log(`  thumbnail ${t.path} ${t.width}×${t.height} ${t.bytes} B (from ${t.source})`)
   console.log(`  this run: ${downloaded} downloaded, ${cached} already cached, ${copied} copied (identical file), ${failures.length} failed`)
   console.log(`  requests: ${planRequests} sync-plan + ${s.networkRequests} downloads (${s.attempts} attempts, ${s.retries} retries); ${(durationMs / 1000).toFixed(1)}s wall`)

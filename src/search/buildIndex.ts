@@ -1,8 +1,9 @@
 /**
  * Builds the global search index (ADR-001 D4/D7). LAZY chunk: `./index.ts` imports this module
  * dynamically on the first search interaction, so MiniSearch and the search docs stay out of the
- * shell bundle. Row targets come from the docs themselves (`wikiUrl`, B31/B42b), so no other
- * entity data is loaded for search.
+ * shell bundle. Row targets come from the docs themselves (`wikiUrl`, B31/B42b) and so do row sprite paths
+ * (`sprite`, AMENDMENTS-016 B104), so no other entity data is loaded for search: the sprite index starts
+ * with the weapon and boss manifest parts, and each row's SpriteImg loads any other part on demand.
  *
  * Everything shown in a row is resolved once here (target, sprite, detail line), so the shell UI
  * renders any entity type generically (P2-S4 AC5).
@@ -24,9 +25,12 @@ export interface BuildDeps {
   now: () => number
 }
 
+/** Manifest parts loaded with the index: the two types that most often lead a result list. */
+const SEARCH_SPRITE_DIRS = ['weapons', 'bosses'] as const
+
 export const DEFAULT_DEPS: BuildDeps = {
   loadDocs: loadSearchDocs,
-  loadSprites: loadSpriteIndex,
+  loadSprites: () => loadSpriteIndex(SEARCH_SPRITE_DIRS),
   now: () => performance.now(),
 }
 
@@ -38,13 +42,6 @@ export function detailLine(doc: SearchDoc): string {
   if (rarity !== undefined) parts.push(rarityLabel(rarity))
   if (doc.stage && isStage(doc.stage)) parts.push(getStageInfo(doc.stage).label)
   return parts.join(' · ')
-}
-
-function spritesByRef(sprites: SpriteIndex | null): Map<string, string> {
-  const byRef = new Map<string, string>()
-  if (!sprites) return byRef
-  for (const file of sprites.byPath.values()) if (!byRef.has(file.ref)) byRef.set(file.ref, file.path)
-  return byRef
 }
 
 function measure(name: string, start: number, end: number): void {
@@ -70,7 +67,6 @@ export async function buildSearchIndex(startedAt: number, deps: BuildDeps = DEFA
   const loadedAt = deps.now()
 
   const engine = createSearchEngine(docs)
-  const spritePaths = spritesByRef(sprites)
   const items = new Map<string, SearchResultItem>()
   for (const doc of docs) {
     items.set(doc.id, {
@@ -81,7 +77,8 @@ export async function buildSearchIndex(startedAt: number, deps: BuildDeps = DEFA
       stage: doc.stage,
       rarity: doc.rarity,
       detail: detailLine(doc),
-      sprite: spritePaths.get(doc.id),
+      // the doc's own record sprite path (B104); absent — or no sprite index at all — ⇒ placeholder art
+      sprite: sprites ? doc.sprite : undefined,
       target: resolveTarget(doc),
     })
   }

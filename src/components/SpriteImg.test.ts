@@ -6,6 +6,7 @@ import { createDataAccess } from '../data-access'
 import type { SpriteIndex } from '../data-access/types'
 import type { SpriteManifestFile } from '../schemas/sprites'
 import { SpriteImg, type SpriteImgProps } from './SpriteImg'
+import { spriteFallback } from './spriteFallback'
 import { spriteSize } from './spriteScale'
 import { useReducedMotion } from './useReducedMotion'
 
@@ -103,5 +104,24 @@ describe('SpriteImg maxScale (featured-card 3× cap)', () => {
     expect(render(small.path, { box: 152, maxScale: 3 })).toContain(`style="width:${small.width * 3}px;height:${small.height * 3}px"`)
     const uncapped = Math.floor(152 / Math.max(small.width, small.height))
     expect(render(small.path, { box: 152 })).toContain(`style="width:${small.width * uncapped}px;height:${small.height * uncapped}px"`)
+  })
+})
+
+describe('SpriteImg fallback reasons (AMENDMENTS-016 B113d: a page can say why placeholder art shows)', () => {
+  const png = files.find((f) => f.path.endsWith('.png'))!
+  const base = { sprites, userFallback: false, listed: true, loadingPart: false, failed: false }
+
+  it('no sprite on the record; the takedown lever or the user’s setting; not listed (once its part settled); a listed file that failed to load', () => {
+    expect(spriteFallback({ ...base, src: undefined, listed: false })).toBe('no-sprite')
+    expect(spriteFallback({ ...base, src: png.path, sprites: { ...sprites, fallbackMode: true } })).toBe('placeholder-mode')
+    expect(spriteFallback({ ...base, src: png.path, userFallback: true })).toBe('placeholder-mode')
+    expect(spriteFallback({ ...base, src: '/sprites/items/none.png', listed: false })).toBe('unlisted')
+    expect(spriteFallback({ ...base, src: png.path, sprites: null, listed: false })).toBe('unlisted')
+    expect(spriteFallback({ ...base, src: png.path, failed: true })).toBe('failed')
+  })
+
+  it('drawn, or its manifest part still on its way: no reason (nothing to say yet)', () => {
+    expect(spriteFallback({ ...base, src: png.path })).toBeUndefined()
+    expect(spriteFallback({ ...base, src: '/sprites/items/1.png', listed: false, loadingPart: true })).toBeUndefined()
   })
 })

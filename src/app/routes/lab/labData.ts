@@ -14,6 +14,9 @@ import { labSetup, type LabSetup } from '../../../lab/labSetup'
 import { labWeapons } from '../../../lab/labWeapons'
 import { browserRows, type LabBrowserRow } from './browserModel'
 
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): the arena draws the equipped weapon's sprite from it; any other sprite loads on demand. */
+const SPRITE_DIRS = ['weapons'] as const
+
 export interface LabData {
   /** Weapons the Lab can equip (picker order). */
   list: readonly Weapon[]
@@ -61,7 +64,7 @@ export async function loadLabData(): Promise<LabData> {
     loadDetailIndex('weapons'),
     loadItems(),
     loadBuffs(),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
@@ -79,7 +82,7 @@ export function peekLabData(): LabData | undefined {
   const items = peekItems()
   const buffs = peekBuffs()
   const bosses = peekBosses()
-  return byId && items && buffs && bosses ? { ...derive(byId, items, buffs), byId, sprites: peekSpriteIndex() ?? null, bossDefenses: picksOf(bosses) } : undefined
+  return byId && items && buffs && bosses ? { ...derive(byId, items, buffs), byId, sprites: peekSpriteIndex(SPRITE_DIRS) ?? null, bossDefenses: picksOf(bosses) } : undefined
 }
 
 /**

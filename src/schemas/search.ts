@@ -20,5 +20,11 @@ export const SearchDoc = z.strictObject({
   tags: z.array(Slug),
   /** AMENDMENTS-007 B31: the entity's own wiki page (exact provenance for rows); the pipeline emits it on every doc. */
   wikiUrl: WikiUrl.optional(),
+  /**
+   * AMENDMENTS-016 B104 (additive): the record's own `sprite` path (weapons, armor, accessories, items, bosses),
+   * so search rows and guide links draw the sprite from the sprite-manifest part that lists it instead of loading
+   * the whole manifest to map refs to paths. Absent = the record has no sprite (placeholder art).
+   */
+  sprite: z.string().regex(/^\/sprites\/[a-z]+\/\d+\.(?:png|gif)$/).optional(),
 })
 export type SearchDoc = z.infer<typeof SearchDoc>

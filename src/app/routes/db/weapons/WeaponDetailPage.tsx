@@ -15,6 +15,7 @@ import {
 } from '../../../../data-access'
 import type { SpriteIndex, Weapon } from '../../../../data-access/types'
 import { recordRecentVisit } from '../../../recent'
+import { useHashTarget } from '../../../useHashTarget'
 import { useDelayedFlag, useResource, type ResourceState } from '../../../useResource'
 import { useDocumentTitle } from '../../../useDocumentTitle'
 import NotFoundPage from '../../NotFoundPage'
@@ -22,6 +23,12 @@ import { ACQUISITION_TITLE_ID, AcquisitionPanel, AcquisitionView } from './Acqui
 import { acquisitionNeeds } from './weaponDisplay'
 import { WeaponDetailView } from './WeaponDetailView'
 import { cameFromList, listHref } from './weaponNav'
+
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): the header sprite and the sprite's wiki file page; any other sprite loads on demand. */
+const SPRITE_DIRS = ['weapons'] as const
+
+/** Section headings a link may name as its hash. */
+const WEAPON_SECTION_IDS: readonly string[] = [ACQUISITION_TITLE_ID]
 
 /**
  * /weapons/:id (PRD P2-S3 AC3/AC4). Loads the weapon (+ sprite manifest), records the visit in
@@ -38,7 +45,7 @@ interface DetailData {
 async function loadDetailData(id: string): Promise<DetailData> {
   const [weapon, sprites] = await Promise.all([
     loadDetail('weapons', id),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
@@ -48,7 +55,7 @@ async function loadDetailData(id: string): Promise<DetailData> {
 
 function peekDetailData(id: string): DetailData | undefined {
   const weapon = peekDetail('weapons', id)
-  return weapon ? { weapon, sprites: peekSpriteIndex() ?? null } : undefined
+  return weapon ? { weapon, sprites: peekSpriteIndex(SPRITE_DIRS) ?? null } : undefined
 }
 
 export default function WeaponDetailPage() {
@@ -120,6 +127,8 @@ function BackLink() {
 }
 
 function WeaponDetailBody({ weapon, sprites }: DetailData) {
+  // AMENDMENTS-016 B113c: `#acq-title` (the readiness checker's "how to get it") mounts with this body, after the record loads
+  useHashTarget(WEAPON_SECTION_IDS)
   const needs = acquisitionNeeds(weapon)
   const acquisition = useResource(
     `acq:${weapon.id}`,

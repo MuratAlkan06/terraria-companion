@@ -2,15 +2,16 @@
  * Gap-report sections of the P6-S0 item-corpus slice: corpus identification + count reconciliation
  * against the wiki's Cargo Items table and Module:Iteminfo/data, the category rules, the field
  * cross-checks, the crafting-tree closure, the AMENDMENTS-004 B20 fishing routes and the pipeline
- * next-touch queue items this slice closes (B84 Hellforge caption + drops together + the no-stated-
- * quantity ruling proposal, B83(f) stats reasons, B93(ii), B96(d)). Pure: everything is read from the
- * build's products; nothing here changes a record.
+ * next-touch queue items this slice closes (B84 Hellforge caption + drops together, B83(f) stats reasons,
+ * B93(ii), B96(d)) and the AMENDMENTS-016 B105 no-stated-quantity ruling as applied (merge/quantity.ts) plus
+ * the B104 core-file growth. Pure: everything is read from the build's products; nothing here changes a record.
  */
 import type { Accessory, ArmorPiece, Boss, DropSource, GapEntry, Item, ItemDetailIndex, ProgressionEdge, Weapon } from '../../src/schemas'
 import type { CorpusBuild } from '../merge/corpus'
 import { CATEGORY_RULES } from '../merge/corpus'
 import type { FishingRoutesReport } from '../merge/fishing'
 import type { FishingCatches } from '../parse/fishing'
+import type { UnitQuantityResult } from '../merge/quantity'
 import type { ClosureReport } from '../validate/closure'
 
 type AnyItem = Weapon | ArmorPiece | Accessory | Item
@@ -34,6 +35,10 @@ export interface CorpusReportInput {
   itemIndex: ItemDetailIndex
   /** Gating derived before / after the fishing routes joined the deriver (report evidence). */
   fishingGatingDelta: { name: string; before: string; after: string }[]
+  /** AMENDMENTS-016 B105 outcome (merge/quantity.ts). */
+  unitQuantity: UnitQuantityResult
+  /** AMENDMENTS-016 B104: corpus items in the core file because a boss page lists them as drops. */
+  bossDropCoreIds: ReadonlySet<number>
 }
 
 const esc = (t: string) => t.replaceAll('|', '\\|').replaceAll('\n', ' / ')
@@ -73,16 +78,24 @@ export function corpusSections(input: CorpusReportInput): { title: string; lines
   const taggedNoRoute = input.stageGaps.filter((g) => g.field === 'acquisition' && g.detail.includes('"Fishing catches" article lists no catch'))
 
   // ---- queue items ----
+  const coreFile = input.itemIndex.files[0]
   const hellforge = input.drops.filter((d) => d.itemId === 221 && d.source.bossId === 'skeletron')
   const together = input.drops.filter((d) => d.dropsWith)
-  const qtyUnknown = input.drops.filter((d) => d._prov.unverifiedFields.some((f) => f === 'quantity' || f.startsWith('quantity.')))
   const kindOf = (id: number) => (COINS[id] ? 'coins' : input.weapons.some((w) => w.id === id) ? 'weapon' : input.armor.some((a) => a.id === id) ? 'armor piece' : input.accessories.some((a) => a.id === id) ? 'accessory' : input.items.find((i) => i.id === id)?.category ?? 'not emitted')
-  const qtyByKind = new Map<string, DropSource[]>()
-  for (const d of qtyUnknown) qtyByKind.set(kindOf(d.itemId), [...(qtyByKind.get(kindOf(d.itemId)) ?? []), d])
+  const nameOfItem = (id: number) => input.items.find((i) => i.id === id)?.name ?? input.weapons.find((w) => w.id === id)?.name ?? input.armor.find((a) => a.id === id)?.name ?? input.accessories.find((a) => a.id === id)?.name ?? COINS[id] ?? `i:${id}`
+  const byKindOf = (ds: readonly { drop: DropSource; reason?: string }[]) => {
+    const m = new Map<string, DropSource[]>()
+    for (const { drop, reason } of ds) {
+      const k = `${kindOf(drop.itemId)}${reason === 'consumable' ? ' (consumable)' : ''}`
+      m.set(k, [...(m.get(k) ?? []), drop])
+    }
+    return [...m].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+  }
+  const qtyStillUnknown = input.drops.filter((d) => d._prov.unverifiedFields.some((f) => f === 'quantity' || f.startsWith('quantity.')))
+  const bossDropCore = input.items.filter((i) => input.bossDropCoreIds.has(i.id) && coreFile.ids.includes(i.id) && !input.ammoPotionIds.has(i.id))
   const statsGaps = input.stageGaps.filter((g) => g.field === 'statsByDifficulty' && g.detail.includes('No single verified value per difficulty'))
   const mechEdges = input.edges.filter((e) => e.to === 'all-mechanical-bosses')
-  const coreFile = input.itemIndex.files[0]
-  const coreCorpus = input.items.filter((i) => coreFile.ids.includes(i.id) && !input.ammoPotionIds.has(i.id))
+  const coreCorpus = input.items.filter((i) => coreFile.ids.includes(i.id) && !input.ammoPotionIds.has(i.id) && !input.bossDropCoreIds.has(i.id))
 
   return [
     {
@@ -164,15 +177,21 @@ export function corpusSections(input: CorpusReportInput): { title: string; lines
         `- **"Drops together" linkage (B84 / B66 candidate):** \`DropSource.dropsWith\` (additive, symmetric, validated) on ${together.length} records of the bundled cells (${listed(together.map((d) => `${d.source.npcName}: i:${d.itemId} ↔ ${(d.dropsWith ?? []).join(', ')}`), 20)}).`,
         `- **Boss stats parse reasons (B83(f)):** wholly Unknown stats from unparseable health / defense cells now carry their reason as a missing-field gap on statsByDifficulty (the page's "Stats not verified" line shows it): ${listed(statsGaps.map((g) => g.detail.replace(/\.$/, '')))}.`,
         `- **Mechanical bosses quote (B93(ii)):** the three mech → all-mechanical-bosses edges now quote "${mechEdges[0]?.note ?? '—'}" (a whole sentence; the display-side CUT_AT_END pin no longer matches any edge).`,
-        `- **Special:Search links (B96(d)):** items.detail.json now also holds every item a boss record references (summon + prep-checklist items, ${coreCorpus.length} corpus records: ${listed(coreCorpus.map((i) => i.name), 40)}), so the boss pages and the readiness checker resolve them to their own wiki article — the Suspicious Looking Eye included — instead of the wiki search.`,
+        `- **Special:Search links (B96(d)):** items.detail.json now also holds every item a boss record references (summon + prep-checklist items, ${coreCorpus.length} corpus records: ${listed(coreCorpus.map((i) => i.name), 40)}), so the boss pages and the readiness checker resolve them to their records — the Suspicious Looking Eye included — instead of the wiki search.`,
         '',
-        '**No-stated-quantity ruling proposal (B84 queue; NOT applied — needs an orchestrator ruling).** Drop records whose wiki cell states no quantity keep quantity Unknown today. By item kind:',
+        `- **Boss-page drop rows (AMENDMENTS-016 B104):** items.detail.json also holds every corpus item a boss page lists as a drop (Boss.dropIds; ${bossDropCore.length} records, e.g. ${listed(bossDropCore.map((i) => i.name), 12)}), so the boss pages resolve each drop row to its record (its own item page) instead of the wiki search. The core file now holds ${coreFile.ids.length} records.`,
         '',
-        '| Item kind | Records | Examples |',
+        `**No-stated-quantity ruling (AMENDMENTS-016 B105, applied by pipeline/merge/quantity.ts).** ${input.unitQuantity.derived.length + input.unitQuantity.kept.length} drop records state no quantity on the wiki. ${input.unitQuantity.derived.length} of them — non-consumable (Module:Iteminfo/data consumable false) weapons, armor pieces, accessories and vanity / tool / pet / mount items — now carry quantity 1, derived from the item kind and listed in \`_prov.modeledFields\` ("quantity: 1 derived from non-consumable item kind"; validate re-checks each, the drop tables label the value). The other ${input.unitQuantity.kept.length} keep quantity Unknown: a stack size is a real, unstated number, never defaulted.`,
+        '',
+        '| Derived quantity 1 — item kind | Records | Examples |',
         '|---|---:|---|',
-        ...[...qtyByKind].sort((a, b) => b[1].length - a[1].length).map(([k, ds]) => `| ${k} | ${ds.length} | ${esc(listed(ds.map((d) => `${d.source.npcName} → ${input.items.find((i) => i.id === d.itemId)?.name ?? input.weapons.find((w) => w.id === d.itemId)?.name ?? input.armor.find((a) => a.id === d.itemId)?.name ?? input.accessories.find((a) => a.id === d.itemId)?.name ?? COINS[d.itemId] ?? `i:${d.itemId}`}`), 4))} |`),
+        ...byKindOf(input.unitQuantity.derived).map(([k, ds]) => `| ${k} | ${ds.length} | ${esc(listed(ds.map((d) => `${d.source.npcName} → ${nameOfItem(d.itemId)}`), 4))} |`),
         '',
-        'Proposal: (1) coins and every consumable / stackable item (materials, placeables, potions, ammo) stay Unknown — a stack size is a real, unstated number, never defaulted; (2) equipment (weapons, armor, accessories) and corpus items whose Module:Iteminfo/data consumable flag is false (vanity, tools, pets, mounts …) cannot be used up or split, so a drop entry with no stated quantity could be ruled quantity 1, derived from the item kind and provenance-noted — or kept Unknown. Not applied here: a category-aware default is an orchestrator ruling (AMENDMENTS-015 B84).',
+        '| Still Unknown — item kind | Records | Examples |',
+        '|---|---:|---|',
+        ...byKindOf(input.unitQuantity.kept).map(([k, ds]) => `| ${k} | ${ds.length} | ${esc(listed(ds.map((d) => `${d.source.npcName} → ${nameOfItem(d.itemId)}`), 4))} |`),
+        '',
+        `Not covered by the ruling's kinds and so still Unknown although non-consumable: ${listed(input.unitQuantity.kept.filter((k) => k.reason === 'not a ruled item kind' && (k.kind === 'other' || k.kind === 'hook' || k.kind === 'fishing')).map((k) => `${k.drop.source.npcName} → ${nameOfItem(k.drop.itemId)} (${k.kind})`), 20)} — kites and miscellaneous items sit in category "other"; extending the kinds needs a ruling. Records with any quantity Unknown after the ruling (incl. stated-but-unparseable cells): ${qtyStillUnknown.length}.`,
       ],
     },
   ]

@@ -15,6 +15,7 @@ import {
   Enemy,
   GapEntry,
   Item,
+  ItemDetailIndex,
   ItemId,
   Meta,
   ProgressionEdge,
@@ -23,10 +24,12 @@ import {
   RecipeGroup,
   SearchDoc,
   SpriteManifest,
+  SpriteManifestIndex,
+  SpriteManifestPart,
   Weapon,
 } from '../schemas'
 import { DataValidationError } from './errors'
-import type { DataFile } from './sources'
+import type { DataFile, ShardKind } from './sources'
 
 const LAB_KINDS = ['archetype', 'custom-scenario', 'limitation'] as const
 
@@ -51,6 +54,8 @@ export const WeaponListRecordSchema = Weapon.pick({
 const LIST_BASE = { id: true, name: true, slug: true, type: true, stage: true, rarity: true, sprite: true, tags: true, wikiUrl: true } as const
 export const AccessoryListRecordSchema = Accessory.pick({ ...LIST_BASE, categories: true })
 export const ArmorListRecordSchema = ArmorPiece.pick({ ...LIST_BASE, slot: true, defense: true, setId: true })
+/** items.list.json record (P6 encyclopedia browse): base list fields + category. Strict. */
+export const ItemListRecordSchema = Item.pick({ ...LIST_BASE, category: true })
 
 /** App-side view of the pipeline's item-universe.json (only the fields the app reads are strict). */
 const ItemUniverseSchema = z.object({
@@ -63,7 +68,7 @@ const ItemUniverseSchema = z.object({
   ),
 })
 
-const SCHEMAS: Record<DataFile, z.ZodType> = {
+const SCHEMAS: Record<DataFile | ShardKind, z.ZodType> = {
   'weapons.list': z.array(WeaponListRecordSchema),
   'weapons.detail': z.array(Weapon),
   'accessories.list': z.array(AccessoryListRecordSchema),
@@ -73,6 +78,9 @@ const SCHEMAS: Record<DataFile, z.ZodType> = {
   'armor-sets': z.array(ArmorSet),
   'stage-gaps': z.array(GapEntry),
   'items.detail': z.array(Item),
+  'items.detail.index': ItemDetailIndex,
+  'items.list': z.array(ItemListRecordSchema),
+  'items.detail-shard': z.array(Item),
   buffs: z.array(Buff),
   recipes: z.array(Recipe),
   'recipe-groups': z.array(RecipeGroup),
@@ -84,11 +92,13 @@ const SCHEMAS: Record<DataFile, z.ZodType> = {
   enemies: z.array(Enemy),
   'search-docs': z.array(SearchDoc),
   meta: Meta,
-  'sprite-manifest': SpriteManifest,
+  // AMENDMENTS-016 B104: the runtime index (or, in tests, the complete provenance manifest)
+  'sprite-manifest': z.union([SpriteManifestIndex, SpriteManifest]),
+  'sprite-part': SpriteManifestPart,
 }
 
 /** Throws DataValidationError when `data` does not match the file's schema. */
-export function validateDataFile(file: DataFile, data: unknown): void {
+export function validateDataFile(file: DataFile | ShardKind, data: unknown): void {
   const result = SCHEMAS[file].safeParse(data)
   if (!result.success) throw new DataValidationError(file, result.error.issues)
 }

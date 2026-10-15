@@ -1,9 +1,10 @@
+import { ExternalLink } from 'lucide-react'
 import { cx } from './cx'
 
 /**
  * ConditionChip (AMENDMENTS-014 B69/Q4; SCORING_SPEC §2.4): a non-node requirement — biome, event,
  * time, world — rendered as a chip ("Requires: Blood Moon"), never folded into "obtainable" and never
- * a block. Links the condition's wiki article when the registry has it; text-labeled, not colour alone.
+ * a block. Links the condition's wiki article when the registry has it (new tab, with the ↗ glyph); text-labeled, not colour alone.
  */
 export interface ConditionChipProps {
   name: string
@@ -27,6 +28,8 @@ export function ConditionChip({ name, href, requires = false, className }: Condi
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" data-condition-chip={name} className={cx(CHIP, 'text-link underline decoration-1 underline-offset-4 hover:text-accent-strong', className)}>
       {label}
+      {/* the ↗ every other new-tab wiki link carries (AMENDMENTS-016 B113(e)) */}
+      <ExternalLink aria-hidden="true" className="size-3.5 shrink-0" />
       <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
     </a>
   )

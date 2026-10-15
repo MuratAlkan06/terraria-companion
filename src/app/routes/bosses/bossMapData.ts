@@ -1,6 +1,9 @@
 import { loadBosses, loadProgression, loadSpriteIndex } from '../../../data-access'
 import type { Boss, ProgressionData, SpriteIndex } from '../../../data-access/types'
 
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): the boss nodes; any other sprite loads on demand. */
+const SPRITE_DIRS = ['bosses'] as const
+
 /**
  * Data for /bosses: the progression graph, the boss records behind its boss nodes, and the sprite
  * manifest (optional: without it every node shows placeholder art — the safe direction for the
@@ -19,7 +22,7 @@ export async function loadBossMapData(): Promise<BossMapData> {
   const [progression, bosses, sprites] = await Promise.all([
     loadProgression(),
     loadBosses(),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),

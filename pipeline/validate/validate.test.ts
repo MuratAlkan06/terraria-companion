@@ -659,6 +659,32 @@ describe('A1 downgrades (never build-fatal)', () => {
 
 })
 
+describe('AMENDMENTS-016 B105 derived drop quantity (_prov.modeledFields on drops)', () => {
+  const schemaMessages = (result: ValidationResult) => errorsOf(result).filter((e) => e.code === 'E_SCHEMA').map((e) => e.message)
+
+  it('passes: a non-stackable weapon drop (Clockwork Assault Rifle) models quantity 1', () => {
+    const raw = sample()
+    find(raw, 'drops', '434-wall-of-flesh-741638a5')._prov.modeledFields = ['quantity']
+    const result = run(raw)
+    if (!result.ok) throw new Error(result.errors.map(formatError).join('\n'))
+    expect(result.dataset.drops.find((d) => d.id === '434-wall-of-flesh-741638a5')?._prov.modeledFields).toEqual(['quantity'])
+  })
+
+  it('E_SCHEMA: a consumable item cannot model its quantity; a modeled quantity is exactly 1; only "quantity" can be modeled', () => {
+    const consumable = sample()
+    find(consumable, 'drops', '97-shadow-orb-741638a5').quantity = { min: 1, max: 1 }
+    find(consumable, 'drops', '97-shadow-orb-741638a5')._prov.modeledFields = ['quantity']
+    expect(schemaMessages(run(consumable))).toContainEqual(expect.stringContaining('item 97 is not a non-consumable'))
+    const two = sample()
+    find(two, 'drops', '434-wall-of-flesh-741638a5').quantity = { min: 2, max: 2 }
+    find(two, 'drops', '434-wall-of-flesh-741638a5')._prov.modeledFields = ['quantity']
+    expect(schemaMessages(run(two))).toContainEqual(expect.stringContaining('a derived quantity is exactly 1'))
+    const rate = sample()
+    find(rate, 'drops', '434-wall-of-flesh-741638a5')._prov.modeledFields = ['rates.classic']
+    expect(schemaMessages(run(rate))).toContainEqual(expect.stringContaining('a drop can only model "quantity"'))
+  })
+})
+
 describe('AMENDMENTS-010 B49 _prov.modeledFields', () => {
   /** Minishark with fully specified bow-gun params whose spread came from the B47 convention. */
   const modeledGun = (raw: RawDataset, modeledFields: string[]) => {

@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BOSS_PAGE_IDS, getField, ItemDetailIndex, SpriteManifest, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, DROP_UNIT_QUANTITY, getField, isModeledField, ItemDetailIndex, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFor, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
 import { itemClosure } from './closure'
 import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
@@ -82,8 +82,10 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       for (const w of weapons) if (w.ammoClass) expect(classes.has(w.ammoClass), `${w.name} ${w.ammoClass}`).toBe(true)
       expect(weapons.find((w) => w.id === 949)?.ammoStats).toMatchObject({ ammoClass: 'snowball', damage: 8 })
       // B70: ammo carries ammoStats, potions do not; P6-S0: items.detail.json adds only the corpus items a boss record references
+      // (AMENDMENTS-016 B104: incl. every item a boss page lists as a drop)
       expect(items.every((i) => (i.category === 'ammo') === (i.ammoStats !== undefined))).toBe(true)
-      const bossRefs = new Set(read<Boss[]>('bosses.json').flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
+      const dropItem = new Map(read<DropSource[]>('drops.json').map((d) => [d.id, d.itemId]))
+      const bossRefs = new Set(read<Boss[]>('bosses.json').flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? []), ...b.dropIds.flatMap((id) => dropItem.get(id) ?? [])]))
       expect(items.filter((i) => i.category !== 'ammo' && i.category !== 'potion').every((i) => bossRefs.has(i.id))).toBe(true)
     })
 
@@ -224,11 +226,20 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     const recipes = read<{ id: string; resultItemId: number; ingredients: { amount: number; ref: { kind: string; itemId?: number; groupId?: string } }[]; stations: { kind: string; itemId?: number; groupId?: string }[] }[]>('recipes.json')
     const stageGaps = read<GapEntry[]>('stage-gaps.json')
 
-    it('items.detail.json keeps exactly ammo + potions + the items boss records reference; every other item sits in its ID-range shard', () => {
+    it('items.detail.json keeps exactly ammo + potions + the items boss records reference (B104: drops included); every other item sits in its ID-range shard', () => {
       expect(index.files[0].file).toBe('items.detail.json')
-      const bossRefs = new Set(read<Boss[]>('bosses.json').flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
-      const expectedCore = items.filter((i) => i.category === 'ammo' || i.category === 'potion' || bossRefs.has(i.id)).map((i) => i.id).sort((a, b) => a - b)
+      const dropItem = new Map(read<DropSource[]>('drops.json').map((d) => [d.id, d.itemId]))
+      const bosses = read<Boss[]>('bosses.json')
+      const bossRefs = new Set(bosses.flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
+      const bossDrops = new Set(bosses.flatMap((b) => b.dropIds.flatMap((id) => dropItem.get(id) ?? [])))
+      const expectedCore = items.filter((i) => i.category === 'ammo' || i.category === 'potion' || bossRefs.has(i.id) || bossDrops.has(i.id)).map((i) => i.id).sort((a, b) => a - b)
       expect(index.files[0].ids).toEqual(expectedCore)
+      // AMENDMENTS-016 B104: the 169 boss-drop corpus items that used to fall back to the wiki search are now core
+      expect(items.filter((i) => bossDrops.has(i.id) && !bossRefs.has(i.id) && i.category !== 'ammo' && i.category !== 'potion')).toHaveLength(169)
+      expect(index.files[0].ids).toHaveLength(344)
+      // every item a boss page lists as a drop is a record the page loads (weapons / armor / accessories / core items)
+      const loadedByPages = new Set([...read<Item[]>('items.detail.json'), ...read<Weapon[]>('weapons.detail.json'), ...read<Accessory[]>('accessories.detail.json'), ...read<ArmorPiece[]>('armor.detail.json')].map((r) => r.id))
+      expect([...bossDrops].filter((id) => !loadedByPages.has(id) && index.files.some((f) => f.ids.includes(id)))).toEqual([])
       for (const f of index.files.slice(1)) {
         const n = Number(/^items\.detail\.(\d+)\.json$/.exec(f.file)?.[1])
         for (const id of f.ids) expect(Math.floor(id / index.shardSize), `${f.file} i:${id}`).toBe(n)
@@ -326,10 +337,88 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     })
   })
 
-  it('sprite binaries are gitignored; only the manifest is tracked (A10)', () => {
+  it('sprite binaries are gitignored; only the manifest (+ its B104 runtime split) is tracked (A10)', () => {
     const ignore = readFileSync(join(REPO, '.gitignore'), 'utf8').split('\n')
     expect(ignore).toContain('public/sprites/*')
     expect(ignore).toContain('!public/sprites/manifest.json')
+    expect(ignore).toContain('!public/sprites/manifest.*.json')
+  })
+
+  describe('AMENDMENTS-016 B104 sprite-manifest split: the app reads a small index + only the parts it needs', () => {
+    const SPRITES = join(REPO, 'public/sprites')
+    const manifest = SpriteManifest.parse(JSON.parse(readFileSync(join(SPRITES, 'manifest.json'), 'utf8')))
+    const index = SpriteManifestIndex.parse(JSON.parse(readFileSync(join(SPRITES, SPRITE_INDEX_FILE), 'utf8')))
+    const parts = index.parts.map((p) => ({ ref: p, part: SpriteManifestPart.parse(JSON.parse(readFileSync(join(SPRITES, p.file), 'utf8'))) }))
+
+    it('the parts are an exact partition of manifest.json, each entry its projection; every path resolves to its own part', () => {
+      expect(index.fallbackMode).toBe(manifest.fallbackMode)
+      expect(index.rightsNote).toBe(manifest.rightsNote)
+      const all = parts.flatMap((p) => p.part.files)
+      expect(all.map((f) => f.path).sort()).toEqual(manifest.files.map((f) => f.path).sort())
+      const byPath = new Map(manifest.files.map((f) => [f.path, f]))
+      for (const { ref, part } of parts) {
+        expect(part.part).toBe(ref.part)
+        expect(part.files).toHaveLength(ref.count)
+        for (const f of part.files) {
+          const { sha1: _sha1, bytes: _bytes, rights: _rights, ...projection } = byPath.get(f.path)!
+          expect(f, f.path).toEqual(projection)
+          expect(spritePartFor(index.parts, f.path)?.part, f.path).toBe(ref.part)
+        }
+      }
+      // no stray part file on disk
+      expect(readdirSync(SPRITES).filter((f) => /^manifest\.[a-z]+(?:\.\d+)?\.json$/.test(f) && f !== SPRITE_INDEX_FILE).sort()).toEqual(index.parts.map((p) => p.file).sort())
+    })
+
+    it('budgets: the index stays under 1 KB gz and every part under 16 KB gz (the whole manifest is ~270 KB gz)', () => {
+      expect(gzSize(readFileSync(join(SPRITES, SPRITE_INDEX_FILE), 'utf8'))).toBeLessThan(1024)
+      for (const p of index.parts) expect(gzSize(readFileSync(join(SPRITES, p.file), 'utf8')), p.file).toBeLessThan(16 * 1024)
+      expect(gzSize(readFileSync(join(SPRITES, 'manifest.json'), 'utf8'))).toBeGreaterThan(200 * 1024)
+      expect(index.parts.map((p) => p.part)).toEqual(['accessories', 'armor', 'bosses', 'items.0', 'items.1', 'items.2', 'items.3', 'items.4', 'items.5', 'items.6', 'weapons'])
+    })
+  })
+
+  describe('AMENDMENTS-016 B105: a drop with no stated quantity — 1 for non-consumable ruled kinds (modeled), else Unknown', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const drops = read<DropSource[]>('drops.json')
+    const items = new Map(allItems().map((i) => [i.id, i]))
+    const weapons = new Map(read<Weapon[]>('weapons.detail.json').map((w) => [w.id, w]))
+    const derived = drops.filter((d) => d._prov.modeledFields?.includes('quantity'))
+
+    it('non-consumable direction: Terraprisma (Empress of Light), Picksaw, Badger\'s Hat and Green Cap derive quantity 1 with the modeledFields note', () => {
+      expect(derived).toHaveLength(27)
+      const of = (itemId: number, npc: string) => drops.find((d) => d.itemId === itemId && d.source.npcName === npc) as DropSource
+      for (const d of [of(5005, 'Empress of Light'), of(1294, 'Plantera (Second Form)'), of(5004, 'Eye of Cthulhu'), of(867, 'Guide')]) {
+        expect(d.quantity, d.id).toEqual({ min: 1, max: 1 })
+        expect(d._prov.modeledFields, d.id).toEqual([DROP_UNIT_QUANTITY.path])
+        expect(d._prov.unverifiedFields.filter((f) => f.startsWith('quantity')), d.id).toEqual([])
+        expect(getField(d, 'quantity'), d.id).toEqual({ status: 'verified', value: { min: 1, max: 1 } })
+        expect(isModeledField(d, 'quantity'), d.id).toBe(true)
+      }
+      for (const d of derived) {
+        const kind = weapons.has(d.itemId) ? 'weapon' : (items.get(d.itemId)?.category ?? 'equipment')
+        expect(['weapon', 'vanity', 'tool', 'pet', 'mount', 'equipment'], d.id).toContain(kind)
+        if (items.has(d.itemId)) expect(items.get(d.itemId)?.consumable, d.id).toBe(false)
+        if (weapons.has(d.itemId)) expect(weapons.get(d.itemId)?.maxStack, d.id).toBeUndefined()
+      }
+    })
+
+    it('consumable / stackable direction: coins, materials, trophies, grab bags, Demon Heart and the consumable Beenade stay Unknown', () => {
+      const unknownQty = (d: DropSource) => d._prov.unverifiedFields.some((f) => f === 'quantity' || f.startsWith('quantity.'))
+      const goldBag = drops.find((d) => d.itemId === 73 && d.source.npcName === 'Treasure Bag (King Slime)') as DropSource
+      for (const d of [
+        goldBag,
+        ...drops.filter((d) => d.itemId === 319 && d.source.npcName === 'Sand Shark'), // Shark Fin (material, stackable; the Orca states its amount)
+        drops.find((d) => d.itemId === 1855 && d.source.npcName === 'Mourning Wood') as DropSource, // trophy (placeable)
+        drops.find((d) => d.itemId === 1869 && d.source.npcName === 'Present Mimic') as DropSource, // Present (grab bag)
+        drops.find((d) => d.itemId === 3335 && d.source.npcName === 'Treasure Bag (Wall of Flesh)') as DropSource, // Demon Heart (consumable booster)
+        drops.find((d) => d.itemId === 1130 && d.source.npcName === 'Treasure Bag (Queen Bee)') as DropSource, // Beenade (consumable weapon)
+      ]) {
+        expect(unknownQty(d), d.id).toBe(true)
+        expect(d._prov.modeledFields, d.id).toBeUndefined()
+      }
+      // no modeled quantity ever sits on a consumable item
+      for (const d of derived) expect(items.get(d.itemId)?.consumable ?? false, d.id).toBe(false)
+    })
   })
 
   describe('P2-S6 boss + progression dataset (PRD P2-S6 AC1–AC4, §7a-13 as hard tests)', () => {

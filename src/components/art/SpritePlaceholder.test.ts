@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { pixelLayers } from './pixelLayers'
-import { PLACEHOLDER_ROWS, placeholderVariantFor, type SpritePlaceholderVariant } from './placeholderSprites'
+import { PLACEHOLDER_PALETTE, PLACEHOLDER_ROWS, placeholderVariantFor, type SpritePlaceholderVariant } from './placeholderSprites'
 import { SpritePlaceholder } from './SpritePlaceholder'
 
 describe('SpritePlaceholder (A12 placeholder set)', () => {
@@ -64,6 +64,14 @@ describe('SpritePlaceholder (A12 placeholder set)', () => {
     }
     // Neutral stone only (no coloured features that could read as a specific creature).
     expect(new Set(rows.join('').replaceAll('.', ''))).toEqual(new Set(['k', 'B', 'b']))
+  })
+
+  it('B113d M1: every variant is a muted stone silhouette — stone greys only (night-950 outline), never a hue that passes for real art', () => {
+    for (const [key, value] of Object.entries(PLACEHOLDER_PALETTE)) expect(value, key).toMatch(key === 'k' ? /^var\(--color-night-950\)$/ : /^var\(--color-stone-\d+\)$/)
+    // every colour key a variant uses is in that palette, for all eight variants (the material pouch included)
+    for (const v of variants) for (const key of new Set(PLACEHOLDER_ROWS[v].join('').replaceAll('.', ''))) expect(Object.keys(PLACEHOLDER_PALETTE), `${v}:${key}`).toContain(key)
+    const html = renderToStaticMarkup(createElement(SpritePlaceholder, { variant: 'material' }))
+    expect(html).not.toMatch(/--color-(?:gold|earth|forest|rarity)/)
   })
 
   it('maps a weapon damage class to its variant; unknown class → "unknown"', () => {

@@ -10,7 +10,8 @@ import searchDocsJson from '../data/search-docs.json'
 import type { SearchDoc } from '../schemas'
 import { BOSS_PAGE_IDS } from '../schemas/bossPages'
 import { buildSearchIndex, detailLine, type BuildDeps } from './buildIndex'
-import { createSearchEngine } from './engine'
+import MiniSearch from 'minisearch'
+import { createSearchEngine, nameKey, SEARCH_OPTIONS } from './engine'
 import { ENTITY_TYPES, searchableCounts, searchPlaceholder, searchScopeSummary } from './entityTypes'
 import { groupByType } from './group'
 import { resolveTarget, wikiSearchUrl } from './links'
@@ -33,6 +34,19 @@ function deps(overrides: Partial<BuildDeps> = {}): BuildDeps {
 }
 
 afterEach(() => vi.restoreAllMocks())
+
+let sharedEngine: ReturnType<typeof createSearchEngine> | undefined
+const engine = () => (sharedEngine ??= createSearchEngine(docs))
+
+/** The plain MiniSearch order for a query (no exact-name boost), to show partial queries are untouched. */
+class MiniSearchOrder {
+  readonly ids: string[]
+  constructor(query: string) {
+    const mini = new MiniSearch<SearchDoc>({ idField: 'id', fields: ['name', 'tags'], storeFields: ['type'], stringifyField: (v: unknown) => (Array.isArray(v) ? v.join(' ') : String(v)), searchOptions: SEARCH_OPTIONS })
+    mini.addAll(docs)
+    this.ids = mini.search(query).map((r) => r.id as string)
+  }
+}
 
 describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
   it('the shipped search-docs.json and enemies.json pass their dev schemas', () => {
@@ -140,11 +154,13 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
     expect(resolveTarget({ id: 'boss:Eye' as SearchDoc['id'], type: 'boss', name: 'Eye', wikiUrl: 'https://terraria.wiki.gg/wiki/Eye_of_Cthulhu' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Eye_of_Cthulhu' })
   })
 
-  it('an ammo item and a buff open their own article, not the wiki search page', () => {
+  it('P6 encyclopedia: an item (ammo included) navigates in-app to its item page; a buff opens its own article', () => {
     const ammo = { id: 'i:97', type: 'item', name: 'Musket Ball', wikiUrl: 'https://terraria.wiki.gg/wiki/Musket_Ball' } as const
     const buff = { id: 'buff:on-fire', type: 'buff', name: 'On Fire!', wikiUrl: 'https://terraria.wiki.gg/wiki/On_Fire!' } as const
-    expect(resolveTarget(ammo)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Musket_Ball' })
+    expect(resolveTarget(ammo)).toEqual({ kind: 'internal', to: '/items/97' })
     expect(resolveTarget(buff)).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/On_Fire!' })
+    // a malformed item ref has no route: its own article, never a broken local link
+    expect(resolveTarget({ id: 'i:x' as SearchDoc['id'], type: 'item', name: 'X', wikiUrl: 'https://terraria.wiki.gg/wiki/X' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/X' })
   })
 
   it('anything without a page or URL falls back to the wiki search for its exact name (never a dead link)', () => {
@@ -177,21 +193,23 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     })
   })
 
-  it('every row without a local page opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
+  it('every doc is reachable by its own name; weapons, items and page bosses navigate in-app, every other row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
-    // P6-S0 corpus: two one-word item names are outranked by longer names inside their group's 5-row cap
-    // (an exact-name match gets no boost — the engine's ranking, logged with the B84 "empress" inversion);
-    // they are pinned here, and their rows are checked through the engine directly below
-    const unreachable = docs.filter((d) => !all.some((o) => o.ref === d.id))
-    expect(unreachable.map((d) => `${d.id} ${d.name}`)).toEqual(['i:669 Fish', 'i:1715 Bar'])
-    for (const d of unreachable) expect(resolveTarget(d), d.id).toEqual({ kind: 'external', href: d.wikiUrl })
-    expect(all).toHaveLength(6638 - unreachable.length)
+    // AMENDMENTS-016 B104 exact-name boost: the P6-S0 pinned exceptions ("Fish", "Bar" — one-word names outranked
+    // inside their group's 5-row cap) are retired; every doc is a row of a search for its own name
+    expect(docs.filter((d) => !all.some((o) => o.ref === d.id)).map((d) => `${d.id} ${d.name}`)).toEqual([])
+    expect(all).toHaveLength(6638)
     const docById = new Map(docs.map((d) => [d.id, d]))
     const pageBosses = new Set<string>(BOSS_PAGE_IDS.map((id) => `boss:${id}`))
     for (const option of all) {
       if (option.type === 'weapon') {
         expect(option.target).toEqual({ kind: 'internal', to: `/weapons/${option.ref.slice(2)}` })
+        continue
+      }
+      // P6 encyclopedia: every Item record has its page — no "Wiki ↗" item rows remain
+      if (option.type === 'item') {
+        expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/items/${option.ref.slice(2)}` })
         continue
       }
       if (pageBosses.has(option.ref)) {
@@ -224,15 +242,29 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     }
   })
 
-  it('an ammo row and a buff row from the shipped data open their own article', async () => {
+  it('an ammo row from the shipped data opens its item page; a buff row opens its own article', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const ammo = docs.find((d) => d.type === 'item' && d.tags.includes('bullets'))!
     const buff = docs.find((d) => d.type === 'buff')!
-    for (const doc of [ammo, buff]) {
-      const row = index.suggest(doc.name).options.find((o) => o.ref === doc.id)
-      expect(row?.target, doc.id).toEqual({ kind: 'external', href: doc.wikiUrl })
-      expect(row?.target, doc.id).not.toEqual({ kind: 'external', href: wikiSearchUrl(doc.name) })
+    expect(index.suggest(ammo.name).options.find((o) => o.ref === ammo.id)?.target).toEqual({ kind: 'internal', to: `/items/${ammo.id.slice(2)}` })
+    const row = index.suggest(buff.name).options.find((o) => o.ref === buff.id)
+    expect(row?.target, buff.id).toEqual({ kind: 'external', href: buff.wikiUrl })
+    expect(row?.target, buff.id).not.toEqual({ kind: 'external', href: wikiSearchUrl(buff.name) })
+  })
+
+  it('AMENDMENTS-016 B104 exact-name boost: "fish" → Fish and "bar" → Bar are the first option (and their group leads); partial queries keep the engine order', async () => {
+    const index = await buildSearchIndex(performance.now(), deps())
+    for (const [query, ref] of [['fish', 'i:669'], ['bar', 'i:1715'], ['Fish ', 'i:669'], ['zenith', 'i:4956']] as const) {
+      const { groups, options } = index.suggest(query)
+      expect(options[0]?.ref, query).toBe(ref)
+      expect(groups[0].items[0].ref, query).toBe(ref)
     }
+    // two docs share an exact name: both rank above every partial match, in the engine's own order
+    const enchanted = engine().search('enchanted sword').slice(0, 2).map((h) => h.doc.id).sort()
+    expect(enchanted).toEqual(['enemy:enchanted-sword', 'i:989'])
+    // a partial query is untouched by the boost (its order is the plain engine order)
+    expect(engine().search('empress').map((h) => h.doc.id)).toEqual(new MiniSearchOrder('empress').ids)
+    expect(nameKey('  Fish\tFinder ')).toBe('fish finder')
   })
 
   it('groups mixed results by type with labels, bosses carry sprites, enemies fall back to placeholder art', async () => {
@@ -254,12 +286,15 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
       // P2-S8 ships armor sets; Wizard set is a real set article the dataset withholds, so it is not a shipped doc
       { id: 'set:wizard-set', name: 'Wizard set', type: 'set', tags: [] },
     ]
-    // Neither extra doc carries a wikiUrl: the row falls back to the wiki search (never a dead link).
+    // Neither extra doc carries a wikiUrl: a type without a local page falls back to the wiki search (never a dead
+    // link); an item doc routes to its item page (P6 encyclopedia: every item doc is an Item record, validated)
     const index = await buildSearchIndex(performance.now(), deps({ loadDocs: async () => [...docs, ...extra] }))
     const dropper = index.suggest('magic shimmer dropper')
     expect(dropper.groups[0]).toMatchObject({ type: 'item', label: ENTITY_TYPES.item.plural })
-    expect(dropper.options[0]).toMatchObject({ ref: 'i:5492', target: { kind: 'external', href: wikiSearchUrl('Magic Shimmer Dropper') } })
-    expect(index.suggest('wizard set').groups.map((g) => g.label)).toContain('Armor sets')
+    expect(dropper.options[0]).toMatchObject({ ref: 'i:5492', target: { kind: 'internal', to: '/items/5492' } })
+    const wizard = index.suggest('wizard set')
+    expect(wizard.groups.map((g) => g.label)).toContain('Armor sets')
+    expect(wizard.options.find((o) => o.ref === 'set:wizard-set')?.target).toEqual({ kind: 'external', href: wikiSearchUrl('Wizard set') })
   })
 
   it('facet filter by entity type and the per-group cap are honoured', async () => {

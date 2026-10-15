@@ -40,6 +40,9 @@
  *   same source and rate is not emitted and gets a count-reconciliation gap (never merged).
  *   AMENDMENTS-015 B84 "drops together" (P6-S0): the records of one bundled cell (same source, cell,
  *   rate and conditions) link each other in `dropsWith` (symmetric, validated).
+ * - No stated quantity (AMENDMENTS-016 B105): a row whose cell states no quantity keeps it Unknown here;
+ *   `unstatedQuantity` hands those records to merge/quantity.ts, which derives 1 for non-consumable item
+ *   kinds only (listed in `_prov.modeledFields`) once every collection's item kinds are known.
  */
 import type { GapEntry, ProvSource } from '../../src/schemas'
 import { type DropSource } from '../../src/schemas'
@@ -189,7 +192,22 @@ export interface DropBuildInput {
   captions?: ReadonlyMap<string, ArticleDropCaptions>
 }
 
-export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: GapEntry[]; ledger: DropLedger; reasons: ReasonTally; ambiguousNames: Map<string, number[]> } {
+export interface DropBuild {
+  drops: DropSource[]
+  gaps: GapEntry[]
+  ledger: DropLedger
+  reasons: ReasonTally
+  ambiguousNames: Map<string, number[]>
+  /**
+   * AMENDMENTS-016 B105 input: records whose wiki cell states NO quantity at all (empty quantity cell,
+   * no bundle, no "(n)" after the item in a custom cell) → whether the record's own cross-check failed
+   * (so a later quantity derivation can recompute `verified` honestly). A stated-but-unparseable cell is
+   * not in this map: it stays Unknown under every ruling.
+   */
+  unstatedQuantity: Map<string, boolean>
+}
+
+export function buildDrops(input: DropBuildInput): DropBuild {
   const { iteminfo, npcs } = input
   const gaps = new GapLog()
   const ambiguousNames = new Map<string, number[]>()
@@ -218,6 +236,8 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
   const bundles = new Map<string, { rowId: string; page: string; sourceName: string; entries: readonly BundleEntry[]; rowItems: Set<string> }>()
   /** B84: emitted record ids per bundled cell + conditions (they drop together). */
   const together = new Map<string, string[]>()
+  /** B105: records whose cell states no quantity → their cross-check outcome. */
+  const unstatedQuantity = new Map<string, boolean>()
 
   const mapNotes = (notes: readonly string[]): Parsed<string[]> => {
     const out: string[] = []
@@ -412,6 +432,8 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     const qtyUnknown = new Set<Difficulty>()
     const qtyCell = str(row.quantity)
     let bundleFailure: string | undefined
+    /** B105: the wiki states no quantity for this row at all (not a stated-but-unparseable one). */
+    let unstated = false
     if (qtyCell.trim() === '') {
       let q: { min: number; max: number } | undefined
       if (bundle) {
@@ -423,6 +445,7 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
       } else {
         const m = /\(([\d–-]+)\)\s*$/.exec(plainTextOf(str(row.custom)))
         q = m ? parseQty(m[1]) : undefined
+        unstated = m === null && applicable.length > 0
       }
       for (const d of applicable) {
         if (q) qty[d] = q
@@ -479,6 +502,7 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
         _prov: makeProv(sources, fields, crossCheckFailed),
       }
       drops.set(id, record)
+      if (unstated) unstatedQuantity.set(id, crossCheckFailed)
       if (bundleKey !== undefined) {
         // one bundled cell drops together whatever its conditions are; records of different condition variants never link
         const groupKey = `${bundleKey}\u0000${conditionsUnknown ? '?' : JSON.stringify(record.conditions)}`
@@ -519,5 +543,5 @@ export function buildDrops(input: DropBuildInput): { drops: DropSource[]; gaps: 
     }
   }
   const list = [...drops.values()].sort((a, b) => a.itemId - b.itemId || a.id.localeCompare(b.id))
-  return { drops: list, gaps: gaps.entries, ledger, reasons, ambiguousNames }
+  return { drops: list, gaps: gaps.entries, ledger, reasons, ambiguousNames, unstatedQuantity }
 }

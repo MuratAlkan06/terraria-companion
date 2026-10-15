@@ -14,16 +14,30 @@
  * | loadItems() / loadBuffs() | ChunkLoadError; DataValidationError (dev)                  |
  * | load{Accessory,Armor}List / …Details / loadArmorSets / loadStageGaps | same            |
  * | load*Index / loadItemNames| ChunkLoadError; DataValidationError (dev)                  |
- * | loadSpriteIndex()         | ChunkLoadError (manifest fetch)                            |
+ * | loadSpriteIndex(dirs?)    | ChunkLoadError (index / part fetch); parts load lazily     |
+ * | loadItemList()            | ChunkLoadError; DataValidationError (dev)                  |
+ * | loadItemDetail(id)        | ChunkLoadError (index / shard); NotFoundError{ref}         |
  *
  * Field reads go through `getField` (src/schemas/getField.ts) — never direct property access
  * in UI for verified-or-Unknown fields. `createDataAccess` takes injectable importers so the
  * error paths are unit-testable; the module-level functions use the real data files.
  */
-import type { DATA_SCHEMA_VERSION, Enemy, SearchDoc } from '../schemas'
+import type { DATA_SCHEMA_VERSION, Enemy, SearchDoc, SpriteManifestIndex, SpriteManifestPart } from '../schemas'
+import { spritePartFor, type SpritePartRef } from '../schemas/spriteParts'
 import { ChunkLoadError, NotFoundError, SchemaVersionError } from './errors'
 import { memo, type Memo } from './memo'
-import { DEFAULT_IMPORTERS, DEFAULT_VALIDATOR, FETCHED_FILES, type DataFile, type Importers, type Validator } from './sources'
+import {
+  DEFAULT_IMPORTERS,
+  DEFAULT_SHARD_IMPORTERS,
+  DEFAULT_VALIDATOR,
+  FETCHED_FILES,
+  FETCHED_SHARDS,
+  type DataFile,
+  type Importers,
+  type ShardImporters,
+  type ShardKind,
+  type Validator,
+} from './sources'
 import type {
   Accessory,
   AccessoryListRecord,
@@ -40,6 +54,9 @@ import type {
   EntityType,
   GapEntry,
   Item,
+  ItemDetailIndexFile,
+  ItemIndex,
+  ItemListRecord,
   ItemNames,
   ItemUniverseFile,
   ListRecordMap,
@@ -50,13 +67,17 @@ import type {
   Recipe,
   RecipeGroup,
   RecipeIndex,
+  SpriteEntry,
   SpriteIndex,
   SpriteManifest,
 } from './types'
 
 export * from './errors'
 export type * from './types'
-export type { DataFile, Importer, Importers, Validator } from './sources'
+export type { DataFile, Importer, Importers, ShardImporter, ShardImporters, ShardKind, Validator } from './sources'
+
+/** The core item-detail file (src/schemas ITEM_DETAIL_CORE_FILE; loaded through `loadItems`). */
+const ITEM_DETAIL_CORE_FILE = 'items.detail.json'
 
 /** Type-linked to the shared constant: bumping DATA_SCHEMA_VERSION fails typecheck here. */
 const EXPECTED_SCHEMA_VERSION: typeof DATA_SCHEMA_VERSION = 1
@@ -88,6 +109,8 @@ export interface AcquisitionNeeds {
 export interface AcquisitionData {
   recipes?: RecipeIndex
   names?: ItemNames
+  /** Which ids are Item records (each has an encyclopedia page); loaded with the recipes. */
+  items?: ItemIndex
   drops?: DropIndex
   progression?: ProgressionData
   conditions: ConditionIndex
@@ -98,6 +121,8 @@ export interface DataAccessOptions {
   importers?: Partial<Importers>
   /** Dev-only validator; `null` disables it. Defaults to Zod parse in dev, none in production. */
   validate?: Validator | null
+  /** Override the sharded-file loaders (tests). */
+  shardImporters?: Partial<ShardImporters>
 }
 
 function byKey<T, K>(records: readonly T[], key: (record: T) => K): Map<K, T> {
@@ -106,6 +131,7 @@ function byKey<T, K>(records: readonly T[], key: (record: T) => K): Map<K, T> {
 
 export function createDataAccess(options: DataAccessOptions = {}) {
   const importers: Importers = { ...DEFAULT_IMPORTERS, ...options.importers }
+  const shardImporters: ShardImporters = { ...DEFAULT_SHARD_IMPORTERS, ...options.shardImporters }
   const validate = options.validate === undefined ? DEFAULT_VALIDATOR : (options.validate ?? undefined)
 
   async function loadFile<T>(file: DataFile): Promise<T> {
@@ -116,6 +142,17 @@ export function createDataAccess(options: DataAccessOptions = {}) {
       throw new ChunkLoadError(file, cause, !FETCHED_FILES.has(file))
     }
     if (validate) await validate(file, data)
+    return data as T
+  }
+
+  async function loadShard<T>(kind: ShardKind, file: string): Promise<T> {
+    let data: unknown
+    try {
+      data = await shardImporters[kind](file)
+    } catch (cause) {
+      throw new ChunkLoadError(file, cause, !FETCHED_SHARDS.has(kind))
+    }
+    if (validate) await validate(kind, data)
     return data as T
   }
 
@@ -171,10 +208,68 @@ export function createDataAccess(options: DataAccessOptions = {}) {
   const armorDetails = memo(async () => byKey(await loadFile<ArmorPiece[]>('armor.detail'), (a) => a.id))
   const armorSets = memo(async () => byKey(await loadFile<ArmorSet[]>('armor-sets'), (s) => s.id))
   const stageGaps = memo(() => loadFile<GapEntry[]>('stage-gaps'))
-  const spriteIndex = memo(async (): Promise<SpriteIndex> => {
-    const manifest = await loadFile<SpriteManifest>('sprite-manifest')
-    return { fallbackMode: manifest.fallbackMode, byPath: byKey(manifest.files, (f) => f.path) }
+
+  // --- items (P6 encyclopedia): the browse list + the detail record behind items.detail.index.json ----------
+  const itemList = memo(() => loadFile<ItemListRecord[]>('items.list'))
+  const itemIndex = memo(async (): Promise<ItemIndex> => {
+    const raw = await loadFile<ItemDetailIndexFile>('items.detail.index')
+    const fileOf = new Map<number, string>()
+    for (const entry of raw.files) for (const id of entry.ids) fileOf.set(id, entry.file)
+    return { fileOf, ids: new Set(fileOf.keys()) }
   })
+  /** One memo per item-detail file: the core file reuses `loadItems`, a shard is its own lazy chunk. */
+  const itemFiles = new Map<string, Memo<ReadonlyMap<number, Item>>>()
+  function itemFile(file: string): Memo<ReadonlyMap<number, Item>> {
+    let file$ = itemFiles.get(file)
+    if (!file$) {
+      file$ =
+        file === ITEM_DETAIL_CORE_FILE
+          ? memo(async () => byKey(await items.get(), (i) => i.id))
+          : memo(async () => byKey(await loadShard<Item[]>('items.detail-shard', file), (i) => i.id))
+      itemFiles.set(file, file$)
+    }
+    return file$
+  }
+
+  // --- sprites (AMENDMENTS-016 B104): the index, then only the parts a page draws from ---------------------
+  /** Every entry of every part loaded so far (shared by all SpriteIndex views; grows, never shrinks). */
+  const spriteByPath = new Map<string, SpriteEntry>()
+  /** `parts` undefined = the importer delivered the complete manifest (every entry is already loaded). */
+  const spriteRoot = memo(async (): Promise<{ fallbackMode: boolean; parts?: readonly SpritePartRef[] }> => {
+    const data = await loadFile<SpriteManifestIndex | SpriteManifest>('sprite-manifest')
+    if ('files' in data) {
+      for (const f of data.files) spriteByPath.set(f.path, f)
+      return { fallbackMode: data.fallbackMode }
+    }
+    return { fallbackMode: data.fallbackMode, parts: data.parts }
+  })
+  const spriteParts = new Map<string, Memo<true>>()
+  function spritePart(ref: SpritePartRef): Memo<true> {
+    let part$ = spriteParts.get(ref.file)
+    if (!part$) {
+      part$ = memo(async () => {
+        const part = await loadShard<SpriteManifestPart>('sprite-part', ref.file)
+        for (const f of part.files) spriteByPath.set(f.path, f)
+        return true as const
+      })
+      spriteParts.set(ref.file, part$)
+    }
+    return part$
+  }
+  /** The parts of `dirs` ("weapons", "items" = every item part, …); none when the whole manifest is loaded. */
+  const partsOf = (root: { parts?: readonly SpritePartRef[] }, dirs: readonly string[]) => (root.parts ?? []).filter((p) => dirs.includes(p.dir) || dirs.includes(p.part))
+  async function loadSpriteEntry(path: string): Promise<SpriteEntry | undefined> {
+    const root = await spriteRoot.get()
+    const known = spriteByPath.get(path)
+    if (known || !root.parts) return known
+    const ref = spritePartFor(root.parts, path)
+    if (!ref) return undefined
+    await spritePart(ref).get()
+    return spriteByPath.get(path)
+  }
+  let spriteView: SpriteIndex | undefined
+  const spriteIndexOf = (root: { fallbackMode: boolean }): SpriteIndex =>
+    (spriteView ??= { fallbackMode: root.fallbackMode, byPath: spriteByPath, load: loadSpriteEntry })
 
   function detailRef(id: unknown): string {
     return `i:${String(id)}`
@@ -214,6 +309,7 @@ export function createDataAccess(options: DataAccessOptions = {}) {
     loadEnemies: (): Promise<Enemy[]> => enemies.get(),
     /** Compact SearchDocs (§2.10) — the MiniSearch input; loaded on the first search interaction. */
     loadSearchDocs: (): Promise<SearchDoc[]> => searchDocs.get(),
+    peekSearchDocs: (): SearchDoc[] | undefined => searchDocs.peek(),
     /** Encyclopedia item records (§2.6) — ammo with its `ammoStats` for the Lab's ammo picker. */
     loadItems: (): Promise<Item[]> => items.get(),
     peekItems: (): Item[] | undefined => items.peek(),
@@ -242,30 +338,74 @@ export function createDataAccess(options: DataAccessOptions = {}) {
     peekConditionIndex: () => conditionIndex.peek(),
     loadItemNames: () => itemNames.get(),
     peekItemNames: () => itemNames.peek(),
-    loadSpriteIndex: () => spriteIndex.get(),
-    peekSpriteIndex: () => spriteIndex.peek(),
+    /**
+     * The sprite index (D3 fallbackMode + the entries loaded so far), after loading the manifest parts of
+     * `dirs` ("weapons", "bosses", "armor", "accessories", "items" = every item part, or a part id such as
+     * "items.3"). Sprites outside them load on demand through `index.load(path)` (SpriteImg does).
+     */
+    async loadSpriteIndex(dirs: readonly string[] = []): Promise<SpriteIndex> {
+      const root = await spriteRoot.get()
+      await Promise.all(partsOf(root, dirs).map((p) => spritePart(p).get()))
+      return spriteIndexOf(root)
+    },
+    /** The sprite index when the index and the parts of `dirs` are already loaded; undefined otherwise. */
+    peekSpriteIndex(dirs: readonly string[] = []): SpriteIndex | undefined {
+      const root = spriteRoot.peek()
+      if (!root || partsOf(root, dirs).some((p) => spritePart(p).peek() === undefined)) return undefined
+      return spriteIndexOf(root)
+    },
+    /** Loads the part listing `path` (if any) and resolves its entry. */
+    loadSpriteEntry,
+
+    /** Every Item record as a browse list record (items.list.json; the encyclopedia's /items). */
+    loadItemList: (): Promise<ItemListRecord[]> => itemList.get(),
+    peekItemList: (): ItemListRecord[] | undefined => itemList.peek(),
+    /** Which file holds each Item record; the set of Item ids (each has an encyclopedia page). */
+    loadItemIndex: (): Promise<ItemIndex> => itemIndex.get(),
+    peekItemIndex: (): ItemIndex | undefined => itemIndex.peek(),
+    /**
+     * One Item record: resolves its file through items.detail.index.json and loads only that file (the core
+     * file or one ID-range shard, cached per file). Rejects with NotFoundError for an unknown / malformed id.
+     */
+    async loadItemDetail(id: string | number): Promise<Item> {
+      const itemId = parseItemId(id)
+      if (itemId === undefined) throw new NotFoundError(detailRef(id))
+      const file = (await itemIndex.get()).fileOf.get(itemId)
+      if (file === undefined) throw new NotFoundError(detailRef(itemId))
+      const record = (await itemFile(file).get()).get(itemId)
+      if (!record) throw new NotFoundError(detailRef(itemId))
+      return record
+    },
+    /** The Item record when its file is already loaded; undefined otherwise (or not found). */
+    peekItemDetail(id: string | number): Item | undefined {
+      const itemId = parseItemId(id)
+      const file = itemId === undefined ? undefined : itemIndex.peek()?.fileOf.get(itemId)
+      return file === undefined || itemId === undefined ? undefined : itemFile(file).peek()?.get(itemId)
+    },
 
     /** Loads only the indexes an acquisition section needs (recipes + names for craft, drops for drop). */
     async loadAcquisitionData(needs: AcquisitionNeeds): Promise<AcquisitionData> {
-      const [recipes, names, drops, graph, conditions] = await Promise.all([
+      const [recipes, names, itemIds, drops, graph, conditions] = await Promise.all([
         needs.recipes ? recipeIndex.get() : undefined,
         needs.recipes ? itemNames.get() : undefined,
+        needs.recipes ? itemIndex.get() : undefined,
         needs.drops ? dropIndex.get() : undefined,
         needs.gates ? progression.get() : undefined,
         conditionIndex.get(),
       ])
-      return { recipes, names, drops, progression: graph, conditions }
+      return { recipes, names, items: itemIds, drops, progression: graph, conditions }
     },
     peekAcquisitionData(needs: AcquisitionNeeds): AcquisitionData | undefined {
       const conditions = conditionIndex.peek()
       const recipes = needs.recipes ? recipeIndex.peek() : undefined
       const names = needs.recipes ? itemNames.peek() : undefined
+      const itemIds = needs.recipes ? itemIndex.peek() : undefined
       const drops = needs.drops ? dropIndex.peek() : undefined
       const graph = needs.gates ? progression.peek() : undefined
-      if (!conditions || (needs.recipes && (!recipes || !names)) || (needs.drops && !drops) || (needs.gates && !graph)) {
+      if (!conditions || (needs.recipes && (!recipes || !names || !itemIds)) || (needs.drops && !drops) || (needs.gates && !graph)) {
         return undefined
       }
-      return { recipes, names, drops, progression: graph, conditions }
+      return { recipes, names, items: itemIds, drops, progression: graph, conditions }
     },
   }
 }
@@ -287,6 +427,7 @@ export const {
   peekBosses,
   loadEnemies,
   loadSearchDocs,
+  peekSearchDocs,
   loadItems,
   peekItems,
   loadBuffs,
@@ -312,6 +453,13 @@ export const {
   peekItemNames,
   loadSpriteIndex,
   peekSpriteIndex,
+  loadSpriteEntry,
+  loadItemList,
+  peekItemList,
+  loadItemIndex,
+  peekItemIndex,
+  loadItemDetail,
+  peekItemDetail,
   loadAcquisitionData,
   peekAcquisitionData,
 } = dataAccess

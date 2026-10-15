@@ -134,7 +134,7 @@ function ownCopy(html: string, b: Boss): string {
 }
 
 const ALLOWED_LOCAL = new RegExp(
-  `^(/weapons/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/readiness\\?boss=(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`,
+  `^(/weapons/\\d+|/items/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/readiness\\?boss=(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`,
 )
 
 /** One class tab's panel markup. */
@@ -248,12 +248,37 @@ describe('boss pages: every page (pre-Hardmode P5-S2, Wall of Flesh + Hardmode P
     expect(count(html, /Source for the [^<]*? drop[^<]* on terraria\.wiki\.gg/g)).toBe(boss('eater-of-worlds').dropIds.length)
   })
 
-  it('AC2: drop items link their real page — weapons in-app, accessories / armor / ammo to their own wiki article, others to the wiki search for their name', () => {
+  it('AC2: drop items link their real page — weapons and items (P6 encyclopedia) in-app, accessories / armor to their own wiki article', () => {
     const html = render(boss('queen-bee'))
     expect(html).toContain('href="/weapons/1123"') // Bee Keeper
     expect(html).toContain('href="https://terraria.wiki.gg/wiki/Hive_Pack"') // accessory
-    expect(html).toContain(`href="${wikiSearchUrl('Bee Wax')}"`) // material: no record of its own
-    expect(html).not.toMatch(/href="\/(items|accessories|armor)\//)
+    // AMENDMENTS-016 B104: Bee Wax used to fall back to the wiki search; its record is in the core file now
+    expect(html).toContain('href="/items/2431"') // Bee Wax
+    expect(html).not.toContain(wikiSearchUrl('Bee Wax'))
+    expect(html).not.toMatch(/href="\/(accessories|armor)\//)
+  })
+
+  it('AMENDMENTS-016 B105: a derived drop quantity reads "× 1 derived" (explained once under the table), never like a stated one', () => {
+    const html = render(boss('empress-of-light'))
+    const terraprisma = /<tr[^>]*data-drop-row="[^"]*5005[^"]*"[\s\S]*?<\/tr>/.exec(html)?.[0] ?? ''
+    expect(terraprisma).toMatch(/<span class="sr-only">Quantity: <\/span>×\u00a01 <span data-derived=""/)
+    expect(html).toContain('data-derived-note=""')
+    // a boss without derived quantities has no note
+    expect(render(boss('king-slime'))).not.toContain('data-derived-note')
+  })
+
+  it('B104: on every boss page no drop row of an emitted record falls back to the wiki search; every Item drop opens its item page', () => {
+    for (const id of BOSS_PAGE_IDS) {
+      const b = boss(id)
+      const rows = bossDropRows(b, drops, itemOf).rows
+      for (const row of rows) {
+        const item = itemOf(row.drop.itemId)
+        if (item.kind === 'other') continue // not an emitted record (a declared gap): wiki article / search stays honest
+        expect(item.link?.kind === 'external' && item.link.href.includes('Special:Search'), `${id} ${item.name}`).toBe(false)
+        if (item.kind === 'item') expect(item.link, `${id} ${item.name}`).toEqual({ kind: 'internal', to: `/items/${item.id}` })
+      }
+      expect(rows.filter((r) => itemOf(r.drop.itemId).kind === 'other').map((r) => itemOf(r.drop.itemId).name), id).toEqual([])
+    }
   })
 
   it('a world-evil boss says which world it belongs to; the header carries the defeat control (P5-S4)', () => {
@@ -457,18 +482,19 @@ describe('page model', () => {
     }
   })
 
-  it('items resolve to their real page: weapon in-app, accessory to its own article, else the wiki search for the Iteminfo name; a nameless id has no link', () => {
+  it('items resolve to their real page: weapon and Item records in-app, accessory to its own article, else the wiki search for the Iteminfo name; a nameless id has no link', () => {
     expect(itemOf(1123)).toMatchObject({ name: 'Bee Keeper', kind: 'weapon', link: { kind: 'internal', to: '/weapons/1123' } })
     expect(itemOf(3097)).toMatchObject({ name: 'Shield of Cthulhu', kind: 'accessory', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu' } })
-    // B96(d), fixed data-side by P6-S0: a summoning item is a record of its own (items.detail.json holds every item a boss references)
-    expect(itemOf(560)).toEqual({ id: 560, name: 'Slime Crown', kind: 'item', sprite: '/sprites/items/560.png', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Slime_Crown' } })
-    expect(itemOf(43)).toMatchObject({ name: 'Suspicious Looking Eye', kind: 'item', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Suspicious_Looking_Eye' } })
+    // B96(d), fixed data-side by P6-S0: a summoning item is a record of its own (items.detail.json holds every item a boss
+    // references); P6 encyclopedia (AMENDMENTS-016): each Item record opens its own item page
+    expect(itemOf(560)).toEqual({ id: 560, name: 'Slime Crown', kind: 'item', sprite: '/sprites/items/560.png', link: { kind: 'internal', to: '/items/560' } })
+    expect(itemOf(43)).toMatchObject({ name: 'Suspicious Looking Eye', kind: 'item', link: { kind: 'internal', to: '/items/43' } })
     // an Iteminfo name without any record still opens the wiki search for that exact name (Magic Shimmer Dropper: no Cargo Items row)
     expect(itemOf(5492)).toEqual({ id: 5492, name: 'Magic Shimmer Dropper', kind: 'other', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Special:Search?search=Magic%20Shimmer%20Dropper' } })
     expect(names.byId.has(999999)).toBe(false)
     expect(itemOf(999999)).toEqual({ id: 999999, name: 'Item #999999', kind: 'other' })
-    // B70: the Ironskin Potion is a record of its own (the potion corpus) — its own article and sprite
-    expect(itemOf(292)).toEqual({ id: 292, name: 'Ironskin Potion', kind: 'item', sprite: '/sprites/items/292.png', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Ironskin_Potion' } })
+    // B70: the Ironskin Potion is a record of its own (the potion corpus) — its own item page and sprite
+    expect(itemOf(292)).toEqual({ id: 292, name: 'Ironskin Potion', kind: 'item', sprite: '/sprites/items/292.png', link: { kind: 'internal', to: '/items/292' } })
     // without that record, the Ironskin buff record still carries the article titled exactly "Ironskin Potion"
     const noItemRecords = itemResolver({ names, weapons: weaponList, accessories: accessoriesListJson as AccessoryListRecord[], armor: armorListJson as ArmorListRecord[], items: [], articles: buffs.map((b) => b.wikiUrl) })
     expect(noItemRecords(292)).toEqual({ id: 292, name: 'Ironskin Potion', kind: 'other', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Ironskin_Potion' } })
@@ -910,12 +936,15 @@ describe('M1: next steps — nearest first, plain phrases', () => {
 
 describe('M4: every item slot links its real page, else the wiki search for its name; only a nameless one says it has none', () => {
   const weaponIds = new Set(weaponList.map((w) => w.id))
+  const itemIds = new Set((itemsJson as Item[]).map((i) => i.id))
   const recordUrl = new Map<number, string>()
-  for (const r of [...(accessoriesListJson as AccessoryListRecord[]), ...(armorListJson as ArmorListRecord[]), ...(itemsJson as Item[])]) if (!recordUrl.has(r.id)) recordUrl.set(r.id, r.wikiUrl)
+  for (const r of [...(accessoriesListJson as AccessoryListRecord[]), ...(armorListJson as ArmorListRecord[])]) if (!recordUrl.has(r.id)) recordUrl.set(r.id, r.wikiUrl)
   const buffArticle = new Map(buffs.map((b) => [wikiArticleTitle(b.wikiUrl), b.wikiUrl]))
   const expected = (id: number) =>
     weaponIds.has(id)
       ? { kind: 'internal', to: `/weapons/${id}` }
+      : itemIds.has(id)
+        ? { kind: 'internal', to: `/items/${id}` }
       : recordUrl.has(id)
         ? { kind: 'external', href: recordUrl.get(id) }
         : buffArticle.has(names.byId.get(id))
@@ -944,29 +973,30 @@ describe('M4: every item slot links its real page, else the wiki search for its 
     }
   })
 
-  it('potions named in prep checklists link their article (their own potion records, B70)', () => {
+  it('potions named in prep checklists link their item pages (their own potion records, B70; P6 encyclopedia)', () => {
     const html = render(boss('king-slime'))
-    expect(html).toContain('href="https://terraria.wiki.gg/wiki/Ironskin_Potion"')
-    expect(html).toContain('href="https://terraria.wiki.gg/wiki/Regeneration_Potion"')
+    expect(html).toContain('href="/items/292"') // Ironskin Potion
+    expect(html).toContain('href="/items/289"') // Regeneration Potion
   })
 
-  it('an item with no page opens its own article (Torch, Campfire: records since P6-S0, B96(d)) — else the wiki search for its exact name — in a new tab with the external marker', () => {
+  it('Item records open their item page (Torch, Campfire: records since P6-S0, B96(d)); an accessory opens its own article and a name without any record the wiki search — in a new tab with the external marker', () => {
     const html = render(boss('eye-of-cthulhu'))
     expect(html).not.toContain('data-item-inert')
-    // their infobox lives on the family article (the record's own wikiUrl)
-    for (const [id, name, page] of [[8, 'Torch', 'Torches'], [966, 'Campfire', 'Campfires']] as const) {
-      const href = `https://terraria.wiki.gg/wiki/${page}`
-      expect(itemOf(id).link).toEqual({ kind: 'external', href })
-      const link = new RegExp(`<a href="${escaped(href).replace(/[.?]/g, '\\$&')}" target="_blank" rel="noopener noreferrer"[^>]*>[\\s\\S]*?</a>`).exec(html)?.[0] ?? ''
-      // B82: the ↗ is glued to the name's last word, 4px from it (never wrapping alone)
-      expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*aria-hidden="true"`))
-      expect(link, name).toMatch(new RegExp(`<span class="whitespace-nowrap">${name}<svg[^>]*class="[^"]*\\bml-1\\b`))
-      expect(link, name).toContain('on terraria.wiki.gg (opens in a new tab)')
+    for (const [id, name] of [[8, 'Torch'], [966, 'Campfire']] as const) {
+      expect(itemOf(id).link, name).toEqual({ kind: 'internal', to: `/items/${id}` })
+      expect(html, name).toContain(`href="/items/${id}"`)
     }
-    // without any record, an Iteminfo name still opens the wiki search for that exact name
+    // an external row (an accessory's own article): B82 — the ↗ is glued to the name's last word, 4px from it
     const b = structuredClone(boss('king-slime'))
-    b.summon.items = [5492]
-    expect(section(render(b), 'summon')).toContain(`href="${escaped(wikiSearchUrl('Magic Shimmer Dropper'))}"`)
+    b.summon.items = [3097, 5492] // Shield of Cthulhu (accessory), Magic Shimmer Dropper (no record)
+    const summon = section(render(b), 'summon')
+    const href = 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu'
+    const link = new RegExp(`<a href="${escaped(href).replace(/[.?]/g, '\\$&')}" target="_blank" rel="noopener noreferrer"[^>]*>[\\s\\S]*?</a>`).exec(summon)?.[0] ?? ''
+    expect(link).toMatch(/<span class="whitespace-nowrap">Cthulhu<svg[^>]*aria-hidden="true"/)
+    expect(link).toMatch(/<span class="whitespace-nowrap">Cthulhu<svg[^>]*class="[^"]*\bml-1\b/)
+    expect(link).toContain('on terraria.wiki.gg (opens in a new tab)')
+    // without any record, an Iteminfo name still opens the wiki search for that exact name
+    expect(summon).toContain(`href="${escaped(wikiSearchUrl('Magic Shimmer Dropper'))}"`)
   })
 
   it('a nameless ref stays inert and says it has no page', () => {

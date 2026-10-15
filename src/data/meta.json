@@ -25,11 +25,11 @@
   },
   "license": "CC BY-NC-SA 4.0",
   "gapSummary": {
-    "total": 14346,
+    "total": 14272,
     "byKind": {
       "source-mismatch": 45,
       "count-reconciliation": 326,
-      "missing-field": 8766,
+      "missing-field": 8692,
       "missing-sprite": 28,
       "gating-underived": 4450,
       "unverified-drop-rate": 392,

@@ -13,6 +13,7 @@
  * the Iteminfo item universe and the collections still `pending`.
  */
 import {
+  DROP_UNIT_QUANTITY,
   isCoveredBy,
   MODELING_CONVENTIONS,
   modeledPathOf,
@@ -516,12 +517,32 @@ export function checkUnverifiedValues(ds: Dataset): PipelineError[] {
  * B46 / B47, AMENDMENTS-013 B63 — the convention names its ruling; a path several conventions govern is
  * listed `<path>#<convention id>`); conversely, an archetype whose params can only come from a
  * convention (`always`) must list them, so a modeled value is never silent. Only Lab archetype params
- * can be modeled.
+ * can be modeled — and, AMENDMENTS-016 B105, a drop's `quantity` of exactly 1 for an item of a ruled
+ * non-consumable kind (a non-stackable weapon, armor piece, accessory, or a non-consumable vanity / tool /
+ * pet / mount Item); any other modeled drop path or item fails.
  */
 export function checkModeledFields(ds: Dataset): PipelineError[] {
   const errors: PipelineError[] = []
   const fail = (ref: string, message: string) => errors.push({ code: 'E_SCHEMA', ref, zodIssues: [], message: `${ref} ${message}` })
+  // AMENDMENTS-016 B105: the one non-Lab modeled value — a drop quantity of 1 derived from a non-consumable item kind
+  const unitKind = new Map<number, string>([
+    ...ds.weapons.filter((w) => w.maxStack === undefined).map((w) => [w.id, 'weapon'] as const),
+    ...ds.armor.map((a) => [a.id, 'armor'] as const),
+    ...ds.accessories.map((a) => [a.id, 'accessory'] as const),
+    ...ds.items.filter((i) => i.consumable === false).map((i) => [i.id, i.category] as const),
+  ])
+  const ruledKinds: ReadonlySet<string> = new Set(DROP_UNIT_QUANTITY.kinds)
+  for (const drop of ds.drops) {
+    const modeled = drop._prov.modeledFields ?? []
+    if (modeled.length === 0) continue
+    const ref = recordRef('drops', drop)
+    const q = drop.quantity
+    if (modeled.length !== 1 || modeled[0] !== DROP_UNIT_QUANTITY.path) fail(ref, `_prov.modeledFields ${modeled.join(', ')}: a drop can only model "${DROP_UNIT_QUANTITY.path}" (${DROP_UNIT_QUANTITY.ruling})`)
+    else if (!('min' in q) || q.min !== 1 || q.max !== 1) fail(ref, `_prov.modeledFields quantity: a derived quantity is exactly 1 (${DROP_UNIT_QUANTITY.ruling}), found ${JSON.stringify(q)}`)
+    else if (!ruledKinds.has(unitKind.get(drop.itemId) ?? '')) fail(ref, `_prov.modeledFields quantity: item ${drop.itemId} is not a non-consumable ${DROP_UNIT_QUANTITY.kinds.join(' / ')} record, so its unstated quantity must stay Unknown (${DROP_UNIT_QUANTITY.ruling})`)
+  }
   for (const key of COLLECTION_KEYS) {
+    if (key === 'drops') continue
     for (const record of ds[key] as readonly { _prov: { modeledFields?: string[] } }[]) {
       const ref = recordRef(key, record)
       const modeled = record._prov.modeledFields ?? []

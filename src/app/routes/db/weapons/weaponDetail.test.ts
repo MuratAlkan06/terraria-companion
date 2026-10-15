@@ -121,15 +121,17 @@ describe('partially-verified badge covers every Unknown on the page (design revi
     expect(mismatches).toEqual([])
   })
 
-  it('Terraprisma: its only Unknowns are the drop quantities → badge present with 3', () => {
+  it('Terraprisma (AMENDMENTS-016 B105): its drop states no quantity, so 1 is derived from the item kind — shown "derived", never Unknown, never like a stated value', () => {
     const terraprisma = byName('Terraprisma')
     expect(terraprisma._prov.unverifiedFields).toEqual([])
     const entries = weaponPageUnknowns(terraprisma, data.drops)
-    expect(unknownCount(entries)).toBe(3)
-    expect(entries.map((e) => e.label)).toEqual(['Empress of Light — quantity (Classic, Expert, Master)'])
+    expect(unknownCount(entries)).toBe(0) // it used to be the 3 quantity cells
     const html = renderDetail(terraprisma)
-    expect(html).toContain('Partially verified')
-    expect(html).toContain('show which 3 values are unknown')
+    expect(html).not.toContain('Partially verified')
+    // one quantity cell per difficulty that applies, each labelled with the derivation toggletip
+    const derived = html.match(/<td class="px-2 py-1.5"><span class="inline-flex[^"]*"><span class="tabular-nums">1<\/span><button[^>]*data-derived=""/g) ?? []
+    expect(derived.length).toBeGreaterThan(0)
+    expect(html).toContain('derived<span class="sr-only"> (show what this means)</span>')
   })
 
   it('Bomb: 2 vendor prices + 3 Black Slime rates = 5, labelled like the page sections (B70: stage, vendor conditions and gating derive; P3-S11: damage and knockback verify; B85(b): no crit row)', () => {
@@ -172,7 +174,7 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
     expect(rows).not.toHaveProperty('mana')
     expect(rows).not.toHaveProperty('ammo')
     expect(html).toContain('Zenith')
-    expect(html).toContain('Mythril or Orichalcum Anvil')
+    expect(html).toMatch(/<a [^>]*href="\/items\/525"[^>]*>Mythril Anvil<\/a> or <a [^>]*href="\/items\/1220"[^>]*>Orichalcum Anvil<\/a>/)
     expect(html).toContain('Terra Blade')
     expect(html).toContain('href="/weapons/757"') // ingredient that is itself a weapon links to its page
     expect(html).toContain('href="https://terraria.wiki.gg/wiki/Zenith"')
@@ -196,11 +198,27 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
     expect(html).not.toMatch(/<ul class="grid gap-3 md:grid-cols-2"><li[^>]*><dl/)
   })
 
-  it('non-weapon materials are inert cells with a quantity badge (no dead local link, no guessed wiki URL)', () => {
+  it('item materials link their encyclopedia page (P6), with a quantity badge; stations that are items link too', () => {
     const html = renderDetail(byName('Adamantite Sword'))
     expect(html).toMatch(/<div role="img" aria-label="Adamantite Bar, stack of 12"/)
     expect(html).toContain('<span class="sr-only">12 × </span>Adamantite Bar')
-    expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*Adamantite Bar/)
+    expect(html).toMatch(/<a [^>]*href="\/items\/391"[^>]*>(?:(?!<\/a>).)*Adamantite Bar/)
+    // AMENDMENTS-016 B113(e): a station group ("Mythril or Orichalcum Anvil") names its members, each linking its item page
+    expect(html).toMatch(/data-station-group="mythril-or-orichalcum-anvil"><a [^>]*href="\/items\/525"[^>]*>Mythril Anvil<\/a> or <a [^>]*href="\/items\/1220"[^>]*>Orichalcum Anvil<\/a><\/span>/)
+    const wooden = renderDetail(byName('Wooden Sword')) // crafted at a Work Bench (item 36, an encyclopedia item)
+    expect(wooden).toMatch(/Crafting station:<\/dt><dd><span><a [^>]*href="\/items\/36"[^>]*>Work Bench<\/a><\/span><\/dd>/)
+  })
+
+  it('a material id that is no record of any page is an inert cell (no dead local link, no guessed wiki URL)', () => {
+    const recipeIds = WEAPONS.flatMap((w) => w.acquisition.flatMap((a) => (a.method === 'craft' ? a.recipeIds : [])))
+    const recipes = recipeIds.map((id) => data.recipes!.byId.get(id)!).filter(Boolean)
+    const inert = recipes.flatMap((r) => r.ingredients).find((g) => g.ref.kind === 'group')
+    expect(inert).toBeDefined() // an "Any …" group material has no page of its own
+    const weapon = WEAPONS.find((w) => w.acquisition.some((a) => a.method === 'craft' && a.recipeIds.some((id) => data.recipes!.byId.get(id)?.ingredients.some((g) => g.ref.kind === 'group'))))!
+    const html = renderDetail(weapon)
+    const group = data.recipes!.groups.get((inert!.ref as { groupId: string }).groupId)!
+    expect(html).toContain(group.name)
+    expect(html).not.toMatch(new RegExp(`<a [^>]*>(?:(?!</a>).)*${group.name}`))
   })
 
   it('every local link on every weapon page resolves to an existing weapon', () => {
@@ -229,7 +247,8 @@ describe('weapon detail content (PRD P2-S3 AC3)', () => {
   })
 
   it('drop tables use fixed column widths and hatch the whole Unknown cell (UX_SPEC §5.3)', () => {
-    const html = renderDetail(byName('Terraprisma'))
+    // Bomb: the Black Slime bonus drop's three Unknown rates (Terraprisma's quantities derive since B105)
+    const html = renderDetail(byName('Bomb'))
     expect(html).toContain('<table class="w-full table-fixed text-sm">')
     expect(html.match(/<td class="bg-hatch-unknown[^"]*"><button[^>]*data-unknown-field="drop:/g)).toHaveLength(3)
   })

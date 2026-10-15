@@ -224,14 +224,16 @@ describe('buildWeapons', () => {
     expect(() => build(undefined, new Map([[98, { ...withheld.get(98)!, cargoTag: 'vendor:Clothier' }]]))).toThrow(/no longer carries the conflicting tag/)
   })
 
-  it('search docs: one per weapon, item, enemy, boss and buff, schema-valid, each with its own wikiUrl (B31)', () => {
+  it('search docs: one per weapon, item, enemy, boss and buff, schema-valid, each with its own wikiUrl (B31) and sprite path (B104)', () => {
     const prov = byName(out, 'Zenith')._prov
     const boss = { id: 'eater-of-worlds', name: 'Eater of Worlds', nodeId: 'eater-of-worlds', wikiUrl: 'https://terraria.wiki.gg/wiki/Eater_of_Worlds', stage: 'early-prehm' as const, worldEvil: 'corruption' as const, summon: { items: [], conditions: [] }, location: { biomes: [] }, statsByDifficulty: {}, dropIds: [], _prov: prov }
     const item = { id: 97, name: 'Musket Ball', slug: 'musket-ball', type: 'item' as const, rarity: 0, tags: ['bullets'], wikiUrl: 'https://terraria.wiki.gg/wiki/Musket_Ball', acquisition: [], category: 'ammo' as const, isStation: false, _prov: prov }
     const buff = { id: 'on-fire', gameBuffId: 24, name: 'On Fire!', isDebuff: true, effects: [], dot: { dps: 4 }, wikiUrl: 'https://terraria.wiki.gg/wiki/On_Fire!', _prov: prov }
     const docs = buildSearchDocs({ weapons: out.weapons, enemies: [{ id: 'zombie', name: 'Zombie', dropIds: [], wikiUrl: 'https://terraria.wiki.gg/wiki/Zombie', _prov: prov }], bosses: [boss], items: [item], buffs: [buff] })
     expect(docs.map((d) => SearchDoc.parse(d).id)).toEqual(['i:98', 'i:112', 'i:166', 'i:4722', 'i:4956', 'i:5005', 'i:97', 'enemy:zombie', 'boss:eater-of-worlds', 'buff:on-fire'])
-    expect(docs[4]).toEqual({ id: 'i:4956', name: 'Zenith', type: 'weapon', class: 'melee', rarity: 10, tags: ['broadswords'], wikiUrl: 'https://terraria.wiki.gg/wiki/Zenith' })
+    // AMENDMENTS-016 B104: a doc carries its record's sprite path (rows draw it from the manifest part listing it)
+    expect(docs[4]).toEqual({ id: 'i:4956', name: 'Zenith', type: 'weapon', class: 'melee', rarity: 10, tags: ['broadswords'], wikiUrl: 'https://terraria.wiki.gg/wiki/Zenith', sprite: byName(out, 'Zenith').sprite })
+    expect(byName(out, 'Zenith').sprite).toMatch(/^\/sprites\/weapons\/4956\.(png|gif)$/)
     expect(docs[6]).toEqual({ id: 'i:97', name: 'Musket Ball', type: 'item', rarity: 0, tags: ['bullets'], wikiUrl: item.wikiUrl })
     expect(docs[8]).toEqual({ id: 'boss:eater-of-worlds', name: 'Eater of Worlds', type: 'boss', stage: 'early-prehm', tags: ['corruption'], wikiUrl: boss.wikiUrl })
     expect(docs[9]).toEqual({ id: 'buff:on-fire', name: 'On Fire!', type: 'buff', tags: ['debuff'], wikiUrl: buff.wikiUrl })

@@ -43,3 +43,41 @@ export const SpriteManifest = z.strictObject({
   files: z.array(SpriteManifestFile),
 })
 export type SpriteManifest = z.infer<typeof SpriteManifest>
+
+/**
+ * AMENDMENTS-016 B104 runtime split (additive; see ./spriteParts.ts). `manifest.json` above stays the complete
+ * committed provenance record. The app reads `manifest.index.json` — the D3 `fallbackMode` lever, the rights
+ * note and the part list — and then only the parts holding the sprites a page draws. A part entry is the
+ * projection of its manifest.json file onto what the app draws and credits (no SHA-1 / byte size / rights:
+ * the provenance record keeps those; rights are stated once in the index's rightsNote).
+ */
+export const SpriteEntry = SpriteManifestFile.pick({ path: true, ref: true, wikiFileUrl: true, width: true, height: true, thumbnail: true })
+export type SpriteEntry = z.infer<typeof SpriteEntry>
+
+export const SpritePartId = z.string().regex(/^[a-z]+(?:\.\d+)?$/)
+
+export const SpriteManifestIndex = z.strictObject({
+  fallbackMode: z.boolean(),
+  rightsNote: PlainText1,
+  parts: z
+    .array(
+      z.strictObject({
+        part: SpritePartId,
+        file: z.string().regex(/^manifest\.[a-z]+(?:\.\d+)?\.json$/),
+        dir: z.string().regex(/^[a-z]+$/),
+        ids: z
+          .tuple([z.int().nonnegative(), z.int().nonnegative()])
+          .refine(([lo, hi]) => lo <= hi, { message: 'ids range must be ascending' })
+          .optional(),
+        count: z.int().positive(),
+      }),
+    )
+    .min(1),
+})
+export type SpriteManifestIndex = z.infer<typeof SpriteManifestIndex>
+
+export const SpriteManifestPart = z.strictObject({
+  part: SpritePartId,
+  files: z.array(SpriteEntry).min(1),
+})
+export type SpriteManifestPart = z.infer<typeof SpriteManifestPart>

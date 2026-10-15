@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../app/settingsStore'
-import type { SpriteIndex } from '../data-access/types'
+import type { SpriteEntry, SpriteIndex } from '../data-access/types'
 import { placeholderVariantFor, type SpritePlaceholderVariant } from './art/placeholderSprites'
+import { spriteFallback, type SpriteFallback } from './spriteFallback'
 import { SpritePlaceholder } from './art/SpritePlaceholder'
 import { cx } from './cx'
 import { devicePixelOffset, spriteSize } from './spriteScale'
@@ -25,6 +26,11 @@ import { useReducedMotion } from './useReducedMotion'
  * frame on a canvas instead of an <img>, since CSS cannot pause a GIF. Canvas drawing uses the
  * animation's default (first) frame per the HTML spec. A thumbnail is already a still PNG, so it
  * stays a plain <img>.
+ *
+ * Lazy manifest parts (AMENDMENTS-016 B104): a page loads only the sprite-manifest parts it knows it
+ * needs; when `src` is in a part not loaded yet, the box shows the placeholder and asks the index to
+ * load that part (`sprites.load`, once per session), then draws the sprite. A part that fails to load
+ * leaves the placeholder — the safe direction for the D3 lever.
  */
 export interface SpriteImgProps {
   /** Record `sprite` path, e.g. "/sprites/weapons/4956.png". */
@@ -41,6 +47,12 @@ export interface SpriteImgProps {
   /** Largest whole-number upscale (see ./spriteScale); no cap when omitted. */
   maxScale?: number
   className?: string
+  /**
+   * Told whenever the box changes between the sprite and placeholder art, with why (AMENDMENTS-016 B113d:
+   * a page can say so visibly — including a listed sprite whose file failed to load). Undefined: the
+   * sprite is drawn, or its manifest part is still loading.
+   */
+  onFallback?: (reason: SpriteFallback | undefined) => void
 }
 
 // Failed URLs are remembered so virtualized rows don't re-request a broken sprite on remount.
@@ -57,18 +69,46 @@ function snapToDevicePixels(element: HTMLElement): void {
   if (dx !== 0 || dy !== 0) element.style.translate = `${dx}px ${dy}px`
 }
 
-export function SpriteImg({ src, sprites, damageClass, placeholder, box, full = false, maxScale, className }: SpriteImgProps) {
+export function SpriteImg({ src, sprites, damageClass, placeholder, box, full = false, maxScale, className, onFallback }: SpriteImgProps) {
   const userFallback = useSettingsStore((s) => s.settings.spriteFallback)
   const reducedMotion = useReducedMotion()
   // Re-render after a load failure; whether the drawn file is broken is read from `failed`.
   const [, setBroken] = useState<string>()
-  const entry = src ? sprites?.byPath.get(src) : undefined
+  const listed = src ? sprites?.byPath.get(src) : undefined
+  // B104: the part listing `src` loaded after this render (or not listed anywhere → stays a placeholder)
+  const [late, setLate] = useState<{ src: string; entry: SpriteEntry | undefined }>()
+  const needsPart = src !== undefined && listed === undefined && sprites?.load !== undefined && !sprites.fallbackMode && !userFallback
+  useEffect(() => {
+    if (!needsPart || !sprites?.load) return
+    let active = true
+    sprites.load(src).then(
+      (loaded) => {
+        if (active) setLate({ src, entry: loaded })
+      },
+      (error: unknown) => {
+        console.warn('[sprites] Manifest part unavailable; showing placeholder art.', error)
+        // settled without an entry: the placeholder stays, and it is now a fallback ("unlisted"), not a wait
+        if (active) setLate({ src, entry: undefined })
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [needsPart, sprites, src])
+  const entry = listed ?? (late !== undefined && late.src === src ? late.entry : undefined)
   const enabled = entry && sprites && !sprites.fallbackMode && !userFallback
   // The file actually drawn: the still thumbnail when listed (B30), else the sprite itself.
   const drawn = enabled ? (full ? entry : (entry.thumbnail ?? entry)) : undefined
   const usable = drawn !== undefined && !failed.has(drawn.path)
   const path = usable ? drawn.path : undefined
   const still = path !== undefined && reducedMotion && ANIMATABLE.test(path)
+
+  // B113d: tell the page why placeholder art shows (a part still loading isn't a fallback yet)
+  const partPending = needsPart && (late === undefined || late.src !== src)
+  const reason = spriteFallback({ src, sprites, userFallback, listed: entry !== undefined, loadingPart: partPending, failed: drawn !== undefined && !usable })
+  useEffect(() => {
+    onFallback?.(reason)
+  }, [onFallback, reason])
 
   // Snap once laid out, and again when the viewport (or zoom / DPR) changes — never per frame.
   const imgRef = useRef<HTMLImageElement>(null)

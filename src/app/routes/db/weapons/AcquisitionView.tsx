@@ -1,7 +1,9 @@
-import { CircleHelp, Fish, Hammer, Info, Lock, Package, Skull, Store, type LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { CircleHelp, ExternalLink, Fish, Hammer, Info, Lock, Package, Skull, Store, type LucideIcon } from 'lucide-react'
+import { Fragment, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { ConditionChip } from '../../../../components/ConditionChip'
 import { cx } from '../../../../components/cx'
+import { DerivedLabel } from '../../../../components/DerivedLabel'
 import { InventoryGrid } from '../../../../components/InventoryGrid'
 import { ItemSlot } from '../../../../components/ItemSlot'
 import { PixelPanel } from '../../../../components/PixelPanel'
@@ -10,8 +12,10 @@ import { SpriteImg } from '../../../../components/SpriteImg'
 import { UnknownValue } from '../../../../components/UnknownValue'
 import type { AcquisitionData } from '../../../../data-access'
 import type { DropSource, Recipe, SpriteIndex, Weapon } from '../../../../data-access/types'
+import { isModeledField } from '../../../../schemas/dropQuantity'
 import { getField } from '../../../../schemas/getField'
 import type { Acquisition } from '../../../../schemas'
+import { itemHref } from '../items/itemNav'
 import {
   DIFFICULTY_LABELS,
   dropSourceUrl,
@@ -34,12 +38,33 @@ import { weaponHref } from './weaponNav'
  * honest "Ways to obtain: Unknown" state. No route is ever inferred: only what the datasets
  * say, read through getField. Every Unknown rendered here is also counted by
  * ./weaponUnknowns.ts for the partially-verified badge — change both together.
+ *
+ * Shared by the weapon pages and the item encyclopedia (P6, AMENDMENTS-016): any record with the shared
+ * item core (`AcquirableRecord`). Materials and stations that are Item records link their item page; a
+ * drop quantity derived by the B105 ruling shows "derived"; fishing routes show their conditions as
+ * ConditionChips (linked to the condition's wiki article).
  */
+/** A record with the shared item core (DATA_SCHEMA_SPEC §2.2): a weapon, an encyclopedia item, … */
+export type AcquirableRecord = Pick<Weapon, 'id' | 'name' | 'wikiUrl' | 'acquisition' | 'gatedBy' | '_prov'>
+
+/** What a page knows about a referenced item beyond its name: its sprite and its page (encyclopedia: from the search docs). */
+export interface ItemRefInfo {
+  sprite?: string
+  /** Placeholder silhouette when it has no sprite. */
+  damageClass?: string
+  link?: { kind: 'internal'; to: string } | { kind: 'external'; href: string }
+}
+
 export interface AcquisitionViewProps {
-  weapon: Weapon
+  /** The record whose routes are shown (named `weapon` for the weapon pages that came first). */
+  weapon: AcquirableRecord
   data: AcquisitionData | undefined
   weaponsById: ReadonlyMap<number, Weapon> | undefined
   sprites: SpriteIndex | null
+  /** "weapon" (default) or "item": the record's noun in the page copy. */
+  noun?: string
+  /** Optional richer lookup for referenced items (sprite + page); the weapon pages go without it. */
+  refInfo?: (itemId: number) => ItemRefInfo | undefined
 }
 
 type ConditionList = readonly string[]
@@ -53,7 +78,7 @@ const ROUTE_ICON: Record<Acquisition['method'], LucideIcon> = {
   other: Info,
 }
 
-export function AcquisitionView({ weapon, data, weaponsById, sprites }: AcquisitionViewProps) {
+export function AcquisitionView({ weapon, data, weaponsById, sprites, noun = 'weapon', refInfo }: AcquisitionViewProps) {
   const acquisition = getField(weapon, 'acquisition')
   const routes = acquisition.status === 'unverified' ? [] : weapon.acquisition
 
@@ -62,12 +87,12 @@ export function AcquisitionView({ weapon, data, weaponsById, sprites }: Acquisit
       {acquisition.status === 'unverified' ? (
         <AcquisitionUnknown weapon={weapon} />
       ) : routes.length === 0 ? (
-        <p className="text-fg-muted">No ways to obtain this weapon are listed in the dataset.</p>
+        <p className="text-fg-muted">No ways to obtain this {noun} are listed in the dataset.</p>
       ) : (
         <ol className="space-y-5">
           {routes.map((route, index) => (
             <li key={index}>
-              <RouteBlock weapon={weapon} route={route} index={index} data={data} weaponsById={weaponsById} sprites={sprites} />
+              <RouteBlock weapon={weapon} route={route} index={index} data={data} weaponsById={weaponsById} sprites={sprites} refInfo={refInfo} />
             </li>
           ))}
         </ol>
@@ -77,7 +102,7 @@ export function AcquisitionView({ weapon, data, weaponsById, sprites }: Acquisit
   )
 }
 
-function AcquisitionUnknown({ weapon }: { weapon: Weapon }) {
+function AcquisitionUnknown({ weapon }: { weapon: AcquirableRecord }) {
   return (
     <div className="flex gap-3 border-2 border-dashed border-stone-500 bg-hatch-unknown p-4">
       <CircleHelp aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-unknown" />
@@ -106,12 +131,13 @@ function RouteHeading({ route }: { route: Acquisition }) {
 }
 
 interface RouteProps {
-  weapon: Weapon
+  weapon: AcquirableRecord
   route: Acquisition
   index: number
   data: AcquisitionData | undefined
   weaponsById: ReadonlyMap<number, Weapon> | undefined
   sprites: SpriteIndex | null
+  refInfo?: (itemId: number) => ItemRefInfo | undefined
 }
 
 function RouteBlock(props: RouteProps) {
@@ -139,7 +165,7 @@ function RouteBlock(props: RouteProps) {
           <RouteHeading route={route} />
           <dl className="space-y-1 text-sm">
             <InfoRow label="Where">{route.biomes.join(', ')}</InfoRow>
-            <ConditionsRow {...props} />
+            <ConditionsRow {...props} chips />
           </dl>
         </div>
       )
@@ -167,8 +193,12 @@ function conditionNames(slugs: ConditionList, data: AcquisitionData | undefined)
   return slugs.map((slug) => data?.conditions.byId.get(slug)?.name ?? humanizeSlug(slug)).join(', ')
 }
 
-/** Route-level availability conditions (`acquisition.<i>.conditions`); omitted when verified-empty. */
-function ConditionsRow({ weapon, index, data }: RouteProps) {
+/**
+ * Route-level availability conditions (`acquisition.<i>.conditions`); omitted when verified-empty. `chips`
+ * (fishing routes, P6 encyclopedia): each condition as a ConditionChip linking its wiki article — the
+ * B69/Q4 "non-node requirement" treatment, never folded into "obtainable".
+ */
+function ConditionsRow({ weapon, index, data, chips = false }: RouteProps & { chips?: boolean }) {
   const field = `acquisition.${index}.conditions`
   const view = getField(weapon, field)
   if (view.status === 'not-applicable') return null
@@ -180,12 +210,26 @@ function ConditionsRow({ weapon, index, data }: RouteProps) {
     )
   }
   const slugs = view.value as ConditionList
-  return slugs.length > 0 ? <InfoRow label="Conditions">{conditionNames(slugs, data)}</InfoRow> : null
+  if (slugs.length === 0) return null
+  if (!chips) return <InfoRow label="Conditions">{conditionNames(slugs, data)}</InfoRow>
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <dt className="text-fg-muted">Conditions:</dt>
+      {slugs.map((slug) => {
+        const condition = data?.conditions.byId.get(slug)
+        return (
+          <dd key={slug}>
+            <ConditionChip name={condition?.name ?? humanizeSlug(slug)} href={condition?.wikiUrl} />
+          </dd>
+        )
+      })}
+    </div>
+  )
 }
 
 // --- craft --------------------------------------------------------------------------------
 
-function CraftRoute({ weapon, route, data, weaponsById, sprites }: RouteProps & { route: Extract<Acquisition, { method: 'craft' }> }) {
+function CraftRoute({ weapon, route, data, weaponsById, sprites, refInfo }: RouteProps & { route: Extract<Acquisition, { method: 'craft' }> }) {
   const recipes = route.recipeIds.map((id) => ({ id, recipe: data?.recipes?.byId.get(id) }))
   const multiple = recipes.length > 1
   return (
@@ -203,6 +247,7 @@ function CraftRoute({ weapon, route, data, weaponsById, sprites }: RouteProps & 
                 data={data}
                 weaponsById={weaponsById}
                 sprites={sprites}
+                refInfo={refInfo}
               />
             ) : (
               <p className="text-sm text-fg-muted">This recipe isn’t in the loaded recipe data.</p>
@@ -225,12 +270,65 @@ function stationName(station: Recipe['stations'][number], data: AcquisitionData 
   }
 }
 
-function RecipeCard({
+const STATION_LINK = 'text-link underline decoration-1 underline-offset-4 hover:text-accent-strong'
+
+/**
+ * A station group whose every member is an Item record, as those members ("Iron Anvil or Lead Anvil"), in
+ * id order — each links its item page (AMENDMENTS-016 B113(e)); undefined when any member has no page.
+ */
+function groupMembers(station: Recipe['stations'][number], data: AcquisitionData | undefined): number[] | undefined {
+  if (station.kind !== 'group') return undefined
+  const members = data?.recipes?.groups.get(station.groupId)?.memberItemIds ?? []
+  return members.length > 0 && members.every((id) => data?.items?.ids.has(id) && data.names?.byId.has(id)) ? [...members].sort((a, b) => a - b) : undefined
+}
+
+/** Stations joined with " + "; a station that is an Item record — or a group of them — links its item page (P6 encyclopedia). */
+function StationList({ stations, data }: { stations: Recipe['stations']; data: AcquisitionData | undefined }) {
+  return (
+    <>
+      {stations.map((station, i) => {
+        const members = groupMembers(station, data)
+        if (members) {
+          return (
+            <span key={i} data-station-group={station.kind === 'group' ? station.groupId : undefined}>
+              {i > 0 ? ' + ' : null}
+              {members.map((id, j) => (
+                <Fragment key={id}>
+                  {j > 0 ? ' or ' : null}
+                  <Link to={itemHref(id)} className={STATION_LINK}>
+                    {data?.names?.byId.get(id)}
+                  </Link>
+                </Fragment>
+              ))}
+            </span>
+          )
+        }
+        const name = stationName(station, data)
+        const page = station.kind === 'item' && data?.items?.ids.has(station.itemId) ? itemHref(station.itemId) : undefined
+        return (
+          <span key={i}>
+            {i > 0 ? ' + ' : null}
+            {page ? (
+              <Link to={page} className={STATION_LINK}>
+                {name}
+              </Link>
+            ) : (
+              name
+            )}
+          </span>
+        )
+      })}
+    </>
+  )
+}
+
+export function RecipeCard({
   recipe,
   label,
   data,
   weaponsById,
   sprites,
+  refInfo,
 }: {
   recipe: Recipe
   /** Accessible name of the materials grid. */
@@ -238,12 +336,12 @@ function RecipeCard({
   data: AcquisitionData | undefined
   weaponsById: ReadonlyMap<number, Weapon> | undefined
   sprites: SpriteIndex | null
+  refInfo?: (itemId: number) => ItemRefInfo | undefined
 }) {
-  const stations = recipe.stations.map((s) => stationName(s, data))
   return (
     <dl className="space-y-2 text-sm">
-      <InfoRow label={stations.length > 1 ? 'Crafting stations' : 'Crafting station'}>
-        {stations.length > 0 ? stations.join(' + ') : 'By hand (no station)'}
+      <InfoRow label={recipe.stations.length > 1 ? 'Crafting stations' : 'Crafting station'}>
+        {recipe.stations.length > 0 ? <StationList stations={recipe.stations} data={data} /> : 'By hand (no station)'}
       </InfoRow>
       {recipe.conditions.length > 0 ? <InfoRow label="Requires">{conditionNames(recipe.conditions, data)}</InfoRow> : null}
       {recipe.resultAmount > 1 ? <InfoRow label="Makes">{recipe.resultAmount}</InfoRow> : null}
@@ -252,7 +350,7 @@ function RecipeCard({
         <dd className="mt-2">
           <InventoryGrid label={label} cellMinWidth="12rem">
             {recipe.ingredients.map((ingredient, i) => (
-              <MaterialCell key={i} ingredient={ingredient} data={data} weaponsById={weaponsById} sprites={sprites} />
+              <MaterialCell key={i} ingredient={ingredient} data={data} weaponsById={weaponsById} sprites={sprites} refInfo={refInfo} />
             ))}
           </InventoryGrid>
         </dd>
@@ -264,27 +362,40 @@ function RecipeCard({
 /**
  * One recipe material: an ItemSlot (sprite whole-number scaled into the 32px slot, quantity
  * badge as in-game) plus its visible name — names stay readable on touch screens, where slot
- * tooltips can't be hovered. Materials that are weapons link to their page here; anything else
- * has no page on this site yet, so the cell is inert (never a dead local link, never a guessed
- * wiki URL). The amount is always announced, including ×1 (no badge, as in-game).
+ * tooltips can't be hovered. Materials that are weapons link to their page, Item records to their
+ * encyclopedia page (P6); with `refInfo` (the encyclopedia) a material also shows its own sprite and an
+ * armor / accessory material opens its own wiki article. Anything else is an inert cell (never a dead
+ * local link, never a guessed wiki URL). The amount is always announced, including ×1 (no badge, as in-game).
  */
 function MaterialCell({
   ingredient,
   data,
   weaponsById,
   sprites,
+  refInfo,
 }: {
   ingredient: Recipe['ingredients'][number]
   data: AcquisitionData | undefined
   weaponsById: ReadonlyMap<number, Weapon> | undefined
   sprites: SpriteIndex | null
+  refInfo?: (itemId: number) => ItemRefInfo | undefined
 }) {
   const ref = ingredient.ref
   const weapon = ref.kind === 'item' ? weaponsById?.get(ref.itemId) : undefined
+  const info = ref.kind === 'item' ? refInfo?.(ref.itemId) : undefined
   const name =
     ref.kind === 'item'
       ? (data?.names?.byId.get(ref.itemId) ?? weapon?.name ?? `Item #${ref.itemId}`)
       : (data?.recipes?.groups.get(ref.groupId)?.name ?? humanizeSlug(ref.groupId))
+  const link: ItemRefInfo['link'] =
+    ref.kind !== 'item'
+      ? undefined
+      : weapon
+        ? { kind: 'internal', to: weaponHref(weapon.id) }
+        : data?.items?.ids.has(ref.itemId)
+          ? { kind: 'internal', to: itemHref(ref.itemId) }
+          : info?.link
+  const sprite = weapon?.sprite ?? info?.sprite
   const slot = (
     // The visible name (with the sr-only amount) labels the cell; the slot is the picture.
     <div aria-hidden="true" className="shrink-0">
@@ -292,11 +403,12 @@ function MaterialCell({
         item={{
           name,
           stack: ingredient.amount,
-          sprite: weapon ? (
-            <SpriteImg src={weapon.sprite} sprites={sprites} damageClass={weapon.damageClass} box={32} />
-          ) : (
-            <SpriteImg src={undefined} sprites={sprites} placeholder="material" box={32} />
-          ),
+          sprite:
+            weapon || info?.damageClass ? (
+              <SpriteImg src={sprite} sprites={sprites} damageClass={weapon?.damageClass ?? info?.damageClass} box={32} />
+            ) : (
+              <SpriteImg src={sprite} sprites={sprites} placeholder="material" box={32} />
+            ),
         }}
       />
     </div>
@@ -307,15 +419,33 @@ function MaterialCell({
       {name}
     </span>
   )
-  if (weapon) {
+  if (link?.kind === 'internal') {
     return (
       <Link
-        to={weaponHref(weapon.id)}
+        to={link.to}
         className="flex min-h-tap items-center gap-3 text-link underline decoration-1 underline-offset-4 hover:text-accent-strong"
       >
         {slot}
         {text}
       </Link>
+    )
+  }
+  if (link?.kind === 'external') {
+    return (
+      <a
+        href={link.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex min-h-tap items-center gap-3 text-link underline decoration-1 underline-offset-4 hover:text-accent-strong"
+      >
+        {slot}
+        <span className="min-w-0">
+          <span className="sr-only">{ingredient.amount} × </span>
+          {name}
+          <ExternalLink aria-hidden="true" className="ml-1 inline size-3.5 align-baseline" />
+          <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
+        </span>
+      </a>
     )
   }
   return (
@@ -372,6 +502,12 @@ function DropValueCell({ drop, cell, format }: { drop: DropSource; cell: DropCel
         <span className="text-fg-muted">
           n/a<span className="sr-only"> (not applicable)</span>
         </span>
+      ) : isModeledField(drop, cell.field) ? (
+        // AMENDMENTS-016 B105: derived from the item kind, never shown like a wiki-stated quantity
+        <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+          <span className="tabular-nums">{format(view.value)}</span>
+          <DerivedLabel className="text-xs" />
+        </span>
       ) : (
         <span className="tabular-nums">{format(view.value)}</span>
       )}
@@ -379,8 +515,10 @@ function DropValueCell({ drop, cell, format }: { drop: DropSource; cell: DropCel
   )
 }
 
-function TreasureBagTag() {
-  return <span className="ml-2 border-2 border-stone-600 px-1.5 text-xs font-semibold text-fg-muted">Treasure Bag</span>
+/** A source's Treasure Bag tag — kept on one line, and left out where the source's name already says it ("Treasure Bag (Golem)"). */
+function TreasureBagTag({ name }: { name?: string }) {
+  if (name !== undefined && /treasure bag/i.test(name)) return null
+  return <span className="ml-2 inline-block border-2 border-stone-600 px-1.5 text-xs font-semibold whitespace-nowrap text-fg-muted">Treasure Bag</span>
 }
 
 /**
@@ -388,7 +526,7 @@ function TreasureBagTag() {
  * groupDropSources — never when a value is Unknown, so each Unknown names its own source).
  * A group lists every source by name, each linking to the wiki page its data came from.
  */
-function DropCard({ drops, weapon, data }: { drops: readonly DropSource[]; weapon: Weapon; data: AcquisitionData | undefined }) {
+function DropCard({ drops, weapon, data }: { drops: readonly DropSource[]; weapon: AcquirableRecord; data: AcquisitionData | undefined }) {
   const [drop] = drops
   const grouped = drops.length > 1
   const sourceUrl = dropSourceUrl(drop)
@@ -422,7 +560,7 @@ function DropCard({ drops, weapon, data }: { drops: readonly DropSource[]; weapo
         <div className="flex flex-wrap items-center justify-between gap-x-3">
           <p className="font-semibold">
             {drop.source.npcName}
-            {drop.source.treasureBag ? <TreasureBagTag /> : null}
+            {drop.source.treasureBag ? <TreasureBagTag name={drop.source.npcName} /> : null}
           </p>
           {sourceUrl ? <ProvenanceLink href={sourceUrl} label="Source" srContext={`drop data for ${drop.source.npcName} (${weapon.name})`} /> : null}
         </div>
@@ -511,7 +649,7 @@ function PurchaseRoute(props: RouteProps & { route: Extract<Acquisition, { metho
  * "obtainable now" (Feature A/B rule); this page makes no availability claim either way.
  * Gates render as GateBadge-style chips: lock glyph + name (UX_SPEC §8), not colour alone.
  */
-function GateRow({ weapon, data }: { weapon: Weapon; data: AcquisitionData | undefined }) {
+function GateRow({ weapon, data }: { weapon: AcquirableRecord; data: AcquisitionData | undefined }) {
   const view = getField(weapon, 'gatedBy')
   if (view.status === 'not-applicable') return null
   const gate = view.value as Weapon['gatedBy']
@@ -557,13 +695,13 @@ function GateRow({ weapon, data }: { weapon: Weapon; data: AcquisitionData | und
 export const ACQUISITION_TITLE_ID = 'acq-title'
 
 /** Panel wrapper used by the page and by tests. */
-export function AcquisitionPanel({ weapon, children }: { weapon: Weapon; children?: ReactNode }) {
+export function AcquisitionPanel({ weapon, children }: { weapon: Pick<AcquirableRecord, 'name' | 'wikiUrl'>; children?: ReactNode }) {
   return (
     <PixelPanel as="section" aria-labelledby={ACQUISITION_TITLE_ID} className="space-y-4">
       <h2
         id={ACQUISITION_TITLE_ID}
         tabIndex={-1}
-        className="font-display text-sm leading-relaxed text-accent text-shadow-pixel focus:outline-none md:text-base"
+        className="scroll-mt-24 font-display text-sm leading-relaxed text-accent text-shadow-pixel focus:outline-none md:text-base"
       >
         How to obtain
       </h2>

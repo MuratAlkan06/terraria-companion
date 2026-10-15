@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { BOSS_PAGE_IDS, isCoveredBy, ITEM_DETAIL_CORE_FILE, ITEM_DETAIL_INDEX_FILE, ItemDetailIndex, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SpriteManifest, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type ProvSource, type Recipe, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, isCoveredBy, ITEM_DETAIL_CORE_FILE, ITEM_DETAIL_INDEX_FILE, ItemDetailIndex, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFile, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type ProvSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
@@ -23,8 +23,9 @@ import { b70Sections } from '../emit/b70Report'
 import { corpusSections } from '../emit/corpusReport'
 import { renderGapReport } from '../emit/gapReport'
 import { THUMBNAIL_MIN_BYTES, thumbnailFor } from '../emit/thumbnail'
-import { ITEM_SHARD_FILE, serializeItemIndex, shardItems } from '../emit/itemShards'
-import { checkBudgets, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
+import { ITEM_SHARD_FILE, ITEM_SHARD_SIZE, serializeItemIndex, shardItems } from '../emit/itemShards'
+import { serializeSpriteIndex, serializeSpritePart, splitSpriteManifest, SPRITE_PART_FILE } from '../emit/spriteParts'
+import { checkBudgets, DATA_CHUNK_BUDGET_GZ, gzSize, serializeObject, serializeRecords, type EmittedFile } from '../emit/write'
 import { writeFiles } from '../emit/write'
 import { buildAccessories } from '../merge/accessories'
 import { buildCorpus, corpusFoodBuffNames } from '../merge/corpus'
@@ -47,6 +48,7 @@ import { buildLabParams, coverageByFamily, FAMILY_CATEGORIES, SCREEN_RULES } fro
 import { conditionMatchers, loadArmorSetsOverlay, loadBossesOverlay, loadBuffsOverlay, loadConditionsOverlay, loadContainersOverlay, loadGatherablesOverlay, loadLabParamsOverlay, loadProgressionOverlay, loadVendorsOverlay, loadWithheldOverlay } from '../merge/overlays'
 import { isoDate, makeProv } from '../merge/prov'
 import { buildRecipes } from '../merge/recipes'
+import { applyUnitQuantity, type DropItemKind } from '../merge/quantity'
 import { PAGE_BUCKET_LABEL, reconcileCategories, reconcileWeaponLists, type PageBucket } from '../merge/reconcile'
 import { buildConditions, buildItemUniverse } from '../merge/registry'
 import { buildSearchDocs } from '../merge/search'
@@ -384,7 +386,24 @@ async function main(): Promise<number> {
     sources: routeSources,
   })
   const itemRecords = [...ammoPotionRecords, ...corpus.items].sort((a, b) => a.id - b.id)
-  const stageGaps = [...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...potions.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps, ...corpus.gaps]
+  // AMENDMENTS-016 B105: a drop whose wiki cell states no quantity → 1 for non-consumable ruled kinds only (modeledFields)
+  const itemKind = new Map<number, DropItemKind>([
+    ...weapons.weapons.map((w) => [w.id, 'weapon'] as const),
+    ...armor.pieces.map((a) => [a.id, 'armor'] as const),
+    ...accessories.accessories.map((a) => [a.id, 'accessory'] as const),
+    ...itemRecords.map((i) => [i.id, i.category] as const),
+  ])
+  const unitQuantity = applyUnitQuantity({
+    drops: drops.drops,
+    unstated: drops.unstatedQuantity,
+    kindOf: (id) => itemKind.get(id),
+    consumable: (id) => {
+      const flag = (iteminfo.items.get(id)?.stats as Record<string, unknown> | undefined)?.consumable
+      return typeof flag === 'boolean' ? flag : undefined
+    },
+  })
+  const dropRecords = unitQuantity.drops
+  const stageGaps =[...recipes.gaps, ...drops.gaps, ...weapons.gaps, ...bosses.gaps, ...ammo.gaps, ...potions.gaps, ...buffs.gaps, ...armor.gaps, ...accessories.gaps, ...corpus.gaps]
   // P6-S0 universe accounting: every Module:Iteminfo/data item is an emitted record or a declared gap
   const emittedItemIds = new Set([...weapons.weapons, ...itemRecords, ...armor.pieces, ...accessories.accessories].map((r) => r.id))
   const declaredIds = new Set(stageGaps.filter((g) => g.field === 'id').map((g) => g.ref))
@@ -451,8 +470,11 @@ async function main(): Promise<number> {
       'Potions (B70 P4-prep, pipeline/merge/potions.ts): Cargo Items rows typed "potion" (not "food") that are the same desktop item in Module:Iteminfo/data and grant a buff (buffType) or restore health / mana; category "potion" in items.detail.json. healLife / healMana = Iteminfo, cross-checked with the infobox (a range such as "70–120" withholds the value). buffGrants: Iteminfo buffType for buffTime ticks (cross-checked with the Cargo buffs/debuffs and the infobox Duration), Potion Sickness when Iteminfo potion is true and Mana Sickness for mana-restoring items (Cargo debuffs agreeing; duration from the infobox, else Unknown). Reconciled against the wiki\'s "Buff potions" table and the Potions navbox (gap report). Utility consumables with no buff and no healing (Recall, Wormhole, …) are excluded with a reason.',
       'Item corpus (P6-S0, pipeline/merge/corpus.ts): every Cargo Items row that is the same desktop item in Module:Iteminfo/data and that no other collection emits, as an Item (type "item"); category = the first matching rule over the wiki infobox type list (station, summoning, mount, pet, hook, tool, dye, vanity, food, permanent-booster, exploration-utility, fishing, grab-bag, furniture, block, material, other — the gap report lists each rule), tags = the slugged type list (+ quest-fish, unobtainable). rarity / consumable cross-checked with the infobox; maxStack only for consumable items (non-stacking items report 9999 in both sources, B7); tool / fishing / bait powers = Iteminfo cross-checked with the infobox (axe power = Iteminfo axe × 5); buffGrants = Iteminfo buffType for buffTime ticks when the buff is in the registry (food: Well Fed and its tiers; pet buffs are outside the A4-bounded registry → Unknown); hook / mount stats are not extracted (Unknown); summonsBossNode derived from Boss.summon.items. Excluded rows (set infoboxes, no item ID, sync lag, name mismatch, duplicates) and Iteminfo items without any Cargo row are gap entries, so every Module:Iteminfo/data item is an emitted record or a declared gap — validate enforces it for every recipe / recipe-group / station / drop item reference (manifest itemClosure).',
       'Fishing (P6-S0, AMENDMENTS-004 B20, pipeline/parse/fishing.ts + merge/fishing.ts): the "Fishing catches" article\'s catch tables give every fished item its `fishing` routes — where = the liquid (Lava / Honey), the row\'s biome conditions (+ heights when not "Any"), conditions = the article\'s World status / generic condition labels mapped through the conditions overlay (match.fishingConditions); an unmapped label makes the route\'s conditions Unknown. Remix-seed rows and NPC catches are skipped. A fishing route never derives a gate (blocker fishing-route-ungated): no pond / biome / height is reviewed for gating.',
+      'No stated quantity (AMENDMENTS-016 B105, pipeline/merge/quantity.ts): a drop whose wiki cell states no quantity keeps it Unknown (coins, materials, placeables, potions, ammo, grab bags, consumable weapons, Items outside the ruled categories), except a non-consumable (Module:Iteminfo/data consumable false) weapon, armor piece, accessory or vanity / tool / pet / mount Item: quantity 1, derived from the item kind and listed in _prov.modeledFields ("quantity: 1 derived from non-consumable item kind"; validate re-checks each).',
+      'Sprite manifest split (AMENDMENTS-016 B104): public/sprites/manifest.json stays the complete committed provenance record (every file\'s wiki File: page, SHA-1, size, rights); the app reads public/sprites/manifest.index.json (the D3 fallbackMode lever + the part list) and loads only the parts holding the sprites it draws — manifest.<weapons|armor|accessories|bosses>.json and manifest.items.<n>.json per 1,000 item ids — each a projection of manifest.json (path, ref, wiki file page, size in px, thumbnail).',
+      'Search docs carry their record\'s sprite path (weapons, armor, accessories, items, bosses), so search rows and guide links draw sprites without the whole manifest.',
       'Pipeline queue (P6-S0, AMENDMENTS-015): condition hellforge-absent maps Skeletron\'s Hellforge caption and Cargo note (B84); DropSource.dropsWith links the records of one bundled drop cell both ways (B84 "drops together"); wholly Unknown boss stats from unparseable health / defense cells carry their parse reason as a statsByDifficulty gap (B83(f)); the mechanical boss → all-mechanical-bosses edges quote a whole sentence (B93(ii)).',
-      'Item detail files (P6-S0, DATA_SCHEMA_SPEC §5 sharding): items.detail.json keeps the records the shipped Lab / boss pages / readiness checker load — the ammo, the potion corpus and every item a boss record references (summon and prep-checklist items); every other item lives in the ID-range shard items.detail.<n>.json (ids n×1000 … n×1000+999); items.detail.index.json lists each file\'s ids. items.list.json and the search docs cover every item.',
+      'Item detail files (P6-S0, DATA_SCHEMA_SPEC §5 sharding): items.detail.json keeps the records the shipped Lab / boss pages / readiness checker load — the ammo, the potion corpus and every item a boss record references (summon and prep-checklist items) and, AMENDMENTS-016 B104, every item a boss page lists as a drop (Boss.dropIds); every other item lives in the ID-range shard items.detail.<n>.json (ids n×1000 … n×1000+999); items.detail.index.json lists each file\'s ids (the app\'s item loader resolves an id through it and loads only that file). items.list.json and the search docs cover every item.',
       'Gating expansion (B70 P4-prep: AMENDMENTS-014 B68, AMENDMENTS-015 B78; pipeline/merge/sources.ts + gating.ts): §7b also takes (1) vendor routes — the NPC\'s quoted availability (overlays/vendors.json: its move-in rule as conditions, "has one of these items" as the minimum over them, NPCs it needs) AND the item\'s row in the NPC article\'s shop table with a reviewed Availability text; vendors whose availability is an OR, an NPC count or a random visit stay Unknown; (2) loot of reviewed containers (overlays/containers.json, matched by name AND article: chests and Shadow Orbs / Crimson Hearts with their quoted conditions; ore-tier bars only in their world, "(in worlds with Iron)"); (3) a curated gatherable base-material registry (overlays/gatherables.json, quote-backed: gate-free early pre-Hardmode unless conditioned). Either-or conditions over an exhaustive group (the world evil, the ore of a tier) drop out; a gate-free sufficient route is exact even when another route is unknown; anything else unknown keeps gatedBy Unknown. Purchase acquisitions carry their derived conditions (NPC ∪ shop row) or list them Unknown; gatherable items get an "other" acquisition quoting the evidence sentence.',
     ],
     partial: { itemUniverse: ITEM_UNIVERSE_FILE, pending: PENDING },
@@ -467,7 +489,7 @@ async function main(): Promise<number> {
     buffs: buffs.buffs,
     recipes: recipes.recipes,
     recipeGroups: recipes.groups,
-    drops: drops.drops,
+    drops: dropRecords,
     enemies: enemies.enemies,
     conditions,
     bosses: bosses.bosses,
@@ -535,10 +557,19 @@ async function main(): Promise<number> {
     return 1
   }
   const spriteManifestText = `{"fallbackMode":${JSON.stringify(spriteManifest.fallbackMode)},"rightsNote":${JSON.stringify(spriteManifest.rightsNote)},"files":${serializeRecords(spriteManifest.files).trimEnd()}}\n`
+  // AMENDMENTS-016 B104: the runtime split the app loads (index + per-directory / per-id-range parts)
+  const spriteSplit = splitSpriteManifest(spriteManifest, ITEM_SHARD_SIZE)
+  SpriteManifestIndex.parse(spriteSplit.index)
+  for (const part of spriteSplit.parts) SpriteManifestPart.parse(part)
+  const spriteFilesOut = new Map<string, string>([[SPRITE_INDEX_FILE, serializeSpriteIndex(spriteSplit.index)], ...spriteSplit.parts.map((p): [string, string] => [spritePartFile(p.part), serializeSpritePart(p)])])
 
   // P6-S0 item-detail files: core (what the shipped app loads in full) + ID-range shards + index
   const bossItemRefs = new Set(first.dataset.bosses.flatMap((b) => [...b.summon.items, ...(b.prepChecklist ?? []).flatMap((p) => p.itemIds ?? [])]))
-  const coreItemIds = new Set([...ammoPotionRecords.map((i) => i.id), ...bossItemRefs])
+  // AMENDMENTS-016 B104: every item a boss page lists as a drop (Boss.dropIds) is in the core file, so the boss pages'
+  // drop rows resolve the record (its own page) instead of falling back to the wiki search
+  const dropItemOf = new Map(dropRecords.map((d) => [d.id, d.itemId]))
+  const bossDropItems = new Set(first.dataset.bosses.flatMap((b) => b.dropIds.flatMap((id) => dropItemOf.get(id) ?? [])))
+  const coreItemIds = new Set([...ammoPotionRecords.map((i) => i.id), ...bossItemRefs, ...bossDropItems])
   const itemShards = shardItems(itemDetails, coreItemIds)
   ItemDetailIndex.parse(itemShards.index)
 
@@ -560,7 +591,7 @@ async function main(): Promise<number> {
     [SEARCH_DOCS_FILE, serializeRecords(searchDocs)],
     [collectionFile('recipes'), serializeRecords(recipes.recipes)],
     [collectionFile('recipeGroups'), serializeRecords(recipes.groups)],
-    [collectionFile('drops'), serializeRecords(drops.drops)],
+    [collectionFile('drops'), serializeRecords(dropRecords)],
     [collectionFile('enemies'), serializeRecords(enemies.enemies)],
     [collectionFile('conditions'), serializeRecords(conditions)],
     [collectionFile('bosses'), serializeRecords(first.dataset.bosses)],
@@ -568,7 +599,7 @@ async function main(): Promise<number> {
     ['meta.json', serializeObject(result.meta)],
     ['gaps.json', `{"generatedAt":${JSON.stringify(result.gaps.generatedAt)},"gameVersion":${JSON.stringify(result.gaps.gameVersion)},"summary":${JSON.stringify(result.gaps.summary)},"entries":${serializeRecords(result.gaps.entries).trimEnd()}}\n`],
   ])
-  const budget = checkBudgets(files)
+  const budget = checkBudgets(new Map([...files, ...spriteFilesOut]))
   if (budget.errors.length > 0) {
     for (const e of budget.errors) console.error(`  ${formatError(e)}`)
     return 1
@@ -578,6 +609,7 @@ async function main(): Promise<number> {
   writeFiles(outDir, files, (f) => owned.has(f) || ITEM_SHARD_FILE.test(f))
   mkdirSync(dirname(spriteManifestPath), { recursive: true })
   writeFileSync(spriteManifestPath, spriteManifestText)
+  writeFiles(dirname(spriteManifestPath), spriteFilesOut, (f) => f === SPRITE_INDEX_FILE || SPRITE_PART_FILE.test(f))
 
   // ---- human-readable gap report ----
   const logPath = join(RAW_DIR, 'requests.log.jsonl')
@@ -1356,7 +1388,7 @@ async function main(): Promise<number> {
       armorSets: setDetails,
       buffs: first.dataset.buffs,
       bosses: first.dataset.bosses,
-      drops: drops.drops,
+      drops: dropRecords,
       derive,
       deriveBaseline,
       withheldIds: new Set(withheld.keys()),
@@ -1380,6 +1412,8 @@ async function main(): Promise<number> {
       bosses: result.dataset.bosses,
       edges: result.dataset.edges,
       itemIndex: itemShards.index,
+      unitQuantity,
+      bossDropCoreIds: new Set([...bossDropItems].filter((id) => !bossItemRefs.has(id))),
       fishingGatingDelta: [...weaponDetails, ...armorDetails, ...accessoryDetails, ...itemDetails].flatMap((r) => {
         const show = (g: ReturnType<typeof derive>) => (g.ok ? `${g.gatedBy.stage}${g.gatedBy.bosses.length ? ` · ${g.gatedBy.bosses.join(', ')}` : ''}${g.gatedBy.conditions.length ? ` · [${g.gatedBy.conditions.join(', ')}]` : ''}` : 'Unknown')
         const [before, after] = [show(deriveNoFishing(r.id)), show(derive(r.id))]
@@ -1387,11 +1421,25 @@ async function main(): Promise<number> {
       }),
     }),
     {
+      title: 'Data file growth watch (AMENDMENTS-016 B104)',
+      lines: (() => {
+        const kb = (file: string) => ((budget.sizes.find((f) => f.file === file)?.gzBytes ?? 0) / 1024).toFixed(1)
+        const byRef = new Map<string, number>()
+        for (const g of stageGaps) byRef.set(g.ref.split(':')[0], (byRef.get(g.ref.split(':')[0]) ?? 0) + 1)
+        return [
+          `${STAGE_GAPS_FILE}: ${stageGaps.length} entries, ${kb(STAGE_GAPS_FILE)} KB gz (budget ${DATA_CHUNK_BUDGET_GZ / 1024} KB gz). The app loads it only on boss pages (optional: the stated reasons behind declared Unknowns), so its growth with the item corpus costs those pages alone. Entries by ref kind: ${[...byRef].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}. When it nears the budget, split it by ref kind (boss pages read only boss: / drop: / i: reasons of their own records) the way the item details and the sprite manifest are split.`,
+          `${ITEM_DETAIL_CORE_FILE}: ${itemShards.index.files[0].ids.length} records, ${kb(ITEM_DETAIL_CORE_FILE)} KB gz (Lab, boss pages and readiness load it whole); ${LIST_FILES.items}: ${kb(LIST_FILES.items)} KB gz (the encyclopedia browse); ${SEARCH_DOCS_FILE}: ${kb(SEARCH_DOCS_FILE)} KB gz (now with each record's sprite path).`,
+        ]
+      })(),
+    },
+    {
       title: 'Sprites',
       lines: [
         `public/sprites/manifest.json lists ${weapons.sprites.length}/${weaponDetails.length} weapon sprites, ${bosses.sprites.length}/${first.dataset.bosses.length} boss sprites, ${ammo.sprites.length}/${ammoItemDetails.length} ammo item sprites, ${potions.sprites.length}/${potionDetails.length} potion sprites, ${armor.sprites.length}/${armorDetails.length} armor piece sprites and ${accessories.sprites.length}/${accessoryDetails.length} accessory sprites (${spriteManifest.files.filter((f) => f.path.endsWith('.gif')).length} animated GIFs), each with its wiki File: page, SHA-1, size and rights "re-logic"; ${weaponDetails.length - weapons.sprites.length} weapons, ${armorDetails.length - armor.sprites.length} armor pieces and ${accessoryDetails.length - accessories.sprites.length} accessories have no wiki image and use the placeholder. Binaries are downloaded locally by \`npm run pipeline:sprites\` (verified against imageinfo — exact SHA-1 or CDN original size, see #8; gitignored, never in CI — A10); fallbackMode=false.`,
         '',
         `Thumbnails (AMENDMENTS-007 B30): every sprite file over ${THUMBNAIL_MIN_BYTES / 1024} KB gets a static PNG of its first frame, downscaled by a whole number to ≤ 128 px (nearest-neighbour block sampling — pixel art is never resampled fractionally), generated locally by \`npm run pipeline:sprites\`: ${spriteManifest.files.filter((f) => f.thumbnail).map((f) => `${f.path} (${f.ref}, ${f.bytes} B, ${f.width}×${f.height}) → ${f.thumbnail?.path} ${f.thumbnail?.width}×${f.thumbnail?.height}`).join('; ') || 'none'}. Heavy files without a thumbnail (generator decodes GIF only): ${heavyWithoutThumbnail.map((f) => f.path).join(', ') || 'none'}. Rows and cards should use the thumbnail, the full file only on detail / boss pages (UI wiring: next UI slice).`,
+        '',
+        `Runtime split (AMENDMENTS-016 B104): the app no longer fetches manifest.json (${(gzSize(spriteManifestText) / 1024).toFixed(1)} KB gz, kept as the committed provenance record). It reads ${SPRITE_INDEX_FILE} (${budget.sizes.find((f) => f.file === SPRITE_INDEX_FILE)?.gzBytes ?? 0} B gz: the fallbackMode lever + ${spriteSplit.parts.length} parts) and loads only the parts holding the sprites a page draws: ${spriteSplit.index.parts.map((p) => `${p.file} (${p.count} files, ${((budget.sizes.find((f) => f.file === p.file)?.gzBytes ?? 0) / 1024).toFixed(1)} KB gz)`).join('; ')}.`,
       ],
     },
   ]

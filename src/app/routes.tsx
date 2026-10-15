@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, House, Package, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -150,6 +150,29 @@ export const APP_ROUTES: readonly AppRoute[] = [
       order: 40,
       description: 'Check your gear against a boss, factor by factor',
     },
+  },
+  {
+    // P6 item encyclopedia (AMENDMENTS-016; UX_SPEC §1 `/items`, §3.10): category hub + every Item record, filterable
+    // by category / game stage / name (`?category=&stage=&q=`). Entry points: the phone "More" sheet (UX_SPEC §2:
+    // "… Readiness, Plans, Items, Guides …") and — B96b/B99b precedent — the header's desktop "More" menu, after
+    // Readiness and before Guides (UX_SPEC §2 header order: … Bosses · Items · Guides); search rows and boss-page drop
+    // rows link items in-app.
+    id: 'items',
+    path: '/items',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.ItemsListPage }))),
+    nav: {
+      label: 'Items',
+      icon: Package,
+      surfaces: ['header', 'more'],
+      order: 50,
+      description: 'Materials, potions, tools and every other item, with how to get them',
+    },
+  },
+  {
+    // P6: an Item record's page (stats, how to obtain, used in); a weapon / armor / accessory id is a styled 404.
+    id: 'item-detail',
+    path: '/items/:id',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.ItemDetailPage }))),
   },
   {
     id: 'guides',

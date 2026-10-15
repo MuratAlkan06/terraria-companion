@@ -255,12 +255,13 @@ describe('Improve My Build panel (P5-S7; UX_SPEC §3.8, §8 GatedSection)', () =
   const { analysis, improve } = analysisOf(PLANTERA, MECHS)
   const html = wrap(createElement(ImprovePanel, { result: improve, ctx: segmentContext(page, analysis.estimates), sprites: null, setUrl: (s) => page.engine.sets.get(s)?.wikiUrl, idPrefix: 'imp' }))
 
-  it('per group: obtainable-now rows with "Show Me How to Get It" (weapon → its acquisition section; others → their wiki article)', () => {
+  it('per group: obtainable-now rows with "Show Me How to Get It" (weapon / item → its page\'s acquisition section; others → their wiki article)', () => {
     expect(ACQUISITION_ANCHOR).toBe(ACQUISITION_TITLE_ID)
     const weapon = /<section[^>]*aria-labelledby="imp-weapon"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
     for (const s of improve.groups[0].obtainable) expect(new RegExp(`<a [^>]*data-show-how="i:${s.id}"[^>]*>`).exec(weapon)?.[0]).toContain(`href="/weapons/${s.id}#acq-title"`)
     const healing = /<section[^>]*aria-labelledby="imp-healing"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
-    expect(healing).toMatch(/<a href="https:\/\/terraria\.wiki\.gg\/wiki\/Healing_Potion" target="_blank" rel="noopener noreferrer" data-show-how="i:188"/)
+    // P6 encyclopedia (AMENDMENTS-016): an Item record's "Show Me How to Get It" opens its item page at "How to obtain"
+    expect(healing).toMatch(/<a [^>]*href="\/items\/188#acq-title"[^>]*data-show-how="i:188"|<a [^>]*data-show-how="i:188"[^>]*href="\/items\/188#acq-title"/)
     expect(count(html, /data-show-how="/g)).toBe(improve.groups.reduce((n, g) => n + g.obtainable.length + g.gated.reduce((m, x) => m + x.items.length, 0), 0))
   })
 
@@ -475,8 +476,9 @@ describe('wording and placement (AMENDMENTS-015 B96c/d)', () => {
       for (const url of icons) expect(inline, li.slice(0, 60)).not.toContain(url)
     }
     const healing = /<li data-line="preparation\.healing"[\s\S]*?<\/li>/.exec(html)?.[0] ?? ''
-    expect(healing).toContain('href="https://terraria.wiki.gg/wiki/Healing_Potion"')
-    expect(healing).not.toContain('data-source-link')
+    // P6 encyclopedia: the potion named in its line links its item page; its wiki article is the line's one source icon
+    expect(healing).toContain('href="/items/188"')
+    expect([...healing.matchAll(/<a href="([^"]+)"[^>]*data-source-link=""/g)].map((m) => m[1])).toEqual(['https://terraria.wiki.gg/wiki/Healing_Potion'])
   })
 
   it('plural boss names read right on screen and to screen readers: "The Twins charge at you", "the article about The Twins" — never "the The …"', () => {

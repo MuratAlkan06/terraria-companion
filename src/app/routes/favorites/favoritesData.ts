@@ -8,6 +8,9 @@ import { loadBosses, loadList, loadSpriteIndex, peekBosses, peekList, peekSprite
 import type { Boss, SpriteIndex, WeaponListRecord } from '../../../data-access/types'
 import type { FavoriteSources } from './favoritesModel'
 
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): the favorites' weapon and boss cards; any other sprite loads on demand. */
+const SPRITE_DIRS = ['weapons', 'bosses'] as const
+
 export interface FavoritesPageData extends FavoriteSources {
   sprites: SpriteIndex | null
 }
@@ -24,7 +27,7 @@ export async function loadFavoritesData(): Promise<FavoritesPageData> {
   const [weapons, bosses, sprites] = await Promise.all([
     loadList('weapons'),
     loadBosses(),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
@@ -35,5 +38,5 @@ export async function loadFavoritesData(): Promise<FavoritesPageData> {
 export function peekFavoritesData(): FavoritesPageData | undefined {
   const weapons = peekList('weapons')
   const bosses = peekBosses()
-  return weapons && bosses ? pageData(weapons, bosses, peekSpriteIndex() ?? null) : undefined
+  return weapons && bosses ? pageData(weapons, bosses, peekSpriteIndex(SPRITE_DIRS) ?? null) : undefined
 }

@@ -23,11 +23,12 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P4-S2 nav: Home + Weapons + Lab + Bosses in header and tab bar; Loadout, Compare, Readiness and Guides in header + More; Favorites and Licensing in More + footer', () => {
+  it('P4-S2 / P6 nav: Home + Weapons + Lab + Bosses in header and tab bar; Loadout, Compare, Readiness, Items and Guides in header + More; Favorites and Licensing in More + footer', () => {
     // AMENDMENTS-015 B96b: Readiness has a desktop entry (the header's "More" menu, after Bosses);
     // AMENDMENTS-016 B99b: Compare gets one too, by the same reasoning (before Readiness, as in the More sheet).
     // P4-S2: Loadout follows the same precedent, in the UX_SPEC §2 header order (Weapons · Lab · Loadout · Bosses).
-    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/loadout', '/bosses', '/compare', '/readiness', '/guides'])
+    // P6 item encyclopedia (AMENDMENTS-016): Items joins the header's "More" menu (B96b/B99b precedent), before Guides (UX_SPEC §2).
+    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/loadout', '/bosses', '/compare', '/readiness', '/items', '/guides'])
     // AMENDMENTS-001 A8: the footer's secondary links are data-driven; Favorites joins at P7-S1.
     expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/favorites', '/about/licensing'])
     const { tabs, more } = tabBarLayout()
@@ -39,6 +40,7 @@ describe('route registry + data-driven nav', () => {
         { to: '/loadout', label: 'Loadout' },
         { to: '/compare', label: 'Compare' },
         { to: '/readiness', label: 'Readiness' },
+        { to: '/items', label: 'Items' },
         { to: '/guides', label: 'Guides' },
         { to: '/favorites', label: 'Favorites' },
         { to: '/about/licensing' },
@@ -48,7 +50,7 @@ describe('route registry + data-driven nav', () => {
     expect(tabs.length + (more.length > 0 ? 1 : 0)).toBeLessThanOrEqual(TAB_BAR_MAX)
   })
 
-  it.each(['lab', 'bosses', 'guides', 'favorites', 'readiness', 'compare', 'loadout'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
+  it.each(['lab', 'bosses', 'guides', 'favorites', 'readiness', 'compare', 'loadout', 'items'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
     const route = APP_ROUTES.find((r) => r.id === id)
     if (!route) throw new Error(`no ${id} route`)
     expect(route.path).toBe(`/${id}`)
@@ -60,6 +62,13 @@ describe('route registry + data-driven nav', () => {
     const detail = APP_ROUTES.find((r) => r.path === '/weapons/:id')
     expect(detail).toBeDefined()
     expect(detail?.nav).toBeUndefined()
+  })
+
+  it('P6: registers the item page route lazily and without a nav entry', () => {
+    const detail = APP_ROUTES.find((r) => r.path === '/items/:id')
+    if (!detail) throw new Error('no item page route')
+    expect(detail.nav).toBeUndefined()
+    expect((detail.Component as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.lazy'))
   })
 
   it('registers the guide page route (P6-S8) lazily and without a nav entry', () => {
@@ -100,7 +109,7 @@ describe('route registry + data-driven nav', () => {
     // Up to 3 links: no More menu at all; a 4th goes into it.
     expect(headerNavLayout(six.slice(0, 3)).more).toEqual([])
     expect(headerNavLayout(six.slice(0, 4)).more.map((i) => i.id)).toEqual(['bosses'])
-    // Today's registry: Home + Weapons + Lab inline; Loadout (P4-S2), Bosses, Compare (B99b), Readiness (B96b) then Guides in "More" (B34).
+    // Today's registry: Home + Weapons + Lab inline; Loadout (P4-S2), Bosses, Compare (B99b), Readiness (B96b), Items (P6) then Guides in "More" (B34).
     expect(headerNavLayout()).toMatchObject({
       inline: [{ to: '/' }, { to: '/weapons' }, { to: '/lab' }],
       more: [
@@ -108,10 +117,11 @@ describe('route registry + data-driven nav', () => {
         { to: '/bosses', label: 'Bosses' },
         { to: '/compare', label: 'Compare' },
         { to: '/readiness', label: 'Readiness' },
+        { to: '/items', label: 'Items' },
         { to: '/guides', label: 'Guides' },
       ],
     })
-    expect(headerNavLayout().more).toHaveLength(5)
+    expect(headerNavLayout().more).toHaveLength(6)
   })
 
   it('reserves a More slot when there are more-only items', () => {

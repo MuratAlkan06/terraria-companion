@@ -5,8 +5,9 @@
  *
  * Honesty rules applied here (UX_SPEC §5.3/§8; DATA_SCHEMA_SPEC §2.1):
  * - every curated field is read through getField; "unverified" means Unknown, never an empty list;
- * - items link to their own page where one exists (weapons → /weapons/:id), else to their own wiki
- *   article when the dataset carries its URL (armor, accessories, ammo — B31; or an article titled
+ * - items link to their own page where one exists (weapons → /weapons/:id; every Item record — ammo,
+ *   potions, materials, the boss's drops — → /items/:id, the P6 encyclopedia, AMENDMENTS-016 B104), else
+ *   to their own wiki article when the dataset carries its URL (armor, accessories — B31; or an article titled
  *   exactly the item's name that another loaded record carries, e.g. a potion's article on its buff
  *   record), else the wiki's search for its exact name (src/search/links.ts fallback: a live page,
  *   never a guessed article URL, never a dead local link); an id with no name stays inert;
@@ -14,6 +15,7 @@
  */
 import { dropTableRows, type DifficultyKey, type DropCell } from '../db/weapons/weaponDisplay'
 import { weaponHref } from '../db/weapons/weaponNav'
+import { itemHref } from '../db/items/itemNav'
 import type { AccessoryListRecord, ArmorListRecord, Boss, DropIndex, DropSource, GapEntry, Item, ItemNames, WeaponListRecord } from '../../../data-access/types'
 import { connectionsOf, type Connection, type MapGraph, type MapNode } from '../../../components/nodeMap/graph'
 import type { EdgeType } from '../../../components/nodeMap/edgeStyles'
@@ -55,7 +57,10 @@ export interface ItemSources {
   weapons: readonly WeaponListRecord[]
   accessories: readonly AccessoryListRecord[]
   armor: readonly ArmorListRecord[]
-  /** items.detail (ammo; P6-S0 extends it to the corpus). */
+  /**
+   * items.detail.json (ammo, potions, every item a boss record references — summon, prep-checklist and, since
+   * AMENDMENTS-016 B104, drop items): each has its encyclopedia page.
+   */
   items: readonly Item[]
   /**
    * terraria.wiki.gg article URLs carried by other loaded records (the buff registry). An item with
@@ -120,7 +125,7 @@ export function itemResolver(src: ItemSources): (id: number) => ItemInfo {
   for (const w of src.weapons) byId.set(w.id, { id: w.id, name: w.name, sprite: w.sprite, damageClass: w.damageClass, kind: 'weapon', link: { kind: 'internal', to: weaponHref(w.id) } })
   for (const a of src.accessories) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'accessory', link: { kind: 'external', href: a.wikiUrl } })
   for (const a of src.armor) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'armor', link: { kind: 'external', href: a.wikiUrl } })
-  for (const i of src.items) if (!byId.has(i.id)) byId.set(i.id, { id: i.id, name: i.name, sprite: i.sprite, kind: 'item', link: { kind: 'external', href: i.wikiUrl } })
+  for (const i of src.items) if (!byId.has(i.id)) byId.set(i.id, { id: i.id, name: i.name, sprite: i.sprite, kind: 'item', link: { kind: 'internal', to: itemHref(i.id) } })
   const articleByTitle = new Map<string, string>()
   for (const url of src.articles ?? []) {
     const title = wikiArticleTitle(url)

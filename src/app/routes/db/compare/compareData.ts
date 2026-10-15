@@ -1,6 +1,9 @@
 import { loadConditionIndex, loadDetailIndex, loadProgression, loadSpriteIndex } from '../../../../data-access'
 import type { ConditionIndex, ProgressionData, SpriteIndex, Weapon } from '../../../../data-access/types'
 
+/** Sprite-manifest parts loaded with the page (AMENDMENTS-016 B104): the compared weapons; any other sprite loads on demand. */
+const SPRITE_DIRS = ['weapons'] as const
+
 /**
  * Data for /compare (PRD P4-S1 [D: weapons dataset only]): every weapon record (the URL can name any),
  * the progression graph (gate names + tracked-progress satisfaction), the conditions registry
@@ -23,7 +26,7 @@ export async function loadCompareData(): Promise<CompareData> {
     loadDetailIndex('weapons'),
     loadProgression(),
     loadConditionIndex(),
-    loadSpriteIndex().catch((error: unknown) => {
+    loadSpriteIndex(SPRITE_DIRS).catch((error: unknown) => {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),

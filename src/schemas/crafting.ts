@@ -73,6 +73,7 @@ export const DropQuantity = z.union([
 ])
 export type DropQuantity = z.infer<typeof DropQuantity>
 
+// AMENDMENTS-016 B105: a derived (ruled) quantity is listed in `_prov.modeledFields` — see ./dropQuantity.ts.
 export const DropSource = z.strictObject({
   id: z.string(), // `${itemId}-${npcSlugOrId}-${fnv1a32hex(conditions)}`
   itemId: ItemId,

@@ -1,10 +1,12 @@
 import { ChevronRight, CircleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cx } from '../../../components/cx'
+import { DERIVED_QUANTITY_EXPLANATION, DerivedLabel } from '../../../components/DerivedLabel'
 import { PixelPanel } from '../../../components/PixelPanel'
 import { ProvenanceLink } from '../../../components/ProvenanceLink'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { Boss, ConditionIndex, DropSource, SpriteIndex } from '../../../data-access/types'
+import { isModeledField } from '../../../schemas/dropQuantity'
 import { getField } from '../../../schemas/getField'
 import { DIFFICULTY_LABELS, dropSourceUrl, formatQuantity, formatRate, humanizeSlug } from '../db/weapons/weaponDisplay'
 import { ItemCell, PanelHeading, SourceIconLink } from './BossBits'
@@ -22,7 +24,8 @@ import { dropCells, type DropCellView, type DropGroup, type DropRow, type DropSe
  * ↗ of the item's own link (B82) — and the conditions it needs ("Only: Corruption world" for the Eye
  * of Cthulhu's world-evil ores and seeds). Values are read through getField on the DROP record.
  * A source every non-bag row shares ("Plantera (Second Form)") is named once above the table instead
- * of on each row; each chance sits on its row name's line (CELL_TOP).
+ * of on each row; each chance sits on its row name's line (CELL_TOP). A quantity derived by the
+ * AMENDMENTS-016 B105 ruling (`_prov.modeledFields`) shows "× 1 derived", explained once under the table.
  */
 export const CONDITIONAL_SUMMARY = 'Condition-dependent drops (conditions not verified)'
 export const CONDITIONAL_QUALIFIER =
@@ -95,6 +98,11 @@ export function BossDrops({ boss, sections, conditions, sprites, titleId }: { bo
           ) : null}
         </>
       )}
+      {rows.some((r) => isModeledField(r.drop, 'quantity')) ? (
+        <p data-derived-note="" className="text-sm text-fg-muted">
+          <span className="font-semibold">“derived”:</span> {DERIVED_QUANTITY_EXPLANATION}
+        </p>
+      ) : null}
       {missing > 0 ? <p className="text-sm text-fg-muted">{missing === 1 ? 'One drop record isn’t' : `${missing} drop records aren’t`} in the loaded drop data.</p> : null}
       <ProvenanceLink href={boss.wikiUrl} srContext={`for the drops of ${boss.name}`} />
     </PixelPanel>
@@ -262,6 +270,11 @@ function DropCellTd({ drop, cell, source, first }: { drop: DropSource; cell: Dro
           <span className="sr-only">Quantity: </span>
           <span aria-hidden="true">×&nbsp;</span>
           <UnknownValue field={`drop:${drop.id}:${cell.quantity?.field}`} sourceUrl={source} interactive={false} />
+        </span>
+      ) : quantityText !== undefined && cell.quantity !== undefined && isModeledField(drop, cell.quantity.field) ? (
+        // B105: a derived quantity is never shown like a stated one — "× 1 derived" (explained under the table)
+        <span data-quantity="" className="block text-[0.6875rem] leading-4 whitespace-nowrap text-fg-muted tabular-nums">
+          <span className="sr-only">Quantity: </span>×&nbsp;{quantityText} <DerivedLabel interactive={false} />
         </span>
       ) : quantityText !== undefined && quantityText !== '1' ? (
         // One unbreakable line (M8): "× 500–600" never splits at the dash.

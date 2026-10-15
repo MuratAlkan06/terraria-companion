@@ -232,7 +232,7 @@ function FacetGroup({
                 </span>
                 <span style={labelStyle}>{option.label}</span>
                 <span className={cx('tabular-nums', option.count === 0 ? 'text-stone-500' : 'text-fg-muted')}>
-                  {option.count}
+                  {option.count.toLocaleString('en-US')}
                   <span className="sr-only"> results</span>
                 </span>
               </button>
@@ -283,7 +283,7 @@ function FilterSheet({
             Clear all
           </button>
           <button type="button" onClick={() => onOpenChange(false)} className={buttonClass('primary')}>
-            Show {resultCount} {noun}
+            Show {resultCount.toLocaleString('en-US')} {noun}
           </button>
         </>
       }

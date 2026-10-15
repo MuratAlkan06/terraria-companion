@@ -301,6 +301,21 @@ describe('buildDrops', () => {
     expect([...out.reasons.keys()]).toContain('quantity: bundled custom cell — unexpected text "…" on a line of a bundled cell')
   })
 
+  it('AMENDMENTS-016 B105 input: only a cell that states NO quantity is flagged unstated (never a stated-but-unparseable or bundled one)', () => {
+    const link = (name: string) => `<span class="i">[[File:${name}.png|link=${name}|${name}]]<span><span>[[${name}]]</span></span></span>`
+    const out = drops([
+      dropRow({ quantity: '' }), // nothing stated
+      dropRow({ _rowid: '2', _page: 'Creeper', nameraw: 'Creeper', id: '267', quantity: 'a few' }), // stated, unparseable
+      dropRow({ _rowid: '3', quantity: '', custom: `${link('Grenade Launcher')}\nstray\n:+ ${link('Rocket I')} (50–149)`, item: 'Grenade Launcher' }), // bundle
+    ])
+    const unstated = out.drops.filter((d) => out.unstatedQuantity.has(d.id))
+    expect(unstated.map((d) => [d.itemId, d.source.npcName])).toEqual([[216, 'Zombie']])
+    expect(out.unstatedQuantity.get(unstated[0].id)).toBe(false)
+    // drops.ts itself never defaults it: merge/quantity.ts rules per item kind
+    expect(unstated[0].quantity).toEqual({})
+    expect(unstated[0]._prov.unverifiedFields).toEqual(['quantity.classic', 'quantity.expert', 'quantity.master'])
+  })
+
   it('skips rows whose platform icons exclude Desktop; unresolvable items are excluded with a gap', () => {
     const oldGen = '<span class="eico s i3" title="Old-gen console and 3DS versions"><b></b><i></i><span>(Old-gen console and 3DS versions)</span></span>'
     const out = drops([dropRow({ name: `[[Zombie]]${oldGen}` }), dropRow({ _rowid: '2', item: 'Golden furniture' })])
