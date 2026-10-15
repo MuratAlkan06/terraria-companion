@@ -3,6 +3,9 @@ import manifest from '../../public/sprites/manifest.json'
 import { ChunkLoadError, createDataAccess } from '../data-access'
 import { validateDataFile } from '../data-access/devValidate'
 import type { SpriteIndex } from '../data-access/types'
+import accessoriesJson from '../data/accessories.detail.json'
+import armorJson from '../data/armor.detail.json'
+import armorSetsJson from '../data/armor-sets.json'
 import bossesJson from '../data/bosses.json'
 import enemiesJson from '../data/enemies.json'
 import meta from '../data/meta.json'
@@ -52,7 +55,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
   it('the shipped search-docs.json and enemies.json pass their dev schemas', () => {
     expect(() => validateDataFile('search-docs', searchDocsJson)).not.toThrow()
     expect(() => validateDataFile('enemies', enemiesJson)).not.toThrow()
-    expect(docs).toHaveLength(6638)
+    expect(docs).toHaveLength(6640)
   })
 
   it('loadSearchDocs is a lazy singleton; a failed chunk is a ChunkLoadError and is retried', async () => {
@@ -62,7 +65,7 @@ describe('search data (DATA_SCHEMA_SPEC §2.10, §4a loadSearchDocs)', () => {
     const failure = await da.loadSearchDocs().catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ChunkLoadError)
     expect((failure as ChunkLoadError).file).toBe('search-docs')
-    await expect(da.loadSearchDocs()).resolves.toHaveLength(6638)
+    await expect(da.loadSearchDocs()).resolves.toHaveLength(6640)
     await da.loadSearchDocs()
     expect(importer).toHaveBeenCalledTimes(2)
   })
@@ -72,7 +75,7 @@ describe('MiniSearch engine (ADR D4 config)', () => {
   const engine = createSearchEngine(docs)
 
   it('indexes every doc and finds "zenith" as the top hit (AC1)', () => {
-    expect(engine.size).toBe(6638)
+    expect(engine.size).toBe(6640)
     const [top] = engine.search('zenith')
     expect(top.doc).toMatchObject({ id: 'i:4956', name: 'Zenith', type: 'weapon' })
   })
@@ -163,6 +166,14 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
     expect(resolveTarget({ id: 'i:x' as SearchDoc['id'], type: 'item', name: 'X', wikiUrl: 'https://terraria.wiki.gg/wiki/X' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/X' })
   })
 
+  it('PRD P6-S1/S2 (B131(b)): armor pieces, armor sets and accessories navigate in-app; a malformed ref keeps its article', () => {
+    expect(resolveTarget({ id: 'i:684', type: 'armor', name: 'Frost Helmet', wikiUrl: 'https://terraria.wiki.gg/wiki/Frost_armor' })).toEqual({ kind: 'internal', to: '/armor/684' })
+    expect(resolveTarget({ id: 'set:frost-armor', type: 'set', name: 'Frost armor', wikiUrl: 'https://terraria.wiki.gg/wiki/Frost_armor' })).toEqual({ kind: 'internal', to: '/armor/frost-armor' })
+    expect(resolveTarget({ id: 'i:3097', type: 'accessory', name: 'Shield of Cthulhu', wikiUrl: 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu' })).toEqual({ kind: 'internal', to: '/accessories/3097' })
+    expect(resolveTarget({ id: 'set:Bad Slug' as SearchDoc['id'], type: 'set', name: 'X', wikiUrl: 'https://terraria.wiki.gg/wiki/X' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/X' })
+    expect(resolveTarget({ id: 'i:abc' as SearchDoc['id'], type: 'accessory', name: 'Y', wikiUrl: 'https://terraria.wiki.gg/wiki/Y' })).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Y' })
+  })
+
   it('anything without a page or URL falls back to the wiki search for its exact name (never a dead link)', () => {
     expect(resolveTarget({ id: 'buff:on-fire', type: 'buff', name: 'On Fire!' })).toEqual({
       kind: 'external',
@@ -179,7 +190,7 @@ describe('result targets (internal vs the doc’s own wiki article; B42b)', () =
 describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
   it('builds from the shipped data: "zenith" → Zenith first, internal, with its sprite', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
-    expect(index.docCount).toBe(6638)
+    expect(index.docCount).toBe(6640)
     const { groups, options } = index.suggest('zenith')
     expect(groups[0].label).toBe('Weapons')
     expect(options[0]).toMatchObject({
@@ -193,13 +204,13 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     })
   })
 
-  it('every doc is reachable by its own name; weapons, items and page bosses navigate in-app, every other row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
+  it('every doc is reachable by its own name; weapons, items, armor, sets, accessories and page bosses navigate in-app, every other row opens its own doc’s wiki article (never a guessed URL, never the search page)', async () => {
     const index = await buildSearchIndex(performance.now(), deps())
     const all = docs.flatMap((d) => index.suggest(d.name).options.filter((o) => o.ref === d.id))
     // AMENDMENTS-016 B104 exact-name boost: the P6-S0 pinned exceptions ("Fish", "Bar" — one-word names outranked
     // inside their group's 5-row cap) are retired; every doc is a row of a search for its own name
     expect(docs.filter((d) => !all.some((o) => o.ref === d.id)).map((d) => `${d.id} ${d.name}`)).toEqual([])
-    expect(all).toHaveLength(6638)
+    expect(all).toHaveLength(6640)
     const docById = new Map(docs.map((d) => [d.id, d]))
     const pageBosses = new Set<string>(BOSS_PAGE_IDS.map((id) => `boss:${id}`))
     for (const option of all) {
@@ -216,6 +227,21 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
         expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/bosses/${option.ref.slice(5)}` })
         continue
       }
+      // PRD P6-S1/S2 (AMENDMENTS-016 B131(b)): armor pieces, armor sets and accessories have their pages — no
+      // "Wiki ↗" rows for them remain
+      if (option.type === 'armor') {
+        expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/armor/${option.ref.slice(2)}` })
+        continue
+      }
+      if (option.type === 'set') {
+        expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/armor/${option.ref.slice(4)}` })
+        continue
+      }
+      if (option.type === 'accessory') {
+        expect(option.target, option.ref).toEqual({ kind: 'internal', to: `/accessories/${option.ref.slice(2)}` })
+        continue
+      }
+      expect(['boss', 'enemy', 'buff'], option.ref).toContain(option.type)
       const wikiUrl = docById.get(option.ref)?.wikiUrl
       expect(wikiUrl, option.ref).toMatch(/^https:\/\/terraria\.wiki\.gg\/wiki\//)
       expect(wikiUrl, option.ref).not.toContain('Special:Search')
@@ -226,6 +252,13 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     // e.g. the Enchanted Sword ENEMY must not link to the item article of the same name.
     const enchanted = index.suggest('enchanted sword').options.find((o) => o.type === 'enemy')
     expect(enchanted?.target).toEqual({ kind: 'external', href: 'https://terraria.wiki.gg/wiki/Enchanted_Sword_(NPC)' })
+  })
+
+  it('B131(b): every armor / set / accessory doc names a shipped record and every record has its doc — an in-app row is never a dead link', () => {
+    const ids = (type: string) => docs.filter((d) => d.type === type).map((d) => d.id).sort()
+    expect(ids('armor')).toEqual((armorJson as { id: number }[]).map((a) => `i:${a.id}`).sort())
+    expect(ids('accessory')).toEqual((accessoriesJson as { id: number }[]).map((a) => `i:${a.id}`).sort())
+    expect(ids('set')).toEqual((armorSetsJson as { id: string }[]).map((s) => `set:${s.id}`).sort())
   })
 
   it('retiring the boss/enemy URL loaders loses nothing: doc URLs match the records’ own wikiUrl', async () => {
@@ -283,18 +316,20 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     const extra: SearchDoc[] = [
       // P6-S0 ships Life Crystal (i:29); Magic Shimmer Dropper has no wiki item row, so it is not a shipped doc
       { id: 'i:5492', name: 'Magic Shimmer Dropper', type: 'item', tags: ['consumables'] },
-      // P2-S8 ships armor sets; Wizard set is a real set article the dataset withholds, so it is not a shipped doc
-      { id: 'set:wizard-set', name: 'Wizard set', type: 'set', tags: [] },
+      // P2-S8 ships armor sets; Rain armor is a real set article the dataset withholds (no set bonus), so it is not a shipped doc
+      { id: 'set:rain-armor', name: 'Rain armor', type: 'set', tags: [] },
     ]
-    // Neither extra doc carries a wikiUrl: a type without a local page falls back to the wiki search (never a dead
-    // link); an item doc routes to its item page (P6 encyclopedia: every item doc is an Item record, validated)
+    // Neither extra doc carries a wikiUrl. An item doc routes to its item page and a set doc to its set page (P6
+    // encyclopedia, P6-S1: every shipped item / set doc is a record — pinned above; a stale one meets the page's styled 404)
     const index = await buildSearchIndex(performance.now(), deps({ loadDocs: async () => [...docs, ...extra] }))
     const dropper = index.suggest('magic shimmer dropper')
     expect(dropper.groups[0]).toMatchObject({ type: 'item', label: ENTITY_TYPES.item.plural })
     expect(dropper.options[0]).toMatchObject({ ref: 'i:5492', target: { kind: 'internal', to: '/items/5492' } })
-    const wizard = index.suggest('wizard set')
-    expect(wizard.groups.map((g) => g.label)).toContain('Armor sets')
-    expect(wizard.options.find((o) => o.ref === 'set:wizard-set')?.target).toEqual({ kind: 'external', href: wikiSearchUrl('Wizard set') })
+    const rain = index.suggest('rain armor')
+    expect(rain.groups.map((g) => g.label)).toContain('Armor sets')
+    expect(rain.options.find((o) => o.ref === 'set:rain-armor')?.target).toEqual({ kind: 'internal', to: '/armor/rain-armor' })
+    // a type without a local page still falls back to the wiki search (never a dead link)
+    expect(resolveTarget({ id: 'buff:x', type: 'buff', name: 'X buff' })).toEqual({ kind: 'external', href: wikiSearchUrl('X buff') })
   })
 
   it('facet filter by entity type and the per-group cap are honoured', async () => {
@@ -326,7 +361,7 @@ describe('buildSearchIndex (lazy index; AC1/AC2/AC5)', () => {
     expect(performance.getEntriesByName('tc:search-index').length).toBeGreaterThan(0)
   })
 
-  it('builds the real 6638-doc index well inside the 500 ms budget on this machine', async () => {
+  it('builds the real 6640-doc index well inside the 500 ms budget on this machine', async () => {
     const start = performance.now()
     createSearchEngine(docs)
     expect(performance.now() - start).toBeLessThan(500)
@@ -348,12 +383,12 @@ describe('detail line + placeholder copy', () => {
       { type: 'item', count: 5045 },
       { type: 'armor', count: 256 },
       { type: 'accessory', count: 352 },
-      { type: 'set', count: 67 },
+      { type: 'set', count: 69 },
       { type: 'enemy', count: 334 },
       { type: 'buff', count: 78 },
     ])
     expect(searchPlaceholder(shipped)).toBe('Search weapons, bosses, items…')
-    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 5,045 items, 256 armor, 352 accessories, 67 armor sets, 334 enemies and 78 buffs')
+    expect(searchScopeSummary(shipped)).toBe('488 weapons, 18 bosses, 5,045 items, 256 armor, 352 accessories, 69 armor sets, 334 enemies and 78 buffs')
     expect(searchPlaceholder([])).toBe('Search…')
     const later = searchableCounts({ ...meta.counts, items: 5000, armor: 300 })
     expect(searchPlaceholder(later)).toBe('Search weapons, bosses, items…')

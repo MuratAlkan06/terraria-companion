@@ -6,15 +6,17 @@
  * Honesty rules applied here (UX_SPEC §5.3/§8; DATA_SCHEMA_SPEC §2.1):
  * - every curated field is read through getField; "unverified" means Unknown, never an empty list;
  * - items link to their own page where one exists (weapons → /weapons/:id; every Item record — ammo,
- *   potions, materials, the boss's drops — → /items/:id, the P6 encyclopedia, AMENDMENTS-016 B104), else
- *   to their own wiki article when the dataset carries its URL (armor, accessories — B31; or an article titled
- *   exactly the item's name that another loaded record carries, e.g. a potion's article on its buff
- *   record), else the wiki's search for its exact name (src/search/links.ts fallback: a live page,
- *   never a guessed article URL, never a dead local link); an id with no name stays inert;
+ *   potions, materials, the boss's drops — → /items/:id, the P6 encyclopedia, AMENDMENTS-016 B104; armor
+ *   pieces → /armor/:id and accessories → /accessories/:id, PRD P6-S1/S2 — B131(b) retires their wiki links),
+ *   else to the article titled exactly the item's name that another loaded record carries (e.g. a potion's
+ *   article on its buff record), else the wiki's search for its exact name (src/search/links.ts fallback: a
+ *   live page, never a guessed article URL, never a dead local link); an id with no name stays inert;
  * - "next" steps come only from typed progression edges, each with its own quoted note + source.
  */
 import { dropTableRows, type DifficultyKey, type DropCell } from '../db/weapons/weaponDisplay'
 import { weaponHref } from '../db/weapons/weaponNav'
+import { accessoryHref } from '../db/accessories/accessoryNav'
+import { armorPieceHref } from '../db/armor/armorNav'
 import { itemHref } from '../db/items/itemNav'
 import type { AccessoryListRecord, ArmorListRecord, Boss, DropIndex, DropSource, GapEntry, Item, ItemNames, WeaponListRecord } from '../../../data-access/types'
 import { connectionsOf, type Connection, type MapGraph, type MapNode } from '../../../components/nodeMap/graph'
@@ -123,8 +125,8 @@ export function quoteTrail(text: string, sourceUrl: string, cutAtEnd: readonly P
 export function itemResolver(src: ItemSources): (id: number) => ItemInfo {
   const byId = new Map<number, ItemInfo>()
   for (const w of src.weapons) byId.set(w.id, { id: w.id, name: w.name, sprite: w.sprite, damageClass: w.damageClass, kind: 'weapon', link: { kind: 'internal', to: weaponHref(w.id) } })
-  for (const a of src.accessories) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'accessory', link: { kind: 'external', href: a.wikiUrl } })
-  for (const a of src.armor) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'armor', link: { kind: 'external', href: a.wikiUrl } })
+  for (const a of src.accessories) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'accessory', link: { kind: 'internal', to: accessoryHref(a.id) } })
+  for (const a of src.armor) byId.set(a.id, { id: a.id, name: a.name, sprite: a.sprite, kind: 'armor', link: { kind: 'internal', to: armorPieceHref(a.id) } })
   for (const i of src.items) if (!byId.has(i.id)) byId.set(i.id, { id: i.id, name: i.name, sprite: i.sprite, kind: 'item', link: { kind: 'internal', to: itemHref(i.id) } })
   const articleByTitle = new Map<string, string>()
   for (const url of src.articles ?? []) {

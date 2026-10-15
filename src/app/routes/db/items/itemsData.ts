@@ -124,7 +124,7 @@ export function peekItemSections(item: Item): ItemSectionsData | undefined {
   return acquisition && docs && buffs ? { acquisition, docs: docsByRef(docs), buffs: buffsById(buffs) } : undefined
 }
 
-/** A referenced item's sprite and page, from its search doc (weapon / item → in-app; armor / accessory → its wiki article). */
+/** A referenced item's sprite and page, from its search doc (weapon / item / armor / accessory → in-app, B131(b); anything else → its wiki article). */
 export function refInfoFrom(docs: ReadonlyMap<string, SearchDoc>): (itemId: number) => ItemRefInfo | undefined {
   return (itemId) => {
     const doc = docs.get(`i:${itemId}`)

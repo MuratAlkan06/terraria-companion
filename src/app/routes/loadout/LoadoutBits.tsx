@@ -18,6 +18,7 @@ import type { ReadinessPageData } from '../bosses/readiness/readinessData'
 import { GateGroup } from '../bosses/readiness/ReadinessFactorCard'
 import * as copy from './loadoutCopy'
 import { recordOf, spriteOf, tooltipFor } from './loadoutView'
+import { armorSetHref } from '../db/armor/armorNav'
 
 /**
  * Shared pieces of the loadout builder's steps (UX_SPEC §3.5, §8): choice chips, a score figure with
@@ -87,23 +88,25 @@ export function ScoreFigure({ score, className }: { score: PickScore; className?
   )
 }
 
-/** An item's name, linked to its page (weapons: ours; others: their wiki article). */
+/** An item's name, linked to its page in-app (weapons, armor, accessories, items — B131(b)); an item with no page here, its wiki article. */
 /** B108 M7: a link that is a pick's main tap target gets the 44px minimum height (`tap`). */
 const TAP = 'inline-flex min-h-tap items-center'
 
-export function ItemName({ page, id, name, className, tap }: { page: ReadinessPageData; id: number; name?: string; className?: string; tap?: boolean }) {
+export function ItemName({ page, id, name, className, tap, setId }: { page: ReadinessPageData; id: number; name?: string; className?: string; tap?: boolean; setId?: string }) {
   const info = page.info(id)
   const rarity = asRarity(recordOf(page.engine, id)?.rarity)
   const text = <RarityText rarity={rarity}>{name ?? info.name}</RarityText>
-  if (info.link?.kind === 'internal')
+  // an armor set's name opens its SET page (as the readiness checker's set rows do), never its helmet's anchor
+  const link = setId && page.engine.sets.has(setId) ? { kind: 'internal' as const, to: armorSetHref(setId) } : info.link
+  if (link?.kind === 'internal')
     return (
-      <Link to={info.link.to} className={cx(LINK, 'font-semibold', tap && TAP, className)} data-item-link={id}>
+      <Link to={link.to} className={cx(LINK, 'font-semibold', tap && TAP, className)} data-item-link={id} {...(setId ? { 'data-set-ref': setId } : {})}>
         {text}
       </Link>
     )
-  if (info.link?.kind === 'external')
+  if (link?.kind === 'external')
     return (
-      <a href={info.link.href} target="_blank" rel="noopener noreferrer" className={cx(LINK, 'font-semibold', tap && TAP, className)} data-item-link={id}>
+      <a href={link.href} target="_blank" rel="noopener noreferrer" className={cx(LINK, 'font-semibold', tap && TAP, className)} data-item-link={id}>
         {text}
         <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
       </a>

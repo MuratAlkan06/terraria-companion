@@ -327,7 +327,7 @@ function UsedInCell({
         <span className="flex min-w-0 flex-col">
           <span className={NAME}>
             {name}
-            {/* B82: the ↗ glued to the name (an armor piece / accessory has no page here: its wiki article) */}
+            {/* B82: the ↗ glued to the name (an item with no page here: its wiki article) */}
             <ExternalLink aria-hidden="true" className="ml-1 inline size-3.5 align-baseline" />
             <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
           </span>

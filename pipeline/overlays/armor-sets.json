@@ -3,34 +3,46 @@
   "authoredAt": "2026-10-13",
   "notes": [
     "Residual decisions for the armor-set derivation (pipeline/merge/armor.ts, P2-S8). Everything else — set membership (the pieces a set article hosts), per-helmet set bonus game text, set-bonus effects, defense totals, stage and every single-class variant — is derived from Cargo Items, Module:Iteminfo/data, Cargo Equipinfo and the set article's infobox. Every quote is checked verbatim against the cached article revision.",
-    "withhold: the ArmorSet schema needs ≥1 helmet, exactly one chest and one legs piece hosted by the set article, and a set bonus per helmet. Sets that cannot be expressed are not emitted; their pieces carry no setId and a gap entry records why (amendment candidates in the P2-S8 report).",
+    "withhold: the ArmorSet schema needs ≥1 helmet, ≥1 chest and exactly one legs piece hosted by the set article (none for a combination set ruled 'any legs'), and a set bonus per variant. Sets that cannot be expressed are not emitted; a gap entry records why and their pieces' setId is listed Unknown — never 'no set' (amendment candidates in the P2-S8 report).",
+    "P6 fix round (2026-10-15, additive schema: pieces.chests, optional pieces.legs, variants[].chestId): `chests` confirms, quoted, that any one of a set article's alternative chests completes the set (each chest named); when the Set Bonus segments name those chests the bonus is keyed by the chest (Beetle armor), one variant per helmet × chest. `combination` lists a set's members whose pieces live on their own articles (Wizard set) — checked row for row against the article's set-pieces table (name, item ID, body slot) and the emitted pieces — with `legs.quote` backing 'no legs piece'. `unrecorded` pieces are tied by the wiki to sets the schema cannot record (one setId per piece): their setId is listed Unknown with the quotes.",
+    "Loose-piece sweep (2026-10-15): every armor piece outside a recorded set was checked against its own article (the 12 not yet cached fetched through the pipeline client, serial, 1.1 s pacing — raw cache only, not build evidence): Viking Helmet states it 'does not have an associated set or set bonus'; Goggles, Empty Bucket (Buckets), Diving Helmet, Green Cap, Gi, Night Vision Helmet, Djinn's Curse, Moon Lord Legs, Dead Man's Sweater and Flinx Fur Coat state no set membership (the wiki's armor navbox files all but Green Cap under 'Single Pieces'); Ultrabright Helmet is interchangeable into Mining armor and Prospector armor (stated on all three articles) → `unrecorded`. Not modeled (pre-existing, reported): the Mining ⇄ Prospector piece interchangeability itself — each set records its own article's pieces only.",
     "classes: ArmorSet.variants[].class is a single DamageClass. Where the variant's stats name several classes, the set article's own description decides: the wiki calls these sets hybrids ('melee/ranged', 'mage/summoner', …) or describes no class at all, so the ruling is 'other' = no single class — the safe direction for class-filtered recommendations (they are under-, never wrongly recommended).",
     "AMENDMENTS-011 B52 (landed by the B70 P4-prep slice, 2026-10-14): a ruling's `classes` lists the hybrid's damage classes as its quoted article description names them ('mage' = magic, 'summoner' = summon); the build checks the quote names every listed class AND that the list equals the variant's stat class signals. Emitted as variants[].classes beside the kept single `class` (one release, consumers read classes ?? [class]). Crystal Assassin names no class, so it stays ['other']."
   ],
   "entries": [
     {
       "page": "Beetle armor",
-      "withhold": {
-        "reason": "two alternative chest pieces with different set bonuses (the bonus depends on the chest, not the helmet) — the schema keys variants by helmet and allows one chest",
-        "quote": "as well as two different chestpieces: the Beetle Scale Mail and Beetle Shell, providing offensive and defensive bonuses respectively"
+      "chests": {
+        "quotes": [
+          "consisting of the Beetle Helmet and Beetle Leggings, as well as two different chestpieces: the Beetle Scale Mail and Beetle Shell, providing offensive and defensive bonuses respectively",
+          "The full set grants the following effects while equipped, depending on the chestpiece chosen",
+          "Although the Beetle Shell's set bonus says \"Beetles protect you from damage\""
+        ]
       },
-      "why": "Set Bonus segments are keyed by Beetle Scale Mail / Beetle Shell; both chests share the Beetle Helmet and Beetle Leggings."
+      "why": "Either chest completes the set with the Beetle Helmet and Beetle Leggings; the Set Bonus segments are keyed by Beetle Scale Mail (\"Beetles increase your melee damage and speed\") and Beetle Shell (\"Beetles protect you from damage\") — derived as two chest-keyed variants. Defense totals 61 / 73 per chest agree with the piece sums."
     },
     {
       "page": "Rain armor",
       "withhold": {
-        "reason": "two pieces only (no legs piece) and no set bonus — an ArmorSet needs a legs piece and a set bonus per helmet",
+        "reason": "no set bonus — an ArmorSet needs a set bonus per variant (and the article hosts no legs piece)",
         "quote": "Rain armor is the only functional armor set which does not provide a set bonus."
       },
-      "why": "The set infobox has no Set Bonus row; the article hosts the Rain Hat and Rain Coat only."
+      "why": "The set infobox has no Set Bonus row; the article hosts the Rain Hat and Rain Coat only. Their setId is listed Unknown (they ARE a wiki set, just not one this dataset records)."
     },
     {
       "page": "Wizard set",
-      "withhold": {
-        "reason": "a combination set (one of two hats with one of eight robes, any legs) whose pieces live on their own articles — not one chest and one legs piece",
-        "quote": "Any leg-slot equipment can be worn without affecting the set bonus."
+      "combination": {
+        "helmets": ["Wizard Hat", "Magic Hat"],
+        "chests": ["Amethyst Robe", "Topaz Robe", "Sapphire Robe", "Emerald Robe", "Ruby Robe", "Amber Robe", "Diamond Robe", "Mystic Robe"],
+        "quotes": [
+          "The Wizard set is an armor set consisting of one of the magic headgear and one of the magic robes.",
+          "Magic headgear can be either the Wizard Hat, which is dropped by Tim, or the Magic Hat, which is occasionally sold by the Traveling Merchant.",
+          "The robe can be any of the seven gem robes, crafted using a Robe and gems, or the Mystic Robe, bought from the Traveling Merchant.",
+          "The Set Bonus of the Wizard set depends on the headgear item: With Magic Hat: Increases maximum mana by 60 With Wizard Hat: 10% increased magic critical strike chance"
+        ],
+        "legs": { "quote": "Any leg-slot equipment can be worn without affecting the set bonus." }
       },
-      "why": "The article hosts eight Cargo set rows (Mystic/Amethyst/…/Diamond Wizard set) and no armor piece rows."
+      "why": "The article hosts eight Cargo set rows (Mystic/Amethyst/…/Diamond Wizard set) and no armor piece rows; its set-pieces table names the two hats and eight robes with their item IDs. The Set Bonus segments are keyed by the hats (derived, helmet-keyed as usual); any robe completes either."
     },
     {
       "page": "Frost armor",
@@ -86,6 +98,16 @@
       "page": "Dark Artist armor",
       "classes": [{ "helmet": "Dark Artist's Hat", "class": "other", "classes": ["magic", "summon"], "quote": "post-Golem mage/summoner armor set consisting of the Dark Artist's Hat" }],
       "why": "Magic + summon (sentry) stats."
+    }
+  ],
+  "unrecorded": [
+    {
+      "piece": "Ultrabright Helmet",
+      "reason": "the wiki makes it interchangeable with the helmets of two sets (Mining armor and Prospector armor), still providing their set bonus; an armor piece records one set and each set records its own article's pieces, so this membership is not recorded",
+      "evidence": [
+        { "page": "Mining armor", "quote": "All Mining armor pieces are interchangeable with pieces from Prospector armor and the Ultrabright Helmet, still providing the set bonus." },
+        { "page": "Prospector armor", "quote": "All Prospector armor pieces are interchangeable with pieces from Mining armor and the Ultrabright Helmet, still providing the set bonus." }
+      ]
     }
   ]
 }

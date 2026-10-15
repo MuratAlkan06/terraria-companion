@@ -586,6 +586,35 @@ const named = <T extends { name: string }>(list: readonly T[], name: string) => 
   return found
 }
 
+describe('P6 fix round: armor sets with alternative chests / no legs piece (live records)', () => {
+  const ALL: TrackedProgress = { worldEvil: 'corruption', nodeStates: Object.fromEntries(graph.nodes.filter((n) => n.kind === 'boss').map((n) => [n.id, 'defeated' as const])) }
+  const piece = (name: string) => named(armor, name).id
+  const armorOptions = (r: BuilderResult) => {
+    const s = slot(r, 'armor')
+    return [...(s.pick ? [s.pick] : []), ...s.alternatives]
+  }
+
+  it('the Wizard set is offered per combination — hat + robe, the legs slot left free (0) — keyed set:wizard-set:<hat>.<robe>', () => {
+    const r = recommendLoadout(input({ cls: 'magic', stage: 'early-prehm', owned: [piece('Wizard Hat'), piece('Mystic Robe')], progress: NONE }), LIVE)
+    const wizard = armorOptions(r).filter((o) => o.setId === 'wizard-set')
+    expect(wizard.length).toBeGreaterThan(0)
+    for (const o of wizard) {
+      const [, hat, robe] = /^set:wizard-set:(\d+)\.(\d+)$/.exec(o.key) ?? []
+      expect(o.pieces, o.key).toEqual([Number(hat), Number(robe), 0])
+      expect(o.name).toBe(`Wizard set (${LIVE.armor.get(Number(hat))?.name}, ${LIVE.armor.get(Number(robe))?.name})`)
+    }
+  })
+
+  it('pinned pieces complete the set they belong to: Beetle armor by its chest, the Wizard set with ANY legs', () => {
+    const shell = recommendLoadout(input({ cls: 'melee', progress: ALL, pins: { armor: { kind: 'armor', helmet: piece('Beetle Helmet'), chest: piece('Beetle Shell'), legs: piece('Beetle Leggings') } } }), LIVE)
+    expect(slot(shell, 'armor').pick).toMatchObject({ key: `set:beetle-armor:${piece('Beetle Helmet')}.${piece('Beetle Shell')}`, name: 'Beetle armor (Beetle Shell)', setId: 'beetle-armor' })
+    const robe = recommendLoadout(input({ cls: 'magic', progress: ALL, pins: { armor: { kind: 'armor', helmet: piece('Magic Hat'), chest: piece('Ruby Robe'), legs: piece('Moon Lord Legs') } } }), LIVE)
+    expect(slot(robe, 'armor').pick).toMatchObject({ name: 'Wizard set (Magic Hat, Ruby Robe)', setId: 'wizard-set', pieces: [piece('Magic Hat'), piece('Ruby Robe'), piece('Moon Lord Legs')] })
+    // the set bonus counts: the Magic Hat's "+60 max mana" is in the profile
+    expect(robe.profile.setBonus).toMatchObject({ setId: 'wizard-set', text: 'Increases maximum mana by 60' })
+  })
+})
+
 describe('AMENDMENTS-016 B108 H2 residual: the alt beside a pinned main that scores below it', () => {
   it('the review repro (live records): summon, Durendal owned, Starcrash pinned as main — Durendal holds the alt and says it outscores the pick, never "next-highest"', () => {
     const durendal = named(weapons, 'Durendal').id

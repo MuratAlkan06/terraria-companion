@@ -3,10 +3,11 @@
  * every rule; the emitted-dataset checks live in validate/emitted.test.ts). */
 import { describe, expect, it } from 'vitest'
 import type { Recipe, StatEffect } from '../../src/schemas'
-import { parseSetInfoboxes, parseWingTable } from '../parse/equipment'
+import { parseSetInfoboxes, parseSetPiecesTable, parseWingTable } from '../parse/equipment'
 import { deriveTinkering, TINKERERS_WORKSHOP_ITEM_ID } from '../validate/integrity'
-import { bonusPerHelmet, classSignals } from './armor'
+import { bonusPerHelmet, bonusPerPiece, classSignals } from './armor'
 import { classifyLine, crossCheckEquipinfo, EFFECT_RULES, normalizeEffectLines } from './effects'
+import { ArmorSetsOverlay, armorSetEvidencePages, loadArmorSetsOverlay } from './overlays'
 
 const URL = 'https://terraria.wiki.gg/wiki/Test'
 const stat = (s: Extract<StatEffect, { kind: 'stat' }>['stat'], value: number, scope?: 'melee' | 'ranged' | 'magic' | 'summon'): StatEffect => ({ kind: 'stat', stat: s, value, ...(scope ? { scope } : {}) })
@@ -125,6 +126,41 @@ describe('armor sets (merge/armor.ts, parse/equipment.ts)', () => {
     const beetle = [{ pieces: ['Beetle Scale Mail'], lines: ['Beetles increase your melee damage and speed'] }, { pieces: ['Beetle Shell'], lines: ['Beetles protect you from damage'] }]
     expect(bonusPerHelmet(beetle, ['Beetle Helmet'])).toEqual({ ok: false, reason: expect.stringContaining('"Beetle Scale Mail", which is not a helmet of the set') })
     expect(bonusPerHelmet([], ['Rain Hat'])).toEqual({ ok: false, reason: expect.stringContaining('no Set Bonus text applies') })
+    // P6 fix round: keyed by the chests instead, the same segments express it — one bonus per chest
+    expect(bonusPerPiece(beetle, ['Beetle Scale Mail', 'Beetle Shell'], 'chest piece')).toEqual({
+      ok: true,
+      byHelmet: new Map([
+        ['Beetle Scale Mail', ['Beetles increase your melee damage and speed']],
+        ['Beetle Shell', ['Beetles protect you from damage']],
+      ]),
+    })
+    expect(bonusPerPiece(beetle, ['Beetle Scale Mail'], 'chest piece')).toEqual({ ok: false, reason: expect.stringContaining('"Beetle Shell", which is not a chest piece of the set') })
+  })
+
+  it('armor-sets overlay (P6 fix round): chests / combination / unrecorded rulings; a withheld set takes no other ruling; unrecorded evidence pages are fetched', () => {
+    const shipped = loadArmorSetsOverlay()
+    expect(shipped.entries.find((e) => e.page === 'Beetle armor')?.chests?.quotes).toHaveLength(3)
+    expect(shipped.entries.find((e) => e.page === 'Wizard set')?.combination).toMatchObject({ helmets: ['Wizard Hat', 'Magic Hat'], legs: { quote: 'Any leg-slot equipment can be worn without affecting the set bonus.' } })
+    expect(shipped.entries.filter((e) => e.withhold).map((e) => e.page)).toEqual(['Rain armor'])
+    expect(armorSetEvidencePages(shipped)).toEqual(expect.arrayContaining(['Mining armor', 'Prospector armor']))
+    const base = { overlay: 'armor-sets', authoredAt: '2026-10-15', notes: [], unrecorded: [] }
+    const bad = ArmorSetsOverlay.safeParse({ ...base, entries: [{ page: 'X armor', withhold: { reason: 'r', quote: 'q' }, chests: { quotes: ['q'] }, why: 'w' }] })
+    expect(bad.success).toBe(false)
+    const dup = ArmorSetsOverlay.safeParse({ ...base, entries: [], unrecorded: [1, 2].map(() => ({ piece: 'P', reason: 'r', evidence: [{ page: 'X', quote: 'q' }] })) })
+    expect(dup.success).toBe(false)
+  })
+
+  it('parseSetPiecesTable (P6 fix round, combination sets): name, item ID and body slot per row; the "Item" header spans icon + name; none without a "Body slot" table', () => {
+    const cell = (name: string, id: number) =>
+      `<td class="il1c"><span class="i -w"><a href="/wiki/${name.replace(/ /g, '_')}" title="${name}"><img alt="${name}" src="/x.png"/></a></span></td><td class="il2c"><span class="i -w"><span><span><a href="/wiki/${name.replace(/ /g, '_')}" title="${name}">${name}</a></span><span class="id">Internal <a href="/wiki/Item_IDs" title="Item IDs">Item ID</a>: ${id}</span></span></span></td>`
+    const html = `<table class="terraria sortable"><tbody><tr><th colspan="2">Item</th><th class="unsortable">Equipped</th><th>Body slot</th><th>Defense</th></tr>
+<tr>${cell('Wizard Hat', 238)}<td><img alt="x"/></td><td>Helmet</td><td>4</td></tr>
+<tr>${cell('Amethyst Robe', 1282)}<td><img alt="x"/></td><td>Shirt</td><td>0</td></tr></tbody></table>`
+    expect(parseSetPiecesTable(html)).toEqual([
+      { name: 'Wizard Hat', itemId: 238, bodySlot: 'Helmet' },
+      { name: 'Amethyst Robe', itemId: 1282, bodySlot: 'Shirt' },
+    ])
+    expect(parseSetPiecesTable(SET_ARTICLE)).toBeUndefined()
   })
 
   it('classSignals: damage / crit scopes, summon slots + whip range, mana, melee speed; class-less stats and specials give none', () => {

@@ -126,6 +126,49 @@ export function parseSetInfoboxes(html: string): SetInfobox[] {
   return out
 }
 
+export interface SetPieceRow {
+  name: string
+  itemId: number
+  /** The "Body slot" cell as the wiki words it ("Helmet", "Shirt", "Pants"). */
+  bodySlot: string
+}
+
+/**
+ * 3. SET-PIECES table of a combination set article (P6 fix round — the Wizard set, whose pieces live on their own
+ *    articles): the `table.terraria` whose header has "Item" (two columns: icon, name) and "Body slot"; one row per
+ *    piece — the name link with "Internal Item ID: N", the slot cell. Undefined when the article has no such table.
+ */
+export function parseSetPiecesTable(html: string): SetPieceRow[] | undefined {
+  const table = findAll(parseHtml(html), (n) => n.type === 'el' && n.tag === 'table' && hasClass(n, 'terraria')).find((t) =>
+    findAll(kids(t), (n) => n.type === 'el' && n.tag === 'th').some((th) => text(kids(th)) === 'Body slot'),
+  )
+  if (!table) return undefined
+  const headers = findAll(kids(table), (n) => n.type === 'el' && n.tag === 'th')
+  // the cell index of a header = the sum of the colspans before it (the "Item" header spans icon + name)
+  let col = 0
+  let slotCol = -1
+  let itemCol = -1
+  for (const th of headers) {
+    if (th.type !== 'el') continue
+    const label = text(kids(th))
+    if (label === 'Item') itemCol = col + 1
+    if (label === 'Body slot') slotCol = col
+    col += Number(th.attrs.colspan ?? '1') || 1
+  }
+  if (slotCol < 0 || itemCol < 0) return undefined
+  const out: SetPieceRow[] = []
+  for (const tr of findAll(kids(table), (n) => n.type === 'el' && n.tag === 'tr')) {
+    const cells = kids(tr).filter((c) => c.type === 'el' && c.tag === 'td')
+    if (cells.length <= Math.max(slotCol, itemCol)) continue
+    const idText = findAll(kids(cells[itemCol]), (n) => hasClass(n, 'id')).map((n) => text(kids(n)))[0] ?? ''
+    const m = /^Internal Item ID\s*:\s*(\d+)$/.exec(idText)
+    const link = findAll(kids(cells[itemCol]), (n) => n.type === 'el' && n.tag === 'a' && !findAll(n.children, (x) => x.type === 'el' && x.tag === 'img').length && text(n.children) !== 'Item ID')[0]
+    if (!m || !link || link.type !== 'el') continue
+    out.push({ name: text(link.children), itemId: Number(m[1]), bodySlot: text(kids(cells[slotCol])) })
+  }
+  return out
+}
+
 export interface WingRow {
   name: string
   itemIds: number[]

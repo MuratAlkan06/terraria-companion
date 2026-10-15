@@ -253,9 +253,9 @@ describe('AnalysisPane states (UX_SPEC §3.8, §5.2, §6)', () => {
 
 describe('Improve My Build panel (P5-S7; UX_SPEC §3.8, §8 GatedSection)', () => {
   const { analysis, improve } = analysisOf(PLANTERA, MECHS)
-  const html = wrap(createElement(ImprovePanel, { result: improve, ctx: segmentContext(page, analysis.estimates), sprites: null, setUrl: (s) => page.engine.sets.get(s)?.wikiUrl, idPrefix: 'imp' }))
+  const html = wrap(createElement(ImprovePanel, { result: improve, ctx: segmentContext(page, analysis.estimates), sprites: null, idPrefix: 'imp' }))
 
-  it('per group: obtainable-now rows with "Show Me How to Get It" (any item → its Feature B grind plan, /plan/new?item=:id; armor sets → their article)', () => {
+  it('per group: obtainable-now rows with "Show Me How to Get It" (any item → its Feature B grind plan, /plan/new?item=:id)', () => {
     expect(ACQUISITION_ANCHOR).toBe(ACQUISITION_TITLE_ID)
     const weapon = /<section[^>]*aria-labelledby="imp-weapon"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
     // PRD P5-S7 AC2 / §9 Feature B AC5 / UX_SPEC §3.8: deep-links into the planner now that P6-S5 ships
@@ -307,13 +307,23 @@ describe('Improve My Build panel (P5-S7; UX_SPEC §3.8, §8 GatedSection)', () =
     expect(html).toMatch(/<span>and<\/span><span class="inline-flex items-center"><a [^>]*>The Twins<\/a><\/span>/)
   })
 
-  it('GatedSections render nearest gate first, in the engine’s order (B94(5)): a fresh world facing the Eye of Cthulhu, armor', () => {
+  it('GatedSections render nearest gate first, in the engine’s order (B94(5)): a fresh world facing the Eye of Cthulhu, armor — each set linking its set page (B131(b))', () => {
     const setup: ReadinessSetup = { ...defaultReadinessSetup(), bossId: 'eye-of-cthulhu' }
     const fresh = analysisOf(setup, defeated())
-    const panel = wrap(createElement(ImprovePanel, { result: fresh.improve, ctx: segmentContext(page, fresh.analysis.estimates), sprites: null, setUrl: (s) => page.engine.sets.get(s)?.wikiUrl, idPrefix: 'imp' }))
+    const panel = wrap(createElement(ImprovePanel, { result: fresh.improve, ctx: segmentContext(page, fresh.analysis.estimates), sprites: null, idPrefix: 'imp' }))
     const armor = /<section[^>]*aria-labelledby="imp-armor"[\s\S]*?(?=<section[^>]*aria-labelledby="imp-accessory")/.exec(panel)?.[0] ?? ''
     expect([...armor.matchAll(/data-gated-section="([^"]+)"/g)].map((m) => m[1])).toEqual(['king-slime', 'wall-of-flesh', 'queen-slime'])
     expect(text(panel)).toContain(copy.IMPROVE_INTRO)
+    // PRD P6-S1 (AMENDMENTS-016 B131(b)): an armor set — several items, no single plan — opens its set page in-app at
+    // "how to obtain"; its name links the set page too. No armor-set row links the wiki any more.
+    const sets = fresh.improve.groups.flatMap((g) => [...g.obtainable, ...g.gated.flatMap((x) => x.items)]).filter((s) => s.kind === 'armor-set')
+    expect(sets.length).toBeGreaterThan(0)
+    for (const s of sets) {
+      const row = new RegExp(`<li data-suggestion="${s.key}"[\\s\\S]*?</li>`).exec(panel)?.[0] ?? ''
+      expect(row, s.key).toContain(`href="/armor/${s.setId}#acq-title"`)
+      expect(row, s.key).toContain(`href="/armor/${s.setId}"`)
+      expect(row, s.key).not.toContain('terraria.wiki.gg')
+    }
   })
 })
 

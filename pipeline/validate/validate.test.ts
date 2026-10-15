@@ -210,6 +210,34 @@ describe('corrupted records fail with named errors', () => {
     expect(expectOnly(run(raw), 'E_DUPLICATE_ID').map((e) => e.message).join('\n')).toContain('more than one variant for helmet')
   })
 
+  it('P6 fix round (§7a-6): alternative chests (`chest` first) and no legs piece validate; a chest-keyed set needs a chestId on every variant, covering helmet × chest', () => {
+    // the fixture's leggings stand in for a second chest: Cobalt becomes "3 helmets × 2 chests, no legs piece"
+    const reshape = () => {
+      const raw = sample()
+      find(raw, 'armor', 375).slot = 'chest'
+      const cobalt = find(raw, 'armorSets', 'cobalt')
+      cobalt.pieces = { helmets: [371, 372, 373], chest: 374, chests: [374, 375] }
+      return { raw, cobalt }
+    }
+    expect(codesOf(run(reshape().raw))).toEqual([])
+    // the list starts with `chest`
+    const first = reshape()
+    first.cobalt.pieces.chests = [375, 374]
+    expect(expectOnly(run(first.raw), 'E_DERIVED_MISMATCH').map((e) => e.message).join('\n')).toContain('pieces.chests must start with pieces.chest')
+    // a chest not listed in `chests` breaks its back-ref
+    const unlisted = reshape()
+    unlisted.cobalt.pieces.chests = undefined
+    expect(expectOnly(run(unlisted.raw), 'E_DERIVED_MISMATCH').map((e) => e.message).join('\n')).toContain('does not list this piece under pieces.chest')
+    // keyed by the chest: one variant per helmet × chest, every one with its chestId
+    const keyed = reshape()
+    keyed.cobalt.variants = keyed.cobalt.variants.flatMap((v: Rec) => [{ ...v, chestId: 374 }, { ...structuredClone(v), chestId: 375 }])
+    expect(codesOf(run(keyed.raw))).toEqual([])
+    keyed.cobalt.variants = keyed.cobalt.variants.slice(1)
+    expect(expectOnly(run(keyed.raw), 'E_DANGLING_REF')).toEqual([expect.objectContaining({ fromRef: 'set:cobalt', field: 'variants', toRef: 'i:371', message: expect.stringContaining('with chest i:374') })])
+    delete keyed.cobalt.variants[0].chestId
+    expect(errorsOf(run(keyed.raw)).map((e) => e.message).join('\n')).toContain('a set keyed by its chest needs a chestId on every variant')
+  })
+
   it('AMENDMENTS-011 B52: variants[].classes is optional (older data validates); when present it agrees with the kept class', () => {
     const raw = sample()
     const cobalt = find(raw, 'armorSets', 'cobalt')

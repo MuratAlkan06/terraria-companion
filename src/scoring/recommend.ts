@@ -35,6 +35,7 @@
  * - Deterministic: same inputs (and seed) ⇒ same output; every ordering ends in a total order.
  */
 import type { Accessory, ArmorPiece, ArmorSet, Boss, DamageClass, Difficulty, Goal, Item, LoadoutClass, LoadoutSlots, Rarity, Stage, StatEffect, Weapon } from '../schemas'
+import { comboName, setCombos, wornCombo, type SetCombo } from '../schemas/setCombos'
 import { getField } from '../schemas/getField'
 import { availabilityOf, compareRankable, gateCount, rarityRank, targetCapNodes, type Availability } from './candidates'
 import {
@@ -998,37 +999,38 @@ function build(input: BuilderInput, data: BuilderData): Built {
     slots.set('alt', result)
   }
 
-  // --- armor (§4.3)
-  const armorCands: { set: ArmorSet; variant: ArmorSet['variants'][number]; pieces: ArmorPiece[] }[] = []
+  // --- armor (§4.3): every wearable full set — each variant with each chest it applies to (one per helmet for a
+  // one-chest set); a set without a legs piece (Wizard set) leaves the legs slot free, any legs keeping its bonus
+  const armorCands: { set: ArmorSet; variant: ArmorSet['variants'][number]; combo: SetCombo; pieces: ArmorPiece[] }[] = []
+  const pieceName = (id: number) => data.armor.get(id)?.name ?? `#${id}`
   for (const set of data.sets.values()) {
-    for (const variant of set.variants) {
-      if (!variantFits(variant, cls)) continue
-      const pieces = [variant.helmetId, set.pieces.chest, set.pieces.legs].map((id) => data.armor.get(id))
+    for (const combo of setCombos(set)) {
+      if (!variantFits(combo.variant, cls)) continue
+      const pieces = [combo.helmetId, combo.chestId, ...(combo.legsId === undefined ? [] : [combo.legsId])].map((id) => data.armor.get(id))
       if (pieces.some((p) => p === undefined)) continue
-      armorCands.push({ set, variant, pieces: pieces as ArmorPiece[] })
+      armorCands.push({ set, variant: combo.variant, combo, pieces: pieces as ArmorPiece[] })
     }
   }
   const armorPool = collect(
     ctx,
-    armorCands.map((c) => ({ ...c, id: c.variant.helmetId })),
+    armorCands.map((c) => ({ ...c, id: c.combo.helmetId })),
     (c) => c.pieces,
     (c, admission) => {
       const score = armorScore(c.pieces, c.variant.setBonus, c.set.name, input.goal, cls)
       if (!score) return 'unverified'
       const helmet = c.pieces[0]
-      const multi = c.set.variants.length > 1
       return {
-        key: `set:${c.set.id}:${helmet.id}`,
+        key: `set:${c.set.id}:${c.combo.key}`,
         id: helmet.id,
-        name: multi ? `${c.set.name} (${helmet.name})` : c.set.name,
+        name: comboName(c.set, c.combo, pieceName),
         setId: c.set.id,
-        pieces: [helmet.id, c.set.pieces.chest, c.set.pieces.legs] as const,
+        pieces: [helmet.id, c.combo.chestId, c.combo.legsId ?? 0] as const,
         score,
         availability: admission.availability,
         ownedUnknown: admission.kind === 'eligible' && admission.ownedUnknown,
         gateCount: Math.max(...c.pieces.map(gateCount)),
         rarity: helmet.rarity,
-        order: `${c.set.id}:${helmet.id}`,
+        order: `${c.set.id}:${c.combo.key}`,
         set: c.set,
         variant: c.variant,
         armorPieces: c.pieces,
@@ -1044,15 +1046,18 @@ function build(input: BuilderInput, data: BuilderData): Built {
     const slotsOk = ids.every((id, i) => id === null || data.armor.get(id)?.slot === (['head', 'chest', 'legs'] as const)[i])
     const pieces = ids.flatMap((id) => (id === null ? [] : [data.armor.get(id) as ArmorPiece]))
     if (slotsOk && pieces.length > 0) {
-      const set = [...data.sets.values()].find((st) => armorPin.helmet !== null && st.pieces.helmets.includes(armorPin.helmet) && st.pieces.chest === armorPin.chest && st.pieces.legs === armorPin.legs)
-      const variant = set?.variants.find((v) => v.helmetId === armorPin.helmet)
+      // the set (and combination) the pinned pieces complete — a set without a legs piece takes any legs
+      const worn = [...data.sets.values()].map((st) => ({ st, combo: wornCombo(st, armorPin.helmet ?? undefined, armorPin.chest ?? undefined, armorPin.legs ?? undefined) })).find((x) => x.combo !== undefined)
+      const set = worn?.st
+      const combo = worn?.combo
+      const variant = combo?.variant
       const score = armorScore(pieces, variant?.setBonus ?? [], set?.name, input.goal, cls)
       const first = pieces[0]
       armor = {
         pinned: true,
-        key: set && variant ? `set:${set.id}:${variant.helmetId}` : `pieces:${ids.map((x) => x ?? 0).join('.')}`,
+        key: set && combo ? `set:${set.id}:${combo.key}` : `pieces:${ids.map((x) => x ?? 0).join('.')}`,
         id: first.id,
-        name: set ? (set.variants.length > 1 ? `${set.name} (${first.name})` : set.name) : pieces.map((p) => p.name).join(', '),
+        name: set && combo ? comboName(set, combo, pieceName) : pieces.map((p) => p.name).join(', '),
         ...(set ? { setId: set.id, set, variant } : {}),
         pieces: [armorPin.helmet ?? 0, armorPin.chest ?? 0, armorPin.legs ?? 0] as const,
         armorPieces: pieces,

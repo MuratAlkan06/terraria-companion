@@ -1,9 +1,9 @@
 /* Merge stage on synthetic Cargo rows shaped like the real tables (2026-10-13 sync). */
 import { describe, expect, it } from 'vitest'
-import { DropSource, Enemy, Recipe, RecipeGroup } from '../../src/schemas'
+import { DropSource, Enemy, getField, type Prov, Recipe, RecipeGroup } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import type { Iteminfo } from '../parse/iteminfo'
-import { buildDrops, indexNpcs, parseNpcIdCell } from './drops'
+import { buildDrops, indexNpcs, parseNpcIdCell, unreadCellNotes } from './drops'
 import { buildEnemies } from './enemies'
 import { conditionMatchers, type ConditionsOverlay } from './overlays'
 import { fnv1a32hex } from '../parse/text'
@@ -270,6 +270,130 @@ describe('buildDrops', () => {
     expect(unknown.rates).toEqual({})
     expect(unknown._prov.unverifiedFields).toEqual(['rates.classic', 'rates.expert', 'rates.master'])
     expect(out.ledger).toMatchObject({ emittedRows: 2, emittedRecords: 3, splitRows: 1 })
+  })
+
+  it('AMENDMENTS-016 B139(a): a rate cell that is not a rate but carries notes keeps its conditions Unknown (never asserted empty); the Source link stands', () => {
+    const seedRate = '<span class="chance">[[I am error#chest loot|More info]] <div class="note-text ">(In [[I am error]] worlds)</div></span>'
+    const out = drops([
+      // the 29 Cargo Drops rows 134056–134084 have exactly this shape (2026-10-13 sync)
+      dropRow({ _rowid: '134056', _page: 'I am error', nameraw: 'Chest', id: '', name: '<span class=" eil"><span>[[Chest|Chest]]</span></span>', isfromnpc: '0', rate: seedRate }),
+      // not a rate, but no notes: nothing went unread, so the parsed (empty) conditions stand
+      dropRow({ _rowid: '2', item: 'Voodoo Doll', rate: 'More info' }),
+      // the second value is not a rate: parsing stopped, so the first value's note was never applied either
+      dropRow({ _rowid: '3', item: 'Tissue Sample', rate: '<span class="chance">2% <span class="note-text ">(Hardmode)</span><br/>More info</span>' }),
+    ])
+    const seed = DropSource.parse(out.drops.find((d) => d.source.npcName === 'Chest'))
+    expect(seed.id).toBe('216-chest-741638a5') // the id still hashes the parsed conditions: unchanged by the ruling
+    expect(seed.conditions).toEqual([])
+    expect(seed.rates).toEqual({})
+    expect(seed._prov.unverifiedFields).toEqual(['conditions', 'rates.classic', 'rates.expert', 'rates.master'])
+    expect(getField(seed, 'conditions')).toEqual({ status: 'unverified' }) // renders "Conditions: Unknown"
+    expect(seed._prov.sources[0]).toEqual({ kind: 'cargo:Drops', url: 'https://terraria.wiki.gg/wiki/I_am_error', fetchedAt: '2026-10-13' })
+    const noNotes = out.drops.find((d) => d.itemId === 267)!
+    expect(noNotes._prov.unverifiedFields).toEqual(['rates.classic', 'rates.expert', 'rates.master'])
+    const laterFailure = out.drops.find((d) => d.itemId === 1329)!
+    expect(laterFailure.conditions).toEqual([])
+    expect(laterFailure._prov.unverifiedFields).toContain('conditions')
+    expect(out.reasons.get('conditions: the rate cell is not a rate, so its notes were not read (B139)')).toEqual({
+      count: 2,
+      examples: ['I am error: Chest → Shackle (In I am error worlds)', 'Zombie: Zombie → Tissue Sample (Hardmode)'],
+    })
+    expect(out.gaps).toEqual([]) // the per-field gaps come from _prov (validate/report.ts), never duplicated here
+  })
+
+  describe('AMENDMENTS-016 B140/B141: the note-unmapped drop rows', () => {
+    // the shipped registry's B140(a) entries (pipeline/overlays/conditions.json), on top of this file's fixture
+    const entry = (id: string, note: string, kind: 'biome' | 'world-state' = 'biome') => ({ id, name: id, kind, wikiTitle: id, description: 'x', match: { dropNotes: [note] } })
+    const b140 = conditionMatchers({
+      ...overlay,
+      entries: [
+        ...overlay.entries,
+        entry('underground', 'Underground'),
+        entry('cavern', 'Cavern'),
+        entry('lava-layer', '"lava layer"'),
+        entry('bottom-250-tiles', 'within bottom 250 tiles of world'),
+        entry('first-destruction', 'on first destruction', 'world-state'),
+        entry('subsequent-destructions', 'all other destructions', 'world-state'),
+      ],
+    })
+    const chest = { _page: 'Gold Chest', nameraw: 'Gold Chest', id: '', name: '[[Gold Chest]]', isfromnpc: '0' }
+    const note = (text: string) => `<span class="note-text ">(${text})</span>`
+    const chance = (v: string) => `<span class="chance" data-sort-value="1">${v}</span>`
+    const build = (rows: CargoRow[]) => buildDrops({ rows, fetchedAt: '2026-10-13T02:46:00.000Z', npcs: indexNpcs(npcRows), npcsFetchedAt: '2026-10-13T02:47:00.000Z', iteminfo, conditions: b140, bosses: registry })
+    const unknownConditions = (d: DropSource) => getField(d, 'conditions').status === 'unverified'
+
+    it('(a) registered location / sequence notes become exact per-variant conditions (Gold Chest layers, lava layer, bottom 250 tiles, first / other destructions)', () => {
+      const out = build([
+        // Cargo rows 128239 (Mace), 128267 (Lava Charm), 128273 (Meteorite Bar), 123078 (Musket) have these shapes (2026-10-13 sync)
+        dropRow({ ...chest, _rowid: '128239', item: 'Shackle', rate: `<span class="chance">${chance('1/6 (16.67%)')} ${note('Underground')}<br/>\n${chance('2/15 (13.33%)')} ${note('Cavern')}<br/>\n${chance('19/150 (12.67%)')} ${note('"lava layer"')}</span>` }),
+        dropRow({ ...chest, _rowid: '128267', item: 'Voodoo Doll', rate: `<span class="chance">${chance('1/20 (5%)')} ${note('"lava layer"')}</span>` }),
+        dropRow({ ...chest, _rowid: '128273', item: 'Iron Bar', quantity: '15-29', rate: `<span class="chance">${chance('1/4 (25%)')} ${note('within bottom 250 tiles of world')}</span>` }),
+        dropRow({ _rowid: '123078', _page: 'Creeper', nameraw: 'Creeper', id: '267', item: 'Tissue Sample', rate: `100% ${note('on first destruction')}<br/>20% ${note('all other destructions')}` }),
+      ])
+      const of = (itemId: number) => out.drops.filter((d) => d.itemId === itemId).map((d) => [d.conditions, d.rates.classic, d._prov.unverifiedFields] as const)
+      expect(of(216)).toEqual(expect.arrayContaining([
+        [['underground'], 0.166666666667, []],
+        [['cavern'], 0.133333333333, []],
+        [['lava-layer'], 0.126666666667, []],
+      ]))
+      expect(of(216)).toHaveLength(3)
+      expect(of(267)).toEqual([[['lava-layer'], 0.05, []]])
+      expect(of(22)).toEqual([[['bottom-250-tiles'], 0.25, []]])
+      expect(of(1329)).toEqual(expect.arrayContaining([[['first-destruction'], 1, []], [['subsequent-destructions'], 0.2, []]]))
+      expect(out.ledger).toMatchObject({ emittedRows: 4, emittedRecords: 7, splitRows: 2, unreadNoteRecords: 0 })
+      expect([...out.reasons.keys()].filter((r) => /note|B14/.test(r))).toEqual([])
+    })
+
+    it('(b) a parseable rate whose note maps to no registered condition (a seed world, a layer + seed combo, "regular worlds"): conditions Unknown, never []', () => {
+      const out = build([
+        dropRow({ ...chest, _rowid: '128286', item: 'Shackle', rate: `<span class="chance">${chance('1/4 (25%)')} ${note('Cavern, in [[Celebration Mk 10]] or [[Rainbow road]] worlds')}</span>` }),
+        dropRow({ ...chest, _rowid: '133940', _page: 'Obsidian Lock Box', nameraw: 'Obsidian Lock Box', item: 'Voodoo Doll', rate: `1/5 (20%) ${note('In regular worlds')}` }),
+        dropRow({ ...chest, _rowid: '134129', _page: 'Biome Chests', nameraw: 'Jungle Chest', item: 'Bee Gun', rate: `100% ${note('In Rainbow Road worlds')}` }),
+      ])
+      expect(out.drops).toHaveLength(3)
+      for (const d of out.drops) {
+        expect(d.conditions, d.id).toEqual([])
+        expect(unknownConditions(d), d.id).toBe(true) // "Conditions: Unknown"
+        expect(d._prov.unverifiedFields, d.id).toEqual(['conditions', 'rates.classic', 'rates.expert', 'rates.master'])
+      }
+      expect(out.reasons.get('conditions: a rate-cell note maps to no registered condition (B140(b): seed worlds stay unmapped)')).toEqual({
+        count: 3,
+        examples: [
+          'Gold Chest: Gold Chest → Shackle (Cavern, in Celebration Mk 10 or Rainbow road worlds)',
+          'Obsidian Lock Box: Obsidian Lock Box → Voodoo Doll (In regular worlds)',
+          'Biome Chests: Jungle Chest → Bee Gun (In Rainbow Road worlds)',
+        ],
+      })
+      expect(out.ledger.unreadNoteRecords).toBe(0)
+    })
+
+    it('(ii) a quantity cell with notes (amounts per location) leaves the quantity Unknown with its own reason; the plain rate stands', () => {
+      const out = build([dropRow({ ...chest, _rowid: '128249', item: 'Iron Bar', quantity: `5–14 ${note('Underground')}<br/>\n3–10 ${note('Cavern')}`, rate: `<span class="chance">${chance('1/4 (25%)')}</span>` })])
+      const [d] = out.drops
+      expect(d).toMatchObject({ quantity: {}, rates: { classic: 0.25, expert: 0.25, master: 0.25 }, conditions: [] })
+      expect(d._prov.unverifiedFields).toEqual(['quantity.classic', 'quantity.expert', 'quantity.master'])
+      expect(out.reasons.get('quantity: the cell states amounts per location (notes), not one quantity (B141(ii))')).toEqual({ count: 1, examples: ['Gold Chest: Gold Chest → Iron Bar ("Underground / Cavern")'] })
+      expect(out.reasons.has('quantity: not parseable')).toBe(false)
+      expect(out.ledger.unreadNoteRecords).toBe(0)
+    })
+
+    it('(c) the sweep reads the raw cells independently: a stated field beside a note it never read is caught; Unknown fields and mapped notes pass', () => {
+      const prov = (unverifiedFields: string[]): Prov => ({ gameVersion: '1.4.5.8', sources: [], verified: unverifiedFields.length === 0, unverifiedFields, editorialFields: [] })
+      const rateRow = dropRow({ rate: `1/4 ${note('In Rainbow Road worlds')}` })
+      const qtyRow = dropRow({ quantity: `5–14 ${note('Underground')}<br/>3–10 ${note('Cavern')}` })
+      const mappedRow = dropRow({ rate: `1/6 ${note('Underground')}<br/>2/15 ${note('Cavern')}` })
+      const stated = { conditions: [] as string[], quantity: { min: 1, max: 1 }, _prov: prov([]) }
+      expect(unreadCellNotes(rateRow, stated, b140.dropNote)).toEqual(['rate-cell note(s) "In Rainbow Road worlds" beside conditions: []', 'rate-cell note "In Rainbow Road worlds" maps to no registered condition, yet conditions are stated'])
+      expect(unreadCellNotes(rateRow, { ...stated, _prov: prov(['conditions']) }, b140.dropNote)).toEqual([])
+      expect(unreadCellNotes(qtyRow, stated, b140.dropNote)).toEqual(['quantity-cell note(s) "Underground", "Cavern" beside a stated quantity'])
+      expect(unreadCellNotes(qtyRow, { ...stated, quantity: {}, _prov: prov(['quantity.classic', 'quantity.expert', 'quantity.master']) }, b140.dropNote)).toEqual([])
+      expect(unreadCellNotes(mappedRow, { ...stated, conditions: ['cavern'] }, b140.dropNote)).toEqual([])
+      expect(unreadCellNotes(mappedRow, stated, b140.dropNote)).toEqual(['rate-cell note(s) "Underground", "Cavern" beside conditions: []'])
+      // a note on a non-Desktop platform value is not the Desktop value's
+      const oldGen = '<span class="eico s i3" title="Old-gen console and 3DS versions"><b></b><i></i><span>(Old-gen console and 3DS versions)</span></span>'
+      const desktop = '<span class="eico s i0" title="Desktop, Console and Mobile versions"><b></b><i></i><span>(Desktop, Console and Mobile versions)</span></span>'
+      expect(unreadCellNotes(dropRow({ rate: `1/4${desktop}<br/>1/2 ${note('In regular worlds')}${oldGen}` }), stated, b140.dropNote)).toEqual([])
+    })
   })
 
   it('P5-S3 review: a bundled custom cell gives each row its OWN entry\'s quantity (Grenade Launcher 1, Rocket I 50–149); a companion without its own row is a gap, never merged', () => {

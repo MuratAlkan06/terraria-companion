@@ -13,14 +13,22 @@
  * (equipment.ts).
  *
  * SETS. A set is the set row of a set article (Cargo type "armor" + "set"); its pieces are the armor
- * pieces whose `_page` is that article: 1..N helmets, exactly one chest and one legs piece. The set
+ * pieces whose `_page` is that article: 1..N helmets, 1..N chests and exactly one legs piece. The set
  * infobox (parse/equipment.ts) "Set Bonus" row gives the game text per helmet: a piece-specific segment
  * ("<Hallowed Hood icon>: …") is that helmet's complete bonus; the default segment(s) apply to every
  * other helmet. Each line is classified by effects.ts (the set article is the special's sourceUrl);
- * setBonusText = the lines joined by newlines. A set the schema cannot express — no Set Bonus row, not
- * exactly one chest + legs on the article, bonus segments keyed by a non-helmet piece (Beetle: two
- * alternative chests with different bonuses) — needs an overlay `withhold` entry with a verbatim quote:
- * the set is not emitted, its pieces carry no setId, a gap records why. Unreviewed → the build fails.
+ * setBonusText = the lines joined by newlines.
+ * P6 fix round (additive schema, `pieces.chests` / optional `pieces.legs` / `variants[].chestId`):
+ * - several chests on the article need a reviewed overlay `chests` ruling quoting each chest; when the
+ *   Set Bonus segments name those chests (Beetle armor: Scale Mail → offensive, Shell → defensive) the
+ *   bonus is keyed by the chest — one variant per helmet × chest, each with its `chestId`;
+ * - a combination set whose pieces live on their own articles (Wizard set) takes its members from the
+ *   overlay's `combination` ruling, checked row for row against the article's set-pieces table, and has
+ *   no legs piece (quoted: any legs keep the bonus).
+ * A set the schema still cannot express (Rain armor: no Set Bonus row) needs an overlay `withhold`
+ * entry with a verbatim quote: the set is not emitted, a gap records why, and its pieces' setId is
+ * listed Unknown (not "none"). Unreviewed → the build fails. The overlay's `unrecorded` pieces (tied by
+ * the wiki to more than one set — Ultrabright Helmet) likewise carry an Unknown setId.
  *
  * VARIANT CLASS (editorial — a site taxonomy): the damage-class signals of the variant's stat effects —
  * helmet + chest + legs + its set bonus: a class scope (damage / crit), minion / sentry slots and whip
@@ -33,16 +41,16 @@
  * which must also EQUAL the variant's stat class signals (quote and data agree, else the build fails).
  * A hybrid ruling without a list (Crystal Assassin: the article names no class) stays ["other"].
  *
- * Set stage = the earliest stage a complete set can be assembled: min over helmets of max(helmet, chest,
- * legs) stage — only when every piece's stage is derived (else Unknown). The set infobox "Defense"
- * totals (per helmet or one total) are cross-checked against the sum of the piece defenses (report).
+ * Set stage = the earliest stage a complete set can be assembled: min over helmet × chest of max(helmet,
+ * chest, legs) stage — only when every piece's stage is derived (else Unknown). The set infobox "Defense"
+ * totals (per helmet, per chest or one total) are cross-checked against the sum of the piece defenses (report).
  */
 import { STAGE_ORDER, type ArmorPiece, type ArmorSet, type DamageClass, type GapEntry, type ProvSource, type Recipe, type SpriteManifestFile, type Stage, type StatEffect } from '../../src/schemas'
 import type { Article } from '../fetch/articles'
 import type { CargoRow, CargoTableFetch } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import type { ImageInfoFetch } from '../fetch/images'
-import { parseSetInfoboxes, type SetBonusSegment } from '../parse/equipment'
+import { parseSetInfoboxes, parseSetPiecesTable, type SetBonusSegment, type SetPieceRow } from '../parse/equipment'
 import type { Iteminfo } from '../parse/iteminfo'
 import { slugify } from '../parse/text'
 import { EQUIPINFO_PAGE, equipinfoByItem } from './accessories'
@@ -52,7 +60,7 @@ import { classifyLine, countRule, crossCheckEquipinfo, normalizeEffectLines, too
 import { armorSetPages, armorSetRows, checkedDefense, equipmentCore, identifyArmor, iteminfoArmorSlot, recordState, uniqueSlugs, type EquipmentContext, type EquipmentIdentification } from './equipment'
 import { Evidence } from './evidence'
 import type { GatingResult } from './gating'
-import type { ArmorSetsOverlay } from './overlays'
+import type { ArmorSetEntry, ArmorSetsOverlay } from './overlays'
 import { GapLog, isoDate, makeProv } from './prov'
 import { OverlayError } from './registry'
 import type { CrossCheckCount } from './weapons'
@@ -115,24 +123,33 @@ export function classSignals(effects: readonly StatEffect[]): Set<Exclude<Damage
   return out
 }
 
-/** Which bonus lines apply to each helmet; or why the set's bonus cannot be expressed. */
-export function bonusPerHelmet(segments: readonly SetBonusSegment[], helmets: readonly string[]): { ok: true; byHelmet: Map<string, string[]> } | { ok: false; reason: string } {
+/**
+ * Which bonus lines apply to each key piece — the helmets, or the chests of a set whose Set Bonus segments are keyed
+ * by its alternative chests (Beetle armor); or why the set's bonus cannot be expressed.
+ */
+export function bonusPerPiece(segments: readonly SetBonusSegment[], keys: readonly string[], noun: 'helmet' | 'chest piece' = 'helmet'): { ok: true; byHelmet: Map<string, string[]> } | { ok: false; reason: string } {
   const defaults = segments.filter((s) => s.pieces.length === 0).flatMap((s) => s.lines)
   const specific = new Map<string, string[]>()
   for (const s of segments.filter((x) => x.pieces.length > 0)) {
     for (const p of s.pieces) {
-      if (!helmets.includes(p)) return { ok: false, reason: `the Set Bonus row has a segment for "${p}", which is not a helmet of the set` }
+      if (!keys.includes(p)) return { ok: false, reason: `the Set Bonus row has a segment for "${p}", which is not a ${noun} of the set` }
       specific.set(p, [...(specific.get(p) ?? []), ...s.lines])
     }
   }
   const byHelmet = new Map<string, string[]>()
-  for (const h of helmets) {
+  for (const h of keys) {
     const lines = specific.get(h) ?? defaults
-    if (lines.length === 0) return { ok: false, reason: `no Set Bonus text applies to the helmet "${h}"` }
+    if (lines.length === 0) return { ok: false, reason: `no Set Bonus text applies to the ${noun} "${h}"` }
     byHelmet.set(h, lines)
   }
   return { ok: true, byHelmet }
 }
+
+/** Which bonus lines apply to each helmet (the usual keying). */
+export const bonusPerHelmet = (segments: readonly SetBonusSegment[], helmets: readonly string[]) => bonusPerPiece(segments, helmets, 'helmet')
+
+/** The set-pieces table's "Body slot" words → ArmorPiece slots (P6 fix round, combination sets). */
+const TABLE_SLOT: Readonly<Record<string, ArmorPiece['slot']>> = { Helmet: 'head', Shirt: 'chest', Pants: 'legs' }
 
 const stageMax = (a: Stage, b: Stage): Stage => (STAGE_ORDER[a] >= STAGE_ORDER[b] ? a : b)
 
@@ -242,6 +259,31 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
     cc[outcome] += 1
     ctx.crossCheck.set('set Defense total (infobox vs Σ piece defense)', cc)
   }
+  const withheld = new Map<string, { reason: string; url: string }>()
+  // A combination set's members (P6 fix round — the Wizard set): the overlay's reviewed names, checked against the set
+  // article's own set-pieces table (name, item ID, body slot) and the emitted pieces; the quotes back the rule.
+  const combinationMembers = (page: string, c: NonNullable<ArmorSetEntry['combination']>): ArmorPiece[] => {
+    const where = `overlay armor-sets/${page} combination`
+    for (const q of [...c.quotes, c.legs.quote]) input.evidence.quote(page, q, where)
+    for (const h of c.helmets) if (!c.quotes.some((q) => q.includes(h))) throw new OverlayError(`[E_SCHEMA] ${where}: no quote names the helmet "${h}"`)
+    if ((piecesByPage.get(page) ?? []).length > 0) throw new OverlayError(`[E_SCHEMA] ${where}: the article also hosts armor pieces — not a combination set`)
+    const table = parseSetPiecesTable((input.articles.get(page) as Article).html)
+    if (!table) throw new OverlayError(`[E_SCHEMA] ${where}: the article has no set-pieces table to check the members against`)
+    const named = new Map<string, ArmorPiece['slot']>([...c.helmets.map((n) => [n, 'head'] as const), ...c.chests.map((n) => [n, 'chest'] as const)])
+    const rows = new Map(table.map((r) => [r.name, r]))
+    const listed = [...named.keys()].sort()
+    const tabled = [...rows.keys()].sort()
+    if (listed.join('|') !== tabled.join('|')) throw new OverlayError(`[E_SCHEMA] ${where}: the members (${listed.join(', ')}) differ from the article's set-pieces table (${tabled.join(', ')})`)
+    return [...named].map(([n, slot]) => {
+      const row = rows.get(n) as SetPieceRow
+      const matches = pieces.filter((p) => p.name === n)
+      if (matches.length !== 1) throw new OverlayError(`[E_SCHEMA] ${where}: ${matches.length} emitted armor pieces are named "${n}" (needs exactly one)`)
+      const piece = matches[0]
+      if (piece.id !== row.itemId) throw new OverlayError(`[E_SCHEMA] ${where}: "${n}" is item ${row.itemId} in the set-pieces table but item ${piece.id} in the data`)
+      if (TABLE_SLOT[row.bodySlot] !== slot || piece.slot !== slot) throw new OverlayError(`[E_SCHEMA] ${where}: "${n}" is listed as a ${slot} piece, the table says "${row.bodySlot}", the data ${piece.slot}`)
+      return piece
+    })
+  }
   // one set per set ARTICLE (the Wizard set article carries eight set rows, one per hat/robe combination)
   const setRows = armorSetRows(input.itemRows)
   for (const page of armorSetPages(input.itemRows)) {
@@ -252,45 +294,59 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
     if (!article) throw new OverlayError(`[E_SCHEMA] armor set "${page}": article not fetched by the sync plan (run npm run pipeline:fetch)`)
     const url = wikiPageUrl(article.resolvedTitle)
     const box = parseSetInfoboxes(article.html)[0]
-    const members = (piecesByPage.get(page) ?? []).slice().sort((a, b) => a.id - b.id)
+    const entry = overlayByPage.get(page)
+    if (entry) usedOverlay.add(page)
+    // members: the pieces the set article hosts — or, for a combination set, the pieces its own set-pieces table names
+    const members = (entry?.combination ? combinationMembers(page, entry.combination) : (piecesByPage.get(page) ?? [])).slice().sort((a, b) => a.id - b.id)
     const helmets = members.filter((p) => p.slot === 'head')
     const chests = members.filter((p) => p.slot === 'chest')
     const legs = members.filter((p) => p.slot === 'legs')
-    const entry = overlayByPage.get(page)
-    if (entry) usedOverlay.add(page)
+    const legsAny = entry?.combination !== undefined
 
     // what the schema cannot express
     const problems: string[] = []
     if (!box) problems.push('the article has no set infobox')
     else if (!box.bonus) problems.push('the set infobox has no Set Bonus row')
-    if (chests.length !== 1 || legs.length !== 1 || helmets.length === 0) problems.push(`the article hosts ${helmets.length} helmet(s), ${chests.length} chest piece(s) and ${legs.length} legs piece(s) — an ArmorSet needs ≥1 helmet and exactly one chest and one legs piece`)
-    const perHelmet = box?.bonus ? bonusPerHelmet(box.bonus, helmets.map((h) => h.name)) : undefined
-    if (perHelmet && !perHelmet.ok && problems.length === 0) problems.push(perHelmet.reason)
+    if (helmets.length === 0 || chests.length === 0 || legs.length !== (legsAny ? 0 : 1)) {
+      problems.push(`the set has ${helmets.length} helmet(s), ${chests.length} chest piece(s) and ${legs.length} legs piece(s) — an ArmorSet needs ≥1 helmet, ≥1 chest and exactly one legs piece (none for a combination set ruled "any legs")`)
+    }
+    // the Set Bonus segments decide the keying: by helmet (the usual), or by chest when they name the set's alternative chests
+    const chestKeyed = chests.length > 1 && (box?.bonus ?? []).some((s) => s.pieces.some((p) => chests.some((c) => c.name === p)))
+    const perPiece = box?.bonus ? (chestKeyed ? bonusPerPiece(box.bonus, chests.map((c) => c.name), 'chest piece') : bonusPerHelmet(box.bonus, helmets.map((h) => h.name))) : undefined
+    if (perPiece && !perPiece.ok && problems.length === 0) problems.push(perPiece.reason)
     if (problems.length > 0 || entry?.withhold) {
       if (!entry?.withhold) throw new OverlayError(`[E_SCHEMA] armor set "${page}" cannot be expressed as an ArmorSet (${problems.join('; ') || '—'}) — review it and add a withhold entry with a verbatim quote to pipeline/overlays/armor-sets.json`)
       if (problems.length === 0) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: withhold entry, but the set is expressible — remove the stale entry`)
       const p = input.evidence.quote(page, entry.withhold.quote, `overlay armor-sets/${page} withhold`)
-      gaps.add({ ref, kind: 'count-reconciliation', detail: `${name} not emitted as an armor set: ${entry.withhold.reason} (${problems.join('; ')}); its pieces carry no setId`, sources: [p.url] })
+      gaps.add({ ref, kind: 'count-reconciliation', detail: `${name} not emitted as an armor set: ${entry.withhold.reason} (${problems.join('; ')}); its pieces carry no setId (listed Unknown)`, sources: [p.url] })
       setReport.push({ page, id, outcome: 'withheld', detail: `${entry.withhold.reason} — ${problems.join('; ')}` })
+      withheld.set(page, { reason: entry.withhold.reason, url: p.url })
       continue
     }
-    const byHelmet = (perHelmet as { ok: true; byHelmet: Map<string, string[]> }).byHelmet
-    const chest = chests[0]
-    const leg = legs[0]
+    // several alternative chests: a reviewed, quoted ruling that any one of them completes the set (each chest named)
+    if (chests.length > 1 && !entry?.combination) {
+      if (!entry?.chests) throw new OverlayError(`[E_SCHEMA] armor set "${page}" hosts ${chests.length} chest pieces (${chests.map((c) => c.name).join(', ')}) — review it and add a chests ruling with verbatim quotes to pipeline/overlays/armor-sets.json`)
+      for (const q of entry.chests.quotes) input.evidence.quote(page, q, `overlay armor-sets/${page} chests`)
+      for (const c of chests) if (!entry.chests.quotes.some((q) => q.includes(c.name))) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page} chests: no quote names the chest "${c.name}"`)
+    } else if (entry?.chests) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: chests ruling, but the set has one chest — remove the stale entry`)
+    const byKey = (perPiece as { ok: true; byHelmet: Map<string, string[]> }).byHelmet
     const sources: ProvSource[] = [{ kind: 'cargo:Items', url: wikiPageUrl(page), fetchedAt: isoDate(input.itemsFetchedAt) }, { kind: 'wiki-article', url, rev: article.revid, fetchedAt: isoDate(article.fetchedAt) }]
     const rulings = new Map((entry?.classes ?? []).map((r) => [r.helmet, r]))
     for (const h of rulings.keys()) if (!helmets.some((x) => x.name === h)) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: class ruling for "${h}", which is not a helmet of the set`)
     const classNotes: string[] = []
-    const variants: ArmorSet['variants'] = helmets.map((h) => {
-      const { lines } = normalizeEffectLines(byHelmet.get(h.name) as string[])
+    // one variant per helmet — per helmet × chest when the bonus is keyed by the chest
+    const variants: ArmorSet['variants'] = helmets.flatMap((h) => (chestKeyed ? chests : [undefined]).map((keyChest) => {
+      const label = keyChest ? `${h.name} + ${keyChest.name}` : h.name
+      const { lines } = normalizeEffectLines(byKey.get(keyChest ? keyChest.name : h.name) as string[])
       const setBonus: StatEffect[] = []
       for (const line of lines) {
-        const r = classifyLine(line, url, `armor set ${page} (${h.name})`)
-        countRule(ruleCounts, r, `${name} set bonus (${h.name})`, url)
+        const r = classifyLine(line, url, `armor set ${page} (${label})`)
+        countRule(ruleCounts, r, `${name} set bonus (${label})`, url)
         setBonus.push(...r.effects)
       }
-      if (setBonus.length === 0) throw new OverlayError(`[E_SCHEMA] armor set "${page}" (${h.name}): the Set Bonus text holds no effect line`)
-      const signals = classSignals([...h.effects, ...chest.effects, ...leg.effects, ...setBonus])
+      if (setBonus.length === 0) throw new OverlayError(`[E_SCHEMA] armor set "${page}" (${label}): the Set Bonus text holds no effect line`)
+      // the class signals of everything the variant can be worn with: its helmet, its chest(s), the legs, its bonus
+      const signals = classSignals([...h.effects, ...(keyChest ? [keyChest] : chests).flatMap((c) => c.effects), ...legs.flatMap((l) => l.effects), ...setBonus])
       const ruling = rulings.get(h.name)
       let cls: DamageClass
       let classes: DamageClass[]
@@ -308,42 +364,46 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
           if (cls !== 'other') throw new OverlayError(`[E_SCHEMA] ${where}: a hybrid variant's single class must be "other" (B52 keeps it beside classes)`)
           classes = listed
         }
-        classNotes.push(`${h.name}: ${cls} → classes ${classes.join(' + ')} (ruling; signals ${[...signals].sort().join(' + ')})`)
+        classNotes.push(`${label}: ${cls} → classes ${classes.join(' + ')} (ruling; signals ${[...signals].sort().join(' + ')})`)
       } else {
         if (ruling) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: class ruling for "${h.name}" is stale — the effects already decide (${[...signals].join(', ') || 'none → other'})`)
         cls = signals.size === 1 ? [...signals][0] : 'other'
         classes = [cls]
-        classNotes.push(`${h.name}: ${cls} (${signals.size === 1 ? 'derived' : 'no class signal → other'})`)
+        classNotes.push(`${label}: ${cls} (${signals.size === 1 ? 'derived' : 'no class signal → other'})`)
       }
-      return { helmetId: h.id, class: cls, classes, setBonus, setBonusText: lines.join('\n') }
-    })
+      return { helmetId: h.id, ...(keyChest ? { chestId: keyChest.id } : {}), class: cls, classes, setBonus, setBonusText: lines.join('\n') }
+    }))
     if (entry) sources.push(Evidence.source('armor-sets', input.evidence.page(page, `overlay armor-sets/${page}`)))
 
-    // Defense totals: infobox vs Σ pieces (report evidence; the piece values are already cross-checked)
+    // Defense totals: infobox (per helmet, per chest or one total) vs Σ pieces, per wearable combination (report
+    // evidence; the piece values are already cross-checked). A combination set's article states none.
     for (const h of helmets) {
-      const total = box?.defense.get(h.name) ?? box?.defense.get('')
-      const sum = [h, chest, leg].every((p) => p.defense !== undefined) ? (h.defense as number) + (chest.defense as number) + (leg.defense as number) : undefined
-      if (total === undefined || sum === undefined) setCheck('noWikiValue')
-      else if (total === sum) setCheck('agree')
-      else {
-        setCheck('mismatch')
-        gaps.add({ ref, field: 'pieces', kind: 'source-mismatch', detail: `${name} (${h.name}): the set infobox Defense total ${total} differs from the sum of the piece defenses ${sum} (Module:Iteminfo/data, cross-checked per piece)`, sources: [url] })
+      for (const c of chests) {
+        const total = box?.defense.get(h.name) ?? box?.defense.get(c.name) ?? box?.defense.get('')
+        const worn = [h, c, ...legs]
+        const sum = worn.every((p) => p.defense !== undefined) ? worn.reduce((n, p) => n + (p.defense as number), 0) : undefined
+        if (total === undefined || sum === undefined) setCheck('noWikiValue')
+        else if (total === sum) setCheck('agree')
+        else {
+          setCheck('mismatch')
+          gaps.add({ ref, field: 'pieces', kind: 'source-mismatch', detail: `${name} (${chests.length > 1 ? `${h.name} + ${c.name}` : h.name}): the set infobox Defense total ${total} differs from the sum of the piece defenses ${sum} (Module:Iteminfo/data, cross-checked per piece)`, sources: [url] })
+        }
       }
     }
 
-    // stage: earliest complete set (only when every piece is derived)
+    // stage: earliest complete set — min over the wearable combinations of their latest piece (only when every piece is derived)
     const unverified: string[] = []
     let stage: Stage | undefined
     if (members.every((p) => p.stage)) {
-      const base = stageMax(chest.stage as Stage, leg.stage as Stage)
-      stage = helmets.map((h) => stageMax(h.stage as Stage, base)).reduce((a, b) => (STAGE_ORDER[a] <= STAGE_ORDER[b] ? a : b))
+      const latest = (worn: readonly ArmorPiece[]) => worn.map((p) => p.stage as Stage).reduce(stageMax)
+      stage = helmets.flatMap((h) => chests.map((c) => latest([h, c, ...legs]))).reduce((a, b) => (STAGE_ORDER[a] <= STAGE_ORDER[b] ? a : b))
     } else unverified.push('stage')
     const prov = makeProv(sources, unverified)
     prov.editorialFields = variants.flatMap((_, i) => [`variants.${i}.class`, `variants.${i}.classes`])
     sets.push({
       id,
       name,
-      pieces: { helmets: helmets.map((h) => h.id), chest: chest.id, legs: leg.id },
+      pieces: { helmets: helmets.map((h) => h.id), chest: chests[0].id, ...(chests.length > 1 ? { chests: chests.map((c) => c.id) } : {}), ...(legs.length > 0 ? { legs: legs[0].id } : {}) },
       variants,
       ...(stage ? { stage } : {}),
       wikiUrl: url,
@@ -351,11 +411,35 @@ export function buildArmor(input: ArmorBuildInput): ArmorBuild {
     })
     for (const p of members) {
       const piece = byId.get(p.id) as ArmorPiece
+      if (piece.setId !== undefined) throw new OverlayError(`[E_SCHEMA] armor set "${page}": ${piece.name} is already in the set "${piece.setId}" — a piece belongs to one set`)
       piece.setId = id
     }
-    setReport.push({ page, id, outcome: 'emitted', detail: classNotes.join('; ') })
+    const shape = [chestKeyed ? 'bonus keyed by the chest' : '', chests.length > 1 ? `${chests.length} alternative chests` : '', legsAny ? 'no legs piece (any legs, quoted)' : ''].filter(Boolean)
+    setReport.push({ page, id, outcome: 'emitted', detail: `${classNotes.join('; ')}${shape.length > 0 ? ` — ${shape.join('; ')}` : ''}` })
   }
   for (const page of overlayByPage.keys()) if (!usedOverlay.has(page)) throw new OverlayError(`[E_SCHEMA] overlay armor-sets/${page}: no armor set row has this article — remove the stale entry`)
+
+  // Set membership the dataset cannot record is Unknown (listed), never "none": the pieces of a withheld set article,
+  // and the overlay's reviewed `unrecorded` pieces (a piece the wiki ties to more than one set).
+  const unknownSet = (piece: ArmorPiece, detail: string, sources: string[]) => {
+    piece._prov = { ...piece._prov, verified: false, unverifiedFields: [...new Set([...piece._prov.unverifiedFields, 'setId'])].sort() }
+    gaps.add({ ref: `i:${piece.id}`, field: 'setId', kind: 'missing-field', detail, sources })
+  }
+  for (const [page, w] of withheld) {
+    for (const p of piecesByPage.get(page) ?? []) unknownSet(p, `${p.name}: the wiki hosts it in ${page}, which is not emitted as an armor set (${w.reason}) — its set is Unknown here, not "none"`, [w.url])
+  }
+  for (const u of input.overlay.unrecorded) {
+    const where = `overlay armor-sets unrecorded "${u.piece}"`
+    const matches = pieces.filter((p) => p.name === u.piece)
+    if (matches.length !== 1) throw new OverlayError(`[E_SCHEMA] ${where}: ${matches.length} armor pieces have this name (needs exactly one)`)
+    const piece = matches[0]
+    if (piece.setId !== undefined) throw new OverlayError(`[E_SCHEMA] ${where}: the piece is in the set "${piece.setId}" — remove the stale entry`)
+    const urls = u.evidence.map((e) => {
+      if (!e.quote.includes(u.piece)) throw new OverlayError(`[E_SCHEMA] ${where}: the quote "${e.quote}" does not name the piece`)
+      return input.evidence.quote(e.page, e.quote, where).url
+    })
+    unknownSet(piece, `${piece.name}: ${u.reason} — its set is Unknown here, not "none"`, [...new Set(urls)])
+  }
   // setId sits after effects in the emitted key order
   const ordered = pieces.map((p) => {
     const { setId, _prov, ...rest } = p

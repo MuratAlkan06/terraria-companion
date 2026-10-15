@@ -278,7 +278,7 @@ function SlotCard(props: LoadoutStepProps & { slot: SlotResult; highlighted: boo
         {pick ? (
           <>
             <p className="text-base leading-snug">
-              <ItemName page={page} id={pick.id} name={pick.name} tap />
+              <ItemName page={page} id={pick.id} name={pick.name} setId={pick.setId} tap />
             </p>
             {pick.pieces ? <PieceList page={page} pick={pick} /> : null}
             <AvailabilityChips page={page} availability={pick.availability} ownedUnknown={pick.ownedUnknown} id={pick.id} />
@@ -436,7 +436,7 @@ export function Alternatives(props: LoadoutStepProps & { slot: SlotResult; label
         <ul className="mt-1 space-y-1.5">
           {s.alternatives.map((alt) => (
             <li key={alt.key} data-alternative={alt.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <ItemName page={page} id={alt.id} name={alt.name} tap />
+              <ItemName page={page} id={alt.id} name={alt.name} setId={alt.setId} tap />
               <ScoreFigure score={alt.score} className="text-sm" />
               {alt.tied ? <span className="border border-stone-600 px-1 text-[0.6875rem] leading-4 font-semibold text-fg-muted" data-tied="">{copy.TIED}</span> : null}
               {alt.higher ? <span className="border border-gold-600 px-1 text-[0.6875rem] leading-4 font-semibold text-accent" data-higher="">{copy.HIGHER}</span> : null}

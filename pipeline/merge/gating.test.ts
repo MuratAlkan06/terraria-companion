@@ -231,6 +231,84 @@ describe('AMENDMENTS-014 B68 / AMENDMENTS-015 B78 sources: vendors, containers, 
     expect(createGatingDeriver({ ...base([], drops), containers })(30)).toEqual({ ok: false, blockers: ['condition-alternatives'] })
   })
 
+  describe('AMENDMENTS-016 B141 (option A): the gate-free exception means free of BOSS/PROGRESSION gates; ride-along conditions stay on the route', () => {
+    const GOLD_URL = 'https://terraria.wiki.gg/wiki/Gold_Chest'
+    const RIDE = ['underground', 'cavern', 'lava-layer', 'bottom-250-tiles', 'first-destruction', 'subsequent-destructions']
+    const MIMIC = { npcName: 'Mimic', npcIds: [85] }
+    const conditions = new Map([...conds, ...[...RIDE, 'pre-hardmode', 'gold-ore-world', 'platinum-ore-world'].map((id) => [id, cond(id)] as const)])
+    const chests = new Map([
+      [containerKey('Gold Chest', GOLD_URL), { conditions: [] }],
+      [containerKey('Shadow Orb', ORB_URL), { conditions: ['corruption-world'] }],
+    ])
+    const drops = [
+      // Meteorite Bar (50): a bottom-250-tiles Gold Chest + an unreviewed source (Shadow Chest-like) → Space Gun (51) crafted from it
+      fromPage('50-gold', 50, 'Gold Chest', GOLD_URL, ['bottom-250-tiles']), drop('50-mimic', 50, MIMIC),
+      // Mace (52): the three layer variants of one Gold Chest row + an enemy drop
+      fromPage('52-u', 52, 'Gold Chest', GOLD_URL, ['underground']), fromPage('52-c', 52, 'Gold Chest', GOLD_URL, ['cavern']), fromPage('52-l', 52, 'Gold Chest', GOLD_URL, ['lava-layer']), drop('52-mimic', 52, MIMIC),
+      // Musket (53): the Shadow Orb destruction sequence (corruption-world stays: it is not a ride-along condition)
+      fromPage('53-first', 53, 'Shadow Orb', ORB_URL, ['first-destruction']), fromPage('53-later', 53, 'Shadow Orb', ORB_URL, ['subsequent-destructions']),
+      // 54: a Cavern Gold Chest beats a night-only chest; 55: the Musket case with an unreviewed crate route
+      fromPage('54-c', 54, 'Gold Chest', GOLD_URL, ['cavern']), fromPage('54-n', 54, 'Gold Chest', GOLD_URL, ['night']),
+      fromPage('55-first', 55, 'Shadow Orb', ORB_URL, ['first-destruction']), fromPage('55-later', 55, 'Shadow Orb', ORB_URL, ['subsequent-destructions']), drop('55-crate', 55, { npcName: 'Corrupt Crate' }),
+      // 56–58: progression-type and unlisted conditions keep breaking the exception
+      fromPage('56-hm', 56, 'Gold Chest', GOLD_URL, ['hardmode', 'cavern']), drop('56-mimic', 56, MIMIC),
+      fromPage('57-pre', 57, 'Gold Chest', GOLD_URL, ['pre-hardmode']), drop('57-mimic', 57, MIMIC),
+      fromPage('58-moon', 58, 'Gold Chest', GOLD_URL, ['full-moon', 'cavern']), drop('58-mimic', 58, MIMIC),
+      // Gold / Platinum Bars (19 / 706): Cavern Gold Chest loot of their world, also from unreviewed crates
+      fromPage('19-gold', 19, 'Gold Chest', GOLD_URL, ['cavern']), drop('19-crate', 19, { npcName: 'Wooden Crate' }),
+      fromPage('706-gold', 706, 'Gold Chest', GOLD_URL, ['cavern']), drop('706-crate', 706, { npcName: 'Wooden Crate' }),
+    ]
+    const recipes = [recipe('51-a', 51, [50]), recipe('60-a', 60, [52]), recipe('61-a', 61, [62, 19]), recipe('61-b', 61, [62, 706])]
+    const context = (rideAlong?: string[]): GatingContext => ({
+      ...base(recipes, drops),
+      conditions,
+      containers: chests,
+      containerItemConditions: new Map([[19, ['gold-ore-world']], [706, ['platinum-ore-world']]]),
+      exhaustive: [['gold-ore-world', 'platinum-ore-world']],
+      extraRoutes: new Map([[62, [{ kind: 'gather', conditions: [] }]]]), // Flinx Fur
+      ...(rideAlong ? { rideAlong } : {}),
+    })
+    const derive = createGatingDeriver(context(RIDE))
+    const early = (conditions: string[]) => ({ ok: true, gatedBy: { bosses: [], conditions, stage: 'early-prehm' } })
+
+    it('a ride-along route is still the minimum while another route is unknown — and its conditions ride along (Meteorite Bar → Space Gun)', () => {
+      expect(derive(50)).toEqual(early(['bottom-250-tiles']))
+      expect(derive(51)).toEqual(early(['bottom-250-tiles']))
+    })
+
+    it('an either-or among ride-along conditions is always satisfiable and drops out (Mace → Flaming Mace)', () => {
+      expect(derive(52)).toEqual(early([]))
+      expect(derive(60)).toEqual(early([]))
+    })
+
+    it('the destruction sequence drops out between alternatives; a non-ride-along condition (corruption-world) stays — and still breaks the exception (Musket + a crate)', () => {
+      expect(derive(53)).toEqual(early(['corruption-world']))
+      expect(derive(55)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'drop-source-ungated'] })
+    })
+
+    it('alternatives are compared on their other conditions: a Cavern chest beats a night-only one, and its condition rides along', () => {
+      expect(derive(54)).toEqual(early(['cavern']))
+    })
+
+    it('progression-type conditions still gate: hardmode (node-mapped) and pre-hardmode; an unlisted condition (full moon) still breaks the exception', () => {
+      for (const id of [56, 57, 58]) expect(derive(id), String(id)).toEqual({ ok: false, blockers: ['alternative-route-unverified', 'drop-source-ungated'] })
+      expect(derive.sufficient(56)).toEqual({ bosses: ['wall-of-flesh'], conditions: ['cavern'], stage: 'late-prehm' })
+    })
+
+    it('sufficient bounds over an exhaustive group: Gold Bars in Gold worlds OR Platinum Bars in Platinum worlds, both from Cavern chests (Flinx Staff)', () => {
+      expect(derive(19)).toMatchObject({ ok: false })
+      expect(derive.sufficient(19)).toEqual({ bosses: [], conditions: ['cavern', 'gold-ore-world'], stage: 'early-prehm' })
+      expect(derive(61)).toEqual(early(['cavern']))
+    })
+
+    it('without the reviewed list the derivation is exactly the old one: every condition breaks the exception', () => {
+      const old = createGatingDeriver(context())
+      for (const id of [50, 51, 52, 60, 61]) expect(old(id), String(id)).toMatchObject({ ok: false })
+      expect(old(53)).toEqual({ ok: false, blockers: ['condition-alternatives'] })
+      expect(old(54)).toEqual({ ok: false, blockers: ['condition-alternatives'] })
+    })
+  })
+
   it('sufficient bounds: Iron Bars in Iron worlds OR Lead Bars in Lead worlds make "Any Iron Bar" gate-free even though both bars have unknown routes; one specific bar stays Unknown', () => {
     const groups: RecipeGroup[] = [{ id: 'any-iron-bar', name: 'Any Iron Bar', memberItemIds: [22, 704], _prov: prov() }]
     const recipes = [{ ...recipe('40-a', 40, []), ingredients: [{ amount: 1, ref: { kind: 'group' as const, groupId: 'any-iron-bar' } }] }, recipe('41-a', 41, [22])]

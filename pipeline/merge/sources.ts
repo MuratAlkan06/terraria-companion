@@ -82,6 +82,8 @@ export interface AcquisitionSources {
   /** World-specific container loot: item → world conditions (overlays/containers.json worldSpecificLoot). */
   containerItemConditions: Map<number, string[]>
   exhaustive: string[][]
+  /** AMENDMENTS-016 B141: conditions that ride along on a route free of boss/progression gates (overlays/conditions.json rideAlong). */
+  rideAlong: string[]
   /** The vendor route of one item + vendor tag name (the emitted purchase acquisition reads it). */
   vendorRoute: (itemId: number, itemName: string, vendorTag: string) => VendorRoute
   gather: Map<number, GatherRoute>
@@ -267,6 +269,10 @@ export function buildAcquisitionSources(input: SourcesInput): AcquisitionSources
     return [...g.conditions]
   })
 
+  // ---------------- ride-along conditions (B141) ----------------
+  const rideAlong = [...(input.conditions.rideAlong?.conditions ?? [])].sort()
+  checkConditions(rideAlong, 'overlay conditions/rideAlong')
+
   for (const routes of extraRoutes.values()) routes.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
   return {
     extraRoutes,
@@ -274,6 +280,7 @@ export function buildAcquisitionSources(input: SourcesInput): AcquisitionSources
     containers,
     containerItemConditions,
     exhaustive,
+    rideAlong,
     vendorRoute,
     gather,
     fishing: input.fishing?.byItem ?? new Map(),

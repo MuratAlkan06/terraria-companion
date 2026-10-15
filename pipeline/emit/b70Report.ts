@@ -112,7 +112,7 @@ export function b70Sections(input: B70ReportInput): { title: string; lines: stri
   type Effectful = { name: string; effects: readonly StatEffect[] }
   const effectSources: [string, Effectful[]][] = [
     ['armor pieces', input.armor.map((p) => ({ name: p.name, effects: p.effects }))],
-    ['set bonuses', input.armorSets.flatMap((s) => s.variants.map((v) => ({ name: `${s.name} (${v.helmetId})`, effects: v.setBonus })))],
+    ['set bonuses', input.armorSets.flatMap((s) => s.variants.map((v) => ({ name: `${s.name} (${v.helmetId}${v.chestId === undefined ? '' : `+${v.chestId}`})`, effects: v.setBonus })))],
     ['accessories', input.accessories.map((a) => ({ name: a.name, effects: a.effects }))],
     ['buffs', input.buffs.map((b) => ({ name: b.name, effects: b.effects }))],
   ]

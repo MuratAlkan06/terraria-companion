@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BOSS_PAGE_IDS, DROP_UNIT_QUANTITY, getField, isModeledField, ItemDetailIndex, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFor, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, DROP_UNIT_QUANTITY, getField, isModeledField, ItemDetailIndex, setChestIds, setPieceIds, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFor, STAGE_ORDER, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type DropSource, type GapEntry, type Item, type ProgressionEdge, type ProgressionNode, type SearchDoc, type Weapon } from '../../src/schemas'
 import { itemClosure } from './closure'
 import { THUMBNAIL_MIN_BYTES } from '../emit/thumbnail'
 import { DATA_CHUNK_BUDGET_GZ, gzSize } from '../emit/write'
@@ -130,19 +130,23 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     const acc = (id: number) => accessories.find((a) => a.id === id)!
     const set = (id: string) => sets.find((x) => x.id === id)!
 
-    it('§7a-6: every set is 1..N helmets + one chest + one legs with matching slots and back-refs; variants ⇄ helmets bijective', () => {
-      expect(sets.length).toBeGreaterThan(0)
+    it('§7a-6: every set is 1..N helmets + 1..N chests (`chest` first) + one legs piece or none, matching slots and back-refs; variants ⇄ helmets (× chests where keyed) bijective', () => {
+      expect(sets.length).toBe(69)
       for (const s of sets) {
-        expect(s.variants.map((v) => v.helmetId).sort(), s.id).toEqual([...s.pieces.helmets].sort())
+        const keyed = s.variants.some((v) => v.chestId !== undefined)
+        const keys = s.variants.map((v) => (keyed ? `${v.helmetId}.${v.chestId}` : String(v.helmetId))).sort()
+        expect(keys, s.id).toEqual(s.pieces.helmets.flatMap((h) => (keyed ? setChestIds(s).map((c) => `${h}.${c}`) : [String(h)])).sort())
         expect(new Set(s.pieces.helmets).size, s.id).toBe(s.pieces.helmets.length)
+        expect(setChestIds(s)[0], s.id).toBe(s.pieces.chest)
+        expect(new Set(setChestIds(s)).size, s.id).toBe(setChestIds(s).length)
         for (const id of s.pieces.helmets) expect(piece.get(id), `${s.id} i:${id}`).toMatchObject({ slot: 'head', setId: s.id })
-        expect(piece.get(s.pieces.chest), s.id).toMatchObject({ slot: 'chest', setId: s.id })
-        expect(piece.get(s.pieces.legs), s.id).toMatchObject({ slot: 'legs', setId: s.id })
+        for (const id of setChestIds(s)) expect(piece.get(id), `${s.id} i:${id}`).toMatchObject({ slot: 'chest', setId: s.id })
+        if (s.pieces.legs !== undefined) expect(piece.get(s.pieces.legs), s.id).toMatchObject({ slot: 'legs', setId: s.id })
       }
-      for (const p of armor.filter((x) => x.setId)) {
-        const s = set(p.setId!)
-        expect([...s.pieces.helmets, s.pieces.chest, s.pieces.legs], p.name).toContain(p.id)
-      }
+      for (const p of armor.filter((x) => x.setId)) expect(setPieceIds(set(p.setId!)), p.name).toContain(p.id)
+      // only the overlay's reviewed shapes differ from "helmet(s) + one chest + one legs"
+      expect(sets.filter((s) => setChestIds(s).length > 1).map((s) => s.id)).toEqual(['beetle-armor', 'wizard-set'])
+      expect(sets.filter((s) => s.pieces.legs === undefined).map((s) => s.id)).toEqual(['wizard-set'])
     })
 
     it('§7a-7: combinedFrom and upgradesTo are exact inverses over the emitted accessories', () => {
@@ -166,7 +170,7 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(h.variants.map((v) => [v.helmetId, v.class])).toEqual([[553, 'ranged'], [558, 'magic'], [559, 'melee'], [4873, 'summon']])
       expect(h.variants.map((v) => v.classes)).toEqual([['ranged'], ['magic'], ['melee'], ['summon']]) // B52: single-class variants
       expect(h.variants.find((v) => v.helmetId === 4873)?.setBonus).toEqual([expect.objectContaining({ kind: 'special', text: 'Become immune after striking an enemy' }), { kind: 'stat', stat: 'minion-slots', value: 2 }])
-      const total = (helmet: number) => [helmet, h.pieces.chest, h.pieces.legs].reduce((n, id) => n + (piece.get(id)?.defense ?? NaN), 0)
+      const total = (helmet: number) => [helmet, h.pieces.chest, h.pieces.legs as number].reduce((n, id) => n + (piece.get(id)?.defense ?? NaN), 0)
       expect([558, 553, 559, 4873].map(total)).toEqual([31, 35, 50, 27])
       expect(h._prov.editorialFields).toEqual(['variants.0.class', 'variants.0.classes', 'variants.1.class', 'variants.1.classes', 'variants.2.class', 'variants.2.classes', 'variants.3.class', 'variants.3.classes'])
     })
@@ -181,12 +185,45 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(hood.setBonusText).toBe('Reduces Magic damage by 40% and converts it to healing force\nMagic damage done to enemies heals the player with lowest health')
     })
 
-    it('spot-check hybrid / withheld sets: Frost armor is class "other" by quoted ruling; Beetle armor is withheld with a gap, its pieces setless', () => {
+    it('spot-check hybrid / withheld sets: Frost armor is class "other" by quoted ruling; Rain armor is withheld with a gap, its pieces\' set Unknown', () => {
       expect(set('frost-armor').variants).toEqual([expect.objectContaining({ helmetId: 684, class: 'other' })])
-      expect(sets.find((s) => s.id === 'beetle-armor')).toBeUndefined()
-      for (const id of [2199, 2200, 2201, 2202]) expect(piece.get(id)?.setId, `i:${id}`).toBeUndefined()
-      const gaps = read<{ entries: { ref: string; kind: string }[] }>('gaps.json').entries
-      expect(gaps).toContainEqual(expect.objectContaining({ ref: 'set:beetle-armor', kind: 'count-reconciliation' }))
+      expect(sets.find((s) => s.id === 'rain-armor')).toBeUndefined()
+      const gaps = read<{ entries: { ref: string; kind: string; field?: string }[] }>('gaps.json').entries
+      expect(gaps).toContainEqual(expect.objectContaining({ ref: 'set:rain-armor', kind: 'count-reconciliation' }))
+      // a piece the wiki ties to a set this dataset cannot record: setId Unknown (absent + listed), never "no set"
+      for (const id of [1135, 1136, 4008]) {
+        expect(piece.get(id)?.setId, `i:${id}`).toBeUndefined()
+        expect(getField(piece.get(id), 'setId').status, `i:${id}`).toBe('unverified')
+        expect(gaps).toContainEqual(expect.objectContaining({ ref: `i:${id}`, field: 'setId', kind: 'missing-field' }))
+      }
+      // every other piece outside a set is plain "not in a recorded set" (listed by name in the overlay's sweep note)
+      expect(armor.filter((p) => !p.setId && !p._prov.unverifiedFields.includes('setId')).map((p) => p.name).sort()).toEqual(
+        ['Dead Man\'s Sweater', 'Diving Helmet', 'Djinn\'s Curse', 'Empty Bucket', 'Flinx Fur Coat', 'Gi', 'Goggles', 'Green Cap', 'Moon Lord Legs', 'Night Vision Helmet', 'Viking Helmet'],
+      )
+    })
+
+    it('spot-check Beetle armor (P6 fix round): one helmet + legs, two alternative chests, the set bonus keyed by the chest — quoted per chest; Defense 61 / 73', () => {
+      const b = set('beetle-armor')
+      expect(b.pieces).toEqual({ helmets: [2199], chest: 2200, chests: [2200, 2201], legs: 2202 })
+      expect(b.variants.map((v) => [v.helmetId, v.chestId, v.classes, v.setBonusText])).toEqual([
+        [2199, 2200, ['melee'], 'Beetles increase your melee damage and speed'],
+        [2199, 2201, ['melee'], 'Beetles protect you from damage'],
+      ])
+      for (const v of b.variants) expect(v.setBonus).toEqual([{ kind: 'special', text: v.setBonusText, simulated: false, sourceUrl: 'https://terraria.wiki.gg/wiki/Beetle_armor' }])
+      const total = (chest: number) => [2199, chest, 2202].reduce((n, id) => n + (piece.get(id)?.defense ?? NaN), 0)
+      expect([2200, 2201].map(total)).toEqual([61, 73])
+      for (const id of [2199, 2200, 2201, 2202]) expect(piece.get(id)?.setId, `i:${id}`).toBe('beetle-armor')
+    })
+
+    it('spot-check Wizard set (P6 fix round): Wizard Hat or Magic Hat + any of eight robes, no legs piece; the bonus keyed by the hat', () => {
+      const w = set('wizard-set')
+      expect(w.pieces).toEqual({ helmets: [238, 2275], chest: 1282, chests: [1282, 1283, 1284, 1285, 1286, 1287, 2279, 4256] })
+      expect(w.variants).toEqual([
+        { helmetId: 238, class: 'magic', classes: ['magic'], setBonus: [{ kind: 'stat', stat: 'crit-pct', value: 10, scope: 'magic' }], setBonusText: '10% increased magic critical strike chance' },
+        { helmetId: 2275, class: 'magic', classes: ['magic'], setBonus: [{ kind: 'stat', stat: 'max-mana-flat', value: 60 }], setBonusText: 'Increases maximum mana by 60' },
+      ])
+      expect(setChestIds(w).map((id) => piece.get(id)?.name)).toEqual(['Amethyst Robe', 'Topaz Robe', 'Sapphire Robe', 'Emerald Robe', 'Ruby Robe', 'Diamond Robe', 'Mystic Robe', 'Amber Robe'])
+      for (const id of setPieceIds(w)) expect(piece.get(id)?.setId, `i:${id}`).toBe('wizard-set')
     })
 
     it('spot-check Ankh Shield chain both directions (Tinkerer\'s Workshop recipes)', () => {
@@ -322,7 +359,8 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       const drops = read<DropSource[]>('drops.json')
       expect(drops.filter((d) => d.itemId === 221 && d.source.bossId === 'skeletron').map((d) => [d.conditions, d._prov.unverifiedFields.includes('conditions')])).toEqual([[['hellforge-absent'], false]])
       const linked = drops.filter((d) => d.dropsWith)
-      expect(linked).toHaveLength(20)
+      // B140(a): the Shadow Orb / Crimson Heart bundles split by destruction sequence — each condition pair links (20 → 24)
+      expect(linked).toHaveLength(24)
       const byId = new Map(drops.map((d) => [d.id, d]))
       for (const d of linked) for (const o of d.dropsWith ?? []) expect([byId.get(o)?.dropsWith, byId.get(o)?.source.npcName], d.id).toEqual([expect.arrayContaining([d.id]), d.source.npcName])
       const launcher = drops.find((d) => d.itemId === 758 && d.source.npcName === 'Treasure Bag (Plantera)') as DropSource
@@ -421,6 +459,137 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
     })
   })
 
+  describe('AMENDMENTS-016 B139(a): a drop whose rate cell is not a rate but carries notes — conditions Unknown, never asserted empty', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const SEED_URL = 'https://terraria.wiki.gg/wiki/I_am_error' // a real article (the 1.4.5 secret seed, B139): the links stand
+    const seed = read<DropSource[]>('drops.json').filter((d) => d._prov.sources.some((s) => s.url === SEED_URL))
+
+    it('the 29 "I am error" chest-loot records: rates + conditions Unknown, Source = the I am error article, one conditions gap each (Wizard Hat among them)', () => {
+      expect(seed).toHaveLength(29)
+      const conditionGaps = new Set(read<{ entries: GapEntry[] }>('gaps.json').entries.filter((g) => g.field === 'conditions').map((g) => g.ref))
+      for (const d of seed) {
+        expect(d.source.npcName, d.id).toBe('Chest')
+        expect(d.conditions, d.id).toEqual([])
+        expect(getField(d, 'conditions'), d.id).toEqual({ status: 'unverified' })
+        expect(d._prov.unverifiedFields, d.id).toEqual(expect.arrayContaining(['conditions', 'rates.classic', 'rates.expert', 'rates.master']))
+        expect(d._prov.sources.find((s) => s.kind === 'cargo:Drops')?.url, d.id).toBe(SEED_URL)
+        expect(conditionGaps.has(`drop:${d.id}`), d.id).toBe(true)
+      }
+      expect(seed.map((d) => d.itemId)).toContain(238) // Wizard Hat (/armor/wizard-set)
+    })
+
+    it('sweep: they are the ONLY such rows in the Cargo Drops table — the build\'s B139 tally (gap report) counts exactly these 29; a table change surfaces here', () => {
+      const report = readFileSync(join(REPO, 'pipeline/reports/gap-report.md'), 'utf8').split('\n')
+      const row = report.find((l) => l.startsWith('| conditions: the rate cell is not a rate, so its notes were not read (B139) |'))
+      expect(row?.split('|')[2].trim()).toBe(String(seed.length))
+    })
+  })
+
+  describe('AMENDMENTS-016 B140/B141: the 32 note-unmapped drop rows — 15 registered conditions, 17 seed Unknowns, the widened sweep at 0', () => {
+    const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
+    const drops = read<DropSource[]>('drops.json')
+    const W = 'https://terraria.wiki.gg/wiki/'
+    const article = (d: DropSource) => d._prov.sources.find((s) => s.kind === 'cargo:Drops')?.url
+    const from = (page: string, npcName: string, itemId: number) => drops.filter((d) => article(d) === `${W}${page}` && d.source.npcName === npcName && d.itemId === itemId)
+    const report = readFileSync(join(REPO, 'pipeline/reports/gap-report.md'), 'utf8').split('\n')
+    const reportCount = (label: string) => report.find((l) => l.startsWith(`| ${label} |`))?.split('|')[2].trim()
+    const view = (d: DropSource) => [d.conditions, d.rates.classic, d._prov.unverifiedFields.filter((f) => f === 'conditions' || f.startsWith('rates'))]
+
+    it('(a) the Gold Chest primary items: one record per layer — Underground / Cavern / lava layer — with its exact rate (Mace: 1/6, 2/15, 19/150)', () => {
+      // Band of Regeneration, Magic Mirror, Cloud in a Bottle, Hermes Boots, Mace, Shoe Spikes, Extractinator, Flare Gun, Flare
+      for (const id of [49, 50, 53, 54, 5011, 975, 997, 930, 931]) {
+        const records = from('Gold_Chest', 'Gold Chest', id)
+        expect(records.map((d) => d.conditions).sort(), String(id)).toEqual([['cavern'], ['lava-layer'], ['underground']])
+        for (const d of records) expect(d._prov.unverifiedFields.filter((f) => f === 'conditions' || f.startsWith('rates')), d.id).toEqual([])
+      }
+      expect(from('Gold_Chest', 'Gold Chest', 5011).map(view).sort((a, b) => String(a[0]).localeCompare(String(b[0])))).toEqual([
+        [['cavern'], 0.133333333333, []],
+        [['lava-layer'], 0.126666666667, []],
+        [['underground'], 0.166666666667, []],
+      ])
+    })
+
+    it('(a) Lava Charm (lava layer), Meteorite Bar (bottom 250 tiles), the Shadow Orb / Crimson Heart destruction sequence (100% first, 20% after) — bundles linked per condition', () => {
+      expect(from('Gold_Chest', 'Gold Chest', 906).map(view)).toEqual([[['lava-layer'], 0.05, []]])
+      expect(from('Gold_Chest', 'Gold Chest', 117).map(view)).toEqual([[['bottom-250-tiles'], 0.25, []]])
+      const byId = new Map(drops.map((d) => [d.id, d]))
+      for (const [page, source, primary] of [['Shadow_Orb', 'Shadow Orb', 96], ['Crimson_Heart', 'Crimson Heart', 800]] as const) {
+        for (const itemId of [primary, 97]) {
+          const records = from(page, source, itemId)
+          expect(records.map((d) => [d.conditions, d.rates.classic]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))), `${source} ${itemId}`).toEqual([
+            [['first-destruction'], 1],
+            [['subsequent-destructions'], 0.2],
+          ])
+          for (const d of records) expect(d.dropsWith?.map((x) => [byId.get(x)?.itemId, byId.get(x)?.conditions]), d.id).toEqual([[itemId === 97 ? primary : 97, d.conditions]])
+        }
+      }
+    })
+
+    it('(a) the registered conditions cite their defining articles with the quoted revisions', () => {
+      const conditions = read<{ id: string; kind: string; wikiUrl: string; _prov: { sources: { url: string; rev?: number }[] } }[]>('conditions.json')
+      const c = (id: string) => conditions.find((x) => x.id === id)
+      expect(['underground', 'cavern', 'lava-layer', 'bottom-250-tiles', 'first-destruction', 'subsequent-destructions'].map((id) => [id, c(id)?.wikiUrl])).toEqual([
+        ['underground', `${W}Underground`],
+        ['cavern', `${W}Cavern`],
+        ['lava-layer', `${W}Cavern`],
+        ['bottom-250-tiles', `${W}Gold_Chest`],
+        ['first-destruction', `${W}Evil_biomes`],
+        ['subsequent-destructions', `${W}Evil_biomes`],
+      ])
+      expect(c('lava-layer')?._prov.sources.map((s) => [s.url, typeof s.rev]).sort()).toEqual([[`${W}Cavern`, 'number'], [`${W}Chests`, 'number']])
+      expect(c('first-destruction')?._prov.sources.map((s) => s.url).sort()).toEqual([`${W}Crimson_Heart`, `${W}Evil_biomes`, `${W}Shadow_Orb`])
+    })
+
+    it('(b) the 17 seed-world rows (incl. Rainbow Glowstick\'s layer + seed note and "regular worlds"): conditions Unknown with a gap each, never []', () => {
+      const SEED_ROWS: [string, string, number][] = [
+        ['Gold_Chest', 'Gold Chest', 5643], // Rainbow Glowstick: "Cavern, in Celebration Mk 10 or Rainbow road worlds"
+        ['Obsidian_Lock_Box', 'Obsidian Lock Box', 112], ['Obsidian_Lock_Box', 'Obsidian Lock Box', 683], // "In regular worlds" / "In Remix worlds"
+        ['Shadow_Chest', 'Shadow Chest', 112], ['Shadow_Chest', 'Shadow Chest', 683],
+        ...['Jungle Chest', 'Corruption Chest', 'Crimson Chest', 'Ice Chest', 'Desert Chest'].map((chest): [string, string, number] => ['Biome_Chests', chest, 1260]), // Rainbow Gun
+        ['Winter_is_coming', 'Chest', 1869], ["We_don't_even_test_for_that", 'Chest', 3384], ['Invisible_plane', 'Chest', 4409],
+        ['What_a_horrible_night_to_have_a_curse', 'Chest', 5597], ['What_a_horrible_night_to_have_a_curse', 'Chest', 1857],
+        ['What_a_horrible_night_to_have_a_curse', 'Gold Chest', 1800], ['What_a_horrible_night_to_have_a_curse', 'Gold Chest', 900],
+      ]
+      const conditionGaps = new Set(read<{ entries: GapEntry[] }>('gaps.json').entries.filter((g) => g.field === 'conditions').map((g) => g.ref))
+      for (const [page, source, itemId] of SEED_ROWS) {
+        const [d, ...more] = from(page, source, itemId)
+        expect(more, `${page} ${source} ${itemId}`).toEqual([])
+        expect(d.conditions, d.id).toEqual([])
+        expect(getField(d, 'conditions'), d.id).toEqual({ status: 'unverified' }) // "Conditions: Unknown"
+        expect(conditionGaps.has(`drop:${d.id}`), d.id).toBe(true)
+      }
+      expect(SEED_ROWS).toHaveLength(17)
+      expect(reportCount('conditions: a rate-cell note maps to no registered condition (B140(b): seed worlds stay unmapped)')).toBe('17')
+      expect(reportCount('conditions: the rate cell is not a rate, so its notes were not read (B139)')).toBe('29')
+    })
+
+    it('(ii) the 2 quantity-cell rows (Gold Chest Silver / Tungsten Bar, amounts per layer): quantity Unknown, the plain 1/4 rate stands', () => {
+      for (const id of [21, 705]) {
+        const [d] = from('Gold_Chest', 'Gold Chest', id)
+        expect([d.quantity, d.rates.classic, d.conditions, d._prov.unverifiedFields], String(id)).toEqual([{}, 0.25, [], ['quantity.classic', 'quantity.expert', 'quantity.master']])
+      }
+      expect(reportCount('quantity: the cell states amounts per location (notes), not one quantity (B141(ii))')).toBe('2')
+    })
+
+    it('(c) sweep pinned at 0 over rate AND quantity cells: no record states conditions / a quantity beside a note it never read (the build checks every row against its raw cells)', () => {
+      expect(reportCount('records stating conditions / a quantity beside a rate- or quantity-cell note they never read (AMENDMENTS-016 B140(c)/B141(ii) sweep; must be 0)')).toBe('0')
+      expect(report.some((l) => l.startsWith('| B140(c) sweep — unread note'))).toBe(false)
+    })
+
+    it('B141: the four curated boss picks stay verified with their routes\' conditions stated; Rainbow Gun goes honestly Unknown (B141(iv))', () => {
+      const weapons = new Map(read<Weapon[]>('weapons.detail.json').map((w) => [w.name, w]))
+      expect(weapons.get('Flaming Mace')?.gatedBy).toEqual({ bosses: [], conditions: [], stage: 'early-prehm' }) // Mace: an Underground / Cavern / lava-layer either-or drops out
+      expect(weapons.get('Space Gun')?.gatedBy).toEqual({ bosses: [], conditions: ['bottom-250-tiles'], stage: 'early-prehm' })
+      expect(weapons.get('Starcrash')?.gatedBy).toEqual({ bosses: [], conditions: ['bottom-250-tiles', 'night'], stage: 'early-prehm' })
+      expect(getField(weapons.get('Rainbow Gun'), 'gatedBy')).toEqual({ status: 'unverified' })
+      const bosses = read<Boss[]>('bosses.json')
+      const picks = (id: string) => (bosses.find((b) => b.id === id)?.suggestedEquipment ?? []).flatMap((g) => g.weapons)
+      expect(picks('brain-of-cthulhu')).toContain(5012)
+      for (const id of ['queen-bee', 'deerclops']) expect(picks(id), id).toContain(127)
+      expect(picks('wall-of-flesh')).toContain(5476)
+    })
+  })
+
   describe('P2-S6 boss + progression dataset (PRD P2-S6 AC1–AC4, §7a-13 as hard tests)', () => {
     const read = <T,>(f: string) => JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8')) as T
     const bosses = read<Boss[]>('bosses.json')
@@ -511,8 +680,8 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
         expect(of(companion).length, `${source} → ${companion}`).toBeGreaterThan(0)
         for (const d of of(companion)) {
           expect(d.quantity, `${source} → ${companion}`).toEqual(amount)
-          // same chance as the primary: they drop together
-          expect(d.rates, `${source} → ${companion}`).toEqual(of(primary)[0].rates)
+          // same chance as the primary under the same conditions (B140(a): first / other destructions): they drop together
+          expect(d.rates, `${source} → ${companion}`).toEqual(of(primary).find((p) => p.conditions.join() === d.conditions.join())?.rates)
         }
       }
       // the item at the centre of the finding: never a stack of rockets on the launcher, on the boss or the weapon page
@@ -553,8 +722,8 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       }
     })
 
-    it('suggested gear: a whole-field Unknown only where no quoted tip names a weapon verified obtainable before the fight (B83b; the Eater of Worlds since the B70 gating expansion); elsewhere entries + per-class Unknowns covering every class', () => {
-      const wholeField = ['eater-of-worlds']
+    it('suggested gear: a whole-field Unknown only where no quoted tip names a weapon verified obtainable before the fight (B83b; none since AMENDMENTS-016 B141 made the Flinx Staff pass for the Eater of Worlds); elsewhere entries + per-class Unknowns covering every class', () => {
+      const wholeField: string[] = []
       for (const id of BOSS_PAGE_IDS) {
         const b = boss(id)
         if (wholeField.includes(id)) {
@@ -641,7 +810,7 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
         // One suggestion naming EVERY item, so the gate judges each one.
         const probe = { ...target, suggestedEquipment: [{ class: 'melee' as const, weapons: ds.weapons.map((w) => w.id), armorSetIds: ds.armorSets.map((s) => s.id), accessories: ds.accessories.map((a) => a.id), buffs: [] }] }
         const rejected = new Set(checkSuggestionGating({ ...ds, bosses: ds.bosses.map((b) => (b.id === id ? probe : b)) }).map((e) => (e.code === 'E_SUGGESTION_GATING' ? e.itemRef : '')))
-        const setPieces = ds.armorSets.flatMap((s) => [...s.pieces.helmets, s.pieces.chest, s.pieces.legs]).flatMap((p) => pieces.get(p) ?? [])
+        const setPieces = ds.armorSets.flatMap(setPieceIds).flatMap((p) => pieces.get(p) ?? [])
         const items = [...ds.weapons, ...ds.accessories, ...setPieces]
         for (const item of items) {
           expect(rejected.has(`i:${item.id}`), `${id} ← ${item.name}`).toBe(!suggestable(item, target))
@@ -728,11 +897,16 @@ describe.runIf(emitted)('emitted dataset (src/data)', () => {
       expect(weapon('Minishark').gatedBy).toEqual({ bosses: [], conditions: [], stage: 'early-prehm' })
     })
 
-    it('spot-check stale-gap-forced gear (B83b): King Slime melee Thorn Chakram + Ice Blade, magic Wand of Frosting, ranged / summon Unknown; Eater of Worlds stays a whole-field Unknown', () => {
+    it('spot-check stale-gap-forced gear (B83b): King Slime melee Thorn Chakram + Ice Blade, magic Wand of Frosting, summon Flinx Staff (B141), ranged Unknown; the Eater of Worlds per class since B141', () => {
       const ks = bossesB.find((b) => b.id === 'king-slime') as Boss
-      expect(ks.suggestedEquipment?.map((g) => [g.class, g.weapons])).toEqual([['melee', [191]], ['melee', [724]], ['magic', [5147]]])
-      expect(ks._prov.unverifiedFields.filter((f) => f.startsWith('suggestedEquipment'))).toEqual(['suggestedEquipment.ranged', 'suggestedEquipment.summon'])
-      expect(getField(bossesB.find((b) => b.id === 'eater-of-worlds'), 'suggestedEquipment')).toEqual({ status: 'unverified' })
+      expect(ks.suggestedEquipment?.map((g) => [g.class, g.weapons])).toEqual([['melee', [191]], ['melee', [724]], ['magic', [5147]], ['summon', [5069]]])
+      expect(ks._prov.unverifiedFields.filter((f) => f.startsWith('suggestedEquipment'))).toEqual(['suggestedEquipment.ranged'])
+      // AMENDMENTS-016 B141: the Flinx Staff (Flinx Fur + Gold OR Platinum Bars from Cavern Gold Chests) passes gating, so the
+      // tips that name it force it (B83b) — the Eater of Worlds' whole-field gap became per class
+      const eow = bossesB.find((b) => b.id === 'eater-of-worlds') as Boss
+      expect(eow.suggestedEquipment?.map((g) => [g.class, g.weapons])).toEqual([['summon', [5069]]])
+      expect(eow._prov.unverifiedFields.filter((f) => f.startsWith('suggestedEquipment')).sort()).toEqual(['suggestedEquipment.magic', 'suggestedEquipment.melee', 'suggestedEquipment.ranged'])
+      expect(bossesB.find((b) => b.id === 'queen-bee')?.suggestedEquipment?.filter((g) => g.class === 'summon').map((g) => g.weapons)).toEqual([[5069]])
     })
 
     it('B54 kinds: Ammo Reservation 20% ammo save, Tipsy +5 fishing power, Lava Charm 7 s = 420 ticks, Shark Tooth Necklace 5 armor penetration', () => {

@@ -26,12 +26,24 @@ export type ArmorPiece = z.infer<typeof ArmorPiece>
 export const ArmorSet = z.strictObject({
   id: Slug,
   name: PlainText1,
-  pieces: z.strictObject({ helmets: z.array(ItemId).min(1), chest: ItemId, legs: ItemId }),
+  pieces: z.strictObject({
+    helmets: z.array(ItemId).min(1),
+    chest: ItemId,
+    // P6 fix round (additive, read like B52's `classes ?? [class]`): a set completed by ONE OF several chests (Beetle
+    // armor: Scale Mail or Shell; Wizard set: eight robes) lists every such chest here, `chest` first. Absent =
+    // [chest]. Read through `setChestIds`.
+    chests: z.array(ItemId).min(2).optional(),
+    // Absent = the set has no legs piece; any legs keep its bonus (Wizard set, quote-backed in the overlay).
+    legs: ItemId.optional(),
+  }),
   variants: z
     .array(
-      // exactly one per helmet (validated bijection, §7a-6)
+      // one per helmet — or, for a set whose bonus is keyed by its chest, one per helmet × chest (validated, §7a-6)
       z.strictObject({
         helmetId: ItemId,
+        // P6 fix round: the bonus this variant states holds only with this chest (Beetle armor). Absent = with any
+        // of the set's chests.
+        chestId: ItemId.optional(),
         class: DamageClass, // "other" for classless and hybrid sets (kept one release beside `classes`, B52)
         // AMENDMENTS-011 B52 (landed by the B70 P4-prep slice): the variant's damage classes. One class →
         // [class]; classless → ["other"]; hybrid (quote-evidenced, e.g. "melee/ranged") → the classes,
@@ -52,6 +64,7 @@ export const ArmorSet = z.strictObject({
   _prov: Prov,
 })
 export type ArmorSet = z.infer<typeof ArmorSet>
+export type ArmorSetVariant = ArmorSet['variants'][number]
 
 /**
  * P2-S8 (A1 principle, AMENDMENTS-001): `categories` / `effects` drop `.min(1)` — an accessory whose

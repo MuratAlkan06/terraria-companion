@@ -8,7 +8,7 @@
  * also fails: unknown gating is never "obtainable now" (§2.2). Absent + unlisted gatedBy
  * means no gates apply.
  */
-import { isCoveredBy, type Accessory, type ArmorPiece, type Boss, type Weapon } from '../../src/schemas'
+import { isCoveredBy, setPieceIds, type Accessory, type ArmorPiece, type Boss, type Weapon } from '../../src/schemas'
 import type { Dataset } from './dataset'
 import type { PipelineError } from './errors'
 import { requiredGateUpstream } from './graph'
@@ -68,7 +68,7 @@ export function checkSuggestionGating(ds: Dataset): PipelineError[] {
       for (const setId of s.armorSetIds) {
         const set = sets.get(setId)
         if (!set) continue
-        for (const id of [...set.pieces.helmets, set.pieces.chest, set.pieces.legs]) {
+        for (const id of setPieceIds(set)) {
           const piece = armor.get(id)
           if (piece) suggested.set(id, piece)
         }

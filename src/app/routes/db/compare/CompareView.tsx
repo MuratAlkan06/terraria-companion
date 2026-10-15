@@ -48,9 +48,9 @@ export function CompareView({ selection, weapons, missing, data, progress, onAdd
   const heavy = weapons
     .map((w) => ({ w, count: columnUnknowns(w, statKeys, gatingCell(w, data.graph, ep)).length }))
     .filter((x) => x.count >= UNKNOWN_HEAVY_MIN)
-  const addButton = (variant: 'primary' | 'secondary') =>
+  const addButton = (variant: 'primary' | 'secondary', extra?: string) =>
     onAdd ? (
-      <button type="button" id={ADD_BUTTON_ID} onClick={onAdd} className={buttonClass(variant)}>
+      <button type="button" id={ADD_BUTTON_ID} onClick={onAdd} className={buttonClass(variant, extra)}>
         <Plus aria-hidden="true" className="size-5" />
         {copy.ADD_WEAPON}
       </button>
@@ -94,13 +94,14 @@ export function CompareView({ selection, weapons, missing, data, progress, onAdd
         <>
           {n === 1 ? (
             <section aria-labelledby="compare-one-title" data-compare-state="one" className="flex flex-col gap-3 border-2 border-dashed border-gold-600 bg-night-900 p-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <h2 id="compare-one-title" className="font-semibold text-fg">
                   {copy.ONE_TITLE}
                 </h2>
                 <p className="text-sm text-fg-muted">{copy.ONE_BODY}</p>
               </div>
-              {addButton('primary')}
+              {/* the label stays on one line beside the text (at 768 it wrapped to "Add a / weapon") */}
+              {addButton('primary', 'shrink-0 self-start whitespace-nowrap md:self-auto')}
             </section>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3">

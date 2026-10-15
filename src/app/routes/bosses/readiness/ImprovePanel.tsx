@@ -17,14 +17,15 @@ import * as copy from './readinessUiCopy'
  * ImprovePanel (UX_SPEC §3.8; PRD P5-S7 AC1–AC3; PRD §9 Feature A AC2): per targeted component, the
  * obtainable-now upgrades (tracked defeats only) and, apart, GatedSections "After you defeat {Boss}"
  * keyed by the exact bosses each upgrade still needs. Every suggestion links its page and "Show Me How
- * to Get It" — Feature B's plan for that item (P6-S5, `/plan/new?item=:id`); an armor set, its set article.
+ * to Get It" — Feature B's plan for that item (P6-S5, `/plan/new?item=:id`); an armor set — several items,
+ * no single plan — its set page's "how to obtain" section (PRD P6-S1; AMENDMENTS-016 B131(b) retires the
+ * set's wiki article there, B117's interim).
  */
 export interface ImprovePanelProps {
   result: ImproveResult
+  /** Also resolves armor-set suggestions to their set page (`ctx.setHref`). */
   ctx: SegmentContext
   sprites: SpriteIndex | null
-  /** Set slug → wiki article (armor-set suggestions open their set's page). */
-  setUrl: (id: string) => string | undefined
   idPrefix: string
 }
 
@@ -36,19 +37,19 @@ const LINK = 'text-link underline decoration-1 underline-offset-4 hover:text-acc
  */
 export const ACQUISITION_ANCHOR = 'acq-title'
 
-export function ImprovePanel({ result, ctx, sprites, setUrl, idPrefix }: ImprovePanelProps) {
+export function ImprovePanel({ result, ctx, sprites, idPrefix }: ImprovePanelProps) {
   const sctx = { ...ctx, estimates: { ...ctx.estimates, ...result.estimates } }
   return (
     <div data-improve="" className="space-y-4">
       <p className="text-sm text-fg-muted">{copy.IMPROVE_INTRO}</p>
       {result.groups.map((group) => (
-        <GroupView key={group.target} group={group} ctx={sctx} sprites={sprites} setUrl={setUrl} headingId={`${idPrefix}-${group.target}`} />
+        <GroupView key={group.target} group={group} ctx={sctx} sprites={sprites} headingId={`${idPrefix}-${group.target}`} />
       ))}
     </div>
   )
 }
 
-function GroupView({ group, ctx, sprites, setUrl, headingId }: { group: SuggestionGroup; ctx: SegmentContext; sprites: SpriteIndex | null; setUrl: (id: string) => string | undefined; headingId: string }) {
+function GroupView({ group, ctx, sprites, headingId }: { group: SuggestionGroup; ctx: SegmentContext; sprites: SpriteIndex | null; headingId: string }) {
   return (
     <PixelPanel as="section" aria-labelledby={headingId} data-improve-group={group.target} className="space-y-3">
       <div className="space-y-1">
@@ -64,7 +65,7 @@ function GroupView({ group, ctx, sprites, setUrl, headingId }: { group: Suggesti
         {group.obtainable.length > 0 ? (
           <ul className="space-y-2">
             {group.obtainable.map((s) => (
-              <SuggestionRow key={s.key} s={s} ctx={ctx} sprites={sprites} setUrl={setUrl} />
+              <SuggestionRow key={s.key} s={s} ctx={ctx} sprites={sprites} />
             ))}
           </ul>
         ) : (
@@ -77,7 +78,7 @@ function GroupView({ group, ctx, sprites, setUrl, headingId }: { group: Suggesti
         <GatedSection key={g.missing.join('+')} id={`${headingId}-after-${g.missing.join('-')}`} gates={g.missing.map((id, i) => ({ id, name: g.names[i], to: bossPageHref(id) ?? bossMapHref(id) }))} as="h5">
           <ul className="space-y-2">
             {g.items.map((s) => (
-              <SuggestionRow key={s.key} s={s} ctx={ctx} sprites={sprites} setUrl={setUrl} />
+              <SuggestionRow key={s.key} s={s} ctx={ctx} sprites={sprites} />
             ))}
           </ul>
         </GatedSection>
@@ -91,12 +92,12 @@ function GroupView({ group, ctx, sprites, setUrl, headingId }: { group: Suggesti
   )
 }
 
-function SuggestionRow({ s, ctx, sprites, setUrl }: { s: Suggestion; ctx: SegmentContext; sprites: SpriteIndex | null; setUrl: (id: string) => string | undefined }) {
+function SuggestionRow({ s, ctx, sprites }: { s: Suggestion; ctx: SegmentContext; sprites: SpriteIndex | null }) {
   const info = ctx.info(s.id)
-  const set = s.setId ? setUrl(s.setId) : undefined
-  const item = s.kind === 'armor-set' ? { ...info, name: s.name, ...(set ? { link: { kind: 'external' as const, href: set } } : {}) } : info
+  const set = s.setId ? ctx.setHref(s.setId) : undefined
+  const item = s.kind === 'armor-set' ? { ...info, name: s.name, ...(set ? { link: { kind: 'internal' as const, to: set } } : {}) } : info
   // PRD P5-S7 AC2 / §9 Feature B AC5 / UX_SPEC §3.8: "Show Me How to Get It" opens the item's grind plan once the
-  // planner ships (any single item); an armor set — several items — keeps its set article
+  // planner ships (any single item); an armor set — several items — its set page's "how to obtain" section
   const howTo =
     s.kind !== 'armor-set' && hasRoute('plan-new')
       ? { kind: 'internal' as const, to: planNewHref(s.id) }

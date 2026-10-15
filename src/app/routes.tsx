@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { Backpack, BookOpen, ClipboardList, Columns3, DatabaseBackup, FlaskConical, FolderOpen, House, Package, Pickaxe, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { Backpack, BookOpen, ClipboardList, Columns3, DatabaseBackup, FlaskConical, FolderOpen, Gem, House, Package, Pickaxe, Scale, Shield, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import BuildsRedirect from './routes/BuildsRedirect'
 import HomePage from './routes/HomePage'
@@ -203,10 +203,53 @@ export const APP_ROUTES: readonly AppRoute[] = [
     },
   },
   {
-    // P6: an Item record's page (stats, how to obtain, used in); a weapon / armor / accessory id is a styled 404.
+    // P6: an Item record's page (stats, how to obtain, used in); a weapon / armor / accessory id is a styled 404
+    // linking that record's own page (B113(e) M5; B131(b): armor and accessory pages are in-app).
     id: 'item-detail',
     path: '/items/:id',
     Component: lazy(() => chunkDb().then((m) => ({ default: m.ItemDetailPage }))),
+  },
+  {
+    // PRD P6-S1 (AMENDMENTS-016 B131(b): built, not cut): armor sets by class / stage / name, then the pieces outside
+    // a set (UX_SPEC §1 `/armor`, chunk-db). Entry points: the phone "More" sheet and — B96b/B99b/B112 precedent for
+    // database lists — the header's desktop "More" menu, after Items; search rows, boss-page gear, the builder and the
+    // readiness checker link sets and pieces here.
+    id: 'armor',
+    path: '/armor',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.ArmorListPage }))),
+    nav: {
+      label: 'Armor',
+      icon: Shield,
+      surfaces: ['header', 'more'],
+      order: 52,
+      description: 'Armor sets with their set bonus counted in, compared side by side',
+    },
+  },
+  {
+    // P6-S1: a set's page (its slug) or an armor piece (its id — in a set: that set's page at the piece).
+    id: 'armor-detail',
+    path: '/armor/:id',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.ArmorDetailPage }))),
+  },
+  {
+    // PRD P6-S2 (B131(b)): accessories by category / stage / name (UX_SPEC §1 `/accessories`, chunk-db); the same
+    // entry points as Armor, after it.
+    id: 'accessories',
+    path: '/accessories',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.AccessoriesListPage }))),
+    nav: {
+      label: 'Accessories',
+      icon: Gem,
+      surfaces: ['header', 'more'],
+      order: 54,
+      description: 'Exact effects, the classes they count for, and combination trees',
+    },
+  },
+  {
+    // P6-S2: an accessory's page.
+    id: 'accessory-detail',
+    path: '/accessories/:id',
+    Component: lazy(() => chunkDb().then((m) => ({ default: m.AccessoryDetailPage }))),
   },
   {
     id: 'guides',

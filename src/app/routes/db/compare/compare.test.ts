@@ -486,6 +486,8 @@ describe('page states (UX_SPEC §5; brief: empty, one weapon, Unknown-heavy, mix
     expect(ownText(html)).toContain(copy.ONE_TITLE)
     expect(html).toContain(`data-compare-table="${CAR.id}"`)
     expect(count(html, /id="compare-add"/g)).toBe(1)
+    // its button keeps "Add a weapon" on one line beside the text (at 768 it wrapped to "Add a / weapon")
+    expect(/<button[^>]*id="compare-add"[^>]*>/.exec(html)?.[0]).toMatch(/class="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b/)
   })
 
   it('two weapons: count + Add; three: the maximum, no Add', () => {

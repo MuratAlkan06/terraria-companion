@@ -186,7 +186,7 @@ export const PROFILE_NOTE =
 export const goalWeight = (goal: string, pct: number) => `${goal} weighs this at ${pct}%`
 export const EXCLUDED = 'Not computed'
 export const SYNERGY_TITLE = 'How the pieces fit'
-export const setBonusActive = (name: string) => `${name} set bonus is active:`
+export const setBonusActive = (name: string) => `${name} ${/\bset$/i.test(name.trim()) ? 'bonus' : 'set bonus'} is active:`
 export const NO_SET = 'No armor set bonus is active.'
 export const mismatchesTitle = (cls: string) => `Not counted for your ${cls} class`
 export const NO_MISMATCH = 'Every counted effect applies to your class, and every pick adds counted points.'

@@ -177,7 +177,7 @@ export function AnalysisPane(props: AnalysisPaneProps) {
               {copy.IMPROVE}
             </button>
             <div id={ids.improve} hidden={!props.improveOpen}>
-              {props.improveOpen ? <ImprovePanel result={props.improve} ctx={ctx} sprites={page.sprites} setUrl={(id) => page.engine.sets.get(id)?.wikiUrl} idPrefix={ids.improve} /> : null}
+              {props.improveOpen ? <ImprovePanel result={props.improve} ctx={ctx} sprites={page.sprites} idPrefix={ids.improve} /> : null}
             </div>
           </section>
         ) : null}

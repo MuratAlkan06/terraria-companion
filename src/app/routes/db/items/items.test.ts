@@ -80,16 +80,22 @@ describe('data: every Item record has a page; the browse list matches the record
     await expect(da.loadItemDetail(3097)).rejects.toBeInstanceOf(NotFoundError) // Shield of Cthulhu
   })
 
-  it('B113(e) M5: the 404 for a weapon id names it and links its weapon page; an accessory id links its wiki article; anything else points to the list', async () => {
+  it('B113(e) M5: the 404 for a weapon, accessory or armor id names it and links its own page in-app (B131(b)); anything else points to the list', async () => {
     await loadSearchDocs() // the 404 reads the search docs (cached here, so it renders on its first frame)
     const zenith = wrap(createElement(ItemNotFound, { id: '4956' }))
     expect(zenith).toContain('data-not-item="weapon"')
     expect(text(zenith)).toContain('is Zenith, a weapon')
     expect(zenith).toMatch(/<a [^>]*href="\/weapons\/4956"[^>]*>Open Zenith<\/a>/)
+    // PRD P6-S1/S2: an accessory / armor id links its page here — the wiki fallback retired
     const shield = wrap(createElement(ItemNotFound, { id: '3097' }))
     expect(shield).toContain('data-not-item="accessory"')
-    expect(shield).toMatch(/<a href="https:\/\/terraria\.wiki\.gg\/wiki\/[^"]+"[^>]*target="_blank"/)
-    expect(shield).toContain(`href="${'/items'}"`)
+    expect(text(shield)).toContain('is Shield of Cthulhu, an accessory — it has its own page.')
+    expect(shield).toMatch(/<a [^>]*href="\/accessories\/3097"[^>]*>Open Shield of Cthulhu<\/a>/)
+    expect(shield).not.toContain('terraria.wiki.gg')
+    const helmet = wrap(createElement(ItemNotFound, { id: '684' }))
+    expect(helmet).toContain('data-not-item="armor"')
+    expect(helmet).toMatch(/<a [^>]*href="\/armor\/684"[^>]*>Open Frost Helmet<\/a>/)
+    expect(helmet).not.toContain('terraria.wiki.gg')
     const nothing = wrap(createElement(ItemNotFound, { id: '999999' }))
     expect(nothing).not.toContain('data-not-item')
     expect(text(nothing)).toContain('browse the item list instead')

@@ -8,7 +8,7 @@ import { normalizeAvailability, parseShopTables } from '../parse/shops'
 import { itemRoutes } from './acquisition'
 import { Evidence } from './evidence'
 import { containerKey } from './gating'
-import type { ConditionsOverlay, ContainersOverlay, GatherablesOverlay, VendorsOverlay } from './overlays'
+import { ConditionsOverlay as ConditionsOverlaySchema, type ConditionsOverlay, type ContainersOverlay, type GatherablesOverlay, type VendorsOverlay } from './overlays'
 import { buildAcquisitionSources, sameDesktopItem, vendorTags } from './sources'
 
 const shopTable = (rows: [string, string][]) =>
@@ -163,6 +163,21 @@ describe('merge/sources: reviewed vendor / container / gatherable sources', () =
     expect(s.extraRoutes.get(23)).toEqual([{ kind: 'gather', conditions: [] }])
     expect(s.extraRoutes.get(62)).toEqual([{ kind: 'gather', conditions: [], requiresAnyOf: [[281]] }])
     expect(s.gather.get(23)).toEqual({ description: 'Gel is a common crafting material dropped by most slimes.', sourceUrl: 'https://terraria.wiki.gg/wiki/Gel', conditions: [] })
+  })
+
+  it('AMENDMENTS-016 B141: the reviewed ride-along conditions are carried to the deriver (none listed = none); progression-type or unknown ones are refused', () => {
+    expect(build().rideAlong).toEqual([])
+    const cavern = { id: 'cavern', name: 'Cavern layer', kind: 'biome' as const, wikiTitle: 'Cavern', description: 'x' }
+    const withRide = (ids: string[]): ConditionsOverlay => ({ ...conditions, entries: [...conditions.entries, cavern], rideAlong: { conditions: ids, why: 'x' } })
+    const sources = (c: ConditionsOverlay) => buildAcquisitionSources({ itemRows: ROWS, iteminfo: info, articles: ARTICLES, evidence: new Evidence(ARTICLES), vendors: vendors(), containers, gatherables: gatherables(), conditions: c })
+    expect(sources(withRide(['cavern'])).rideAlong).toEqual(['cavern'])
+    expect(() => sources(withRide(['lava-layer']))).toThrow(/not in overlays\/conditions.json/)
+    // the overlay schema: a node-mapped (progression-type) condition always gates
+    const hardmodeX = { id: 'hardmode-x', name: 'Hardmode', kind: 'world-state' as const, satisfiedByNode: 'hardmode', wikiTitle: 'Hardmode', description: 'x' }
+    const parse = (ride: string[]) => ConditionsOverlaySchema.safeParse({ ...conditions, entries: [...conditions.entries, cavern, hardmodeX], rideAlong: { conditions: ride, why: 'x' } })
+    expect(parse(['cavern']).success).toBe(true)
+    expect(parse(['hardmode-x']).error?.issues.map((i) => i.message)).toEqual(['rideAlong: "hardmode-x" maps to a progression node — progression-type conditions always gate (B141)'])
+    expect(parse(['nowhere']).error?.issues.map((i) => i.message)).toEqual(['rideAlong: unknown condition "nowhere"'])
   })
 
   it('never assumed: an unreviewed vendor, a stale availability mapping, a quote not on its page or an unknown condition fail the build', () => {

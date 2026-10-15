@@ -7,7 +7,13 @@ export const ITEMS_TITLE = 'Items'
 export const listIntro = (version: string): string =>
   `Every item in Terraria ${version} that isn’t a weapon, armor piece or accessory — materials, potions, tools, mounts, furniture and more — from the Official Terraria Wiki. Browse a category or filter by game stage and name; open an item for its stats, how to get it and what it’s used for.`
 
-export const WEAPONS_POINTER = 'Weapons have their own list.'
+/** PRD P6-S1/S2: weapons, armor and accessories each have their own list (the pointer row under the intro). */
+export const OWN_LISTS = 'Their own lists:'
+export const OWN_LIST_LINKS = [
+  { to: '/weapons', label: 'Weapons' },
+  { to: '/armor', label: 'Armor' },
+  { to: '/accessories', label: 'Accessories' },
+] as const
 export const CATEGORY_HEADING = 'Browse by category'
 export const ALL_ITEMS_HEADING = 'All items'
 export const NAME_FILTER_LABEL = 'Filter by name'

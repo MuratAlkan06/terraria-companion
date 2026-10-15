@@ -36,6 +36,11 @@ const ConditionOverlayEntry = z.strictObject({
       fishingConditions: z.array(z.string().min(1)).optional(),
     })
     .optional(),
+  /**
+   * AMENDMENTS-016 B140(a)/B141: verbatim quotes (checked against the cached article revision,
+   * merge/evidence.ts) that define the condition; their revisions join the emitted condition's _prov.
+   */
+  evidence: z.array(z.strictObject({ page: z.string().min(1), quote: PlainText.min(12) })).min(1).optional(),
 })
 export type ConditionOverlayEntry = z.infer<typeof ConditionOverlayEntry>
 
@@ -52,6 +57,15 @@ const ExhaustiveConditionGroup = z.strictObject({
 })
 export type ExhaustiveConditionGroup = z.infer<typeof ExhaustiveConditionGroup>
 
+/**
+ * AMENDMENTS-016 B141: the reviewed world-location / world-state conditions that RIDE ALONG on a route
+ * without making it gated — any fresh character can satisfy them (walk to the Cavern layer, break a
+ * world's first Shadow Orb), so a route free of boss/progression gates that carries them is still the
+ * §7b minimum (merge/gating.ts "Ride-along conditions"). Progression-type conditions never qualify.
+ * Pipeline-only, not emitted.
+ */
+const RideAlongConditions = z.strictObject({ conditions: z.array(Slug).min(1), why: z.string().min(1) })
+
 export const ConditionsOverlay = z
   .strictObject({
     overlay: z.literal('conditions'),
@@ -59,6 +73,7 @@ export const ConditionsOverlay = z
     notes: z.array(z.string()),
     entries: z.array(ConditionOverlayEntry).min(1),
     exhaustive: z.array(ExhaustiveConditionGroup).optional(),
+    rideAlong: RideAlongConditions.optional(),
   })
   .superRefine((o, ctx) => {
     const ids = new Set<string>()
@@ -83,6 +98,13 @@ export const ConditionsOverlay = z
       }
       if (new Set(g.conditions).size !== g.conditions.length) ctx.addIssue({ code: 'custom', message: 'exhaustive group: duplicate condition' })
     }
+    const ride = o.rideAlong?.conditions ?? []
+    for (const c of ride) {
+      const entry = o.entries.find((e) => e.id === c)
+      if (!entry) ctx.addIssue({ code: 'custom', message: `rideAlong: unknown condition "${c}"` })
+      else if (entry.satisfiedByNode) ctx.addIssue({ code: 'custom', message: `rideAlong: "${c}" maps to a progression node — progression-type conditions always gate (B141)` })
+    }
+    if (new Set(ride).size !== ride.length) ctx.addIssue({ code: 'custom', message: 'rideAlong: duplicate condition' })
   })
 export type ConditionsOverlay = z.infer<typeof ConditionsOverlay>
 
@@ -447,8 +469,18 @@ export const labEvidencePages = (o: LabParamsOverlay): string[] => [...o.entries
  * article (checked against the cached revision, merge/evidence.ts):
  * - `classes`: the damage class of a helmet variant whose pieces / set bonus name several classes
  *   (hybrid sets) — the reviewer's ruling, quoted; emitted as an editorial field.
- * - `withhold`: the set cannot be expressed by the ArmorSet schema (e.g. two alternative chest pieces
- *   with different bonuses); its pieces are emitted without setId and a gap records why.
+ * - `withhold`: the set cannot be expressed by the ArmorSet schema (Rain armor: no set bonus); its
+ *   pieces are emitted without setId — listed Unknown — and a gap records why.
+ * - `chests` (P6 fix round): the set article hosts several alternative chests (Beetle armor) — the
+ *   reviewer confirms, quoted, that any one of them completes the set; the build checks every chest is
+ *   named by a quote. Whether the bonus is keyed by the chest is DERIVED from the Set Bonus segments.
+ * - `combination` (P6 fix round): a set whose pieces live on their own articles (Wizard set: one of
+ *   two hats + one of eight robes, no legs piece). The member names are checked against the set
+ *   article's own set-pieces table (name, item ID, body slot) and the emitted pieces; `legs.quote`
+ *   backs "no legs piece — any legs keep the bonus".
+ * Top-level `unrecorded` (P6 fix round): a piece the wiki ties to a set the dataset cannot record
+ * (Ultrabright Helmet: interchangeable into two sets, but setId names one) — its setId is listed
+ * Unknown with the quotes, never shown as "no set".
  */
 const ArmorSetEntry = z.strictObject({
   page: Page,
@@ -460,28 +492,45 @@ const ArmorSetEntry = z.strictObject({
    */
   classes: z.array(z.strictObject({ helmet: PlainText1, class: DamageClass, classes: z.array(DamageClass.exclude(['other'])).min(2).optional(), quote: Quote })).optional(),
   withhold: z.strictObject({ reason: PlainText1, quote: Quote }).optional(),
+  chests: z.strictObject({ quotes: z.array(Quote).min(1) }).optional(),
+  combination: z
+    .strictObject({
+      helmets: z.array(PlainText1).min(1),
+      chests: z.array(PlainText1).min(1),
+      quotes: z.array(Quote).min(1),
+      legs: z.strictObject({ quote: Quote }),
+    })
+    .optional(),
   /** Pipeline-only reviewer rationale (not emitted). */
   why: z.string().min(1),
 })
 export type ArmorSetEntry = z.infer<typeof ArmorSetEntry>
 
+const UnrecordedMembership = z.strictObject({ piece: PlainText1, reason: PlainText1, evidence: z.array(z.strictObject({ page: Page, quote: Quote })).min(1) })
+
 export const ArmorSetsOverlay = z
-  .strictObject({ overlay: z.literal('armor-sets'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(ArmorSetEntry) })
+  .strictObject({ overlay: z.literal('armor-sets'), authoredAt: IsoDate, notes: z.array(z.string()), entries: z.array(ArmorSetEntry), unrecorded: z.array(UnrecordedMembership) })
   .superRefine((o, ctx) => {
     const seen = new Set<string>()
     for (const e of o.entries) {
       if (seen.has(e.page)) ctx.addIssue({ code: 'custom', message: `duplicate armor-sets entry for "${e.page}"` })
       seen.add(e.page)
-      if (!e.classes && !e.withhold) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}" decides nothing (classes or withhold)` })
-      if (e.classes && e.withhold) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}": a withheld set takes no class rulings` })
+      if (!e.classes && !e.withhold && !e.chests && !e.combination) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}" decides nothing (classes, withhold, chests or combination)` })
+      if (e.withhold && (e.classes || e.chests || e.combination)) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}": a withheld set takes no other ruling` })
+      if (e.chests && e.combination) ctx.addIssue({ code: 'custom', message: `armor-sets entry "${e.page}": a combination set names its chests in \`combination\`` })
+    }
+    const pieces = new Set<string>()
+    for (const u of o.unrecorded) {
+      if (pieces.has(u.piece)) ctx.addIssue({ code: 'custom', message: `duplicate armor-sets unrecorded entry for "${u.piece}"` })
+      pieces.add(u.piece)
     }
   })
 export type ArmorSetsOverlay = z.infer<typeof ArmorSetsOverlay>
 
 export const loadArmorSetsOverlay = (dir = OVERLAY_DIR): ArmorSetsOverlay => ArmorSetsOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'armor-sets.json'), 'utf8')))
 
-/** Every article the armor-sets overlay cites (its set pages — already fetched as set articles). */
-export const armorSetEvidencePages = (o: ArmorSetsOverlay): string[] => o.entries.map((e) => e.page)
+/** Every article the armor-sets overlay cites (its set pages — already fetched as set articles — and the unrecorded memberships' evidence). */
+export const armorSetEvidencePages = (o: ArmorSetsOverlay): string[] => [...o.entries.map((e) => e.page), ...o.unrecorded.flatMap((u) => u.evidence.map((x) => x.page))]
 
 // ---------------------------------------------------------------------------------------------
 // AMENDMENTS-014 B68 / AMENDMENTS-015 B78 gating expansion: reviewed acquisition sources the §7b
@@ -594,7 +643,7 @@ export const GatherablesOverlay = z
 export type GatherablesOverlay = z.infer<typeof GatherablesOverlay>
 export const loadGatherablesOverlay = (dir = OVERLAY_DIR): GatherablesOverlay => GatherablesOverlay.parse(JSON.parse(readFileSync(resolve(dir, 'gatherables.json'), 'utf8')))
 
-/** Every article the B68/B78 overlays cite (fetched by the sync plan, quote-checked by the build). */
+/** Every article the B68/B78 overlays and the condition registry's B141 evidence cite (fetched by the sync plan, quote-checked by the build). */
 export function acquisitionSourcePages(v: VendorsOverlay, c: ContainersOverlay, g: GatherablesOverlay, conditions: ConditionsOverlay): string[] {
   return [
     ...v.npcs.flatMap((n) => [n.page, ...n.evidence.map((e) => e.page)]),
@@ -603,6 +652,7 @@ export function acquisitionSourcePages(v: VendorsOverlay, c: ContainersOverlay, 
     ...(c.worldSpecificLoot ?? []).map((x) => x.page),
     ...g.entries.flatMap((e) => [e.page, ...(e.support ?? []).map((x) => x.page)]),
     ...(conditions.exhaustive ?? []).map((x) => x.page),
+    ...conditions.entries.flatMap((e) => (e.evidence ?? []).map((x) => x.page)),
   ]
 }
 

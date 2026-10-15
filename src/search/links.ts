@@ -3,7 +3,9 @@
  *
  * - Types with a local detail route navigate in-app: weapons → /weapons/:id; bosses with a page
  *   (P5-S2, src/schemas/bossPages.ts) → /bosses/:id; items (every Item record — the P6 encyclopedia,
- *   AMENDMENTS-016) → /items/:id.
+ *   AMENDMENTS-016) → /items/:id; armor pieces → /armor/:id (their set's page, or their own), armor sets →
+ *   /armor/:slug and accessories → /accessories/:id (PRD P6-S1/S2; AMENDMENTS-016 B131(b) — the armor /
+ *   accessory "Wiki ↗" rows retire).
  * - Any other doc opens its own terraria.wiki.gg article — the doc's `wikiUrl` (AMENDMENTS-007
  *   B31: the pipeline emits it on every search doc) — in a new tab, with an external-link
  *   indicator on the row. Never a dead local link, never a disabled row. When an entity page
@@ -13,6 +15,8 @@
  *   page, never a guessed article URL.
  */
 import { bossPageHref } from '../app/routes/bosses/bossNav'
+import { accessoryHref } from '../app/routes/db/accessories/accessoryNav'
+import { armorPieceHref, armorSetHref } from '../app/routes/db/armor/armorNav'
 import { itemHref } from '../app/routes/db/items/itemNav'
 import { weaponHref } from '../app/routes/db/weapons/weaponNav'
 import type { SearchDoc, SearchDocType } from '../schemas'
@@ -21,6 +25,7 @@ export type SearchTarget = { kind: 'internal'; to: string } | { kind: 'external'
 
 const ITEM_REF = /^i:([1-9]\d*)$/
 const BOSS_REF = /^boss:([a-z0-9]+(?:-[a-z0-9]+)*)$/
+const SET_REF = /^set:([a-z0-9]+(?:-[a-z0-9]+)*)$/
 
 /** Local detail routes by entity type (extend as entity pages ship). */
 const LOCAL_ROUTES: Partial<Record<SearchDocType, (ref: string) => string | undefined>> = {
@@ -37,6 +42,20 @@ const LOCAL_ROUTES: Partial<Record<SearchDocType, (ref: string) => string | unde
   item: (ref) => {
     const match = ITEM_REF.exec(ref)
     return match ? itemHref(Number(match[1])) : undefined
+  },
+  // PRD P6-S1/S2 (AMENDMENTS-016 B131(b)): every armor piece, armor set and accessory record has its page. The
+  // pipeline emits these docs from the records themselves (search.test pins doc ⇄ record), so none is dead.
+  armor: (ref) => {
+    const match = ITEM_REF.exec(ref)
+    return match ? armorPieceHref(Number(match[1])) : undefined
+  },
+  set: (ref) => {
+    const match = SET_REF.exec(ref)
+    return match ? armorSetHref(match[1]) : undefined
+  },
+  accessory: (ref) => {
+    const match = ITEM_REF.exec(ref)
+    return match ? accessoryHref(Number(match[1])) : undefined
   },
 }
 

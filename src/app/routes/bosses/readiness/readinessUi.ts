@@ -10,17 +10,19 @@ import { isSummonStaff } from '../../../../scoring/proxies'
 import type { ReadinessData, ReadinessInput } from '../../../../scoring/readiness'
 import type { ReadinessSetup } from '../../../../storage/readiness'
 import { sameInputs, sameProgress, type ListSlot, type ReadinessSnapshot, type SingleSlot } from '../../../readinessStore'
+import { armorSetHref } from '../../db/armor/armorNav'
 import type { ReadinessPageData } from './readinessData'
 import type { SegmentContext } from './ReadinessFactorCard'
 import { accessoryLabel, ANNOUNCE_READY, DEMON_HEART_SLOT, PICKER_WHAT, SLOT_LABELS } from './readinessUiCopy'
 
-/** How the views resolve a line's segments: item pages, condition articles, set articles, node names, AssumptionsTips. */
+/** How the views resolve a line's segments: item pages, condition articles, set pages, node names, AssumptionsTips. */
 export function segmentContext(page: ReadinessPageData, estimates: SegmentContext['estimates']): SegmentContext {
   return {
     info: page.info,
     conditions: page.conditions,
     estimates,
-    setUrl: (id) => page.engine.sets.get(id)?.wikiUrl,
+    // PRD P6-S1 (AMENDMENTS-016 B131(b)): a set links its page in-app — never a dead link for a set the data lacks
+    setHref: (id) => (page.engine.sets.has(id) ? armorSetHref(id) : undefined),
     bossName: (id) => page.graph.nodeById.get(id)?.name ?? id,
   }
 }

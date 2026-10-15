@@ -133,8 +133,10 @@ function ownCopy(html: string, b: Boss): string {
   return t
 }
 
+/** PRD P6-S1/S2 (AMENDMENTS-016 B131(b)): armor and accessories link in-app — a set by its slug, a piece / accessory by id. */
+const ARMOR_SET_IDS = (armorSetsJson as { id: string }[]).map((s) => s.id)
 const ALLOWED_LOCAL = new RegExp(
-  `^(/weapons/\\d+|/items/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/readiness\\?boss=(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`,
+  `^(/weapons/\\d+|/items/\\d+|/armor/(\\d+|${ARMOR_SET_IDS.join('|')})|/accessories/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/readiness\\?boss=(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`,
 )
 
 /** One class tab's panel markup. */
@@ -248,14 +250,14 @@ describe('boss pages: every page (pre-Hardmode P5-S2, Wall of Flesh + Hardmode P
     expect(count(html, /Source for the [^<]*? drop[^<]* on terraria\.wiki\.gg/g)).toBe(boss('eater-of-worlds').dropIds.length)
   })
 
-  it('AC2: drop items link their real page — weapons and items (P6 encyclopedia) in-app, accessories / armor to their own wiki article', () => {
+  it('AC2: drop items link their real page — weapons, items (P6 encyclopedia), accessories and armor (P6-S1/S2, B131(b)) in-app', () => {
     const html = render(boss('queen-bee'))
     expect(html).toContain('href="/weapons/1123"') // Bee Keeper
-    expect(html).toContain('href="https://terraria.wiki.gg/wiki/Hive_Pack"') // accessory
+    expect(html).toContain('href="/accessories/3333"') // Hive Pack — its accessory page, no longer its wiki article
+    expect(html).not.toContain('href="https://terraria.wiki.gg/wiki/Hive_Pack"')
     // AMENDMENTS-016 B104: Bee Wax used to fall back to the wiki search; its record is in the core file now
     expect(html).toContain('href="/items/2431"') // Bee Wax
     expect(html).not.toContain(wikiSearchUrl('Bee Wax'))
-    expect(html).not.toMatch(/href="\/(accessories|armor)\//)
   })
 
   it('AMENDMENTS-016 B105: a derived drop quantity reads "× 1 derived" (explained once under the table), never like a stated one', () => {
@@ -482,9 +484,11 @@ describe('page model', () => {
     }
   })
 
-  it('items resolve to their real page: weapon and Item records in-app, accessory to its own article, else the wiki search for the Iteminfo name; a nameless id has no link', () => {
+  it('items resolve to their real page: weapon, Item, accessory and armor records in-app, else the wiki search for the Iteminfo name; a nameless id has no link', () => {
     expect(itemOf(1123)).toMatchObject({ name: 'Bee Keeper', kind: 'weapon', link: { kind: 'internal', to: '/weapons/1123' } })
-    expect(itemOf(3097)).toMatchObject({ name: 'Shield of Cthulhu', kind: 'accessory', link: { kind: 'external', href: 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu' } })
+    // PRD P6-S1/S2 (AMENDMENTS-016 B131(b)): accessories and armor pieces have their own pages now
+    expect(itemOf(3097)).toMatchObject({ name: 'Shield of Cthulhu', kind: 'accessory', link: { kind: 'internal', to: '/accessories/3097' } })
+    expect(itemOf(684)).toMatchObject({ name: 'Frost Helmet', kind: 'armor', link: { kind: 'internal', to: '/armor/684' } })
     // B96(d), fixed data-side by P6-S0: a summoning item is a record of its own (items.detail.json holds every item a boss
     // references); P6 encyclopedia (AMENDMENTS-016): each Item record opens its own item page
     expect(itemOf(560)).toEqual({ id: 560, name: 'Slime Crown', kind: 'item', sprite: '/sprites/items/560.png', link: { kind: 'internal', to: '/items/560' } })
@@ -838,10 +842,12 @@ describe('P5-S3: real gear where a quoted wiki tip names a weapon verified obtai
 
   it('the shipped picks (B78/B83b/B90: pre-Hardmode weapons the gating expansion verified; Wall of Flesh-gated weapons from Queen Slime on; Plantera / Golem drops for the later fights)', () => {
     expect(Object.fromEntries(BOSS_PAGE_IDS.filter((id) => boss(id).suggestedEquipment).map((id) => [id, picks(id)]))).toEqual({
-      'king-slime': { melee: ['Thorn Chakram', 'Ice Blade'], magic: ['Wand of Frosting'] },
+      // AMENDMENTS-016 B141: the Flinx Staff passes gating (Cavern Gold Chest bars ride along), so the tips naming it force it (B83b)
+      'king-slime': { melee: ['Thorn Chakram', 'Ice Blade'], magic: ['Wand of Frosting'], summon: ['Flinx Staff'] },
       'eye-of-cthulhu': { magic: ['Wand of Frosting'], summon: ['Cobwhip'] },
+      'eater-of-worlds': { summon: ['Flinx Staff'] },
       'brain-of-cthulhu': { melee: ['Flaming Mace'], summon: ['Snapthorn'] },
-      'queen-bee': { melee: ['Thorn Chakram'], ranged: ['Minishark'], magic: ['Space Gun'] },
+      'queen-bee': { melee: ['Thorn Chakram'], ranged: ['Minishark'], magic: ['Space Gun'], summon: ['Flinx Staff'] },
       skeletron: { melee: ['Amazon'] },
       deerclops: { ranged: ['Minishark'], magic: ['Space Gun'], summon: ['Snapthorn'] },
       'wall-of-flesh': { summon: ['Starcrash'] },
@@ -856,8 +862,8 @@ describe('P5-S3: real gear where a quoted wiki tip names a weapon verified obtai
       'lunatic-cultist': { melee: ['Possessed Hatchet'] },
       'moon-lord': { summon: ['Vulgar Display of Flower', 'Firecracker'] },
     })
-    // the Eater of Worlds is the one boss whose quoted tips name no weapon verified obtainable before it (B90(b))
-    expect(BOSS_PAGE_IDS.filter((id) => !boss(id).suggestedEquipment)).toEqual(['eater-of-worlds'])
+    // every boss's quoted tips now name a weapon verified obtainable before it (the Eater of Worlds since B141; was B90(b)'s one exception)
+    expect(BOSS_PAGE_IDS.filter((id) => !boss(id).suggestedEquipment)).toEqual([])
   })
 
   it('every pick is quoted in a tip of that boss — its class’s or a general one (B90(a)) — and sits in its weapon’s own damage class', () => {
@@ -937,16 +943,19 @@ describe('M1: next steps — nearest first, plain phrases', () => {
 describe('M4: every item slot links its real page, else the wiki search for its name; only a nameless one says it has none', () => {
   const weaponIds = new Set(weaponList.map((w) => w.id))
   const itemIds = new Set((itemsJson as Item[]).map((i) => i.id))
-  const recordUrl = new Map<number, string>()
-  for (const r of [...(accessoriesListJson as AccessoryListRecord[]), ...(armorListJson as ArmorListRecord[])]) if (!recordUrl.has(r.id)) recordUrl.set(r.id, r.wikiUrl)
+  // PRD P6-S1/S2 (AMENDMENTS-016 B131(b)): accessories and armor pieces open their own pages — no wiki fallback for them
+  const accessoryIds = new Set((accessoriesListJson as AccessoryListRecord[]).map((a) => a.id))
+  const armorIds = new Set((armorListJson as ArmorListRecord[]).map((a) => a.id))
   const buffArticle = new Map(buffs.map((b) => [wikiArticleTitle(b.wikiUrl), b.wikiUrl]))
   const expected = (id: number) =>
     weaponIds.has(id)
       ? { kind: 'internal', to: `/weapons/${id}` }
       : itemIds.has(id)
         ? { kind: 'internal', to: `/items/${id}` }
-      : recordUrl.has(id)
-        ? { kind: 'external', href: recordUrl.get(id) }
+      : accessoryIds.has(id)
+        ? { kind: 'internal', to: `/accessories/${id}` }
+      : armorIds.has(id)
+        ? { kind: 'internal', to: `/armor/${id}` }
         : buffArticle.has(names.byId.get(id))
           ? { kind: 'external', href: buffArticle.get(names.byId.get(id)) }
           : names.byId.has(id)
@@ -979,24 +988,28 @@ describe('M4: every item slot links its real page, else the wiki search for its 
     expect(html).toContain('href="/items/289"') // Regeneration Potion
   })
 
-  it('Item records open their item page (Torch, Campfire: records since P6-S0, B96(d)); an accessory opens its own article and a name without any record the wiki search — in a new tab with the external marker', () => {
+  it('Item records open their item page (Torch, Campfire: records since P6-S0, B96(d)); an accessory its accessory page (B131(b)); a name without any record the wiki search — in a new tab with the external marker', () => {
     const html = render(boss('eye-of-cthulhu'))
     expect(html).not.toContain('data-item-inert')
     for (const [id, name] of [[8, 'Torch'], [966, 'Campfire']] as const) {
       expect(itemOf(id).link, name).toEqual({ kind: 'internal', to: `/items/${id}` })
       expect(html, name).toContain(`href="/items/${id}"`)
     }
-    // an external row (an accessory's own article): B82 — the ↗ is glued to the name's last word, 4px from it
+    // an accessory opens its accessory page in-app (P6-S2, B131(b)) — no new tab, no external marker
     const b = structuredClone(boss('king-slime'))
     b.summon.items = [3097, 5492] // Shield of Cthulhu (accessory), Magic Shimmer Dropper (no record)
     const summon = section(render(b), 'summon')
-    const href = 'https://terraria.wiki.gg/wiki/Shield_of_Cthulhu'
+    const accessory = /<a [^>]*href="\/accessories\/3097"[^>]*>[\s\S]*?<\/a>/.exec(summon)?.[0] ?? ''
+    expect(accessory).toContain('Shield of Cthulhu')
+    expect(accessory).not.toContain('target="_blank"')
+    expect(summon).not.toContain('https://terraria.wiki.gg/wiki/Shield_of_Cthulhu')
+    // without any record, an Iteminfo name still opens the wiki search for that exact name — an external row: B82, the ↗
+    // glued to the name's last word, 4px from it
+    const href = wikiSearchUrl('Magic Shimmer Dropper')
     const link = new RegExp(`<a href="${escaped(href).replace(/[.?]/g, '\\$&')}" target="_blank" rel="noopener noreferrer"[^>]*>[\\s\\S]*?</a>`).exec(summon)?.[0] ?? ''
-    expect(link).toMatch(/<span class="whitespace-nowrap">Cthulhu<svg[^>]*aria-hidden="true"/)
-    expect(link).toMatch(/<span class="whitespace-nowrap">Cthulhu<svg[^>]*class="[^"]*\bml-1\b/)
+    expect(link).toMatch(/<span class="whitespace-nowrap">Dropper<svg[^>]*aria-hidden="true"/)
+    expect(link).toMatch(/<span class="whitespace-nowrap">Dropper<svg[^>]*class="[^"]*\bml-1\b/)
     expect(link).toContain('on terraria.wiki.gg (opens in a new tab)')
-    // without any record, an Iteminfo name still opens the wiki search for that exact name
-    expect(summon).toContain(`href="${escaped(wikiSearchUrl('Magic Shimmer Dropper'))}"`)
   })
 
   it('a nameless ref stays inert and says it has no page', () => {
@@ -1053,8 +1066,9 @@ describe('M3: quoted tips link the weapons they name; the quotes stay verbatim',
 describe('M2/M3: the suggested-gear Unknown block', () => {
   it('plain words; the stated reason one tap away; the first-boss guide linked on the Eye of Cthulhu only', () => {
     const wholeFieldUnknown = BOSS_PAGE_IDS.filter((id) => getField(boss(id), 'suggestedEquipment').status === 'unverified')
-    // B90(b)/(c): weapons are verifiable now; only the Eater of Worlds' own quoted tips name none verified obtainable before it
-    expect(wholeFieldUnknown).toEqual(['eater-of-worlds'])
+    // B90(b)/(c): weapons are verifiable now; since AMENDMENTS-016 B141 (the Flinx Staff) no shipped boss is a whole-field Unknown —
+    // the block is checked on the Eye of Cthulhu copy below (its reason disclosure on the per-class blocks, B91(a))
+    expect(wholeFieldUnknown).toEqual([])
     // the Eye of Cthulhu's gear is curated now; its guide link is checked on a whole-field Unknown copy of the page
     const eyeUnknown = structuredClone(boss('eye-of-cthulhu'))
     delete eyeUnknown.suggestedEquipment
@@ -1085,7 +1099,8 @@ describe('M2/M3: the suggested-gear Unknown block', () => {
 })
 
 describe('B91(a): the first-boss guide inside per-class Unknown blocks (starter-tier fights)', () => {
-  const POINTED = { 'eye-of-cthulhu': ['melee', 'ranged'], 'king-slime': ['ranged', 'summon'] } as const
+  // King Slime's summon class is curated since AMENDMENTS-016 B141 (Flinx Staff): only its ranged tab stays Unknown
+  const POINTED = { 'eye-of-cthulhu': ['melee', 'ranged'], 'king-slime': ['ranged'] } as const
 
   it.each(Object.entries(POINTED))('%s: in each Unknown class tab, after the plain line and before the stated reason; never beside curated picks', (id, classes) => {
     const html = render(boss(id), gearData)
@@ -1108,9 +1123,11 @@ describe('B91(a): the first-boss guide inside per-class Unknown blocks (starter-
     expect(count(html, /data-prep-guide=""/g)).toBe(classes.length)
   })
 
-  it('no guide mapping, no pointer: the Eater of Worlds (whole-field Unknown) and every other page', () => {
+  it('no guide mapping, no pointer: the Eater of Worlds (per-class Unknowns since B141) and every other page', () => {
     for (const id of BOSS_PAGE_IDS.filter((x) => !(x in BOSS_PREP_GUIDES))) expect(render(boss(id), gearData), id).not.toContain('data-prep-guide')
-    expect(render(boss('eater-of-worlds'))).toContain('data-gear-unknown=""')
+    const eow = render(boss('eater-of-worlds'), gearData)
+    expect(eow).toContain('data-gear-basis=""')
+    expect(eow).not.toContain('data-gear-unknown=""')
   })
 })
 

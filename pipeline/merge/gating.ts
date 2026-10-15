@@ -6,7 +6,8 @@
  * derivable (§7b "any unverified input in the chain → omit gatedBy"): an underivable route might
  * be the less gated one (Mud Ball is crafted from a Mud Block by hand AND dropped by the Moon Lord;
  * Slime Staff drops from common slimes AND King Slime), so taking the best derivable route would
- * state a false gate. Exception: a derivable route with no gate at all is already the minimum.
+ * state a false gate. Exception: a derivable route with no gate at all is already the minimum — "no
+ * gate" meaning no BOSS/PROGRESSION gate (AMENDMENTS-016 B141, see "Ride-along conditions" below).
  * The same rule applies to a recipe group (minimum over its members). A route is derivable only
  * when every input in its chain is verified:
  * - craft: the recipe's availability conditions (B9 `Recipe.conditions`) ∪ the gating of every
@@ -52,6 +53,20 @@
  * World-specific container loot (`containerItemConditions`, quote-backed in overlays/containers.json):
  * the chest loot tables state the ore-tier bars per world ("Iron Bar (in worlds with Iron)"), so a
  * registered container's drop of such an item also carries that world-ore condition.
+ * Ride-along conditions (AMENDMENTS-016 B141, option A — `rideAlong`, the reviewed list in
+ * overlays/conditions.json): §7b's gate-free exception means free of BOSS/PROGRESSION gates. The
+ * registered world-location / world-state conditions of that list (the Underground / Cavern / lava
+ * layers, the bottom 250 tiles, the Shadow Orb / Crimson Heart destruction sequence) are not gates —
+ * any fresh character can walk to the Cavern layer — so a route whose only conditions are ride-along
+ * ones is still gate-free for the exception, and its conditions RIDE ALONG on the exact result
+ * (displayed, never dropped: Space Gun via the Gold Chest's Meteorite Bars carries bottom-250-tiles).
+ * An either-or among ride-along conditions (Mace from Underground / Cavern / lava-layer Gold Chests)
+ * is always satisfiable, so it drops out like an exhaustive group: alternatives are compared on their
+ * other conditions, and only the ride-along conditions every deciding alternative shares stay.
+ * Progression-type conditions still gate: node-mapped ones (hardmode, post-X) become boss gates, and
+ * every condition outside the list (pre-hardmode, goblin-army-defeated, world-ore / world-evil worlds,
+ * events, moon phases…) keeps breaking the exception exactly as before. Without `rideAlong` the
+ * derivation is unchanged.
  *
  * Anything unverified anywhere ⇒ NOT derivable: the caller omits gatedBy/stage and lists them in
  * _prov.unverifiedFields, so consumers treat gating as Unknown and never "obtainable now". The
@@ -118,6 +133,8 @@ export interface GatingContext {
   containers?: ReadonlyMap<string, { conditions: readonly string[] }>
   /** Exhaustive non-node condition groups (every world satisfies one member): either-or over a group is always satisfiable. */
   exhaustive?: readonly (readonly string[])[]
+  /** AMENDMENTS-016 B141: non-node conditions that ride along on a route free of boss/progression gates (see header). */
+  rideAlong?: readonly string[]
   /** World-specific loot: item → conditions added to every registered-container drop of it (see header). */
   containerItemConditions?: ReadonlyMap<number, readonly string[]>
   /** Progression graph; absent while the collection is pending (P2-S6). */
@@ -201,7 +218,9 @@ export function createGatingDeriver(ctx: GatingContext): GatingDeriver {
     for (let i = 0; i < ra.length; i += 1) if (ra[i] !== rb[i]) return ra[i] < rb[i]
     return false
   }
-  const ungated = (d: Exact) => d.gates.bosses.length === 0 && d.gates.conditions.length === 0
+  const ride = new Set(ctx.rideAlong ?? [])
+  /** B141: free of boss/progression gates — no boss gate, and every condition rides along (none without `rideAlong`). */
+  const progressionFree = (d: Exact) => d.gates.bosses.length === 0 && d.gates.conditions.every((c) => ride.has(c))
 
   // ---- global fixed point (DATA_SCHEMA_SPEC §7b; see the header) --------------------------------
   // `undefined` = no derivation established yet (a route through an item not yet derived).
@@ -216,7 +235,10 @@ export function createGatingDeriver(ctx: GatingContext): GatingDeriver {
   /**
    * The least-gated derivable alternatives: those tying the best on stage and boss gates. Their
    * condition lists may differ (header "Either-or conditions"): a subset of all others is the minimum;
-   * differences forming one exhaustive group drop out; anything else is not expressible.
+   * differences forming one exhaustive group drop out; anything else is not expressible. B141: the
+   * comparison reads each alternative's conditions without its ride-along ones (an either-or among
+   * those is always satisfiable); the ride-along conditions every deciding alternative shares stay on
+   * the result. Without ride-along conditions this is exactly the comparison of the full lists.
    */
   const conditionMinimum = (best: Exact, derived: readonly Exact[]): Derived => {
     const bossKey = (d: Exact) => `${d.stage}|${d.gates.bosses.join(',')}`
@@ -224,12 +246,19 @@ export function createGatingDeriver(ctx: GatingContext): GatingDeriver {
     const sets = tied.map((d) => new Set(d.gates.conditions))
     const subsetOfAll = tied.find((_, i) => sets.every((other) => [...sets[i]].every((c) => other.has(c))))
     if (subsetOfAll) return subsetOfAll
-    const common = [...sets[0]].filter((c) => sets.every((x) => x.has(c)))
-    const differing = new Set(sets.flatMap((x) => [...x].filter((c) => !common.includes(c))))
+    const cores = sets.map((s) => new Set([...s].filter((c) => !ride.has(c))))
+    /** Ride-along conditions shared by every alternative of `idx` (they hold on whichever is taken). */
+    const sharedRide = (idx: readonly number[]) => [...sets[idx[0]]].filter((c) => ride.has(c) && idx.every((i) => sets[i].has(c)))
+    const exact = (conditions: string[]): Exact => ({ ok: true, gates: { bosses: best.gates.bosses, conditions: conditions.sort() }, stage: best.stage })
+    // B141: an alternative whose other conditions are a subset of every other's decides (with its peers of the same core)
+    const minimal = cores.flatMap((core, i) => (cores.every((other) => [...core].every((c) => other.has(c))) ? [i] : []))
+    if (minimal.length > 0) return exact([...cores[minimal[0]], ...sharedRide(minimal)])
+    const common = [...cores[0]].filter((c) => cores.every((x) => x.has(c)))
+    const differing = new Set(cores.flatMap((x) => [...x].filter((c) => !common.includes(c))))
     // every tied alternative contributes exactly one differing condition, all from one exhaustive group
     const group = exhaustive.find((g) => [...differing].every((c) => g.has(c)))
-    const coversGroup = group && sets.every((x) => [...x].filter((c) => !common.includes(c)).length === 1) && [...group].every((c) => differing.has(c))
-    if (coversGroup) return { ok: true, gates: { bosses: best.gates.bosses, conditions: common.sort() }, stage: best.stage }
+    const coversGroup = group && cores.every((x) => [...x].filter((c) => !common.includes(c)).length === 1) && [...group].every((c) => differing.has(c))
+    if (coversGroup) return exact([...common, ...sharedRide(tied.map((_, i) => i))])
     return fail('condition-alternatives')
   }
 
@@ -248,10 +277,11 @@ export function createGatingDeriver(ctx: GatingContext): GatingDeriver {
       }
     }
     // a gate-free sufficient set — exact, or the either-or of exact routes and sufficient bounds — is the minimum
+    // (B141: free of boss/progression gates; its ride-along conditions stay on it)
     const candidates = [...derived, ...bounds]
     const bestCandidate = bestOf(candidates)
     const merged = bestCandidate ? conditionMinimum(bestCandidate, candidates) : undefined
-    if (merged?.ok && ungated(merged)) return merged
+    if (merged?.ok && progressionFree(merged)) return merged
     const best = bestOf(derived)
     if (blockers.size > 0) {
       if (best) blockers.add('alternative-route-unverified')

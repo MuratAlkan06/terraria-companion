@@ -19,6 +19,7 @@ import {
   modeledPathOf,
   modelingConventionFor,
   resolvePath,
+  setChestIds,
   type Accessory,
   type ArmorPiece,
   type ArmorSet,
@@ -326,15 +327,30 @@ function checkArmor(c: Checker, ds: Dataset) {
       expectSlot(`pieces.helmets.${i}`, id, 'head')
     })
     expectSlot('pieces.chest', set.pieces.chest, 'chest')
-    expectSlot('pieces.legs', set.pieces.legs, 'legs')
-    // variants ⇄ helmets bijection
-    const variantHelmets = new Set<number>()
+    // P6 fix round: alternative chests (`chest` first, no repeats) and an optional legs piece
+    const chests = new Set(setChestIds(set))
+    if (set.pieces.chests) {
+      if (set.pieces.chests[0] !== set.pieces.chest) c.derived(ref, 'pieces.chests', `pieces.chests must start with pieces.chest i:${set.pieces.chest}`)
+      if (chests.size !== set.pieces.chests.length) c.errors.push(duplicateId('armorSets', ref, 'a chest is listed twice in pieces.chests'))
+      set.pieces.chests.slice(1).forEach((id, i) => expectSlot(`pieces.chests.${i + 1}`, id, 'chest'))
+    }
+    if (set.pieces.legs !== undefined) expectSlot('pieces.legs', set.pieces.legs, 'legs')
+    // variants ⇄ helmets bijection — ⇄ helmets × chests when the bonus is keyed by the chest (every variant has chestId)
+    const keyed = set.variants.some((v) => v.chestId !== undefined)
+    const variantKeys = new Set<string>()
     set.variants.forEach((v, i) => {
-      if (variantHelmets.has(v.helmetId)) c.errors.push(duplicateId('armorSets', ref, `more than one variant for helmet i:${v.helmetId}`))
-      variantHelmets.add(v.helmetId)
+      if (keyed && v.chestId === undefined) c.dangling(ref, `variants.${i}.chestId`, `i:${v.helmetId}`, 'a set keyed by its chest needs a chestId on every variant')
+      if (v.chestId !== undefined && !chests.has(v.chestId)) c.dangling(ref, `variants.${i}.chestId`, `i:${v.chestId}`, 'variant chest is not a chest of the set')
+      const key = keyed ? `${v.helmetId}.${v.chestId}` : String(v.helmetId)
+      if (variantKeys.has(key)) c.errors.push(duplicateId('armorSets', ref, `more than one variant for helmet i:${v.helmetId}${keyed ? ` with chest i:${v.chestId}` : ''}`))
+      variantKeys.add(key)
       if (!helmets.has(v.helmetId)) c.dangling(ref, `variants.${i}.helmetId`, `i:${v.helmetId}`, 'variant helmet is not in pieces.helmets')
     })
-    for (const id of helmets) if (!variantHelmets.has(id)) c.dangling(ref, 'variants', `i:${id}`, 'helmet has no set-bonus variant')
+    for (const id of helmets) {
+      for (const chest of keyed ? chests : [undefined]) {
+        if (!variantKeys.has(chest === undefined ? String(id) : `${id}.${chest}`)) c.dangling(ref, 'variants', `i:${id}`, `helmet has no set-bonus variant${chest === undefined ? '' : ` with chest i:${chest}`}`)
+      }
+    }
     // AMENDMENTS-011 B52: variants[].classes beside the kept single `class` — one class ⇒ the same
     // class; a hybrid list (≥ 2 classes) ⇒ class "other" and no "other" in the list
     set.variants.forEach((v, i) => {
@@ -352,7 +368,7 @@ function checkArmor(c: Checker, ds: Dataset) {
       continue
     }
     const field = SLOT_FIELD[piece.slot]
-    const listed = field === 'helmets' ? set.pieces.helmets.includes(piece.id) : set.pieces[field] === piece.id
+    const listed = field === 'helmets' ? set.pieces.helmets.includes(piece.id) : field === 'chest' ? setChestIds(set).includes(piece.id) : set.pieces.legs === piece.id
     if (!listed) c.derived(ref, 'setId', `set:${set.id} does not list this piece under pieces.${field}`)
   }
 }

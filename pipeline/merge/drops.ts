@@ -43,9 +43,21 @@
  * - No stated quantity (AMENDMENTS-016 B105): a row whose cell states no quantity keeps it Unknown here;
  *   `unstatedQuantity` hands those records to merge/quantity.ts, which derives 1 for non-consumable item
  *   kinds only (listed in `_prov.modeledFields`) once every collection's item kinds are known.
+ * - Unread rate notes (AMENDMENTS-016 B139(a)): a rate cell whose value is not a rate ("More info") but
+ *   which carries notes ("(In I am error worlds)") keeps its rates Unknown AND its conditions Unknown
+ *   (listed in `_prov.unverifiedFields`) — the notes were never read, so `conditions: []` would be an
+ *   assertion. Seed notes stay unmapped (the vendors-overlay precedent); the Source link stands.
+ * - Note-unmapped rate cells (AMENDMENTS-016 B140/B141): the location / sequence notes are registered
+ *   conditions (Underground / Cavern / "lava layer" / "within bottom 250 tiles of world" / "on first
+ *   destruction" / "all other destructions", overlays/conditions.json) and split the row into exact
+ *   per-condition records; a parseable rate whose note maps to no registered condition (seed worlds,
+ *   "Cavern, in … Rainbow road worlds", "In regular worlds") keeps rates AND conditions Unknown (B140(b)).
+ *   A quantity cell with notes ("5–14 (Underground) / 3–10 (Cavern)") states amounts per location, not one
+ *   quantity: Unknown (B141(ii)). `unreadCellNotes` re-checks every emitted record against its raw rate and
+ *   quantity cells (B140(c), pinned at 0 in the gap report).
  */
 import type { GapEntry, ProvSource } from '../../src/schemas'
-import { type DropSource } from '../../src/schemas'
+import { type DropSource, isCoveredBy } from '../../src/schemas'
 import type { CargoRow } from '../fetch/cargo'
 import { wikiPageUrl } from '../fetch/config'
 import {
@@ -157,6 +169,45 @@ export interface DropLedger {
   bundleCompanionsWithoutRow: number
   /** B84: records linked by `dropsWith` (one bundled cell, same conditions). */
   dropsTogetherRecords: number
+  /**
+   * AMENDMENTS-016 B140(c) / B141(ii) sweep (`unreadCellNotes`): records that assert a field beside a
+   * rate- or quantity-cell note they never read. Pinned at 0.
+   */
+  unreadNoteRecords: number
+}
+
+/** Notes of a cell's Desktop values (every mode part); every note of the cell when the grammar can't split it. */
+function desktopNotes(cell: string): string[] {
+  const parts = modeParts(cell)
+  if (!parts.ok) return notesOf(cell)
+  const out: string[] = []
+  for (const part of parts.value) {
+    const segs = desktopSegments(part.nodes)
+    if (!segs.ok) return notesOf(cell)
+    out.push(...segs.value.flatMap((s) => s.notes.map(noteKey)))
+  }
+  return out.filter((n) => n !== '')
+}
+
+/**
+ * The AMENDMENTS-016 B140(c) / B141(ii) invariant, checked against the raw row independently of the
+ * parse path above — why `record` leaves a note of its row's rate or quantity cell unread ([] = none):
+ * - a rate-cell note is read when the record's conditions are Unknown, or when the record states
+ *   conditions and every note of the cell maps to a registered condition — `conditions: []` beside a
+ *   note is never read;
+ * - a quantity-cell note is read when the record asserts no quantity (B141(ii): the cell states amounts
+ *   per location, not one number — B105's spirit).
+ */
+export function unreadCellNotes(row: CargoRow, record: Pick<DropSource, 'conditions' | 'quantity' | '_prov'>, dropNote: ReadonlyMap<string, unknown>): string[] {
+  const out: string[] = []
+  const rateNotes = desktopNotes(str(row.rate))
+  if (rateNotes.length > 0 && !isCoveredBy(record._prov.unverifiedFields, 'conditions')) {
+    if (record.conditions.length === 0) out.push(`rate-cell note(s) ${rateNotes.map((n) => `"${n}"`).join(', ')} beside conditions: []`)
+    for (const n of rateNotes) if (!dropNote.has(n)) out.push(`rate-cell note "${n}" maps to no registered condition, yet conditions are stated`)
+  }
+  const qtyNotes = desktopNotes(str(row.quantity))
+  if (qtyNotes.length > 0 && Object.keys(record.quantity).length > 0) out.push(`quantity-cell note(s) ${qtyNotes.map((n) => `"${n}"`).join(', ')} beside a stated quantity`)
+  return out
 }
 
 /**
@@ -229,6 +280,7 @@ export function buildDrops(input: DropBuildInput): DropBuild {
     bundledRows: 0,
     bundleCompanionsWithoutRow: 0,
     dropsTogetherRecords: 0,
+    unreadNoteRecords: 0,
   }
   const drops = new Map<string, DropSource>()
   const reasons: ReasonTally = new Map()
@@ -249,15 +301,24 @@ export function buildDrops(input: DropBuildInput): DropBuild {
     return { ok: true, value: [...new Set(out)].sort() }
   }
 
-  /** Rate variants for one mode part's segments. */
-  const rateVariants = (segments: readonly Segment[]): Parsed<{ conditions: string[]; rate: number }[]> => {
+  /**
+   * Rate variants for one mode part's segments. A failure marks how the cell's notes were left:
+   * `unread` (AMENDMENTS-016 B139(a)): a value is not a rate ("More info" + "(In I am error worlds)")
+   * while the cell carries notes — parsing stopped before those notes were read; `unmapped` (B140(b)): a
+   * note maps to no registered condition (seed-world notes: "(In Rainbow Road worlds)"). Either way the
+   * row's conditions are Unknown, never asserted empty.
+   */
+  const rateVariants = (segments: readonly Segment[]): Parsed<{ conditions: string[]; rate: number }[]> | { ok: false; reason: string; notes: 'unread' | 'unmapped' } => {
     if (segments.length === 0) return { ok: false, reason: 'empty rate' }
     const parsed: { conditions: string[]; rate: number; noted: boolean }[] = []
     for (const seg of segments) {
       const rate = parseRate(seg.text)
-      if (rate === undefined) return { ok: false, reason: `unparseable rate "${seg.text}"` }
+      if (rate === undefined) {
+        const reason = `unparseable rate "${seg.text}"`
+        return segments.some((s) => s.notes.length > 0) ? { ok: false, reason, notes: 'unread' } : { ok: false, reason }
+      }
       const conds = mapNotes(seg.notes)
-      if (!conds.ok) return conds
+      if (!conds.ok) return { ...conds, notes: 'unmapped' }
       parsed.push({ conditions: conds.value, rate, noted: seg.notes.length > 0 })
     }
     if (parsed.length === 1) return { ok: true, value: parsed }
@@ -384,6 +445,10 @@ export function buildDrops(input: DropBuildInput): DropBuild {
     const rateFailures: string[] = []
     const rateParts = modeParts(str(row.rate))
     const ratesUnknown = new Set<Difficulty>()
+    /** B139(a): notes of a rate cell whose value is not a rate (unread → conditions Unknown). */
+    const unreadRateNotes: string[] = []
+    /** B140(b): rate-cell notes that map to no registered condition (seed worlds → conditions Unknown). */
+    const unmappedRateNotes: string[] = []
     if (!rateParts.ok) {
       rateFailures.push(rateParts.reason)
       for (const d of applicable) ratesUnknown.add(d)
@@ -395,6 +460,11 @@ export function buildDrops(input: DropBuildInput): DropBuild {
         if (!vs.ok) {
           rateFailures.push(vs.reason)
           for (const d of ds) ratesUnknown.add(d)
+          if ('notes' in vs && segs.ok) {
+            const notes = segs.value.flatMap((s) => s.notes)
+            if (vs.notes === 'unread') unreadRateNotes.push(...notes)
+            else unmappedRateNotes.push(...notes.map(noteKey).filter((n) => !input.conditions.dropNote.has(n)))
+          }
           continue
         }
         for (const v of vs.value) {
@@ -407,8 +477,11 @@ export function buildDrops(input: DropBuildInput): DropBuild {
     }
     if (variants.size === 0) variants.set('', { conditions: [], rates: {} })
 
+    // conditions the rate cell states but this grammar never read (B139(a)) or the registry does not map
+    // (B140(b), seed-world notes): Unknown, never asserted empty
+    let conditionsUnknown = unreadRateNotes.length > 0 || unmappedRateNotes.length > 0
+
     // extra conditions from the custom cell's notes
-    let conditionsUnknown = false
     const customNotes = customNotesOf(str(row.custom)).filter((n) => n !== '')
     const customConds = mapNotes(customNotes)
     if (!customConds.ok) conditionsUnknown = true
@@ -434,6 +507,8 @@ export function buildDrops(input: DropBuildInput): DropBuild {
     let bundleFailure: string | undefined
     /** B105: the wiki states no quantity for this row at all (not a stated-but-unparseable one). */
     let unstated = false
+    /** B141(ii): the quantity cell carries notes ("5–14 (Underground) / 3–10 (Cavern)") — amounts per location, not one quantity. */
+    let qtyNoted = false
     if (qtyCell.trim() === '') {
       let q: { min: number; max: number } | undefined
       if (bundle) {
@@ -458,6 +533,8 @@ export function buildDrops(input: DropBuildInput): DropBuild {
         for (const part of parts.value) {
           const ds = (part.difficulties === 'all' ? applicable : part.difficulties).filter((d) => applicable.includes(d))
           const segs = desktopSegments(part.nodes)
+          // a noted amount is never asserted as THE quantity (B141(ii)): Unknown, whatever the notes say
+          if (segs.ok && segs.value.some((s) => s.notes.length > 0)) qtyNoted = true
           const q = segs.ok && segs.value.length === 1 && segs.value[0].notes.length === 0 ? parseQty(segs.value[0].text) : undefined
           for (const d of ds) {
             if (q) qty[d] = q
@@ -474,7 +551,10 @@ export function buildDrops(input: DropBuildInput): DropBuild {
 
     // why fields are unknown (aggregated for the human-readable gap report, not duplicated in gaps.json)
     for (const r of rateFailures) tally(reasons, `rate: ${r.replace(/"[^"]*"/g, '"…"')}`, `${page}: ${sourceName} → ${itemName}`)
+    if (unreadRateNotes.length > 0) tally(reasons, 'conditions: the rate cell is not a rate, so its notes were not read (B139)', `${page}: ${sourceName} → ${itemName} ${[...new Set(unreadRateNotes)].join(' ')}`)
+    if (unmappedRateNotes.length > 0) tally(reasons, 'conditions: a rate-cell note maps to no registered condition (B140(b): seed worlds stay unmapped)', `${page}: ${sourceName} → ${itemName} (${[...new Set(unmappedRateNotes)].join(' / ')})`)
     if (qtyFields.length > 0 && bundleFailure) tally(reasons, `quantity: bundled custom cell — ${bundleFailure.replace(/"[^"]*"/g, '"…"')}`, `${page}: ${sourceName} → ${itemName}`)
+    else if (qtyFields.length > 0 && qtyNoted) tally(reasons, 'quantity: the cell states amounts per location (notes), not one quantity (B141(ii))', `${page}: ${sourceName} → ${itemName} ("${notesOf(qtyCell).join(' / ')}")`)
     else if (qtyFields.length > 0) tally(reasons, 'quantity: not parseable', `${page}: ${sourceName} → ${itemName} ("${plainTextOf(qtyCell) || plainTextOf(str(row.custom))}")`)
     if (!customConds.ok) tally(reasons, `conditions: ${customConds.reason}`, `${page}: ${sourceName} → ${itemName}`)
     if (unverified.includes('source.npcIds')) tally(reasons, 'source.npcIds: unparseable, missing, multi-part boss or mismatched', `${page}: ${sourceName}`)
@@ -502,6 +582,12 @@ export function buildDrops(input: DropBuildInput): DropBuild {
         _prov: makeProv(sources, fields, crossCheckFailed),
       }
       drops.set(id, record)
+      // B140(c)/B141(ii) sweep: the record against its raw row (pinned at 0; any hit is listed in the gap report)
+      const unread = unreadCellNotes(row, record, input.conditions.dropNote)
+      if (unread.length > 0) {
+        ledger.unreadNoteRecords += 1
+        for (const u of unread) tally(reasons, `B140(c) sweep — unread note: ${u.replace(/"[^"]*"/g, '"…"')}`, `${page}: ${sourceName} → ${itemName} (${u})`)
+      }
       if (unstated) unstatedQuantity.set(id, crossCheckFailed)
       if (bundleKey !== undefined) {
         // one bundled cell drops together whatever its conditions are; records of different condition variants never link

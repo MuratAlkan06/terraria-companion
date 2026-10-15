@@ -358,6 +358,24 @@ describe('Step 2 — the loadout (PRD P4-S2 AC2–AC5; UX_SPEC §3.5, §8)', () 
     }
   })
 
+  it('an armor SET (pick and alternatives) links its set page — never its helmet’s anchor — as the readiness checker does', () => {
+    const armor = result.slots.find((s) => s.id === 'armor')
+    if (!armor) throw new Error('armor slot')
+    // the alternatives list renders inside the opened card
+    const alts = wrap(createElement(Alternatives, { ...stepTwoProps({ step: 2, stage: 'early-hm', cls: 'ranged', difficulty: 'expert', goal: 'boss', owned: [], pins: {} }), slot: armor, label: copy.SLOT_LABELS.armor }))
+    const both = html + alts
+    const sets = [...(armor.pick ? [armor.pick] : []), ...armor.alternatives].filter((o) => o.setId)
+    expect(sets.length).toBeGreaterThan(1)
+    for (const o of sets) {
+      const tags = [...both.matchAll(new RegExp(`<a [^>]*data-set-ref="${o.setId}"[^>]*>`, 'g'))].map((m) => m[0])
+      expect(tags.length, o.key).toBeGreaterThan(0)
+      for (const tag of tags) {
+        expect(tag, o.key).toContain(`href="/armor/${o.setId}"`)
+        expect(tag, o.key).toContain(`data-item-link="${o.id}"`)
+      }
+    }
+  })
+
   it('AC5: the equip-screen overview: an ItemSlot per filled slot (armor: its three pieces), each a Tooltip trigger; B108 M6: every square — empty and locked too — names its slot and jumps to its card', () => {
     const overview = /data-overview=""[\s\S]*?Tap a slot/.exec(html)?.[0] ?? ''
     const filled = result.slots.filter((s) => s.pick && s.id !== 'armor').length + (result.slots.find((s) => s.id === 'armor')?.pick?.pieces?.filter((x) => x > 0).length ?? 0)
@@ -429,15 +447,19 @@ describe('Step 3 — why it works (SCORING_SPEC §4.7, §5.1; UX_SPEC §3.5 Step
     expect(count(html, /data-gated-entry="/g)).toBe(entries.length)
     expect(count(html, /data-alternative-now=""/g)).toBe(entries.length)
     for (const g of result.gated) expect(html).toContain(`data-gated-section="${g.missing.join('+')}"`)
+    // a gated armor SET names its set page, not its helmet's anchor (as the readiness checker does)
+    const sets = entries.filter((e) => e.setId)
+    expect(sets.length).toBeGreaterThan(0)
+    for (const e of sets) expect(html, e.key).toMatch(new RegExp(`<a [^>]*data-set-ref="${e.setId}"[^>]*href="/armor/${e.setId}"|<a [^>]*href="/armor/${e.setId}"[^>]*data-set-ref="${e.setId}"`))
   })
 
   it('PRD §9 Feature B AC5: every gated entry links its grind plan (/plan/new?item=:id); an armor set, one per piece', () => {
     const entries = result.gated.flatMap((g) => g.entries)
     for (const e of entries) {
-      const ids = e.pieces ? [...e.pieces] : [e.id]
+      const ids = e.pieces ? e.pieces.filter((x) => x > 0) : [e.id] // a set without a legs piece leaves the legs slot 0
       for (const id of ids) expect(html).toMatch(new RegExp(`<a [^>]*href="/plan/new\\?item=${id}"[^>]*data-plan-it="${id}"|<a [^>]*data-plan-it="${id}"[^>]*href="/plan/new\\?item=${id}"`))
     }
-    expect(count(html, /data-plan-it="/g)).toBe(entries.reduce((n, e) => n + (e.pieces ? e.pieces.length : 1), 0))
+    expect(count(html, /data-plan-it="/g)).toBe(entries.reduce((n, e) => n + (e.pieces ? e.pieces.filter((x) => x > 0).length : 1), 0))
     // B120: every link says its item's name once — a per-piece link shows the name, so its completion doesn't repeat it
     const links = [...html.matchAll(/<a [^>]*data-plan-it="(\d+)"[^>]*>([\s\S]*?)<\/a>/g)]
     expect(links.length).toBeGreaterThan(0)

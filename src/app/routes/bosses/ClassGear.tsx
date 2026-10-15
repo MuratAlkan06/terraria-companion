@@ -7,8 +7,10 @@ import { PixelPanel } from '../../../components/PixelPanel'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { ArmorSet, Boss, ConditionIndex, SpriteIndex } from '../../../data-access/types'
 import type { MapGraph, NodeState, WorldEvil } from '../../../components/nodeMap/graph'
+import { setPieceIds } from '../../../schemas/setCombos'
 import { effectiveProgress, isNodeSatisfied } from '../../../scoring/progress'
 import { useDelayedFlag, useResource } from '../../useResource'
+import { armorSetHref } from '../db/armor/armorNav'
 import { ItemCell, PanelHeading, TipList, type GateRef } from './BossBits'
 import { bossMapHref, bossPageHref } from './bossNav'
 import { loadGearData, peekGearData, type GearData } from './bossPageData'
@@ -308,7 +310,7 @@ function ClassGearBox({
   const itemGates = (id: number) => gatesOf((data.weapons.get(id) ?? data.accessories.get(id) ?? data.armor.get(id))?.gatedBy)
   const setGates = (set: ArmorSet) => {
     const seen = new Map<string, GateRef>()
-    for (const piece of [...set.pieces.helmets, set.pieces.chest, set.pieces.legs]) for (const g of gatesOf(data.armor.get(piece)?.gatedBy)) seen.set(g.id, g)
+    for (const piece of setPieceIds(set)) for (const g of gatesOf(data.armor.get(piece)?.gatedBy)) seen.set(g.id, g)
     return [...seen.values()]
   }
   return (
@@ -327,7 +329,8 @@ function ClassGearBox({
             if (!set) return <li key={setId} className="text-sm text-fg-muted">{setId}</li>
             return (
               <li key={setId}>
-                <ItemCell item={{ ...itemOf(set.pieces.chest), name: set.name, link: { kind: 'external', href: set.wikiUrl } }} sprites={sprites} gates={setGates(set)} />
+                {/* PRD P6-S1 (AMENDMENTS-016 B131(b)): a set links its set page in-app */}
+                <ItemCell item={{ ...itemOf(set.pieces.chest), name: set.name, link: { kind: 'internal', to: armorSetHref(set.id) } }} sprites={sprites} gates={setGates(set)} />
               </li>
             )
           })}

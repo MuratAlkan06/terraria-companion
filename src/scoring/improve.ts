@@ -26,6 +26,7 @@
  */
 import type { Accessory, ArmorPiece, Item, StatEffect, Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
+import { comboName, setCombos } from '../schemas/setCombos'
 import { availabilityOf, compareRankable, gateCount, gateDistance, isCappedByTarget, targetCapNodes, type Availability } from './candidates'
 import { DEMON_HEART_GATE_NODE, DEMON_HEART_SLOT_INDEX, DPP_ASSUMPTIONS, DEFENSE_RULE_SOURCE, SCORING_CONSTANTS_VERSION, SLOT_COUNT } from './constants'
 import { countsInWorld, isNodeSatisfied } from './progress'
@@ -48,14 +49,14 @@ export interface PoolDisclosure {
 }
 
 export interface Suggestion {
-  /** `i:<id>` or `set:<slug>:<helmetId>`. */
+  /** `i:<id>` or `set:<slug>:<combination key>` (the helmet id; `<helmet>.<chest>` for a set with several chests). */
   key: string
   kind: 'weapon' | 'armor-set' | 'accessory' | 'potion'
   /** The item to open (for a set: its helmet). */
   id: number
   setId?: string
   name: string
-  /** A set's pieces (helmet, chest, legs). */
+  /** A set's pieces (helmet, chest, legs — no legs for a set without a legs piece). */
   pieces?: number[]
   /** The targeted component with this suggestion, and with what it replaces. */
   value: number
@@ -259,32 +260,41 @@ function armorGroup(ctx: LoadoutContext, cap: ReadonlySet<string>): SuggestionGr
   )
   const title = copy.armorTitle
   if (current === undefined) return { target: 'armor', title, basis: copy.armorTarget(), obtainable: [], gated: [], disclosure: pool.disclosure, disclosureText: [], empty: copy.armorPartlyUnknown() }
-  const wornKey = ctx.set.kind === 'active' && ctx.set.set && ctx.set.variant ? `${ctx.set.set.id}:${ctx.set.variant.helmetId}` : undefined
+  const wornKey = ctx.set.kind === 'active' && ctx.set.set && ctx.set.combo ? `${ctx.set.set.id}:${ctx.set.combo.key}` : undefined
+  // B136: the set an Unknown-membership piece leaves open isn't offered for completion (whether its bonus is already on is Unknown)
+  const unknownBlocked = ctx.set.kind === 'unknown' ? ctx.set.set?.id : undefined
+  // a set without a legs piece (Wizard set) keeps whatever legs are worn: they count in its value, as they would in game
+  const wornLegs = ctx.pieces.find((p) => p.slot === 'legs')?.piece
+  const nameOf = (id: number) => ctx.data.armor.get(id)?.name ?? `#${id}`
   for (const set of ctx.data.sets.values()) {
-    for (const variant of set.variants) {
-      if (`${set.id}:${variant.helmetId}` === wornKey) continue
+    for (const combo of setCombos(set)) {
+      const { variant } = combo
+      if (`${set.id}:${combo.key}` === wornKey) continue
       const classes = variant.classes ?? [variant.class]
       if (!(ctx.cls === 'hybrid' || classes.includes('other') || (ctx.cls !== 'other' && classes.includes(ctx.cls)))) continue
-      const ids = [variant.helmetId, set.pieces.chest, set.pieces.legs]
+      const ids = [combo.helmetId, combo.chestId, ...(combo.legsId === undefined ? [] : [combo.legsId])]
       const pieces = ids.map((id) => ctx.data.armor.get(id))
       if (pieces.some((p) => p === undefined)) continue
       const availability = pool.admit(pieces as ArmorPiece[], ctx)
       if (!availability) continue
-      const value = armorDefense(pieces as ArmorPiece[], variant.setBonus)
+      if (set.id === unknownBlocked) {
+        pool.unverified()
+        continue
+      }
+      const value = armorDefense([...(pieces as ArmorPiece[]), ...(combo.legsId === undefined && wornLegs ? [wornLegs] : [])], variant.setBonus)
       if (value === undefined) {
         pool.unverified()
         continue
       }
       if (value <= current) continue
       const helmet = pieces[0] as ArmorPiece
-      const multi = set.variants.length > 1
       pool.add({
         suggestion: {
-          key: `set:${set.id}:${variant.helmetId}`,
+          key: `set:${set.id}:${combo.key}`,
           kind: 'armor-set',
           id: helmet.id,
           setId: set.id,
-          name: multi ? `${set.name} (${helmet.name})` : set.name,
+          name: comboName(set, combo, nameOf),
           pieces: ids,
           value,
           current,

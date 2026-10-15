@@ -24,6 +24,7 @@
  */
 import type { Accessory, ArmorPiece, ArmorSet, AttackPatternTag, Boss, Buff, Condition, Difficulty, Item, LoadoutClass, LoadoutSlots, StatEffect, Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
+import { setChestIds, wornCombo, type SetCombo } from '../schemas/setCombos'
 import { availabilityOf, UNKNOWN_AVAILABILITY, type Availability } from './candidates'
 import {
   BASE_CRIT_PCT,
@@ -249,10 +250,15 @@ interface Source {
 }
 
 interface SetState {
-  kind: 'none' | 'active' | 'inactive' | 'mixed'
+  kind: 'none' | 'active' | 'inactive' | 'mixed' | 'unknown'
+  /** The set the worn pieces point to (for 'unknown': the one whose completion an Unknown piece leaves open, if any). */
   set?: ArmorSet
   variant?: ArmorSet['variants'][number]
+  /** The worn combination (active sets): which helmet + chest activate the variant. */
+  combo?: SetCombo
   missing?: Segment[][]
+  /** 'unknown' (AMENDMENTS-016 B136): the worn pieces whose set membership reads Unknown. */
+  unknownPieces?: ArmorPiece[]
 }
 
 /** Everything the factors (and Improve My Build) read about the loadout. */
@@ -493,11 +499,17 @@ export function loadoutEntries(input: Omit<ReadinessInput, 'bossId'>, data: Read
   return buildLoadoutContext({ ...input, bossId: null }, data, noBoss).entries
 }
 
+/**
+ * The worn armor's set bonus. A piece whose set membership reads Unknown (Ultrabright Helmet, Rain Hat / Coat) might
+ * be the very piece a set needs, so with one worn nothing but an active bonus the known pieces prove is stated as
+ * fact: never "inactive" or "different sets" — the 'unknown' state says it can't tell (AMENDMENTS-016 B136).
+ */
 function setState(ctx: LoadoutContext): SetState {
   const { data } = ctx
   const counted = ctx.pieces
   if (counted.length === 0) return { kind: 'none' }
   const setIdOf = (piece: ArmorPiece) => known<string>(piece, 'setId')
+  const unknownPieces = counted.filter((p) => unverified(p.piece, 'setId')).map((p) => p.piece)
   const bySet = new Map<string, number>()
   for (const p of counted) {
     const id = setIdOf(p.piece)
@@ -505,24 +517,33 @@ function setState(ctx: LoadoutContext): SetState {
   }
   const [bestId, bestCount] = [...bySet.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ?? [undefined, 0]
   const set = bestId ? data.sets.get(bestId) : undefined
-  if (!set || bestCount < 2) return counted.length >= 2 ? { kind: 'mixed' } : { kind: 'none' }
+  if (!set || bestCount < 2) {
+    // one piece never completes a set (every set takes a helmet and a chest piece)
+    if (counted.length < 2) return { kind: 'none' }
+    return unknownPieces.length > 0 ? { kind: 'unknown', unknownPieces } : { kind: 'mixed' }
+  }
   const helmet = counted.find((p) => p.slot === 'helmet')
   const chest = counted.find((p) => p.slot === 'chest')
   const legs = counted.find((p) => p.slot === 'legs')
+  // any of the set's chests completes it (Beetle armor, Wizard set); a set without a legs piece takes any legs
+  const chests = setChestIds(set)
+  const setLegs = set.pieces.legs
   const helmetOk = helmet !== undefined && set.pieces.helmets.includes(helmet.piece.id)
-  const chestOk = chest?.piece.id === set.pieces.chest
-  const legsOk = legs?.piece.id === set.pieces.legs
+  const chestOk = chest !== undefined && chests.includes(chest.piece.id)
+  const legsOk = setLegs === undefined || legs?.piece.id === setLegs
   if (helmetOk && chestOk && legsOk) {
-    return { kind: 'active', set, variant: set.variants.find((v) => v.helmetId === helmet.piece.id) }
+    const combo = wornCombo(set, helmet.piece.id, chest.piece.id, legs?.piece.id)
+    return { kind: 'active', set, variant: combo?.variant, combo }
   }
+  if (unknownPieces.length > 0) return { kind: 'unknown', set, unknownPieces }
   // Name what's missing: a slot holding the set's piece but not counted reads "(not counted)".
   const stored = ctx.input.loadout
   const missing: Segment[][] = []
   const setSeg: Segment = { kind: 'set', id: set.id, text: set.name }
   const notCountedNote = (id: number | null, wanted: (id: number) => boolean) => id !== null && wanted(id) && ctx.entries.some((e) => e.id === id && !e.counted)
   if (!helmetOk) missing.push(notCountedNote(stored.helmet, (id) => set.pieces.helmets.includes(id)) ? s`${ctx.item(stored.helmet as number)} (not counted)` : f4.setMissingHelmet(setSeg))
-  if (!chestOk) missing.push(notCountedNote(stored.chest, (id) => id === set.pieces.chest) ? s`${ctx.item(set.pieces.chest)} (not counted)` : [ctx.item(set.pieces.chest)])
-  if (!legsOk) missing.push(notCountedNote(stored.legs, (id) => id === set.pieces.legs) ? s`${ctx.item(set.pieces.legs)} (not counted)` : [ctx.item(set.pieces.legs)])
+  if (!chestOk) missing.push(notCountedNote(stored.chest, (id) => chests.includes(id)) ? s`${ctx.item(stored.chest as number)} (not counted)` : chests.length > 1 ? f4.setMissingChest(setSeg) : [ctx.item(set.pieces.chest)])
+  if (!legsOk && setLegs !== undefined) missing.push(notCountedNote(stored.legs, (id) => id === setLegs) ? s`${ctx.item(setLegs)} (not counted)` : [ctx.item(setLegs)])
   return { kind: 'inactive', set, missing }
 }
 
@@ -934,6 +955,10 @@ function synergyFactor(ctx: LoadoutContext, estimates: ReadinessAnalysis['estima
     out.add('set', 'harder', f4.setInactive({ kind: 'set', id: set.set.id, text: set.set.name }, missingList(missing), missing.length), { sources: [set.set.wikiUrl] })
   } else if (set.kind === 'mixed') {
     out.add('set', 'info', f4.setMixed())
+  } else if (set.kind === 'unknown' && set.unknownPieces) {
+    // B136: Unknown, never "inactive" / "different sets" as fact — and an unknown input of this factor
+    for (const piece of set.unknownPieces) inputs.add(false, `${possessive(piece.name)} set membership`)
+    out.add('set', 'unknown', f4.setUnknown(set.unknownPieces.map((piece) => ctx.item(piece.id))), { sources: set.unknownPieces.map((piece) => piece.wikiUrl) })
   }
   for (const src of ctx.sources) {
     if (src.kind === 'potion') continue // potions read under Preparation

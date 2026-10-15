@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { EstimateLabel } from '../../../components/EstimateLabel'
 import { hasAssumptions } from '../../../components/assumptions'
 import { GatedSection } from '../../../components/GatedSection'
@@ -10,6 +11,7 @@ import type { BuilderResult } from '../../../scoring/recommend'
 import type { ProfileReference, ReferencedComponent } from '../../../scoring/references'
 import { getStageInfo } from '../../stages'
 import { bossMapHref, bossPageHref } from '../bosses/bossNav'
+import { armorSetHref } from '../db/armor/armorNav'
 import { PlanItLink } from '../plan/GrindLink'
 import * as planCopy from '../plan/planCopy'
 import type { ReadinessPageData } from '../bosses/readiness/readinessData'
@@ -186,11 +188,11 @@ export function WhyStep({ page, result, eff, references }: WhyStepProps) {
                   <span className="text-xs text-fg-muted">{copy.CONTRIB_KIND[c.kind]}: </span>
                   {c.id !== undefined ? (
                     <ItemName page={page} id={c.id} name={c.name} />
-                  ) : c.setId && page.engine.sets.get(c.setId)?.wikiUrl ? (
-                    <a href={page.engine.sets.get(c.setId)?.wikiUrl} target="_blank" rel="noopener noreferrer" className={`${LINK} font-semibold`}>
+                  ) : c.setId && page.engine.sets.has(c.setId) ? (
+                    // PRD P6-S1 (AMENDMENTS-016 B131(b)): the set's own page, in-app
+                    <Link to={armorSetHref(c.setId)} className={`${LINK} font-semibold`} data-set-ref={c.setId}>
                       {c.name}
-                      <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
-                    </a>
+                    </Link>
                   ) : (
                     <span className="font-semibold">{c.name}</span>
                   )}
@@ -261,18 +263,26 @@ export function WhyStep({ page, result, eff, references }: WhyStepProps) {
                     <div className="min-w-0 flex-1 space-y-0.5 text-sm">
                       <p className={LABEL}>{copy.gatedSlot[e.slot]}</p>
                       <p className="flex flex-wrap items-baseline gap-x-2">
-                        <ItemName page={page} id={e.id} name={e.name} />
+                        <ItemName page={page} id={e.id} name={e.name} setId={e.setId} />
                         <ScoreFigure score={e.score} />
                         <span className="text-xs text-fg-muted">{e.score.label}</span>
                       </p>
                       <p className="text-fg-muted" data-alternative-now="">
-                        <Segments segments={e.alternative ? gatedCopy.alternative({ kind: 'item', id: e.alternative.id, text: e.alternative.name }) : gatedCopy.noAlternative()} ctx={ctx} />
+                        <Segments
+                          segments={
+                            e.alternative
+                              ? // an armor set opens its set page, like the readiness checker's set segments
+                                gatedCopy.alternative(e.alternative.setId ? { kind: 'set', id: e.alternative.setId, text: e.alternative.name } : { kind: 'item', id: e.alternative.id, text: e.alternative.name })
+                              : gatedCopy.noAlternative()
+                          }
+                          ctx={ctx}
+                        />
                       </p>
                       {/* PRD §9 Feature B AC5: a gated item's grind plan (a set: one per piece) */}
                       {e.pieces ? (
                         <p className="flex flex-wrap items-center gap-x-3" data-plan-pieces="">
                           <span className="text-fg-muted">{planCopy.PLAN_PIECES}</span>
-                          {e.pieces.map((pid) => (
+                          {e.pieces.filter((pid) => pid > 0).map((pid) => (
                             <PlanItLink key={pid} id={pid} name={page.info(pid).name} label={page.info(pid).name} />
                           ))}
                         </p>

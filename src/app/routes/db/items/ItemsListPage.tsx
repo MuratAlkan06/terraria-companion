@@ -62,9 +62,15 @@ export default function ItemsListPage() {
         </h1>
         <p className="max-w-prose text-fg-muted">{copy.listIntro(meta.gameVersion)}</p>
         <div className="flex flex-wrap items-center gap-x-4">
-          <Link to="/weapons" className="inline-flex min-h-tap items-center text-sm font-semibold text-link underline decoration-1 underline-offset-4 hover:text-accent-strong">
-            {copy.WEAPONS_POINTER}
-          </Link>
+          {/* PRD P6-S1/S2: the other database lists, named as such (the intro says what /items leaves out) */}
+          <nav aria-label="Other database lists" className="flex flex-wrap items-center gap-x-3">
+            <span className="text-sm text-fg-muted">{copy.OWN_LISTS}</span>
+            {copy.OWN_LIST_LINKS.map((l) => (
+              <Link key={l.to} to={l.to} className="inline-flex min-h-tap items-center text-sm font-semibold text-link underline decoration-1 underline-offset-4 hover:text-accent-strong">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
           <ProvenanceLink href={ITEMS_SOURCE_URL} srContext="for the item list" />
         </div>
       </header>

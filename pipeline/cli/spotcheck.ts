@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { Accessory, ArmorPiece, ArmorSet, Boss, Buff, Condition, DropSource, GapEntry, Item, ItemDetailIndex, Recipe, RecipeGroup, StatEffect, Weapon } from '../../src/schemas'
+import { setChestIds, type Accessory, type ArmorPiece, type ArmorSet, type Boss, type Buff, type Condition, type DropSource, type GapEntry, type Item, type ItemDetailIndex, type Recipe, type RecipeGroup, type StatEffect, type Weapon } from '../../src/schemas'
 import { FISHING_CATCHES_PAGE } from '../merge/fishing'
 import { parseFishingCatches } from '../parse/fishing'
 import { RAW_DIR, WikiClient } from '../fetch'
@@ -148,8 +148,8 @@ async function main(): Promise<number> {
         const gap = gaps.find((g) => g.ref === `set:${c.set}`)
         console.log(`  DATA  no ArmorSet record${gap ? ` — gap (${gap.kind}): ${gap.detail}` : ''}`)
       } else {
-        console.log(`  DATA  pieces: helmets ${set.pieces.helmets.map(pieceName).join(', ')} · chest ${pieceName(set.pieces.chest)} · legs ${pieceName(set.pieces.legs)} · stage ${unknownOr(set, set.stage, 'stage')}`)
-        for (const v of set.variants) console.log(`  DATA  variant ${pieceName(v.helmetId)} → class ${v.class} · setBonus ${v.setBonus.map(effect).join('; ')} · text "${v.setBonusText.replaceAll('\n', ' / ')}"`)
+        console.log(`  DATA  pieces: helmets ${set.pieces.helmets.map(pieceName).join(', ')} · chest ${setChestIds(set).map(pieceName).join(' or ')} · legs ${set.pieces.legs === undefined ? 'any (no legs piece)' : pieceName(set.pieces.legs)} · stage ${unknownOr(set, set.stage, 'stage')}`)
+        for (const v of set.variants) console.log(`  DATA  variant ${pieceName(v.helmetId)}${v.chestId === undefined ? '' : ` + ${pieceName(v.chestId)}`} → class ${v.class} · setBonus ${v.setBonus.map(effect).join('; ')} · text "${v.setBonusText.replaceAll('\n', ' / ')}"`)
       }
       for (const p of armor.filter((x) => x.wikiUrl === wikiPageUrl(c.page))) {
         console.log(`  DATA  piece ${p.name} (i:${p.id}, ${p.slot}) · defense ${unknownOr(p, p.defense, 'defense')} · effects ${p._prov.unverifiedFields.includes('effects') ? 'Unknown' : p.effects.map(effect).join('; ') || 'none'} · setId ${p.setId ?? '—'}`)

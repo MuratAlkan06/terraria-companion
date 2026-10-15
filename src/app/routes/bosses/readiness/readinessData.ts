@@ -30,9 +30,9 @@ import { itemResolver, type ItemInfo } from '../bossPageModel'
  * sets, items — ammo + potions — and buffs), the boss records and progression graph, the conditions
  * registry (requirement chips), the Iteminfo name universe (items with no record of their own, e.g. a
  * summoning item) and the sprite manifest. All lazy data chunks, cached for the session. Items resolve
- * like on the boss pages (bossPageModel.itemResolver): weapons → their page; armor, accessories, ammo,
- * potions → their own wiki article; anything else → the article titled with its name, else the wiki's
- * search for it (never a guessed URL).
+ * like on the boss pages (bossPageModel.itemResolver): weapons, armor pieces, accessories and Item records
+ * (ammo, potions) → their page in-app (AMENDMENTS-016 B131(b)); anything else → the article titled with its
+ * name, else the wiki's search for it (never a guessed URL).
  */
 export interface ReadinessPageData {
   engine: ReadinessData

@@ -307,7 +307,13 @@
     "kind": "armor-set",
     "page": "Beetle armor",
     "set": "beetle-armor",
-    "why": "P2-S8: two alternative chests with different bonuses — withheld (schema cannot express it), pieces without setId + gap"
+    "why": "P6 fix round (was withheld in P2-S8): two alternative chests, the set bonus keyed by the chest — two chest-keyed variants (Scale Mail offensive, Shell defensive); Defense 61 / 73"
+  },
+  {
+    "kind": "armor-set",
+    "page": "Wizard set",
+    "set": "wizard-set",
+    "why": "P6 fix round (was withheld in P2-S8): combination set — Wizard Hat or Magic Hat + any of eight robes, no legs piece; members checked against the article's set-pieces table, bonus keyed by the hat"
   },
   {
     "kind": "accessory",

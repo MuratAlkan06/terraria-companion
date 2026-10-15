@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { BOSS_PAGE_IDS, isCoveredBy, ITEM_DETAIL_CORE_FILE, ITEM_DETAIL_INDEX_FILE, ItemDetailIndex, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFile, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type ProvSource, type Recipe, type Weapon } from '../../src/schemas'
+import { BOSS_PAGE_IDS, isCoveredBy, ITEM_DETAIL_CORE_FILE, setChestIds, ITEM_DETAIL_INDEX_FILE, ItemDetailIndex, MODELING_CONVENTIONS, modeledPathOf, modelingConventionFor, SPRITE_INDEX_FILE, SpriteManifest, SpriteManifestIndex, SpriteManifestPart, spritePartFile, STAGE_ORDER, StatKind, type Archetype, type Condition, type DropSource, type ProvSource, type Recipe, type Weapon } from '../../src/schemas'
 import { assessWeapon } from '../../src/sim'
 import { RAW_DIR, runSyncPlan, WikiClient } from '../fetch'
 import { itemTypeIncludes } from '../fetch/cargo'
@@ -149,8 +149,9 @@ async function main(): Promise<number> {
   const fishing = buildFishingRoutes(fishingCatches, matchers)
   const fishingSource: ProvSource = { kind: 'wiki-article', url: wikiPageUrl(fishingArticle.resolvedTitle), rev: fishingArticle.revid, fetchedAt: isoDate(fishingArticle.fetchedAt) }
 
-  // merge + cross-check
-  const conditions = buildConditions(overlay, sync.overlayPages)
+  // merge + cross-check; every curated quote (overlays, condition evidence) is checked against the cached article revision
+  const evidence = new Evidence(sync.articles)
+  const conditions = buildConditions(overlay, sync.overlayPages, evidence)
   const recipes = buildRecipes({
     rows: sync.tables.Recipes.rows,
     fetchedAt: sync.tables.Recipes.fetchedAt,
@@ -166,7 +167,6 @@ async function main(): Promise<number> {
   const bossesOverlay = loadBossesOverlay()
   const progressionOverlay = loadProgressionOverlay()
   const withheldOverlay = loadWithheldOverlay()
-  const evidence = new Evidence(sync.articles)
   // P5-S3 (B82): condition captions of each registry boss article's rendered drop list
   const dropCaptions = new Map<string, ArticleDropCaptions>()
   for (const e of bossesOverlay.entries) {
@@ -236,12 +236,12 @@ async function main(): Promise<number> {
       bossNode: new Map(bosses.bosses.map((b) => [b.id, b.nodeId])),
     },
   }
-  const derive = createGatingDeriver({ ...gatingContext, extraRoutes: acqSources.extraRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive })
+  const derive = createGatingDeriver({ ...gatingContext, extraRoutes: acqSources.extraRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive, rideAlong: acqSources.rideAlong })
   // the pre-slice derivation (recipes + boss drops only) — gating-delta evidence for the report, never emitted
   const deriveBaseline = createGatingDeriver(gatingContext)
   // P6-S0: the same derivation without the fishing routes — the B20 gating delta for the report, never emitted
   const noFishingRoutes = new Map([...acqSources.extraRoutes].map(([id, rs]) => [id, rs.filter((r) => !(r.kind === 'unknown' && r.blocker === 'fishing-route-ungated'))]))
-  const deriveNoFishing = createGatingDeriver({ ...gatingContext, extraRoutes: noFishingRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive })
+  const deriveNoFishing = createGatingDeriver({ ...gatingContext, extraRoutes: noFishingRoutes, npcs: acqSources.npcs, containers: acqSources.containers, containerItemConditions: acqSources.containerItemConditions, exhaustive: acqSources.exhaustive, rideAlong: acqSources.rideAlong })
   const routeSources = { vendorRoute: acqSources.vendorRoute, gather: acqSources.gather, fishing: acqSources.fishing, ...(acqSources.fishingSource ? { fishingSource: acqSources.fishingSource } : {}) }
   const weapons = buildWeapons({
     itemRows: sync.tables.Items.rows,
@@ -1263,7 +1263,7 @@ async function main(): Promise<number> {
     {
       title: 'Armor sets — set articles, class-variant helmets, set bonuses (P2-S8)',
       lines: [
-        `${armor.setRows} Cargo set rows on ${armor.setPages} set articles → **${setDetails.length} armor sets emitted** + ${withheldSetPages.size} withheld by a reviewed, quote-checked pipeline/overlays/armor-sets.json entry (${[...withheldSetPages].join(', ')}; one count-reconciliation gap each, their pieces carry no setId) ${reconciles(setDetails.length + withheldSetPages.size, armor.setPages)}. Articles with several set rows: ${list(multiRowSetPages.map(([p, n]) => `${p} ${n}`))}. Validate checks every set as a hard §7a-6 rule: pieces resolve with the matching slot, piece setId back-refs agree (E_DERIVED_MISMATCH), helmets are not repeated and variants ⇄ helmets are bijective (${setDetails.reduce((n, s) => n + s.variants.length, 0)} variants = ${setDetails.reduce((n, s) => n + s.pieces.helmets.length, 0)} helmets).`,
+        `${armor.setRows} Cargo set rows on ${armor.setPages} set articles → **${setDetails.length} armor sets emitted** + ${withheldSetPages.size} withheld by a reviewed, quote-checked pipeline/overlays/armor-sets.json entry (${[...withheldSetPages].join(', ')}; one count-reconciliation gap each, their pieces' setId listed Unknown) ${reconciles(setDetails.length + withheldSetPages.size, armor.setPages)}. Articles with several set rows: ${list(multiRowSetPages.map(([p, n]) => `${p} ${n}`))}. Validate checks every set as a hard §7a-6 rule: pieces resolve with the matching slot, piece setId back-refs agree (E_DERIVED_MISMATCH), helmets and chests are not repeated and variants ⇄ helmets are bijective — ⇄ helmets × chests where the bonus is keyed by the chest (${setDetails.reduce((n, s) => n + s.variants.length, 0)} variants = ${setDetails.reduce((n, s) => n + s.pieces.helmets.length * (s.variants.some((v) => v.chestId !== undefined) ? setChestIds(s).length : 1), 0)} helmet keys). Sets with alternative chests: ${list(setDetails.filter((s) => setChestIds(s).length > 1).map((s) => `${s.name} ${setChestIds(s).length}${s.variants.some((v) => v.chestId !== undefined) ? ' (bonus keyed by the chest)' : ''}`))}; without a legs piece: ${list(setDetails.filter((s) => s.pieces.legs === undefined).map((s) => s.name))}.`,
         '',
         `Category check: set articles not in a Category:Armor sets* category: ${list(setPagesOutsideCategory)}; Category:Armor sets* articles without a Cargo set row: ${list(categorySetPagesWithoutRow)}.`,
         '',
@@ -1274,11 +1274,11 @@ async function main(): Promise<number> {
         ...setDetails.map((s) => {
           const how = armor.setReport.find((r) => r.id === s.id)?.detail ?? ''
           const name = (id: number) => pieceById.get(id)?.name ?? `#${id}`
-          const bonuses = s.variants.map((v) => `${s.variants.length > 1 ? `${name(v.helmetId)}: ` : ''}${v.setBonus.map(effectText).join('; ')}`)
-          return `| ${s.name} | ${s.stage ?? 'Unknown'} | ${esc(how)} | ${esc(`${name(s.pieces.chest)} · ${name(s.pieces.legs)}`)} | ${esc(bonuses.join(' ‖ '))} |`
+          const bonuses = s.variants.map((v) => `${s.variants.length > 1 ? `${name(v.chestId ?? v.helmetId)}: ` : ''}${v.setBonus.map(effectText).join('; ')}`)
+          return `| ${s.name} | ${s.stage ?? 'Unknown'} | ${esc(how)} | ${esc(`${setChestIds(s).map(name).join(' or ')} · ${s.pieces.legs === undefined ? 'any legs' : name(s.pieces.legs)}`)} | ${esc(bonuses.join(' ‖ '))} |`
         }),
         '',
-        `Armor pieces without a set (${setlessPieces.length}): on withheld set articles — ${list(setlessPieces.filter((p) => withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => p.name))}; on other articles — ${list(setlessPieces.filter((p) => !withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => `${p.name} (${armor.pageOf.get(p.id)})`))}.`,
+        `Armor pieces without a set (${setlessPieces.length}; setId listed Unknown where the wiki ties the piece to a set this dataset does not record — ${list(setlessPieces.filter((p) => p._prov.unverifiedFields.includes('setId')).map((p) => p.name))}): on withheld set articles — ${list(setlessPieces.filter((p) => withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => p.name))}; on other articles — ${list(setlessPieces.filter((p) => !withheldSetPages.has(armor.pageOf.get(p.id) ?? '')).map((p) => `${p.name} (${armor.pageOf.get(p.id)})`))}.`,
       ],
     },
     {
@@ -1480,6 +1480,7 @@ async function main(): Promise<number> {
           ['rows from a bundled custom cell ("Grenade Launcher" + ":+ Rocket I (50–149)"): quantity = the row item\'s own entry', d.bundledRows],
           ['bundle companions without a Drops row of their own (not emitted; one gap each)', d.bundleCompanionsWithoutRow],
           ['records linked by dropsWith (one bundled cell drops together, AMENDMENTS-015 B84)', d.dropsTogetherRecords],
+          ['records stating conditions / a quantity beside a rate- or quantity-cell note they never read (AMENDMENTS-016 B140(c)/B141(ii) sweep; must be 0)', d.unreadNoteRecords],
         ],
       },
       {
@@ -1556,7 +1557,7 @@ async function main(): Promise<number> {
           ['  with ≥1 acquisition route / derived gatedBy', `${armorDetails.filter((p) => p.acquisition.length > 0).length} / ${armorDetails.filter((p) => p.gatedBy).length}`],
           ['  with a wiki sprite (manifest)', armor.sprites.length],
           ['armor sets (set articles: ' + armor.setPages + '; withheld: ' + withheldSetPages.size + ')', setDetails.length],
-          ['  helmet variants (sets with several helmets)', `${setDetails.reduce((n, s) => n + s.variants.length, 0)} (${setDetails.filter((s) => s.variants.length > 1).length})`],
+          ['  set-bonus variants (sets with several helmets / with the bonus keyed by the chest)', `${setDetails.reduce((n, s) => n + s.variants.length, 0)} (${setDetails.filter((s) => s.pieces.helmets.length > 1).length} / ${setDetails.filter((s) => s.variants.some((v) => v.chestId !== undefined)).length})`],
           ['  set-bonus effects: stat / special', `${setDetails.reduce((n, s) => n + s.variants.reduce((m, v) => m + v.setBonus.filter((e) => e.kind === 'stat').length, 0), 0)} / ${setDetails.reduce((n, s) => n + s.variants.reduce((m, v) => m + v.setBonus.filter((e) => e.kind === 'special').length, 0), 0)}`],
           ['accessories (Cargo functional "accessory" rows: ' + accessories.identification.typedRows + '; excluded: ' + accessories.identification.excluded.length + '; vanity rows not in scope: ' + accessories.vanityRows.length + ')', accessoryDetails.length],
           ['  effects: stat / special (Unknown records)', `${accessoryDetails.reduce((n, a) => n + a.effects.filter((e) => e.kind === 'stat').length, 0)} / ${accessoryDetails.reduce((n, a) => n + a.effects.filter((e) => e.kind === 'special').length, 0)} (${unknownEffectAccessories.length})`],

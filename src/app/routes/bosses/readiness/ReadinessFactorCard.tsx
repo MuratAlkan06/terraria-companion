@@ -32,8 +32,8 @@ export interface SegmentContext {
   conditions: ConditionIndex
   /** AssumptionsTip content per estimate key (from the analysis / the suggestions). */
   estimates: Partial<Record<EstimateKey, AssumptionText[]>>
-  /** Armor set slug → its wiki article. */
-  setUrl: (id: string) => string | undefined
+  /** Armor set slug → its set page in-app (PRD P6-S1; AMENDMENTS-016 B131(b)); undefined for a set the data lacks. */
+  setHref: (id: string) => string | undefined
   bossName: (id: string) => string
 }
 
@@ -94,12 +94,11 @@ function SegmentView({ seg, ctx }: { seg: Segment; ctx: SegmentContext }) {
       )
     }
     case 'set': {
-      const href = ctx.setUrl(seg.id)
-      return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" className={LINK}>
+      const to = ctx.setHref(seg.id)
+      return to ? (
+        <Link to={to} className={LINK} data-set-ref={seg.id}>
           {seg.text}
-          <span className="sr-only"> on terraria.wiki.gg (opens in a new tab)</span>
-        </a>
+        </Link>
       ) : (
         <>{seg.text}</>
       )
@@ -172,12 +171,12 @@ export function GateNotes({ segments, ctx }: { segments: readonly Segment[]; ctx
   )
 }
 
-/** The wiki articles a line already links inline (items, sets, conditions), by article title. */
+/** The wiki articles a line already links inline (items without a page here, conditions), by article title. Sets link in-app. */
 function inlineArticles(segments: readonly Segment[], ctx: SegmentContext): Set<string> {
   const out = new Set<string>()
   for (const seg of segments) {
     const link = seg.kind === 'item' ? ctx.info(seg.id).link : undefined
-    const href = link?.kind === 'external' ? link.href : seg.kind === 'set' ? ctx.setUrl(seg.id) : seg.kind === 'cond' ? ctx.conditions.byId.get(seg.id)?.wikiUrl : undefined
+    const href = link?.kind === 'external' ? link.href : seg.kind === 'cond' ? ctx.conditions.byId.get(seg.id)?.wikiUrl : undefined
     if (href) out.add(wikiArticleTitle(href) ?? href)
   }
   return out

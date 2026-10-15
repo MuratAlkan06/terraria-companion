@@ -132,8 +132,8 @@ function UsedInSection({ item, sprites, resource }: { item: Item; sprites: Sprit
 
 /**
  * The styled 404 (B113(e) M5): an id that is a weapon, armor piece or accessory says which and links its
- * page — a weapon's in-app page, the others' wiki article — read from the search docs; otherwise the
- * item list.
+ * page in-app — /weapons/:id, /armor/:id, /accessories/:id (PRD P6-S1/S2; AMENDMENTS-016 B131(b) retires the
+ * armor / accessory wiki fallback) — read from the search docs; otherwise the item list.
  */
 export function ItemNotFound({ id }: { id: string }) {
   const itemId = parseItemId(id)

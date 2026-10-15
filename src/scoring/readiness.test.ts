@@ -17,6 +17,7 @@ import itemsJson from '../data/items.detail.json'
 import progressionJson from '../data/progression.json'
 import weaponsJson from '../data/weapons.detail.json'
 import type { LoadoutSlots } from '../schemas'
+import { getField } from '../schemas/getField'
 import { availabilityOf, gateDistance, isCappedByTarget, targetCapNodes } from './candidates'
 import { auditCopy } from './copyAudit'
 import { DEMON_HEART_SLOT_INDEX, MAX_ACCESSORY_SLOTS, SLOT_COUNT } from './constants'
@@ -223,6 +224,103 @@ describe('fresh world (nothing tracked): the Eye of Cthulhu', () => {
     const set = line(r, 'synergy.set')
     // pieces with Unknown gating are still counted (owned), so the set is active
     expect(set?.text).toMatch(/Its numbers count with the rest of your gear; the rest isn’t modeled\.$/)
+  })
+
+  it('P6 fix round: Beetle armor activates the bonus of the CHEST worn; the Wizard set takes any robe and any legs (or none); a missing alternative chest is named as "a … chest piece"', () => {
+    const all = defeated(...graph.nodes.filter((n) => n.kind === 'boss').map((n) => n.id))
+    const beetle = (chest: string) => line(analyze({ bossId: 'king-slime', loadout: loadout({ helmet: id('Beetle Helmet'), chest: id(chest), legs: id('Beetle Leggings') }), progress: all }), 'synergy.set')
+    expect(beetle('Beetle Scale Mail')).toMatchObject({ tone: 'easier', text: 'Your Beetle armor set bonus is active: Beetles increase your melee damage and speed. It’s named here, not scored.' })
+    expect(beetle('Beetle Shell')).toMatchObject({ tone: 'easier', text: 'Your Beetle armor set bonus is active: Beetles protect you from damage. It’s named here, not scored.' })
+    const noChest = line(analyze({ bossId: 'king-slime', loadout: loadout({ helmet: id('Beetle Helmet'), legs: id('Beetle Leggings') }), progress: all }), 'synergy.set')
+    expect(noChest).toMatchObject({ tone: 'harder', text: 'Your Beetle armor set bonus is inactive: a Beetle armor chest piece is missing.' })
+    const wizard = (legs: number | null) =>
+      line(analyze({ bossId: 'king-slime', cls: 'magic', loadout: loadout({ helmet: id('Magic Hat'), chest: id('Mystic Robe'), legs }), progress: all }), 'synergy.set')
+    // (never "Wizard set set bonus": the wiki's own name ends in "set")
+    for (const legs of [null, id('Moon Lord Legs'), id('Wood Greaves')]) expect(wizard(legs)?.text, String(legs)).toBe('Your Wizard set bonus is active: Increases maximum mana by 60. Its numbers count with the rest of your gear.')
+    // a hat alone is one piece of the set: no bonus claimed
+    expect(line(analyze({ bossId: 'king-slime', cls: 'magic', loadout: loadout({ helmet: id('Wizard Hat') }), progress: all }), 'synergy.set')).toBeUndefined()
+  })
+})
+
+/** Worn pieces whose set membership reads Unknown (B135: Ultrabright Helmet, Rain Hat / Coat). */
+const SET_UNKNOWN = armor.filter((a) => getField(a, 'setId').status === 'unverified')
+/** The set-state claims that need every worn piece's membership known (B136). */
+const SET_STATE_FACT = /set bonus is inactive|bonus is inactive|different sets/
+const allLines = (r: ReadinessAnalysis) => r.factors.flatMap((f) => f.lines)
+
+describe('AMENDMENTS-016 B136: a worn piece of Unknown set membership — "can’t tell", never "inactive" / "different sets" as fact', () => {
+  const all = defeated(...graph.nodes.filter((n) => n.kind === 'boss').map((n) => n.id))
+  const run = (parts: Parameters<typeof loadout>[0]) => analyze({ bossId: 'king-slime', loadout: loadout(parts), progress: all })
+
+  it('the shipped data has the three: Ultrabright Helmet, Rain Hat, Rain Coat', () => {
+    expect(SET_UNKNOWN.map((a) => a.name).sort()).toEqual(['Rain Coat', 'Rain Hat', 'Ultrabright Helmet'])
+  })
+
+  it('Ultrabright Helmet + Mining Shirt + Mining Pants: an unknown line (once, under Synergy), an unknown input, no harder summary line — a real Mining Helmet makes the bonus active as fact', () => {
+    const r = run({ helmet: id('Ultrabright Helmet'), chest: id('Mining Shirt'), legs: id('Mining Pants') })
+    const set = line(r, 'synergy.set') as ReadinessLine
+    expect(set).toMatchObject({ tone: 'unknown', text: 'Can’t tell whether a set bonus applies: Ultrabright Helmet’s set membership is unverified.' })
+    expect(set.evidence).toEqual([`i:${id('Ultrabright Helmet')}`])
+    expect(set.sources).toEqual([DATA.armor.get(id('Ultrabright Helmet'))?.wikiUrl])
+    expect(allLines(r).filter((l) => l.id.startsWith('synergy.set'))).toHaveLength(1)
+    expect(allLines(r).some((l) => SET_STATE_FACT.test(l.text) || /Mining armor helmet/.test(l.text))).toBe(false)
+    expect([...r.summary.easier, ...r.summary.harder].some((e) => e.line.id === 'synergy.set')).toBe(false)
+    expect(factor(r, 'synergy').computedFrom.unknownInputs).toContain('Ultrabright Helmet’s set membership')
+    // the other way: every piece known → the state is a fact again
+    const mining = run({ helmet: id('Mining Helmet'), chest: id('Mining Shirt'), legs: id('Mining Pants') })
+    expect(line(mining, 'synergy.set')).toMatchObject({ tone: 'easier', text: 'Your Mining armor set bonus is active: 10% increased mining speed. Its numbers count with the rest of your gear.' })
+    expect(mining.summary.easier.map((e) => e.line.id)).toContain('synergy.set')
+    expect(factor(mining, 'synergy').computedFrom.unknownInputs).not.toContain('Ultrabright Helmet’s set membership')
+    const noLegs = run({ helmet: id('Mining Helmet'), chest: id('Mining Shirt') })
+    expect(line(noLegs, 'synergy.set')).toMatchObject({ tone: 'harder', text: 'Your Mining armor set bonus is inactive: Mining Pants is missing.' })
+  })
+
+  it('Rain Hat + Rain Coat: one unknown line naming both, never "different sets" — two known pieces of different sets still say so', () => {
+    const r = run({ helmet: id('Rain Hat'), chest: id('Rain Coat') })
+    expect(line(r, 'synergy.set')).toMatchObject({ tone: 'unknown', text: 'Can’t tell whether a set bonus applies: Rain Hat’s and Rain Coat’s set memberships are unverified.' })
+    expect(allLines(r).some((l) => SET_STATE_FACT.test(l.text))).toBe(false)
+    expect(factor(r, 'synergy').computedFrom.unknownInputs).toEqual(expect.arrayContaining(['Rain Hat’s set membership', 'Rain Coat’s set membership']))
+    expect(line(run({ helmet: id('Copper Helmet'), chest: id('Iron Chainmail') }), 'synergy.set')).toMatchObject({ tone: 'info', text: 'Your armor pieces come from different sets, so no set bonus is active.' })
+    // one piece alone completes no set: no line, as for a known piece (the Wizard Hat above)
+    expect(line(run({ helmet: id('Rain Hat') }), 'synergy.set')).toBeUndefined()
+  })
+
+  it('Improve never offers to complete a set an Unknown piece leaves open (counted as not comparable); with the real helmet worn the set is simply the worn one', () => {
+    // Rain Hat + Copper Chainmail + Copper Greaves: 4 defense; the full Copper set (6 with its bonus) would read as "complete the set"
+    const parts = { helmet: id('Rain Hat'), chest: id('Copper Chainmail'), legs: id('Copper Greaves') }
+    expect(line(run(parts), 'synergy.set')).toMatchObject({ tone: 'unknown', text: 'Can’t tell whether a set bonus applies: Rain Hat’s set membership is unverified.' })
+    const armorOf = (r: ImproveResult) => r.groups.find((g) => g.target === 'armor') as ImproveResult['groups'][number]
+    const suggested = (g: ImproveResult['groups'][number]) => [...g.obtainable, ...g.gated.flatMap((x) => x.items)]
+    const open = armorOf(improve({ bossId: 'king-slime', loadout: loadout(parts), progress: all }))
+    expect(suggested(open).some((s) => s.setId === 'copper-armor')).toBe(false)
+    expect(open.disclosure.unverified).toBeGreaterThan(0)
+    // the same defense with a known helmet of another set (Wood Helmet, 1 defense): the Copper set is inactive as fact and
+    // compared as usual — the only difference in the pool is that one Copper combination, counted as not comparable
+    const knownParts = { ...parts, helmet: id('Wood Helmet') }
+    expect(line(run(knownParts), 'synergy.set')).toMatchObject({ tone: 'harder', text: 'Your Copper armor set bonus is inactive: a Copper armor helmet is missing.' })
+    const known = armorOf(improve({ bossId: 'king-slime', loadout: loadout(knownParts), progress: all }))
+    expect(open.disclosure).toEqual({ ...known.disclosure, unverified: known.disclosure.unverified + 1 })
+    expect(open.obtainable.map((s) => s.key)).toEqual(known.obtainable.map((s) => s.key))
+    // Ultrabright + Mining: no Mining suggestion, and no rationale that reads as completing a set
+    const ultra = armorOf(improve({ bossId: 'king-slime', loadout: loadout({ helmet: id('Ultrabright Helmet'), chest: id('Mining Shirt'), legs: id('Mining Pants') }), progress: all }))
+    expect(suggested(ultra).some((s) => s.setId === 'mining-armor')).toBe(false)
+    for (const s of suggested(ultra)) expect(s.text).not.toMatch(/complet|missing|inactive/i)
+  })
+
+  it('every Unknown-membership piece worn with each set’s other pieces: never "inactive" / "different sets", the line unknown; that set never offered', () => {
+    for (const unknownPiece of SET_UNKNOWN) {
+      const slot = unknownPiece.slot === 'head' ? 'helmet' : unknownPiece.slot === 'chest' ? 'chest' : 'legs'
+      for (const set of DATA.sets.values()) {
+        const parts = { helmet: set.pieces.helmets[0], chest: set.pieces.chest, legs: set.pieces.legs ?? null, [slot]: unknownPiece.id }
+        const label = `${unknownPiece.name} + ${set.name}`
+        const r = run(parts)
+        expect(allLines(r).some((l) => SET_STATE_FACT.test(l.text)), label).toBe(false)
+        expect(line(r, 'synergy.set')?.tone, label).toBe('unknown')
+        expect(r.summary.harder.some((e) => e.line.id === 'synergy.set'), label).toBe(false)
+        const g = improve({ bossId: 'king-slime', loadout: loadout(parts), progress: all }).groups.find((x) => x.target === 'armor')
+        expect([...(g?.obtainable ?? []), ...(g?.gated.flatMap((x) => x.items) ?? [])].some((s) => s.setId === set.id), label).toBe(false)
+      }
+    }
   })
 })
 
@@ -641,9 +739,17 @@ function checkAnalysis(r: ReadinessAnalysis, input: ReadinessInput, label: strin
   }
   // accessories beyond the difficulty's slots are never analyzed
   expect(r.entries.filter((e) => e.slot.kind === 'accessory' && e.slot.index >= SLOT_COUNT[input.difficulty]), label).toEqual([])
+  // B136: with a worn piece of Unknown set membership no line states the set state as fact, and the set line is unknown
+  const wornUnknown = r.entries.filter((e) => e.counted && ['helmet', 'chest', 'legs'].includes(e.slot.kind) && SET_UNKNOWN.some((a) => a.id === e.id))
+  if (wornUnknown.length > 0) {
+    expect(all.some((x) => SET_STATE_FACT.test(x.line.text)), `${label}: ${wornUnknown.map((e) => e.name).join(', ')}`).toBe(false)
+    const setLine = all.find((x) => x.line.id === 'synergy.set')?.line
+    if (setLine) expect([setLine.tone, setLine.text], label).toEqual(['unknown', expect.stringMatching(/^Can’t tell whether a set bonus applies: /)])
+  }
   // the copy audit over our own words (wiki quotes removed)
   for (const segs of segmentsOf(r)) expect(auditCopy(ownWords(segs)), `${label}: ${ownWords(segs)}`).toBeUndefined()
   for (const a of [...r.assumptions, ...Object.values(r.estimates).flat()]) expect(auditCopy(`${a?.title} ${a?.detail}`), label).toBeUndefined()
+  return wornUnknown.length
 }
 
 function checkImprove(r: ImproveResult, input: ReadinessInput, label: string) {
@@ -693,6 +799,21 @@ describe('invariants over many states (seeded sweep) + determinism', () => {
       if ('error' in r) throw new Error('every shipped boss has a record')
       checkAnalysis(r, input, `run ${run} ${input.bossId} ${input.cls} ${input.difficulty}`)
     }
+  })
+
+  it('B136 sweep: random loadouts with an Unknown-membership piece forced into its slot never state the set state as fact', () => {
+    const random = prng(0xb136)
+    const slotOf = { head: 'helmet', chest: 'chest', legs: 'legs' } as const
+    let covered = 0
+    for (let run = 0; run < 150; run++) {
+      const input = randomInput(random)
+      const forced = pick(random, SET_UNKNOWN)
+      input.loadout = { ...input.loadout, [slotOf[forced.slot]]: forced.id }
+      const r = analyzeReadiness(input, DATA)
+      if ('error' in r) throw new Error('every shipped boss has a record')
+      covered += checkAnalysis(r, input, `b136 run ${run} ${forced.name} ${input.bossId} ${input.cls}`) > 0 ? 1 : 0
+    }
+    expect(covered).toBe(150)
   })
 
   it('suggestions: obtainable-now only, strictly better, never capped; gated ones keyed by their exact bosses; copy audit clean', () => {

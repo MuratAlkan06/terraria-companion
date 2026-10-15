@@ -6,6 +6,7 @@
     "match.stations: recipe station tokens (Cargo Recipes `station`, split on ' and '). match.recipeNotes: Cargo Recipes `resulttext` note keys (texts in Module:Recipes/l10n en.result_note). match.dropNotes: parenthesized note texts in Cargo Drops rate/custom cells (markup stripped). match.dropCaptions: group captions of a registry boss article's rendered drop list (\"Only in Corrupt worlds\"), which the Cargo rows do not carry (parse/dropCaptions.ts).",
     "AMENDMENTS-014 B68 / AMENDMENTS-015 B78 (P4-prep gating expansion, 2026-10-14): post-queen-bee (Witch Doctor availability), goblin-army-defeated (Goblin Tinkerer availability; an event with no progression edge, so it is a requirement chip, never a boss gate) and blood-moon (NPC shop rows) were added for overlays/vendors.json; the six <ore>-ore-world conditions carry the world-specific ore-bar chest loot (overlays/containers.json worldSpecificLoot). `exhaustive` lists non-node condition groups every world satisfies one member of (the world evil): an either-or over such a group is always satisfiable, so the §7b minimum over e.g. a Shadow Orb route (Corruption worlds) and a Crimson Heart route (Crimson worlds) carries neither condition (merge/gating.ts). Each group is quote-backed (checked verbatim against the cached article); pipeline-only, not emitted.",
     "P6-S0 (2026-10-15): match.fishingConditions maps the condition labels of the \"Fishing catches\" article (its World status / generic definitions; for the Dungeon, the biome definition's requirement \"Skeletron is defeated\") onto these slugs for fishing routes (merge/fishing.ts, AMENDMENTS-004 B20); angler-quest and can-fish-in-lava are the two fishing conditions it defines, quoted in their descriptions. hellforge-absent is Skeletron's Hellforge drop condition (its drop-list caption and Cargo note, AMENDMENTS-015 B84 queue), the jungle-temple-absent family.",
+    "AMENDMENTS-016 B140(a)/B141 (2026-10-15): the location / sequence notes of the Cargo Drops rate cells became registered conditions with verbatim quotes (`evidence`, checked against the cached article revision): lava-layer (\"lava layer\"), bottom-250-tiles (\"within bottom 250 tiles of world\"), first-destruction (\"on first destruction\") and subsequent-destructions (\"all other destructions\"); the existing underground / cavern entries gained their layer quotes. Seed-world notes stay unmapped (B139(a)/B140(b): conditions Unknown). `rideAlong` lists the conditions that do not break the §7b gate-free exception (merge/gating.ts).",
     "satisfiedByNode values are references into the progression graph (P2-S6, overlays/progression.json + bosses.json) and are hard-checked. World-state conditions map to the node that makes them true: boss-defeat conditions to the boss node, \"hardmode\" to the Hardmode milestone (required-gated by wall-of-flesh) and post-mechanical-bosses to the all-mechanical-bosses milestone, so gatedBy.stage is the stage the condition opens (a Hardmode-only item is early-hm, not the late-prehm of the Wall of Flesh fight)."
   ],
   "entries": [
@@ -65,6 +66,22 @@
     { "id": "torch-gods-favor", "name": "Torch God's Favor consumed", "kind": "world-state", "wikiTitle": "Torch God's Favor",
       "description": "The player has consumed a Torch God's Favor.",
       "match": { "recipeNotes": ["#note_torch_gods_favor"] } },
+    { "id": "first-destruction", "name": "World's first Shadow Orb / Crimson Heart destroyed", "kind": "world-state", "wikiTitle": "Evil biomes",
+      "description": "Drop condition: the Shadow Orb or Crimson Heart destroyed is the world's first one (the drop table's \"on first destruction\").",
+      "match": { "dropNotes": ["on first destruction"] },
+      "evidence": [
+        { "page": "Evil biomes", "quote": "Destroying a world's first Shadow Orb will always drop a Musket and some Musket Balls" },
+        { "page": "Evil biomes", "quote": "Destroying a world's first Crimson Heart will drop The Undertaker with some Musket Balls" },
+        { "page": "Shadow Orb", "quote": "Each Shadow Orb drops items when destroyed. The first will always drop a Musket and 100 Musket Balls" },
+        { "page": "Crimson Heart", "quote": "Each Crimson Heart drops items when destroyed. The first will always drop an Undertaker and 100 Musket Balls" }
+      ] },
+    { "id": "subsequent-destructions", "name": "A later Shadow Orb / Crimson Heart destroyed", "kind": "world-state", "wikiTitle": "Evil biomes",
+      "description": "Drop condition: a Shadow Orb or Crimson Heart destroyed after the world's first one (the drop table's \"all other destructions\").",
+      "match": { "dropNotes": ["all other destructions"] },
+      "evidence": [
+        { "page": "Shadow Orb", "quote": "Musket + Musket Ball (100) 100% (on first destruction) 20% (all other destructions)" },
+        { "page": "Crimson Heart", "quote": "The Undertaker + Musket Ball (100) 100% (on first destruction) 20% (all other destructions)" }
+      ] },
 
     { "id": "corruption", "name": "The Corruption", "kind": "biome", "wikiTitle": "The Corruption",
       "description": "The Corruption biome, one of the two world-evil biomes." },
@@ -87,10 +104,26 @@
       "match": { "stations": ["Snow Biome"] } },
     { "id": "underground", "name": "Underground layer", "kind": "biome", "wikiTitle": "Underground",
       "description": "The Underground layer, directly below the surface.",
-      "match": { "dropNotes": ["Underground"] } },
+      "match": { "dropNotes": ["Underground"] },
+      "evidence": [{ "page": "Underground", "quote": "The Underground is the first layer below the surface. It fills the area between the Surface and Cavern layers" }] },
     { "id": "cavern", "name": "Cavern layer", "kind": "biome", "wikiTitle": "Cavern",
       "description": "The Cavern layer, below the Underground layer.",
-      "match": { "dropNotes": ["Cavern"] } },
+      "match": { "dropNotes": ["Cavern"] },
+      "evidence": [{ "page": "Cavern", "quote": "The Cavern layer is the largest layer of the world, beginning just below the Underground and extending down until the Underworld layer." }] },
+    { "id": "lava-layer", "name": "Lava layer", "kind": "biome", "wikiTitle": "Cavern",
+      "description": "The \"lava layer\": the lower parts of the Cavern layer, where pools of lava appear.",
+      "match": { "dropNotes": ["\"lava layer\""] },
+      "evidence": [
+        { "page": "Chests", "quote": "The Lava Charm can only be found in Gold Chests that are in the \"lava layer\", i.e. the lower parts of the Caverns where lava pools appear." },
+        { "page": "Cavern", "quote": "In the lower areas of the Cavern layer, pools of lava can be found." }
+      ] },
+    { "id": "bottom-250-tiles", "name": "Within the bottom 250 tiles of the world", "kind": "biome", "wikiTitle": "Gold Chest",
+      "description": "Drop condition for chest loot: the chest was generated within 250 tiles of the bottom of the world.",
+      "match": { "dropNotes": ["within bottom 250 tiles of world"] },
+      "evidence": [
+        { "page": "Gold Chest", "quote": "Gold Chests that are generated within 250 tiles of the bottom of the world can contain the same common items as Shadow Chests, such as Meteorite Bars" },
+        { "page": "Gold Chest", "quote": "Meteorite Bar 15-29 1/4 (25%) (within bottom 250 tiles of world)" }
+      ] },
 
     { "id": "halloween", "name": "Halloween", "kind": "event", "wikiTitle": "Halloween",
       "description": "The Halloween seasonal event.",
@@ -154,5 +187,9 @@
     { "conditions": ["gold-ore-world", "platinum-ore-world"], "page": "Ores",
       "quote": "A world will generally only contain one ore type from each tier, which is chosen at random.",
       "why": "One ore of each tier per world, so 'Gold Ore world OR Platinum Ore world' holds in every world (Drunk worlds carry both)." }
-  ]
+  ],
+  "rideAlong": {
+    "conditions": ["underground", "cavern", "lava-layer", "bottom-250-tiles", "first-destruction", "subsequent-destructions"],
+    "why": "AMENDMENTS-016 B141 (option A): the world-location / world-state conditions B140(a) registered — the layers, the bottom 250 tiles, the destruction sequence — are not boss or progression gates: any fresh character can walk to the Cavern layer or break a world's first Shadow Orb. A route free of boss/progression gates keeps the §7b gate-free exception while carrying them (they ride along on the exact route, displayed); an either-or among them is always satisfiable. Exactly the conditions B141 names; widening the list is a review decision."
+  }
 }

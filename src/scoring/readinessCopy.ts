@@ -124,6 +124,11 @@ export const FACTOR_TITLES = {
 
 const scoped = (scope: DamageClass | undefined) => (scope && scope !== 'other' ? `${CLASS_WORD[scope]} ` : '')
 const plural = (v: number, one: string, many: string) => (Math.abs(v) === 1 ? one : many)
+/** A duration in game ticks with its seconds beside it (the wing pages' pattern): "420 ticks (7 seconds)". */
+export const ticksWithSeconds = (ticks: number): string => {
+  const s = Math.abs(ticks) / 60
+  return `${ticks.toLocaleString('en-US')} ${plural(ticks, 'tick', 'ticks')} (${s.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${s === 1 ? 'second' : 'seconds'})`
+}
 
 /** A stat effect in words: "+15% ranged damage", "+8 defense", "−14% mana cost". */
 const STAT_PHRASE: Readonly<Record<StatKind, (v: number, scope: DamageClass | undefined) => string>> = {
@@ -136,7 +141,7 @@ const STAT_PHRASE: Readonly<Record<StatKind, (v: number, scope: DamageClass | un
   'damage-reduction-pct': (v) => `${v}% damage reduction`,
   'move-speed-pct': (v) => `${v}% movement speed`,
   'jump-boost': () => 'jump height',
-  'flight-time-ticks': (v) => `${v} ticks of flight time`,
+  'flight-time-ticks': (v) => `${ticksWithSeconds(v)} of flight time`,
   'life-regen': (v) => `${v} life regeneration`,
   'max-life-flat': (v) => `${v} max life`,
   'max-mana-flat': (v) => `${v} max mana`,
@@ -151,7 +156,7 @@ const STAT_PHRASE: Readonly<Record<StatKind, (v: number, scope: DamageClass | un
   'ammo-save-pct': (v) => `${v}% ammo saving`,
   'knockback-pct': (v) => `${v}% knockback`,
   'tag-effect-slots': (v) => `${v} whip tag ${plural(v, 'slot', 'slots')}`,
-  'lava-immunity-ticks': (v) => `${v} ticks of lava immunity`,
+  'lava-immunity-ticks': (v) => `${ticksWithSeconds(v)} of lava immunity`,
   'melee-scale-pct': (v) => `${v}% melee weapon size`,
   'tile-reach-flat': (v) => `${v} tiles of reach`,
   'potion-cooldown-pct': (v) => `${v}% healing potion cooldown`,
@@ -269,6 +274,9 @@ export const f3 = {
 
 // --- F4 Synergy ---------------------------------------------------------------------------------------
 
+/** "set bonus" — just "bonus" after a set whose own name ends in "set" (the Wizard set: never "Wizard set set bonus"). */
+export const setBonusWord = (setName: string): string => (/\bset$/i.test(setName.trim()) ? 'bonus' : 'set bonus')
+
 export const f4 = {
   weaponMatch: (weapon: Segment, cls: string) => s`Your ${weapon} is a ${cls} weapon, matching your class.`,
   weaponMismatch: (weapon: Segment, weaponClass: string, cls: string) => s`Your ${weapon} is a ${weaponClass} weapon; bonuses for ${cls} don’t apply to it.`,
@@ -277,10 +285,14 @@ export const f4 = {
   weaponClassUnknown: (weapon: Segment, marker: Segment) => s`Your ${poss(weapon)} damage class is ${marker}.`,
   /** `counted`: the bonus's numbers count with the rest of the gear — all of it, part of it (some is unmodeled), or none (named only). */
   setActive: (set: Segment, bonus: string, counted: 'all' | 'some' | 'none') =>
-    s`Your ${set} set bonus is active: ${endQuote(bonus)} ${counted === 'all' ? 'Its numbers count with the rest of your gear.' : counted === 'some' ? 'Its numbers count with the rest of your gear; the rest isn’t modeled.' : 'It’s named here, not scored.'}`,
-  setInactive: (set: Segment, missing: readonly Segment[], count: number) => s`Your ${set} set bonus is inactive: ${missing} ${count === 1 ? 'is' : 'are'} missing.`,
+    s`Your ${set} ${setBonusWord(set.text)} is active: ${endQuote(bonus)} ${counted === 'all' ? 'Its numbers count with the rest of your gear.' : counted === 'some' ? 'Its numbers count with the rest of your gear; the rest isn’t modeled.' : 'It’s named here, not scored.'}`,
+  setInactive: (set: Segment, missing: readonly Segment[], count: number) => s`Your ${set} ${setBonusWord(set.text)} is inactive: ${missing} ${count === 1 ? 'is' : 'are'} missing.`,
   setMissingHelmet: (set: Segment) => s`a ${set} helmet`,
+  setMissingChest: (set: Segment) => s`a ${set} chest piece`,
   setMixed: () => s`Your armor pieces come from different sets, so no set bonus is active.`,
+  /** AMENDMENTS-016 B136: a worn piece's set membership is Unknown, so neither "active" nor "inactive" is claimed. */
+  setUnknown: (pieces: readonly Segment[]) =>
+    s`Can’t tell whether a set bonus applies: ${list(pieces.map((piece) => poss(piece)))} set ${pieces.length === 1 ? 'membership is' : 'memberships are'} unverified.`,
   mismatch: (item: Segment, phrases: readonly string[], cls: string) => s`${poss(item)} ${list(phrases.map((p) => s`${p}`))} ${phrases.length === 1 ? 'doesn’t' : 'don’t'} apply to your ${cls} class.`,
   points: (matched: Segment, total: string, cls: string) => s`${matched} of ${total} counted stat points on your gear apply to your ${cls} class.`,
   noPoints: () => s`None of your gear’s effects are counted stat points.`,

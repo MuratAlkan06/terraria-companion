@@ -3,6 +3,7 @@ import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 're
 import { BottomSheet } from './BottomSheet'
 import { buttonClass } from './buttonStyles'
 import { cx } from './cx'
+import { showResults } from './filterBarCopy'
 import { PixelPanel } from './PixelPanel'
 
 /**
@@ -46,7 +47,7 @@ export interface FilterBarProps {
   onClearAll: () => void
   /** Results after filtering, for the sheet's "Show N" button. */
   resultCount: number
-  /** Plural noun for counts, e.g. "weapons". */
+  /** Plural noun for counts, e.g. "weapons" (a regular plural: "Show 1 weapon" drops its "s" — filterBarCopy). */
   noun: string
   /** Show the active-chip row under the bar (pages hide it when an empty state shows the chips). */
   showActiveChips?: boolean
@@ -233,7 +234,7 @@ function FacetGroup({
                 <span style={labelStyle}>{option.label}</span>
                 <span className={cx('tabular-nums', option.count === 0 ? 'text-stone-500' : 'text-fg-muted')}>
                   {option.count.toLocaleString('en-US')}
-                  <span className="sr-only"> results</span>
+                  <span className="sr-only">{option.count === 1 ? ' result' : ' results'}</span>
                 </span>
               </button>
             </li>
@@ -283,7 +284,7 @@ function FilterSheet({
             Clear all
           </button>
           <button type="button" onClick={() => onOpenChange(false)} className={buttonClass('primary')}>
-            Show {resultCount.toLocaleString('en-US')} {noun}
+            {showResults(resultCount, noun)}
           </button>
         </>
       }

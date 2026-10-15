@@ -65,6 +65,11 @@ export interface AcquisitionViewProps {
   noun?: string
   /** Optional richer lookup for referenced items (sprite + page); the weapon pages go without it. */
   refInfo?: (itemId: number) => ItemRefInfo | undefined
+  /**
+   * Heading level of each route ("Crafted", "Sold by …"): 3 under the page's own "How to obtain" panel (default);
+   * deeper where the routes sit under a piece's heading (an armor set page lists several pieces, PRD P6-S1).
+   */
+  headingLevel?: 3 | 4 | 5
 }
 
 type ConditionList = readonly string[]
@@ -78,7 +83,7 @@ const ROUTE_ICON: Record<Acquisition['method'], LucideIcon> = {
   other: Info,
 }
 
-export function AcquisitionView({ weapon, data, weaponsById, sprites, noun = 'weapon', refInfo }: AcquisitionViewProps) {
+export function AcquisitionView({ weapon, data, weaponsById, sprites, noun = 'weapon', refInfo, headingLevel = 3 }: AcquisitionViewProps) {
   const acquisition = getField(weapon, 'acquisition')
   const routes = acquisition.status === 'unverified' ? [] : weapon.acquisition
 
@@ -92,7 +97,7 @@ export function AcquisitionView({ weapon, data, weaponsById, sprites, noun = 'we
         <ol className="space-y-5">
           {routes.map((route, index) => (
             <li key={index}>
-              <RouteBlock weapon={weapon} route={route} index={index} data={data} weaponsById={weaponsById} sprites={sprites} refInfo={refInfo} />
+              <RouteBlock weapon={weapon} route={route} index={index} data={data} weaponsById={weaponsById} sprites={sprites} refInfo={refInfo} headingLevel={headingLevel} />
             </li>
           ))}
         </ol>
@@ -110,9 +115,10 @@ function AcquisitionUnknown({ weapon }: { weapon: AcquirableRecord }) {
         <p className="font-semibold text-fg">
           Ways to obtain: <UnknownValue field="acquisition" sourceUrl={weapon.wikiUrl} />
         </p>
+        {/* AMENDMENTS-013 forward-promise purge (no "yet"): caught by the armor pages' copy audit (P6-S1) */}
         <p className="text-sm text-fg-muted">
-          How to get {weapon.name} hasn’t been verified against the wiki data yet, so no route is shown rather than a
-          guessed one. The wiki page may describe it.
+          How to get {weapon.name} isn’t verified against the wiki data, so no route is shown rather than a guessed one.
+          The wiki page may describe it.
         </p>
       </div>
     </div>
@@ -120,13 +126,14 @@ function AcquisitionUnknown({ weapon }: { weapon: AcquirableRecord }) {
 }
 
 /** Route heading; the wording comes from `routeTitle` so the badge details name routes identically. */
-function RouteHeading({ route }: { route: Acquisition }) {
+function RouteHeading({ route, level = 3 }: { route: Acquisition; level?: 3 | 4 | 5 }) {
   const Icon = ROUTE_ICON[route.method]
+  const Heading = `h${level}` as const
   return (
-    <h3 className="flex items-center gap-2 font-semibold text-fg">
+    <Heading className="flex items-center gap-2 font-semibold text-fg">
       <Icon aria-hidden="true" className="size-5 shrink-0 text-accent" />
       <span>{routeTitle(route)}</span>
-    </h3>
+    </Heading>
   )
 }
 
@@ -138,6 +145,7 @@ interface RouteProps {
   weaponsById: ReadonlyMap<number, Weapon> | undefined
   sprites: SpriteIndex | null
   refInfo?: (itemId: number) => ItemRefInfo | undefined
+  headingLevel?: 3 | 4 | 5
 }
 
 function RouteBlock(props: RouteProps) {
@@ -152,7 +160,7 @@ function RouteBlock(props: RouteProps) {
     case 'loot':
       return (
         <div className="space-y-2">
-          <RouteHeading route={route} />
+          <RouteHeading route={route} level={props.headingLevel} />
           <dl className="space-y-1 text-sm">
             {route.locations.length > 0 ? <InfoRow label="Locations">{route.locations.join(', ')}</InfoRow> : null}
             <ConditionsRow {...props} />
@@ -162,7 +170,7 @@ function RouteBlock(props: RouteProps) {
     case 'fishing':
       return (
         <div className="space-y-2">
-          <RouteHeading route={route} />
+          <RouteHeading route={route} level={props.headingLevel} />
           <dl className="space-y-1 text-sm">
             <InfoRow label="Where">{route.biomes.join(', ')}</InfoRow>
             <ConditionsRow {...props} chips />
@@ -172,7 +180,7 @@ function RouteBlock(props: RouteProps) {
     case 'other':
       return (
         <div className="space-y-2">
-          <RouteHeading route={route} />
+          <RouteHeading route={route} level={props.headingLevel} />
           <p className="text-sm whitespace-pre-line">{route.description}</p>
           <ProvenanceLink href={route.sourceUrl} />
         </div>
@@ -229,12 +237,12 @@ function ConditionsRow({ weapon, index, data, chips = false }: RouteProps & { ch
 
 // --- craft --------------------------------------------------------------------------------
 
-function CraftRoute({ weapon, route, data, weaponsById, sprites, refInfo }: RouteProps & { route: Extract<Acquisition, { method: 'craft' }> }) {
+function CraftRoute({ weapon, route, data, weaponsById, sprites, refInfo, headingLevel }: RouteProps & { route: Extract<Acquisition, { method: 'craft' }> }) {
   const recipes = route.recipeIds.map((id) => ({ id, recipe: data?.recipes?.byId.get(id) }))
   const multiple = recipes.length > 1
   return (
     <div className="space-y-3">
-      <RouteHeading route={route} />
+      <RouteHeading route={route} level={headingLevel} />
       {/* One recipe spans the whole panel; alternatives sit side by side from md. */}
       <ul className={cx('grid gap-3', multiple && 'md:grid-cols-2')}>
         {recipes.map(({ id, recipe }, i) => (
@@ -363,9 +371,10 @@ export function RecipeCard({
  * One recipe material: an ItemSlot (sprite whole-number scaled into the 32px slot, quantity
  * badge as in-game) plus its visible name — names stay readable on touch screens, where slot
  * tooltips can't be hovered. Materials that are weapons link to their page, Item records to their
- * encyclopedia page (P6); with `refInfo` (the encyclopedia) a material also shows its own sprite and an
- * armor / accessory material opens its own wiki article. Anything else is an inert cell (never a dead
- * local link, never a guessed wiki URL). The amount is always announced, including ×1 (no badge, as in-game).
+ * encyclopedia page (P6); with `refInfo` (the encyclopedia, armor and accessory pages) a material also shows
+ * its own sprite and an armor / accessory material opens its page in-app (PRD P6-S1/S2, AMENDMENTS-016
+ * B131(b)). Anything else is an inert cell (never a dead local link, never a guessed wiki URL). The amount is
+ * always announced, including ×1 (no badge, as in-game).
  */
 function MaterialCell({
   ingredient,
@@ -458,13 +467,13 @@ function MaterialCell({
 
 // --- drop ---------------------------------------------------------------------------------
 
-function DropRoute({ weapon, route, data }: RouteProps & { route: Extract<Acquisition, { method: 'drop' }> }) {
+function DropRoute({ weapon, route, data, headingLevel }: RouteProps & { route: Extract<Acquisition, { method: 'drop' }> }) {
   const loaded = route.dropIds.map((id) => data?.drops?.byId.get(id))
   const missing = loaded.filter((drop) => drop === undefined).length
   const groups = groupDropSources(loaded.filter((drop): drop is DropSource => drop !== undefined))
   return (
     <div className="space-y-3">
-      <RouteHeading route={route} />
+      <RouteHeading route={route} level={headingLevel} />
       <ul className="grid gap-3 md:grid-cols-2">
         {groups.map((group) => (
           <li key={group[0].id} className="space-y-2 border-2 border-panel-border bg-night-900 p-3">
@@ -624,7 +633,7 @@ function PurchaseRoute(props: RouteProps & { route: Extract<Acquisition, { metho
   const price = getField(weapon, priceField)
   return (
     <div className="space-y-2">
-      <RouteHeading route={route} />
+      <RouteHeading route={route} level={props.headingLevel} />
       <dl className="space-y-1 text-sm">
         {price.status === 'not-applicable' ? null : (
           <InfoRow label="Price">
