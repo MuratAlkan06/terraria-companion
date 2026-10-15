@@ -19,6 +19,7 @@ import { EmptyState, ErrorState } from '../../../components/States'
 import { useBreakpoint, useMediaQuery } from '../../../components/useMediaQuery'
 import type { Item, Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
+import { namedBoss } from '../../../lab/labBossDefense'
 import { createLabSession, type LabSession } from '../../../lab/labSession'
 import { LAB_WEAPON_PARAM } from '../../../lab/labLinks'
 import { ammoChoices, DEFAULT_LAB_TARGET, resolveAmmo, type LabTarget } from '../../../lab/labSetup'
@@ -30,7 +31,7 @@ import { useDocumentTitle } from '../../useDocumentTitle'
 import { ArenaCanvas } from './ArenaCanvas'
 import { DpsGraph } from './DpsGraph'
 import { graphOpenByDefault } from './dpsGraphModel'
-import { AmmoCounter, AttackHint, BlastReadout, ConsumableCounter, DebuffPanel, EquippedBar, HudControls, LowManaCallout, ManaBar, StatReadouts, SummonsPanel, TargetStrip } from './Hud'
+import { AmmoCounter, AttackHint, BlastReadout, ConsumableCounter, DebuffPanel, EquippedBar, HudControls, LowManaCallout, ManaBar, ShotsCounter, StatReadouts, SummonsPanel, TargetStrip } from './Hud'
 import { slotNumber } from './hudStyles'
 import { INITIAL_BROWSER_STATE, type LabBrowserState } from './browserModel'
 import { LabBrowser } from './LabBrowser'
@@ -73,6 +74,11 @@ import { useLabHud } from './useLabHud'
  * equipped, the settings panel's MINION LOADOUT puts a minion staff's minions out beside it (kept for
  * the visit like the ammo, carried to the next whip; a new session, as an ammo switch — the stats
  * restart). Reset clears the loadout along with the settings (PRD P3-S9 AC4: every summon gone).
+ *
+ * Dummy roster v2 (P3-S12): the Boss-Sized, Moving and Armored Dummies join the target picker (an Armored
+ * Dummy can take a boss's verified defense — the boss records load with the Lab, ./labData.ts); against
+ * the Moving Dummy a weapon that sends projectiles out shows its shots fired and missed (`ShotsCounter`,
+ * under the EquippedBar like the other counters, its room laid out from the target's start).
  *
  * Thrown explosives (P3-S11): the "Explosives used" counter beside the EquippedBar, and the latest
  * blast's per-dummy damage (`BlastReadout`, its room laid out from the start — "No blast yet" — so the
@@ -234,6 +240,7 @@ function LabStage({ selection, settingsRef, targetRef, ...rest }: StageProps) {
         setup: data.setup,
         ammoId: ammo?.id ?? null,
         loadout,
+        bossDefenses: data.bossDefenses,
         ...(settingsRef.current ? { settings: settingsRef.current } : {}),
         ...(targetRef.current ? { target: targetRef.current } : {}),
       }),
@@ -380,6 +387,9 @@ function LabView({
     announce(`${next.name} isn’t simulated in the Lab — its card says why. ${weapon.name} stays equipped.`)
   }
   const closeSheet = () => setSheet(null)
+  // The boss an Armored Dummy's defense comes from (named only while the value is that boss's).
+  const bossNameOf = (target: LabTarget) => (target.kind === 'armored' ? (namedBoss(target, data.bossDefenses)?.name ?? null) : null)
+  const targetWords = targetPhrase(hud.target, bossNameOf(hud.target))
   const choices = ammoChoices(weapon, data.setup)
   const onAmmoSelect = (item: Item) => {
     if (locked || item.id === session.ammo?.id) return
@@ -399,7 +409,7 @@ function LabView({
   }
   // A new target restarts the stats (src/lab/labSession.ts `setTarget`): said like an ammo switch.
   const onTargetChange = (target: LabTarget) => {
-    if (session.setTarget(target)) announce(targetAnnouncement(target))
+    if (session.setTarget(target)) announce(targetAnnouncement(target, bossNameOf(target)))
   }
   const onReset = () => {
     const stopped = hud.timedTest.status === 'running'
@@ -534,6 +544,7 @@ function LabView({
               : null
         }
         explosive={session.explosive}
+        bossDefenses={data.bossDefenses}
       />,
     ),
   }
@@ -604,8 +615,8 @@ function LabView({
         >
           <p id="lab-arena-help" className="sr-only">
             {session.summonKind
-              ? `Click the arena or press Space to ${session.summonKind === 'sentry' ? 'place a sentry' : 'summon a minion'}; it attacks the ${hud.targets ? 'dummies' : targetPhrase(hud.target).replace(/^the /, '')} on its own.`
-              : `Hold Space to ${verb} at the ${hud.targets ? 'first of the dummies' : targetPhrase(hud.target).replace(/^the /, '')}.`}{' '}
+              ? `Click the arena or press Space to ${session.summonKind === 'sentry' ? 'place a sentry' : 'summon a minion'}; it attacks the ${hud.targets ? 'dummies' : targetWords.replace(/^the /, '')} on its own.`
+              : `Hold Space to ${verb} at the ${hud.targets ? 'first of the dummies' : targetWords.replace(/^the /, '')}.`}{' '}
             Damage appears in the live stats
             {hud.targets ? ', with the hits on each dummy' : ''}.
           </p>
@@ -620,6 +631,8 @@ function LabView({
                 {session.ammo ? <AmmoCounter ammo={session.ammo} sprites={data.sprites} used={hud.ammoConsumed} compact={compact} /> : null}
                 {/* A thrown explosive: one used per throw (P3-S11). */}
                 {hud.weapon.consumable ? <ConsumableCounter used={hud.consumablesUsed} compact={compact} /> : null}
+                {/* The Moving Dummy (P3-S12 AC2): the shots sent out, and those that missed it. */}
+                {hud.shots ? <ShotsCounter shots={hud.shots} compact={compact} /> : null}
                 {/* The latest blast's per-dummy damage and the Debuff Dummy's debuffs (P3-S11); compact: strips at the bottom. */}
                 {compact ? null : blastReadout(false)}
                 {!compact && hud.debuffDummy ? <DebuffPanel panel={hud.debuffDummy} applied={hud.debuffsApplied} compact={compact} /> : null}
@@ -687,7 +700,8 @@ function LabView({
                   usesAmmo={session.ammo !== null}
                   usesMana={hud.weapon.manaCostPerUse > 0}
                   usesItems={hud.weapon.consumable}
-                  targetName={targetPhrase(hud.target)}
+                  targetName={targetWords}
+                  shotNoun={hud.shots?.noun ?? null}
                   dummyIds={hud.targets ? hud.targets.dummies.map((d) => d.id) : null}
                   sources={hud.summons ? { weapon: session.whip ? 'Whip' : session.summonKind ? null : 'Weapon', summons: hud.summons.kind === 'sentry' ? 'Sentry' : 'Minion' } : null}
                   assumptions={testAssumptions}

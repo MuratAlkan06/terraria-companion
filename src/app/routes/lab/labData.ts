@@ -1,11 +1,15 @@
 /**
  * Data for /lab: the weapon detail records (the sim needs `labBehavior` params and verified
  * stats; the browser filters every weapon by class, stage, rarity, source and damage), the item
- * records (ammo for bows and guns, P3-S4), the buff registry (damage-over-time weapons) and the
- * sprite manifest. All are the shared lazy data chunks (ADR D7) — the Lab adds no data of its own.
+ * records (ammo for bows and guns, P3-S4), the buff registry (damage-over-time weapons), the
+ * sprite manifest and the boss records (the Armored Dummy's verified boss-defense quick picks, P3-S12).
+ * All are the shared lazy data chunks (ADR D7) — the Lab adds no data of its own. The sprites and the
+ * bosses are optional: if either can't load, the Lab works without them (placeholder art; the Armored
+ * Dummy's defense slider without the boss picks).
  */
-import { loadBuffs, loadDetailIndex, loadItems, loadSpriteIndex, peekBuffs, peekDetailIndex, peekItems, peekSpriteIndex } from '../../../data-access'
-import type { Buff, Item, SpriteIndex, Weapon } from '../../../data-access/types'
+import { loadBosses, loadBuffs, loadDetailIndex, loadItems, loadSpriteIndex, peekBosses, peekBuffs, peekDetailIndex, peekItems, peekSpriteIndex } from '../../../data-access'
+import type { Boss, Buff, Item, SpriteIndex, Weapon } from '../../../data-access/types'
+import { bossDefenses, type BossDefense } from '../../../lab/labBossDefense'
 import { labSetup, type LabSetup } from '../../../lab/labSetup'
 import { labWeapons } from '../../../lab/labWeapons'
 import { browserRows, type LabBrowserRow } from './browserModel'
@@ -19,6 +23,8 @@ export interface LabData {
   /** Ammo and buffs handed to the engine (src/lab/labSetup.ts). */
   setup: LabSetup
   sprites: SpriteIndex | null
+  /** Bosses whose verified defense the Armored Dummy offers (empty when the boss records couldn't load). */
+  bossDefenses: readonly BossDefense[]
 }
 
 type Derived = Pick<LabData, 'list' | 'rows' | 'setup'>
@@ -40,8 +46,18 @@ function derive(byId: ReadonlyMap<number, Weapon>, items: readonly Item[], buffs
   return data
 }
 
+const bossPicks = new WeakMap<readonly Boss[], readonly BossDefense[]>()
+
+/** The Armored Dummy's boss picks, derived once per loaded boss list. */
+function picksOf(bosses: readonly Boss[] | null): readonly BossDefense[] {
+  if (!bosses) return []
+  let picks = bossPicks.get(bosses)
+  if (!picks) bossPicks.set(bosses, (picks = bossDefenses(bosses)))
+  return picks
+}
+
 export async function loadLabData(): Promise<LabData> {
-  const [byId, items, buffs, sprites] = await Promise.all([
+  const [byId, items, buffs, sprites, bosses] = await Promise.all([
     loadDetailIndex('weapons'),
     loadItems(),
     loadBuffs(),
@@ -49,15 +65,21 @@ export async function loadLabData(): Promise<LabData> {
       console.warn('[sprites] Manifest unavailable; showing placeholder art.', error)
       return null
     }),
+    loadBosses().catch((error: unknown) => {
+      console.warn('[lab] Boss records unavailable; the Armored Dummy offers no boss defense picks.', error)
+      return null
+    }),
   ])
-  return { ...derive(byId, items, buffs), byId, sprites }
+  return { ...derive(byId, items, buffs), byId, sprites, bossDefenses: picksOf(bosses) }
 }
 
+/** Ready only once the boss records are in too (else the load fetches them; a failed boss load just leaves no picks). */
 export function peekLabData(): LabData | undefined {
   const byId = peekDetailIndex('weapons')
   const items = peekItems()
   const buffs = peekBuffs()
-  return byId && items && buffs ? { ...derive(byId, items, buffs), byId, sprites: peekSpriteIndex() ?? null } : undefined
+  const bosses = peekBosses()
+  return byId && items && buffs && bosses ? { ...derive(byId, items, buffs), byId, sprites: peekSpriteIndex() ?? null, bossDefenses: picksOf(bosses) } : undefined
 }
 
 /**

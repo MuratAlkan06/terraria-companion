@@ -99,9 +99,19 @@ describe('Multiple Dummies framing (P3-S6)', () => {
   })
 
   it('the arena rebuilds its dummy views whenever the engine’s row changes', () => {
-    const one = dummySignature([{ id: 'dummy-0', x: 6, y: 0, width: 2, height: 3, defense: 0, debuffs: [], tag: null }])
-    const two = dummySignature(dummyRow(2, 6).map((d) => ({ id: d.id as string, x: d.x, y: d.y, width: 2, height: 3, defense: 0, debuffs: [], tag: null })))
+    const view = (id: string, x: number, y: number) => ({ id, x, y, prevX: x, prevY: y, path: null, width: 2, height: 3, defense: 0, debuffs: [], tag: null })
+    const one = dummySignature([view('dummy-0', 6, 0)])
+    const two = dummySignature(dummyRow(2, 6).map((d) => view(d.id as string, d.x, d.y)))
     expect(one).not.toBe(two)
     expect(two).toContain('dummy-1@9,0,2x3')
+    // P3-S12: a Moving Dummy is keyed by its path, never by where it is now — moving never rebuilds the views
+    const path = { fromX: 6, fromY: 0, toX: 14, toY: 0 }
+    const here = dummySignature([{ ...view('dummy-0', 6, 0), path }])
+    expect(dummySignature([{ ...view('dummy-0', 9.5, 0), prevX: 9.4, path }])).toBe(here)
+    expect(here).toBe('dummy-0@6,0~14,0,2x3')
+    expect(dummySignature([{ ...view('dummy-0', 6, 0), path: { ...path, toX: 0, toY: -5 } }])).not.toBe(here)
+    // an Armored Dummy's defense is part of the key: a new value (same place and size) rebuilds its armor and label
+    expect(dummySignature([{ ...view('dummy-0', 6, 0), defense: 6 }])).not.toBe(dummySignature([{ ...view('dummy-0', 6, 0), defense: 36 }]))
+    expect(dummySignature([{ ...view('dummy-0', 6, 0), defense: 6 }])).not.toBe(one)
   })
 })

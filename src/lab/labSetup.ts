@@ -22,7 +22,7 @@
  * Multiple Dummies (P3-S6, `target-row`): the engine's row starting at that same spot.
  */
 import type { Archetype, Buff, Item, Weapon } from '../schemas'
-import { createLabSim, DEFAULT_DUMMY, dummyRow, type DummySpec, type SimRefusal } from '../sim'
+import { createLabSim, DEFAULT_DUMMY, DEFAULT_DUMMY_HEIGHT_TILES, DEFAULT_DUMMY_WIDTH_TILES, dummyRow, GROUND_Y_TILES, type DummyMotionAxis, type DummySpec, type SimRefusal } from '../sim'
 
 export interface LabSetup {
   /** Every ammo item in the data (Item records that carry `ammoStats`). */
@@ -117,29 +117,116 @@ export const RANGED_TARGET_X_TILES = 6
 export const firesProjectiles = (archetype: Archetype): boolean => !POINT_BLANK_ARCHETYPES.includes(archetype)
 
 /**
- * The Lab's target (UX_SPEC §3.4 target picker; PRD P3-S6 AC1, P3-S11 AC3): the Infinite Dummy,
- * Multiple Dummies — a row of `count` dummies (the engine's `dummyRow`), the first one where the single
- * dummy stands; the first is the PRIMARY target: the one Space and the timed tests aim at, whose stats
- * the HUD reports apart from the all-dummy totals (AC4) — or the Debuff Dummy: the same single dummy,
- * whose active debuffs and their time left the HUD lists (the engine's debuff state).
+ * The Lab's target (UX_SPEC §3.4 target picker: Infinite / Boss-Sized / Moving / Multiple / Armored /
+ * Debuff; PRD P3-S6 AC1, P3-S11 AC3, P3-S12):
+ * - `single`: the Infinite Dummy (the engine's Target Dummy, 2 × 3 tiles, defense 0).
+ * - `boss`: the Boss-Sized Dummy — the Infinite Dummy scaled up `scale` times (a bigger hitbox, its near
+ *   face and its feet where the Infinite Dummy's are). A Lab test size, not any boss's hitbox.
+ * - `moving`: the Moving Dummy — the Infinite Dummy on a back-and-forth path (the engine's `DummyMotion`)
+ *   along `axis`, MOVING_PATH_TILES long, at `speedTps`.
+ * - `row`: Multiple Dummies — a row of `count` dummies (the engine's `dummyRow`), the first one where the
+ *   single dummy stands; the first is the PRIMARY target: the one Space and the timed tests aim at,
+ *   whose stats the HUD reports apart from the all-dummy totals (AC4).
+ * - `armored`: the Armored Dummy — the Infinite Dummy with `defense` (the engine's verified defense
+ *   formula). A test value the player picks — or a boss's verified first-form defense (`bossId`, from the
+ *   bosses data with its wiki source; ./labBossDefense.ts), named only while the value is that boss's.
+ * - `debuff`: the Debuff Dummy — the single dummy, whose active debuffs and their time left the HUD lists.
  */
-export type LabTarget = { kind: 'single' } | { kind: 'row'; count: number } | { kind: 'debuff' }
+export type LabTarget =
+  | { kind: 'single' }
+  | { kind: 'boss'; scale: number }
+  | { kind: 'moving'; axis: DummyMotionAxis; speedTps: number }
+  | { kind: 'row'; count: number }
+  | { kind: 'armored'; defense: number; bossId: string | null }
+  | { kind: 'debuff' }
+
+export type LabTargetKind = LabTarget['kind']
+
+/** The picker's order (UX_SPEC §3.4). */
+export const LAB_TARGET_KINDS: readonly LabTargetKind[] = ['single', 'boss', 'moving', 'row', 'armored', 'debuff']
 
 export const DEFAULT_LAB_TARGET: LabTarget = Object.freeze({ kind: 'single' })
 /** Multiple Dummies: how many the row may hold, and how many it starts with. */
 export const ROW_COUNTS = [2, 3, 4, 5] as const
 export const DEFAULT_ROW_COUNT = 3
+/**
+ * Boss-Sized Dummy: how many times the Infinite Dummy's size it may be (whole multiples keep the pixel
+ * art crisp: 4 × 6, 6 × 9 or 8 × 12 tiles), and the size it starts at. Lab test sizes.
+ */
+export const BOSS_SCALES = [2, 3, 4] as const
+export const DEFAULT_BOSS_SCALE = 3
+/** Moving Dummy: the axes, its speed range (tiles per second, whole steps; Lab test values) and start. */
+export const MOVING_AXES: readonly DummyMotionAxis[] = ['horizontal', 'vertical']
+export const MOVING_SPEED_RANGE = { min: 1, max: 16, step: 1 } as const
+export const DEFAULT_MOVING_SPEED = 4
+/** How far the Moving Dummy travels from where it starts, by axis (tiles; Lab choice): away and back, or up and back. */
+export const MOVING_PATH_TILES: Readonly<Record<DummyMotionAxis, number>> = { horizontal: 8, vertical: 5 }
+/** Armored Dummy: the defense range (whole numbers; player-chosen test values) and the value it starts at. */
+export const ARMORED_DEFENSE_RANGE = { min: 0, max: 100, step: 1 } as const
+export const DEFAULT_ARMORED_DEFENSE = 20
 
-/** A target the Lab offers (single, the Debuff Dummy, or a row of an offered size). */
-export const isLabTarget = (target: LabTarget): boolean => target.kind !== 'row' || (ROW_COUNTS as readonly number[]).includes(target.count)
+const inRange = (n: number, r: { min: number; max: number }) => Number.isInteger(n) && n >= r.min && n <= r.max
 
-export const sameTarget = (a: LabTarget, b: LabTarget): boolean => a.kind === b.kind && (a.kind !== 'row' || (b.kind === 'row' && a.count === b.count))
+/** A target the Lab offers: a known kind with values from its own ranges. */
+export function isLabTarget(target: LabTarget): boolean {
+  switch (target.kind) {
+    case 'single':
+    case 'debuff':
+      return true
+    case 'row':
+      return (ROW_COUNTS as readonly number[]).includes(target.count)
+    case 'boss':
+      return (BOSS_SCALES as readonly number[]).includes(target.scale)
+    case 'moving':
+      return MOVING_AXES.includes(target.axis) && inRange(target.speedTps, MOVING_SPEED_RANGE)
+    case 'armored':
+      return inRange(target.defense, ARMORED_DEFENSE_RANGE) && (target.bossId === null || typeof target.bossId === 'string')
+    default:
+      return false
+  }
+}
+
+/** Same kind and the same values (a changed value is a new target: the stats restart). */
+export function sameTarget(a: LabTarget, b: LabTarget): boolean {
+  if (a.kind !== b.kind) return false
+  switch (a.kind) {
+    case 'row':
+      return b.kind === 'row' && a.count === b.count
+    case 'boss':
+      return b.kind === 'boss' && a.scale === b.scale
+    case 'moving':
+      return b.kind === 'moving' && a.axis === b.axis && a.speedTps === b.speedTps
+    case 'armored':
+      return b.kind === 'armored' && a.defense === b.defense && a.bossId === b.bossId
+    default:
+      return true
+  }
+}
 
 /** Where the (first) dummy stands for an archetype: point-blank for blades, else the ranged distance. */
 export const targetX = (archetype: Archetype): number => (firesProjectiles(archetype) ? RANGED_TARGET_X_TILES : DEFAULT_DUMMY.x)
 
-/** The dummies the Lab places for an archetype and target (the Debuff Dummy stands where the single dummy does). */
+/**
+ * The dummies the Lab places for an archetype and target. The Debuff, Moving and Armored Dummies stand
+ * where the single dummy does (a Moving Dummy starts there); the Boss-Sized Dummy keeps the Infinite
+ * Dummy's near face and feet, growing away from you and upward.
+ */
 export function labDummiesFor(archetype: Archetype, target: LabTarget = DEFAULT_LAB_TARGET): DummySpec[] {
   const x = targetX(archetype)
-  return target.kind === 'row' ? dummyRow(target.count, x) : [{ ...DEFAULT_DUMMY, x }]
+  switch (target.kind) {
+    case 'row':
+      return dummyRow(target.count, x)
+    case 'boss': {
+      const width = DEFAULT_DUMMY_WIDTH_TILES * target.scale
+      const height = DEFAULT_DUMMY_HEIGHT_TILES * target.scale
+      return [{ id: DEFAULT_DUMMY.id, x: x - DEFAULT_DUMMY_WIDTH_TILES / 2 + width / 2, y: GROUND_Y_TILES - height / 2, widthTiles: width, heightTiles: height }]
+    }
+    case 'moving':
+      return [{ ...DEFAULT_DUMMY, x, motion: { axis: target.axis, speedTps: target.speedTps, rangeTiles: MOVING_PATH_TILES[target.axis] } }]
+    case 'armored':
+      return [{ ...DEFAULT_DUMMY, x, defense: target.defense }]
+    default:
+      return [{ ...DEFAULT_DUMMY, x }]
+  }
 }
+

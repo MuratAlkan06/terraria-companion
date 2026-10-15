@@ -61,6 +61,12 @@
  * (AC3): the target's active debuffs with their names, damage per second and time left (the engine's
  * debuff state, refreshed a tenth of a second at a time while any runs), and the debuffs applied since
  * the last reset (AC2's stat).
+ *
+ * Dummy roster v2 (PRD P3-S12): the Boss-Sized, Moving and Armored Dummies are targets like the others
+ * (`setTarget`; ./labSetup.ts places them). Against the Moving Dummy a weapon that sends projectiles out
+ * shows its SHOTS — fired and missed (the engine's `projectilesSpawned` / `projectilesMissed`: a shot that
+ * left without hitting) — so a miss (AC2) is a number as well as a sight. An Armored Dummy at a boss's
+ * verified defense names that boss in its assumption (`bossDefenses`, ./labBossDefense.ts).
  */
 import type { Buff, Item, Weapon } from '../schemas'
 import {
@@ -87,6 +93,7 @@ import {
   type WeaponSummary,
 } from '../sim'
 import { labAssumptionsFor, type LabAssumption } from './labAssumptions'
+import { namedBoss, type BossDefense } from './labBossDefense'
 import { ammoClassOf, DEFAULT_LAB_TARGET, firesProjectiles, isLabTarget, labDummiesFor, resolveAmmo, sameTarget, type LabSetup, type LabTarget } from './labSetup'
 
 export interface LabTimedTestHud {
@@ -131,6 +138,14 @@ export interface LabManaHud {
   regen: boolean
   /** The latest attack was a low-mana cast at 40% speed (the engine's `use-start` flag). */
   slowCasting: boolean
+}
+
+/** A weapon's shots against the Moving Dummy (PRD P3-S12 AC2): sent out, and those that left without a hit. */
+export interface LabShotsHud {
+  /** `throw` for a thrown weapon (a returning weapon, an explosive), else `shot`. */
+  noun: 'shot' | 'throw'
+  fired: number
+  missed: number
 }
 
 /** One dummy's live numbers (Multiple Dummies), as of the last publish. */
@@ -292,6 +307,8 @@ export interface LabHudState {
   lastBlast: LabBlastHud | null
   /** The Debuff Dummy's panel while that is the target, else null. */
   debuffDummy: LabDebuffDummyHud | null
+  /** Shots fired and missed while the target is the Moving Dummy and the weapon sends projectiles out, else null. */
+  shots: LabShotsHud | null
   /** A timed test is running: the weapon, target and settings can't change (UX_SPEC §5.7). */
   locked: boolean
 }
@@ -335,6 +352,8 @@ export interface LabSessionOptions {
    * (the Lab offers it beside a whip). Null / absent: none.
    */
   loadout?: Weapon | null
+  /** The Armored Dummy's boss quick picks (./labBossDefense.ts): an armored target naming one is described as that boss's defense. */
+  bossDefenses?: readonly BossDefense[]
 }
 
 export type CreateLabSessionResult = { ok: true; session: LabSession } | { ok: false; refusal: SimRefusal }
@@ -372,7 +391,7 @@ export function createLabSession(weapon: Weapon, options: LabSessionOptions = {}
     ...(loadout ? { minionLoadout: loadout } : {}),
   })
   if (!created.ok) return { ok: false, refusal: created.refusal }
-  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? [], target, loadout) }
+  return { ok: true, session: new LabSession(weapon, created.sim, nextSeed, ammo, setup?.buffs ?? [], target, loadout, options.bossDefenses ?? []) }
 }
 
 /** A finished (or running) timed test: what "Run again" replays. */
@@ -434,6 +453,14 @@ export class LabSession {
   readonly explosive: ExplosiveShape | null
   /** The minion loadout (a minion staff whose minions are out beside a whip), else null. */
   readonly loadout: Weapon | null
+  /**
+   * What the weapon sends out that can miss (P3-S12): `shot` (bows, guns, magic, piercing shots, a summon's
+   * flying shot) or `throw` (a returning weapon, a thrown explosive); null for a blade, a held beam, a whip,
+   * or summons that strike by touch or land their shot at once.
+   */
+  readonly shotNoun: 'shot' | 'throw' | null
+  /** The Armored Dummy's boss quick picks (names the boss whose verified defense a target uses). */
+  readonly bossDefenses: readonly BossDefense[]
 
   private readonly nextSeed: () => number
   private readonly held: Record<InputSource, boolean> = { pointer: false, key: false }
@@ -480,6 +507,7 @@ export class LabSession {
     buffs: readonly Buff[] = [],
     target: LabTarget = DEFAULT_LAB_TARGET,
     loadout: Weapon | null = null,
+    bossDefenses: readonly BossDefense[] = [],
   ) {
     this.weapon = weapon
     this.sim = sim
@@ -500,6 +528,16 @@ export class LabSession {
     this.explosive =
       params?.archetype === 'explosive-aoe' ? { blastRadiusTiles: params.blastRadiusTiles, trigger: params.trigger, fuseTicks: params.fuseTicks ?? null, falloff: params.falloff } : null
     this.loadout = sim.loadout ? loadout : null
+    this.bossDefenses = bossDefenses
+    this.shotNoun =
+      params?.archetype === 'returning' || params?.archetype === 'explosive-aoe'
+        ? 'throw'
+        : params?.archetype === 'bow-gun' ||
+            params?.archetype === 'magic-bolt' ||
+            (params?.archetype === 'piercing-beam' && params.mode === 'pierce-projectile') ||
+            (params?.archetype === 'minion-sentry' && params.aiClass === 'ranged-shot' && params.projectile !== undefined)
+          ? 'shot'
+          : null
     this.firesProjectiles = firesProjectiles(this.summary.archetype)
     this.frameTiles = this.firesProjectiles ? RANGED_FRAME_TILES : this.reachTiles
     this.target = target
@@ -515,7 +553,8 @@ export class LabSession {
   blastFrame(): { x: number; y: number; radiusTiles: number } | null {
     const first = this.explosive ? this.sim.renderState().dummies[0] : undefined
     if (!this.explosive || !first) return null
-    return { x: first.x, y: GROUND_Y_TILES - THROWN_REST_HEIGHT_TILES, radiusTiles: this.explosive.blastRadiusTiles }
+    // A Moving Dummy (P3-S12): framed at its home, wherever it is now — the camera never follows it.
+    return { x: first.path ? first.path.fromX : first.x, y: GROUND_Y_TILES - THROWN_REST_HEIGHT_TILES, radiusTiles: this.explosive.blastRadiusTiles }
   }
 
   /** Summons are involved: a summon staff, or the minion loadout. */
@@ -528,6 +567,7 @@ export class LabSession {
     if (!this.assumptionList || !sameTarget(this.assumptionList.target, this.target)) {
       const list = labAssumptionsFor(this.summary.archetype, this.sim.approximations, this.weapon, {
         target: this.target,
+        boss: this.target.kind === 'armored' ? namedBoss(this.target, this.bossDefenses) : null,
         returnsToHand: this.summary.returnsToHand,
         summons: this.hasSummons,
         loadout: this.loadout !== null,
@@ -608,6 +648,9 @@ export class LabSession {
         // Caught: the next attack may start on the following tick — that is where this one ends.
         this.extendOut(e.tick + 1)
         this.out = null
+        changed = true
+      } else if (e.type === 'projectile-despawn' && this.target.kind === 'moving') {
+        // A shot gone (the Moving Dummy's missed shots may have changed).
         changed = true
       } else if (e.type === 'use-blocked') {
         // A cast stopped for mana.
@@ -1007,6 +1050,7 @@ export class LabSession {
       tags: this.tagsHud(),
       lastBlast: this.blastHud(),
       debuffDummy: this.debuffDummyHud(stats),
+      shots: this.target.kind === 'moving' && this.shotNoun ? { noun: this.shotNoun, fired: stats.projectilesSpawned, missed: stats.projectilesMissed } : null,
       locked: timedTest.status === 'running',
     }
   }

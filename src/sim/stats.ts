@@ -17,6 +17,7 @@ export class StatsAccumulator {
   private uses = 0
   private activations = 0
   private projectilesSpawned = 0
+  private projectilesMissed = 0
   private ammoConsumed = 0
   private consumablesUsed = 0
   private explosions = 0
@@ -48,6 +49,7 @@ export class StatsAccumulator {
     this.uses = 0
     this.activations = 0
     this.projectilesSpawned = 0
+    this.projectilesMissed = 0
     this.ammoConsumed = 0
     this.consumablesUsed = 0
     this.explosions = 0
@@ -107,6 +109,10 @@ export class StatsAccumulator {
   projectile(): void {
     this.projectilesSpawned++
   }
+  /** A projectile despawned without landing a hit (P3-S12). */
+  missed(): void {
+    this.projectilesMissed++
+  }
   ammo(count: number): void {
     this.ammoConsumed += count
   }
@@ -162,6 +168,7 @@ export class StatsAccumulator {
       uses: this.uses,
       activations: this.activations,
       projectilesSpawned: this.projectilesSpawned,
+      projectilesMissed: this.projectilesMissed,
       ammoConsumed: this.ammoConsumed,
       consumablesUsed: this.consumablesUsed,
       explosions: this.explosions,

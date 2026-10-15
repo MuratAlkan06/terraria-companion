@@ -273,6 +273,8 @@ describe('timed-test results by source (PRD P3-S9 AC3, P3-S10 AC3)', () => {
     hits: breakdown.weaponHits + breakdown.summonHits,
     crits: 3,
     uses: 20,
+    projectilesSpawned: 0,
+    projectilesMissed: 0,
     attacksPerSec: 2,
     ammoConsumed: 0,
     consumablesUsed: 0,

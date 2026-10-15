@@ -15,7 +15,7 @@ import { buildDebuffIcon } from '../../../lab/art/arenaArt'
 import { ARENA_PALETTE } from '../../../lab/art/arenaPalette'
 import { debuffGlyph, type DebuffGlyph } from '../../../lab/debuffVisuals'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
-import type { ExplosiveShape, LabBlastHud, LabDebuffDummyHud, LabDebuffHud, LabHitSource, LabHudState, LabManaHud, LabSummonsHud, LabTagHud, LabTargetsHud } from '../../../lab/labSession'
+import type { ExplosiveShape, LabBlastHud, LabDebuffDummyHud, LabDebuffHud, LabHitSource, LabHudState, LabManaHud, LabShotsHud, LabSummonsHud, LabTagHud, LabTargetsHud } from '../../../lab/labSession'
 import { behaviorFacts } from '../../../lab/labWeapons'
 import { getField } from '../../../schemas/getField'
 import { APPROXIMATIONS } from '../../../sim'
@@ -831,6 +831,33 @@ export function ConsumableCounter({ used, compact }: { used: number; compact: bo
         </span>
         {/* The compact HUD keeps it to one line: the controls list says one is used per throw. */}
         {compact ? null : <span className="whitespace-nowrap"> · one per throw</span>}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * Shots against the Moving Dummy (PRD P3-S12 AC2): how many the weapon sent out and how many left without
+ * hitting it (the engine's `projectilesMissed`) — a miss as a number, beside the sight of the shot flying
+ * past. Shown from the target's start (0 of 0), its numbers in reserved width, so it never resizes the HUD
+ * row the camera frames around. Readout-only: aiming passes through it.
+ */
+export function ShotsCounter({ shots, compact }: { shots: LabShotsHud; compact: boolean }) {
+  const plural = `${shots.noun}s`
+  return (
+    <section aria-label={`Missed ${plural}`} className={cx(HUD_SURFACE, 'pointer-events-none flex max-w-64 items-center gap-2 text-xs', compact ? 'p-1.5' : 'p-2')} data-shots-counter="">
+      <Crosshair aria-hidden="true" className="size-4 shrink-0 text-accent" />
+      {/* One line in the compact HUD's narrow column: the noun goes to screen readers there. */}
+      <p className="whitespace-nowrap text-fg-muted tabular-nums">
+        Missed{' '}
+        <span className="inline-block min-w-[2ch] text-right font-semibold text-fg" data-stat="shots-missed">
+          {formatInt(shots.missed)}
+        </span>{' '}
+        of{' '}
+        <span className="inline-block min-w-[2ch] font-semibold text-fg" data-stat="shots-fired">
+          {formatInt(shots.fired)}
+        </span>
+        {compact ? <span className="sr-only"> {plural}</span> : ` ${plural}`}
       </p>
     </section>
   )

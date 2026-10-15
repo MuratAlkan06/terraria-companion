@@ -144,8 +144,13 @@ export interface ResultsSummaryProps {
   usesMana?: boolean
   /** A thrown explosive (P3-S11): show the explosives the run used (one per throw). */
   usesItems?: boolean
-  /** The single target's name in the run line (default "the Infinite Dummy"; the Debuff Dummy, P3-S11). */
+  /** The single target's name in the run line (default "the Infinite Dummy"; the Debuff Dummy, P3-S11; P3-S12's roster with its values). */
   targetName?: string
+  /**
+   * The Moving Dummy (PRD P3-S12 AC2) with a weapon that sends projectiles out: what to call them (`shot` /
+   * `throw`) — the results then say how many of the run's missed. Null or absent: no such row.
+   */
+  shotNoun?: 'shot' | 'throw' | null
   /**
    * Multiple Dummies (PRD P3-S6 AC4): the row's dummy ids, nearest first (the first is the primary
    * target) — the totals are then over all dummies, with the primary target's DPS and each dummy's
@@ -173,6 +178,7 @@ export function ResultsSummary({
   usesMana = false,
   usesItems = false,
   targetName = 'the Infinite Dummy',
+  shotNoun = null,
   dummyIds = null,
   sources = null,
   assumptions,
@@ -298,6 +304,14 @@ export function ResultsSummary({
             <span data-result="crits">{formatInt(result.crits)}</span>
             <span className="ml-1 text-xs font-normal text-fg-muted">({critRate}% of hits)</span>
           </Row>
+          {shotNoun ? (
+            <Row label={`Missed ${shotNoun}s`} srLabel={`${shotNoun}s that missed the Moving Dummy`}>
+              <span data-result="shots-missed">{formatInt(result.projectilesMissed)}</span>
+              <span className="ml-1 text-xs font-normal text-fg-muted">
+                of <span data-result="shots-fired">{formatInt(result.projectilesSpawned)}</span>
+              </span>
+            </Row>
+          ) : null}
           {usesAmmo ? (
             <Row label="Ammo used">
               <span data-result="ammo">{formatInt(result.ammoConsumed)}</span>

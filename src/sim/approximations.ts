@@ -73,6 +73,7 @@ export type ApproximationId =
   | 'blast-area'
   | 'blast-falloff'
   | 'explosive-consumable'
+  | 'dummy-motion'
 
 export interface Approximation {
   id: ApproximationId
@@ -264,7 +265,7 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
   knockback: {
     id: 'knockback',
     title: 'Knockback ignored',
-    detail: 'Dummies never move; the Target Dummy is unaffected by knockback.',
+    detail: 'Hits never push a dummy: the Target Dummy is unaffected by knockback, and a Moving Dummy keeps to the path you set.',
     sourceUrl: `${WIKI}Target_Dummy`,
   },
   'dummy-hitbox': {
@@ -443,6 +444,13 @@ export const APPROXIMATIONS: Readonly<Record<ApproximationId, Approximation>> = 
     title: 'One explosive used per throw',
     detail:
       'Each throw uses up one explosive, counted as “Explosives used”. The Lab never runs out: stack size and buying more are not modeled.',
+  },
+  // P3-S12: the Moving Dummy (a dummy with a path — src/sim/motion.ts)
+  'dummy-motion': {
+    id: 'dummy-motion',
+    title: 'Moving Dummy: a fixed back-and-forth path',
+    detail:
+      'The Moving Dummy glides along a straight path at the constant speed you set — away from you and back, or up and back down — and turns around instantly at each end; hits never push it off its path. Holding Space and the timed tests aim each shot or swing at where it is at that moment, without leading it, so shots can miss. Minions and sentries keep up with it, and every summon attack still lands. A Lab test target, not any enemy’s movement.',
   },
 }
 

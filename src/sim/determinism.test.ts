@@ -112,6 +112,46 @@ const SCENARIOS: Record<string, () => LabSimOptions> = {
     dummies: dummyRow(4, 5),
     seed: 71,
   }),
+  // P3-S12 (pinned 2026-10-14): the dummy roster — Moving (both axes; shots, a blade, summons, a blast vs a
+  // moving box), Boss-Sized (a spread fan into a 3× box) and Armored (defense 20 on every hit).
+  'moving dummy, horizontal (arcing arrows, misses)': () => ({
+    weapon: bowFixture({}, { critPct: 4, shootSpeedTps: 12 }),
+    ammo: ammoFixture({ damage: 6, projectile: { velocityTps: 1, gravity: true } }),
+    dummies: [{ x: 6, y: 0, motion: { axis: 'horizontal', speedTps: 6, rangeTiles: 8 } }],
+    seed: 72,
+  }),
+  'moving dummy, vertical (straight bolts, misses)': () => ({
+    weapon: staffFixture({ projectile: { velocityTps: 18 } }, { critPct: 4 }),
+    settings: { ignoreMana: true },
+    dummies: [{ x: 6, y: 0, motion: { axis: 'vertical', speedTps: 9, rangeTiles: 5 } }],
+    seed: 73,
+  }),
+  'moving dummy, sword (out of reach and back)': () => ({
+    weapon: swordFixture({ autoReuse: true, critPct: 6, damage: 14 }),
+    dummies: [{ x: 2, y: 0, motion: { axis: 'horizontal', speedTps: 4, rangeTiles: 8 } }],
+    seed: 74,
+  }),
+  'moving dummy, sentry (in and out of range)': () => ({
+    weapon: summonFixture({ variant: 'sentry', aiClass: 'ranged-shot', attackRateTicks: 20, sentryRangeTiles: 6, projectile: { velocityTps: 20 } }, { damage: 18 }),
+    dummies: [{ x: 6, y: 0, motion: { axis: 'vertical', speedTps: 3, rangeTiles: 5 } }],
+    seed: 75,
+  }),
+  'moving dummy, bomb (lands where it was)': () => ({
+    weapon: explosiveFixture({ blastRadiusTiles: 2 }),
+    dummies: [{ x: 6, y: 0, motion: { axis: 'horizontal', speedTps: 4, rangeTiles: 8 } }],
+    seed: 76,
+  }),
+  'boss-sized dummy (spread fan into a 6×9 box)': () => ({
+    weapon: bowFixture({ projectilesPerUse: 5, spreadDegrees: 40 }, { useTimeTicks: 40, useAnimationTicks: 40, critPct: 6 }),
+    ammo: ammoFixture({ damage: 4 }),
+    dummies: [{ x: 8, y: -3, widthTiles: 6, heightTiles: 9 }],
+    seed: 77,
+  }),
+  'armored dummy (defense 20, variance + crits)': () => ({
+    weapon: swordFixture({ autoReuse: true, critPct: 10, damage: 30 }),
+    dummies: [{ x: 2, y: 0, defense: 20 }],
+    seed: 78,
+  }),
 }
 
 function create(options: LabSimOptions): LabSim {
@@ -285,6 +325,10 @@ describe('seeded reproducibility', () => {
  * - The two P3-S11 scenarios (timed bomb, impact grenade): pinned 2026-10-14 as new scenarios; the
  *   kernel's explode / touch / detonated / consumeItem hooks and the debuff duration field left all
  *   fourteen earlier fingerprints unchanged — README changelog.
+ * - The seven P3-S12 scenarios (the dummy roster: Moving on both axes vs arrows, bolts, a sword, a
+ *   sentry and a bomb; Boss-Sized; Armored): pinned 2026-10-14 as new scenarios; the kernel's dummy
+ *   motion step (a no-op for a dummy without a path), the missed-projectile count and the render state's
+ *   prev / path fields left all sixteen earlier fingerprints unchanged — README changelog.
  */
 const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; crits: number; uses: number; digest: string }> = {
   'sword (variance + crits)': { total: 1049, dot: 0, hits: 95, crits: 10, uses: 95, digest: 'ae897f46' },
@@ -303,6 +347,13 @@ const GOLDEN_30S: Record<string, { total: number; dot: number; hits: number; cri
   'whip + minion loadout (tags, tag crit, falloff, minion DoT)': { total: 9644, dot: 89, hits: 537, crits: 33, uses: 60, digest: '12a71806' },
   'bomb (timed fuse, blast radius, armored row, classless)': { total: 12768, dot: 0, hits: 130, crits: 0, uses: 72, digest: 'f5b11d7b' },
   'grenade (impact, linear falloff, crits, DoT)': { total: 4046, dot: 183, hits: 80, crits: 6, uses: 40, digest: '63bd07b6' },
+  'moving dummy, horizontal (arcing arrows, misses)': { total: 289, dot: 0, hits: 19, crits: 2, uses: 72, digest: '6ca22c50' },
+  'moving dummy, vertical (straight bolts, misses)': { total: 569, dot: 0, hits: 36, crits: 2, uses: 90, digest: 'd84bf0f0' },
+  'moving dummy, sword (out of reach and back)': { total: 383, dot: 0, hits: 23, crits: 4, uses: 95, digest: '6c46d2ed' },
+  'moving dummy, sentry (in and out of range)': { total: 1435, dot: 0, hits: 81, crits: 0, uses: 1, digest: 'ef52d63b' },
+  'moving dummy, bomb (lands where it was)': { total: 2535, dot: 0, hits: 25, crits: 0, uses: 72, digest: '4cfb6878' },
+  'boss-sized dummy (spread fan into a 6×9 box)': { total: 2980, dot: 0, hits: 225, crits: 25, uses: 45, digest: '21b37d05' },
+  'armored dummy (defense 20, variance + crits)': { total: 2164, dot: 0, hits: 95, crits: 14, uses: 95, digest: '96c724bf' },
 }
 
 describe('timed-test controller (P3-S3 AC3)', () => {

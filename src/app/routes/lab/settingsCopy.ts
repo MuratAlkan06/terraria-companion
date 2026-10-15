@@ -6,7 +6,7 @@
  */
 import { LAB_ASSUMPTIONS } from '../../../lab/labAssumptions'
 import type { LabTarget } from '../../../lab/labSetup'
-import type { InsufficientManaPolicy, LabSettings, SummonKind } from '../../../sim'
+import { DEFAULT_DUMMY_HEIGHT_TILES, DEFAULT_DUMMY_WIDTH_TILES, type DummyMotionAxis, type InsufficientManaPolicy, type LabSettings, type SummonKind } from '../../../sim'
 
 /** The low-mana casting choices, as the panel titles them. */
 export const LOW_MANA_POLICY_TITLE: Record<InsufficientManaPolicy, string> = {
@@ -16,13 +16,63 @@ export const LOW_MANA_POLICY_TITLE: Record<InsufficientManaPolicy, string> = {
 
 const RESTARTED = 'the stats start again from zero.'
 
-/** "3 Infinite Dummies in a row — the stats start again from zero." (a new target, P3-S6; the Debuff Dummy, P3-S11) */
-export const targetAnnouncement = (target: LabTarget): string =>
-  `${target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : target.kind === 'debuff' ? 'Debuff Dummy, listing its active debuffs' : 'One Infinite Dummy'} — ${RESTARTED}`
+/** The Moving Dummy's path in words: "away and back" / "up and back". */
+export const MOVING_PATH_WORDS: Readonly<Record<DummyMotionAxis, string>> = { horizontal: 'away and back', vertical: 'up and back' }
 
-/** The target in words for running text ("the Infinite Dummy", "3 Infinite Dummies in a row", "the Debuff Dummy"). */
-export const targetPhrase = (target: LabTarget): string =>
-  target.kind === 'row' ? `${target.count} Infinite Dummies in a row` : target.kind === 'debuff' ? 'the Debuff Dummy' : 'the Infinite Dummy'
+/**
+ * The Armored Dummy's defense rule, worded as the defense assumptions tip words it (APPROXIMATIONS.defense;
+ * AMENDMENTS-016 B101c) — on its target card and under its defense slider.
+ */
+export const DEFENSE_RULE_PHRASE = 'each hit is reduced by half the dummy defense (rounded down, never below 1)'
+export const DEFENSE_RULE = `${DEFENSE_RULE_PHRASE.charAt(0).toUpperCase()}${DEFENSE_RULE_PHRASE.slice(1)}.`
+
+/** The Boss-Sized Dummy's size in words: "6 × 9 tiles". */
+export const bossSizeWords = (scale: number): string => `${DEFAULT_DUMMY_WIDTH_TILES * scale} × ${DEFAULT_DUMMY_HEIGHT_TILES * scale} tiles`
+
+/**
+ * A target's name and what is set on it: { "Boss-Sized Dummy", "6 × 9 tiles" }, { "Moving Dummy", "away and
+ * back at 4 tiles/s" }, { "Armored Dummy", "defense 36", "Plantera’s" } — `bossName`: the boss whose verified
+ * defense an Armored Dummy uses, if any.
+ */
+function targetParts(target: LabTarget, bossName: string | null): { name: string; detail: string | null; boss: string | null } {
+  switch (target.kind) {
+    case 'row':
+      return { name: `${target.count} Infinite Dummies in a row`, detail: null, boss: null }
+    case 'debuff':
+      return { name: 'Debuff Dummy', detail: null, boss: null }
+    case 'boss':
+      return { name: 'Boss-Sized Dummy', detail: bossSizeWords(target.scale), boss: null }
+    case 'moving':
+      return { name: 'Moving Dummy', detail: `${MOVING_PATH_WORDS[target.axis]} at ${target.speedTps} tiles/s`, boss: null }
+    case 'armored':
+      return { name: 'Armored Dummy', detail: `defense ${target.defense}`, boss: bossName ? `${bossName}’s` : null }
+    default:
+      return { name: 'Infinite Dummy', detail: null, boss: null }
+  }
+}
+
+/**
+ * "3 Infinite Dummies in a row — the stats start again from zero." (a new target: P3-S6 row, P3-S11 Debuff
+ * Dummy, P3-S12 roster: "Armored Dummy, defense 36 (Plantera’s) — …").
+ */
+export function targetAnnouncement(target: LabTarget, bossName: string | null = null): string {
+  if (target.kind === 'debuff') return `Debuff Dummy, listing its active debuffs — ${RESTARTED}`
+  if (target.kind === 'single') return `One Infinite Dummy — ${RESTARTED}`
+  const { name, detail, boss } = targetParts(target, bossName)
+  return `${name}${detail ? `, ${detail}` : ''}${boss ? ` (${boss})` : ''} — ${RESTARTED}`
+}
+
+/**
+ * The target in words for running text: "the Infinite Dummy", "3 Infinite Dummies in a row", "the Debuff
+ * Dummy", "the Boss-Sized Dummy (6 × 9 tiles)", "the Moving Dummy (away and back at 4 tiles/s)", "the
+ * Armored Dummy (defense 36, Plantera’s)".
+ */
+export function targetPhrase(target: LabTarget, bossName: string | null = null): string {
+  const { name, detail, boss } = targetParts(target, bossName)
+  if (target.kind === 'row') return name
+  const inner = [detail, boss].filter(Boolean).join(', ')
+  return inner ? `the ${name} (${inner})` : `the ${name}`
+}
 
 /** "Wooden Arrow loaded — the stats start again from zero." */
 export const ammoLoadedAnnouncement = (ammoName: string): string => `${ammoName} loaded — ${RESTARTED}`

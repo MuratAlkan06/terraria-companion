@@ -2,6 +2,9 @@
  * The simulation kernel: one fixed 60 Hz tick at a time, archetype-agnostic.
  *
  * Tick order (fixed — part of the determinism contract):
+ *   0. moving dummies (P3-S12) take their place for this tick: the closed-form point of their path at
+ *      the tick being reached (src/sim/motion.ts) — so every hit this tick, and the auto-aim, see where
+ *      the dummy is now; a dummy without a path never moves (and this step is a no-op for it)
  *   1. resolve aim/facing from the latched input
  *   2. use cycle: end finished use (its reuse delay starts) → start a new one if attacking, the
  *      reuse delay has passed and the behavior is ready (a returning weapon is back; a summon weapon
@@ -48,6 +51,7 @@ import {
 import { applyDefense, applyVariancePct, blastDamage, blastKeptPct, rollHit } from './damage'
 import { Digest } from './digest'
 import { aabbCenter, aabbFromCenter, angleTo, nearestPointInAabb, segmentAabbEntry } from './geometry'
+import { dummyPathOffset, dummyPathPoint } from './motion'
 import { mulberry32, type Rng } from './rng'
 import { StatsAccumulator } from './stats'
 import type { ArenaBounds, BladePose, DummySpec, LabInput, LabSettings, ManaState, RenderState, SimEvent, SummonKind, SummonsState, Vec2 } from './types'
@@ -136,14 +140,21 @@ export class World implements KernelApi {
     this.cfg = cfg
     this.rng = mulberry32(cfg.seed)
     this.settings = { ...cfg.settings }
-    this.dummies = cfg.dummies.map((d, index) => ({
-      index,
-      id: d.id ?? `dummy-${index}`,
-      box: aabbFromCenter(d.x, d.y, d.widthTiles ?? DEFAULT_DUMMY_WIDTH_TILES, d.heightTiles ?? DEFAULT_DUMMY_HEIGHT_TILES),
-      defense: d.defense ?? 0,
-      debuffs: [],
-      tag: null,
-    }))
+    this.dummies = cfg.dummies.map((d, index) => {
+      const size = { width: d.widthTiles ?? DEFAULT_DUMMY_WIDTH_TILES, height: d.heightTiles ?? DEFAULT_DUMMY_HEIGHT_TILES }
+      return {
+        index,
+        id: d.id ?? `dummy-${index}`,
+        box: aabbFromCenter(d.x, d.y, size.width, size.height),
+        size,
+        defense: d.defense ?? 0,
+        motion: d.motion ? { ...d.motion } : null,
+        home: { x: d.x, y: d.y },
+        prev: { x: d.x, y: d.y },
+        debuffs: [],
+        tag: null,
+      }
+    })
     this.stats = new StatsAccumulator(this.dummies.map((d) => d.id))
     const cooldowns = cfg.modifiers.flatMap((m) => (m.hitCooldownTicks === undefined ? [] : [m.hitCooldownTicks]))
     this.hitCooldown = cooldowns.length > 0 ? Math.min(...cooldowns) : null
@@ -157,6 +168,7 @@ export class World implements KernelApi {
   // Tick
 
   step(): void {
+    this.moveDummies()
     this.resolveAim()
     this.stepUse()
     this.stepAgents()
@@ -166,6 +178,22 @@ export class World implements KernelApi {
     this.stepMana()
     this.stats.endTick()
     this.tick++
+  }
+
+  /**
+   * Moving dummies (P3-S12 AC2): each takes the point of its path at the tick this step reaches (tick + 1:
+   * a world starts every dummy at home, offset 0), its box moved in place; `prev` keeps where it was.
+   */
+  private moveDummies(): void {
+    for (const d of this.dummies) {
+      if (!d.motion) continue
+      const c = aabbCenter(d.box)
+      d.prev.x = c.x
+      d.prev.y = c.y
+      // From the spec's size every tick (never the moved box's), so no rounding accumulates.
+      const at = dummyPathPoint(d.home, d.motion, dummyPathOffset(d.motion, this.tick + 1))
+      Object.assign(d.box, aabbFromCenter(at.x, at.y, d.size.width, d.size.height))
+    }
   }
 
   private resolveAim(): void {
@@ -256,7 +284,7 @@ export class World implements KernelApi {
         // A guided flight (returning weapon, thrown explosive) is steered by its interpreter alone.
         const steered = p.guide.steer(this, p)
         if (steered === 'caught' || steered === 'detonated') {
-          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: steered === 'caught' ? 'returned' : 'detonated' })
+          this.despawn(p, steered === 'caught' ? 'returned' : 'detonated')
           continue
         }
       } else {
@@ -281,11 +309,12 @@ export class World implements KernelApi {
           if (p.guide.touch(this, p, dummy, at) !== 'detonated') continue
           p.x = at.x
           p.y = at.y
-          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'detonated' })
+          this.despawn(p, 'detonated')
           alive = false
           break
         }
         if (!this.strike(p.source, dummy, at)) continue
+        p.landed = true
         if (p.guide?.afterHit?.(this, p, dummy) === 'stop') {
           p.x = at.x
           p.y = at.y
@@ -296,7 +325,7 @@ export class World implements KernelApi {
         if (p.hitsLeft <= 0) {
           p.x = at.x
           p.y = at.y
-          this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'pierce-exhausted' })
+          this.despawn(p, 'pierce-exhausted')
           alive = false
           break
         }
@@ -308,14 +337,20 @@ export class World implements KernelApi {
       }
       p.age++
       if (p.age >= p.lifetimeTicks) {
-        this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'lifetime' })
+        this.despawn(p, 'lifetime')
       } else if (p.x < arena.minX || p.x > arena.maxX || p.y < arena.minY || p.y > arena.maxY) {
-        this.emit({ type: 'projectile-despawn', projectileId: p.id, reason: 'out-of-bounds' })
+        this.despawn(p, 'out-of-bounds')
       } else {
         survivors.push(p)
       }
     }
     this.projectiles = survivors
+  }
+
+  /** `projectile-despawn`; one that never landed a hit counts as missed (`stats.projectilesMissed`, P3-S12). */
+  private despawn(p: ProjectileState, reason: Extract<SimEvent, { type: 'projectile-despawn' }>['reason']): void {
+    if (!p.landed) this.stats.missed()
+    this.emit({ type: 'projectile-despawn', projectileId: p.id, reason })
   }
 
   private stepDebuffs(): void {
@@ -417,6 +452,7 @@ export class World implements KernelApi {
       vy: launch.vy,
       age: 0,
       hitsLeft: launch.pierce === Infinity ? Infinity : 1 + launch.pierce,
+      landed: false,
       gravity: launch.gravity,
       lifetimeTicks: launch.lifetimeTicks,
       source: summon
@@ -478,6 +514,7 @@ export class World implements KernelApi {
       if (damage <= 0) continue // outside, or the falloff left it nothing: not hit
       if (this.hit(p.source, dummy, near, damage, keptPct)) hits++
     }
+    if (hits > 0) p.landed = true
     return hits
   }
 
@@ -609,12 +646,16 @@ export class World implements KernelApi {
       aim: { ...this.aim },
       dummies: this.dummies.map((d) => {
         const c = aabbCenter(d.box)
+        const end = d.motion ? dummyPathPoint(d.home, d.motion, d.motion.rangeTiles) : null
         return {
           id: d.id,
           x: c.x,
           y: c.y,
-          width: d.box.maxX - d.box.minX,
-          height: d.box.maxY - d.box.minY,
+          prevX: d.motion ? d.prev.x : c.x,
+          prevY: d.motion ? d.prev.y : c.y,
+          path: end ? { fromX: d.home.x, fromY: d.home.y, toX: end.x, toY: end.y } : null,
+          width: d.size.width,
+          height: d.size.height,
           defense: d.defense,
           debuffs: d.debuffs.map((b) => ({ buffId: b.buffId, remainingTicks: b.remainingTicks, durationTicks: b.durationTicks })),
           tag: d.tag ? { remainingTicks: d.tag.remainingTicks, durationTicks: d.tag.durationTicks, damageFlat: d.tag.damageFlat, critPct: d.tag.critPct } : null,

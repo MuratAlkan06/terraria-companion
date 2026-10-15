@@ -184,6 +184,44 @@ export function actionBox(reachTiles: number, dummies: readonly { x: number; y: 
   return { x0: x0 - ACTION_MARGIN, x1: x1 + ACTION_MARGIN, y0: y0 - ACTION_MARGIN, y1 }
 }
 
+/** A dummy's box for framing (tiles): centre and size. */
+export interface DummyFrame {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * The boxes the camera must keep in view for the engine's dummies (PRD P3-S12): a dummy that never moves
+ * is its own box; a Moving Dummy is its box at BOTH ends of its path — the whole path is framed once, so
+ * the view never follows (or jumps with) the dummy as it moves.
+ */
+export function dummyFrames(dummies: readonly (DummyFrame & { path: { fromX: number; fromY: number; toX: number; toY: number } | null })[]): DummyFrame[] {
+  return dummies.flatMap((d) =>
+    d.path
+      ? [
+          { x: d.path.fromX, y: d.path.fromY, width: d.width, height: d.height },
+          { x: d.path.toX, y: d.path.toY, width: d.width, height: d.height },
+        ]
+      : [{ x: d.x, y: d.y, width: d.width, height: d.height }],
+  )
+}
+
+/**
+ * Scene framing's band of world rows for these dummies: the default band (DEFAULT_CAMERA `minTilesH`
+ * around `focusY` — the tallest swing down to a strip of ground), raised at its top only as far as a
+ * dummy reaches above it with room for its damage numbers — a Boss-Sized Dummy, a Moving Dummy's
+ * vertical path (P3-S12). Unchanged for the standard dummies, so their framing is exactly as before.
+ */
+export function sceneBandFor(frames: readonly DummyFrame[]): { minTilesH: number; focusY: number } {
+  const top0 = DEFAULT_CAMERA.focusY - DEFAULT_CAMERA.minTilesH / 2
+  const bottom = DEFAULT_CAMERA.focusY + DEFAULT_CAMERA.minTilesH / 2
+  const top = Math.min(top0, ...frames.map((d) => d.y - d.height / 2 - NUMBER_HEADROOM))
+  if (top >= top0) return { minTilesH: DEFAULT_CAMERA.minTilesH, focusY: DEFAULT_CAMERA.focusY }
+  return { minTilesH: bottom - top, focusY: (top + bottom) / 2 }
+}
+
 /** Air kept beyond the far dummy of a row in scene framing (tiles): room for its damage numbers. */
 const ROW_MARGIN_TILES = 1.5
 /** Air kept around a blast ring in scene framing (tiles): its two-art-px stroke reaches 1½ art px past the radius. */

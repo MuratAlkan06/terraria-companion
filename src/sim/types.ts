@@ -19,17 +19,35 @@ export interface ArenaBounds {
   maxY: number
 }
 
+/** `horizontal`: toward +x from home (away from a player facing the dummy) and back; `vertical`: up (−y) and back down. */
+export type DummyMotionAxis = 'horizontal' | 'vertical'
+
+/**
+ * A Moving Dummy's path (PRD P3-S12 AC2; approximation `dummy-motion`): from its home position (`x`,
+ * `y`) `rangeTiles` along `axis` and back, again and again, at a constant `speedTps`, turning instantly
+ * at each end. A closed form of the world tick (src/sim/motion.ts): frame-rate independent by construction.
+ */
+export interface DummyMotion {
+  axis: DummyMotionAxis
+  /** Tiles per second along the path (finite, > 0). */
+  speedTps: number
+  /** Path length from home (tiles, finite, > 0). */
+  rangeTiles: number
+}
+
 export interface DummySpec {
   /** Stable id used in events/stats; defaults to `dummy-<index>`. */
   id?: string
-  /** Hitbox center (tiles). */
+  /** Hitbox center (tiles) — a moving dummy's home, where every world starts it. */
   x: number
   y: number
-  /** Hitbox size (tiles); default 2 × 3 (Target Dummy placed size). */
+  /** Hitbox size (tiles); default 2 × 3 (Target Dummy placed size). A Boss-Sized Dummy is a bigger box. */
   widthTiles?: number
   heightTiles?: number
-  /** Non-negative integer; default 0 (Target Dummy). */
+  /** Non-negative integer; default 0 (Target Dummy). An Armored Dummy sets it. */
   defense?: number
+  /** A Moving Dummy's path (P3-S12); absent = it never moves. */
+  motion?: DummyMotion
 }
 
 export type ManaRegenMode = 'wiki-1.4.5.7' | 'none'
@@ -253,6 +271,12 @@ export interface StatsSnapshot {
   /** Shots/emissions inside uses (≥ uses when useTime < use animation). */
   activations: number
   projectilesSpawned: number
+  /**
+   * Projectiles that left without landing a hit on any dummy (P3-S12: a Moving Dummy can be missed):
+   * despawned out of bounds, at the end of their lifetime, back in hand, or gone off without reaching
+   * a dummy — counted when they despawn, so ones still in flight are in neither column yet.
+   */
+  projectilesMissed: number
   ammoConsumed: number
   /** Consumable weapon items used up: a thrown explosive is the item itself, one per throw (P3-S11). */
   consumablesUsed: number
@@ -326,6 +350,9 @@ export interface TimedTestResult {
   crits: number
   uses: number
   attacksPerSec: number
+  /** Projectiles spawned over the run, and those that despawned without a hit (`StatsSnapshot.projectilesMissed`). */
+  projectilesSpawned: number
+  projectilesMissed: number
   ammoConsumed: number
   /** Consumable weapon items used up over the run (thrown explosives: one per throw). */
   consumablesUsed: number
@@ -418,6 +445,14 @@ export interface RenderState {
     id: string
     x: number
     y: number
+    /** The centre one tick earlier (interpolate prev → current with `alpha`); = `x` / `y` for a dummy that never moves. */
+    prevX: number
+    prevY: number
+    /**
+     * A Moving Dummy's path (P3-S12): the two ends its centre travels between — home first — so the
+     * renderer can frame and draw the whole path once; null for a dummy that never moves.
+     */
+    path: { fromX: number; fromY: number; toX: number; toY: number } | null
     width: number
     height: number
     defense: number
@@ -472,7 +507,10 @@ export interface LabSim {
   readonly weapon: WeaponSummary
   /** The minion loadout's weapon (LabSimOptions.minionLoadout), else null. */
   readonly loadout: WeaponSummary | null
-  /** The equipped weapon's assumptions, then the minion loadout's (deduplicated). */
+  /**
+   * The equipped weapon's assumptions, then the minion loadout's (deduplicated), then the target's: a
+   * moving dummy's `dummy-motion` while one is among the current dummies (it follows `setDummies`).
+   */
   readonly approximations: readonly Approximation[]
   /** Feed a wall-clock frame delta (ms); runs whole fixed ticks, keeps the remainder. */
   advance(dtMs: number): AdvanceResult

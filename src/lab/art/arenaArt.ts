@@ -252,7 +252,12 @@ export function dummyBullseye(d: { x: number; y: number; width: number; height: 
   return { x0: left + (b.x0 / width) * d.width, x1: left + (b.x1 / width) * d.width, y0: top + (b.y0 / height) * d.height, y1: top + (b.y1 / height) * d.height }
 }
 
-export function buildDummy(): string[] {
+/**
+ * `armored` (the Armored Dummy, P3-S12): the same dummy in a steel breastplate with shoulder plates and a
+ * visored helmet — the bullseye painted on the plate, in the same place (DUMMY_ART.bullseye) — so a dummy
+ * with defense reads apart from the Infinite Dummy at a glance. Same 16 × 24 frame.
+ */
+export function buildDummy(variant: 'plain' | 'armored' = 'plain'): string[] {
   const c = new PixelCanvas(DUMMY_ART.width, DUMMY_ART.height)
   // Base plank with two feet, and the post.
   c.rect(3, 21, 10, 2, A.e600).rect(3, 21, 10, 1, A.e500).rect(3, 23, 3, 1, A.e800).rect(10, 23, 3, 1, A.e800)
@@ -264,6 +269,12 @@ export function buildDummy(): string[] {
   c.rect(4, 7, 8, 9, A.e400).rect(5, 16, 6, 1, A.e400)
   c.rect(4, 7, 1, 9, A.skin).rect(11, 7, 1, 9, A.e500).rect(5, 16, 6, 1, A.e500)
   for (let y = 8; y <= 15; y += 2) c.set(4, y, A.e600).set(11, y, A.e700)
+  if (variant === 'armored') {
+    // Steel breastplate over the torso (lit from the upper left), a centre ridge, shoulder plates over the arms.
+    c.rect(4, 7, 8, 9, A.s400).rect(5, 16, 6, 1, A.s500)
+    c.rect(4, 7, 1, 9, A.s300).rect(11, 7, 1, 9, A.s600).rect(5, 16, 6, 1, A.s600)
+    c.rect(2, 7, 2, 3, A.s500).rect(2, 7, 2, 1, A.s300).rect(12, 7, 2, 3, A.s600).rect(12, 7, 2, 1, A.s400)
+  }
   // Painted bullseye on the chest (DUMMY_ART.bullseye).
   const eye = DUMMY_ART.bullseye
   for (let y = eye.y0; y < eye.y1; y++) {
@@ -279,6 +290,20 @@ export function buildDummy(): string[] {
   c.rect(5, 2, 6, 4, A.e400).rect(6, 1, 4, 1, A.e400).rect(5, 2, 1, 4, A.skin).rect(6, 1, 1, 1, A.skin).rect(10, 2, 1, 4, A.e500)
   c.set(7, 0, A.e600).set(8, 0, A.e600)
   c.set(7, 4, A.e600).set(8, 4, A.e600) // stitched mouth seam
+  if (variant === 'armored') {
+    // A visored helmet over the sack head (the tuft hidden under it), a dark eye slit.
+    c.rect(5, 1, 6, 4, A.s400).rect(6, 0, 4, 1, A.s400).rect(5, 1, 1, 4, A.s300).rect(6, 0, 1, 1, A.s300).rect(10, 1, 1, 4, A.s600)
+    c.rect(6, 3, 4, 1, A.n950)
+  }
+  return c.outline(A.n950).rows()
+}
+
+/** A small steel shield (7 × 8 art px inside a 1 px outline): the Armored Dummy's defense label under its feet (P3-S12). */
+export function buildShieldIcon(): string[] {
+  const c = new PixelCanvas(9, 10)
+  c.rect(1, 1, 7, 5, A.s400).rect(2, 6, 5, 1, A.s400).rect(3, 7, 3, 1, A.s400).set(4, 8, A.s400)
+  c.rect(1, 1, 1, 5, A.s300).rect(1, 1, 7, 1, A.s300).rect(7, 2, 1, 4, A.s600).rect(5, 7, 1, 1, A.s600)
+  c.rect(4, 2, 1, 5, A.g400)
   return c.outline(A.n950).rows()
 }
 

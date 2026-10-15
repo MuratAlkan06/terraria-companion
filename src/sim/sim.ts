@@ -18,6 +18,7 @@ import {
   timedTestTicks,
   type TimedTestDuration,
 } from './constants'
+import { APPROXIMATIONS } from './approximations'
 import { FixedStepClock } from './clock'
 import { prepareLoadout, prepareSimulation, type LoadoutPlan, type SimPlan } from './guard'
 import { toSeed } from './rng'
@@ -68,6 +69,9 @@ export function dummyRow(count: number, firstX: number = DEFAULT_DUMMY_X_TILES, 
   return Array.from({ length: count }, (_, i) => ({ id: `dummy-${i}`, x: firstX + i * spacingTiles, y: DEFAULT_DUMMY_Y_TILES }))
 }
 
+/** The caller's dummy specs are never shared with the engine (a moving dummy's path included). */
+const copyDummy = (d: DummySpec): DummySpec => ({ ...d, ...(d.motion ? { motion: { ...d.motion } } : {}) })
+
 const MAX_MANA_LIMIT = 10_000
 
 export function validateSettings(s: LabSettings): string | null {
@@ -93,6 +97,12 @@ function validateDummies(dummies: readonly DummySpec[]): string | null {
       if (size !== undefined && !(Number.isFinite(size) && size > 0)) return `dummy "${id}" size must be positive`
     }
     if (d.defense !== undefined && !(Number.isInteger(d.defense) && d.defense >= 0)) return `dummy "${id}" defense must be a non-negative integer`
+    if (d.motion !== undefined) {
+      const { axis, speedTps, rangeTiles } = d.motion
+      if (axis !== 'horizontal' && axis !== 'vertical') return `dummy "${id}" motion axis must be "horizontal" or "vertical"`
+      if (!(Number.isFinite(speedTps) && speedTps > 0)) return `dummy "${id}" motion speed must be positive`
+      if (!(Number.isFinite(rangeTiles) && rangeTiles > 0)) return `dummy "${id}" motion range must be positive`
+    }
   }
   return null
 }
@@ -111,7 +121,7 @@ export function createLabSim(options: LabSimOptions): CreateLabSimResult {
   const settings: LabSettings = { ...DEFAULT_LAB_SETTINGS, ...options.settings }
   const settingsError = validateSettings(settings)
   if (settingsError) return invalid('invalid-settings', settingsError)
-  const dummies = (options.dummies ?? [DEFAULT_DUMMY]).map((d) => ({ ...d }))
+  const dummies = (options.dummies ?? [DEFAULT_DUMMY]).map(copyDummy)
   const dummyError = validateDummies(dummies)
   if (dummyError) return invalid('invalid-dummy', dummyError)
   const arena = { ...(options.arena ?? DEFAULT_ARENA) }
@@ -168,7 +178,9 @@ class Sim implements LabSim {
   get approximations() {
     const own = this.plan.approximations
     const extra = (this.loadoutPlan?.approximations ?? []).filter((a) => !own.some((b) => b.id === a.id))
-    return [...own, ...extra].map((a) => ({ ...a }))
+    // The target's: a moving dummy's path model (P3-S12), while one is among the current dummies.
+    const target = this.dummies.some((d) => d.motion) ? [APPROXIMATIONS['dummy-motion']] : []
+    return [...own, ...extra, ...target].map((a) => ({ ...a }))
   }
 
   private newWorld(): World {
@@ -249,7 +261,7 @@ class Sim implements LabSim {
 
   setDummies(dummies: readonly DummySpec[], options?: { seed?: number }): SetDummiesResult {
     if (this.locked()) return { ok: false, reason: 'config-locked' }
-    const next = dummies.map((d) => ({ ...d }))
+    const next = dummies.map(copyDummy)
     const error = validateDummies(next)
     if (error) return { ok: false, reason: 'invalid-dummy', message: error }
     this.dummies = next
@@ -292,6 +304,8 @@ class Sim implements LabSim {
         crits: s.crits,
         uses: s.uses,
         attacksPerSec: s.uses / durationSec,
+        projectilesSpawned: s.projectilesSpawned,
+        projectilesMissed: s.projectilesMissed,
         ammoConsumed: s.ammoConsumed,
         consumablesUsed: s.consumablesUsed,
         explosions: s.explosions,

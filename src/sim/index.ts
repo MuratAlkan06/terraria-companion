@@ -8,6 +8,8 @@ export { IMPLEMENTED_ARCHETYPES } from './interpreters'
 export { APPROXIMATIONS, type Approximation, type ApproximationId } from './approximations'
 export {
   BASE_CRIT_PCT,
+  DEFAULT_DUMMY_HEIGHT_TILES,
+  DEFAULT_DUMMY_WIDTH_TILES,
   DUMMY_ROW_SPACING_TILES,
   GROUND_Y_TILES,
   MAX_MINION_SLOTS,
@@ -19,5 +21,6 @@ export {
   WHIP_TAG_DURATION_TICKS,
   type TimedTestDuration,
 } from './constants'
+export { dummyPathOffset } from './motion'
 export { mulberry32, type Rng } from './rng'
 export type * from './types'

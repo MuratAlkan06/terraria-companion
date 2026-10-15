@@ -94,5 +94,13 @@ export function beamCells(from: { x: number; y: number }, angle: number, lengthP
   return { core, glow }
 }
 
-/** A stable key of the dummies the arena has built views for (rebuild when the engine's row changes). */
-export const dummySignature = (dummies: RenderState['dummies']): string => dummies.map((d) => `${d.id}@${d.x},${d.y},${d.width}x${d.height}`).join('|')
+/**
+ * A stable key of the dummies the arena has built views for (rebuild when the engine's target changes).
+ * A Moving Dummy (P3-S12) is keyed by its path — home to far end — never by where it is now, so it moving
+ * never rebuilds the views or re-fits the camera; a dummy that never moves by its centre. Its defense is in
+ * the key too (an Armored Dummy's armor and defense label: a new value is a new view).
+ */
+export const dummySignature = (dummies: RenderState['dummies']): string =>
+  dummies
+    .map((d) => `${d.id}@${d.path ? `${d.path.fromX},${d.path.fromY}~${d.path.toX},${d.path.toY}` : `${d.x},${d.y}`},${d.width}x${d.height}${d.defense > 0 ? `:def${d.defense}` : ''}`)
+    .join('|')

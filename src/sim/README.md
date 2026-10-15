@@ -34,6 +34,10 @@ Tiles (16 px at 1×), ticks (60/s), velocities in tiles/second at every public b
 Default target: one Target Dummy (2×3 tiles, defense 0) centered at (2, 0) — point-blank.
 Multiple Dummies (PRD P3-S6): `dummyRow(count, firstX)` — a row, centres `DUMMY_ROW_SPACING_TILES`
 (3) apart, ids `dummy-0…` nearest first; the first is the primary target (auto-aim's dummy).
+Dummy roster v2 (PRD P3-S12): a Boss-Sized Dummy is a bigger box (`widthTiles` / `heightTiles`), an
+Armored Dummy has `defense`, and a Moving Dummy has a `motion` — from its home (`x`, `y`) `rangeTiles`
+along `axis` (`horizontal`: toward +x, away from a player facing it; `vertical`: up, −y) and back, again
+and again, at a constant `speedTps`, turning instantly at each end (src/sim/motion.ts — see "Dummy motion").
 Summons (PRD P3-S9) are world agents with positions in the same space; the "ground" a ground minion
 stands on is its target dummy's foot line (the sim has no terrain).
 
@@ -47,6 +51,7 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | `APPROXIMATIONS`, `sim.approximations` | Plain-language assumptions; `sim.approximations` is the subset for the equipped weapon — render it verbatim in the AssumptionsTip paired with every EstimateLabel. Modeling-convention entries carry a `ruling` (see "Modeling conventions"). |
 | `IMPLEMENTED_ARCHETYPES` | Every schema archetype since P3-S11: `swing-melee`, `thrust`, `bow-gun`, `magic-bolt`, `returning`, `piercing-beam`, `minion-sentry`, `whip`, `explosive-aoe`. |
 | `dummyRow(count, firstX?, spacingTiles?)`, `DUMMY_ROW_SPACING_TILES` | Multiple Dummies: a row of standard dummies (see "Units and coordinates"). |
+| `dummyPathOffset(motion, tick)`, `DEFAULT_DUMMY_WIDTH_TILES`, `DEFAULT_DUMMY_HEIGHT_TILES` | P3-S12: a Moving Dummy's distance from home at a world tick (the closed form the kernel uses); the standard dummy's 2 × 3-tile size (a Boss-Sized Dummy scales it). |
 | `DEFAULT_LAB_SETTINGS`, `DEFAULT_DUMMY`, `DEFAULT_SEED`, `TIMED_TEST_DURATIONS`, `timedTestTicks`, `TICKS_PER_SECOND`, `BASE_CRIT_PCT`, `MAX_MINION_SLOTS`, `MAX_SENTRY_SLOTS`, `WHIP_TAG_DURATION_TICKS`, `GROUND_Y_TILES`, `mulberry32` | Constants / utilities (`GROUND_Y_TILES`: the flat ground the player and the default dummies stand on — a thrown explosive lands on it; the Lab arena draws its ground line there). |
 | `type *` from `./types` | All public types (`LabSim`, `SimSnapshot`, `SimEvent`, `RenderState`, `SimRefusal`, …). |
 
@@ -58,7 +63,7 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | `seed?` | uint32 (default 1). |
 | `ammo?` | Required for `bow-gun`: an `Item` whose `ammoStats.ammoClass` equals the weapon's. |
 | `buffs?` | Buff registry; required when the weapon has `modifiers.dot`. |
-| `dummies?` | `DummySpec[]` — `{ id?, x, y, widthTiles?, heightTiles?, defense? }` (boss-sized = bigger box, armored = `defense`). |
+| `dummies?` | `DummySpec[]` — `{ id?, x, y, widthTiles?, heightTiles?, defense?, motion? }` (boss-sized = bigger box, armored = `defense`, moving = `motion: { axis, speedTps, rangeTiles }`; a malformed one is `invalid-dummy`). |
 | `settings?` | Partial `LabSettings` (below). |
 | `arena?` | Projectile despawn bounds (must contain the origin). |
 | `minionLoadout?` | P3-S10 summoner loop: a MINION summon weapon whose minions are out beside the equipped (non-summon) weapon — every world starts with as many as the minion slots hold (`Behavior.fillSlots`); their hits use the loadout weapon's crit (0) and modifiers (its DoT). Not simulable, a sentry weapon, or beside a summon weapon → `invalid-setup` / `invalid-loadout`. |
@@ -92,7 +97,7 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | `renderState()` | Positions for the renderer (`alpha` included). |
 | `drainEvents()` | Pending events, oldest first; clears the queue. |
 | `weapon` | `WeaponSummary`: `cadenceTicks` (incl. `reuseDelayTicks`), `nominalAttacksPerSec`, `critChancePct`, `baseHitDamage` (after a projectile's `damageMultiplierPct`), `manaCostPerUse`, `returnsToHand` (a returning weapon: an attack lasts until it is back), `consumable` (a thrown explosive: each throw uses the item itself up), … for the EquippedBar. |
-| `loadout` | The minion loadout's `WeaponSummary`, else `null`. `approximations` lists the weapon's, then the loadout's (deduplicated). |
+| `loadout` | The minion loadout's `WeaponSummary`, else `null`. `approximations` lists the weapon's, then the loadout's (deduplicated), then the target's: `dummy-motion` while a moving dummy is among the current dummies (it follows `setDummies`). |
 
 ### HUD mapping (UX_SPEC §3.4)
 
@@ -114,6 +119,8 @@ stands on is its target dummy's foot line (the sim has no terrain).
 | Summons vs slots (P3-S9) | `snapshot().summons` (`minions`, `minionSlotsUsed`, `minionSlots`, `sentries`, …); positions `renderState().agents` |
 | Damage by source (P3-S9 AC3, P3-S10 AC2/AC3) | `stats.breakdown` / `result.breakdown`: `weaponDamage` (+ hits) + `summonDamage` (+ hits) + `dotDamage` = total; `tagBonusDamage` ⊂ `summonDamage` |
 | Whip tags (P3-S10 AC1) | `renderState().dummies[].tag` (`remainingTicks`, `durationTicks`, `damageFlat`, `critPct`); events `tag-applied` / `tag-expired` |
+| Moving Dummy (P3-S12 AC2): where it is, its path, missed shots | `renderState().dummies[]` `prevX/prevY → x/y` (interpolate with `alpha`) and `path` (`fromX/fromY` = home → `toX/toY`; frame and draw the whole path once); `stats.projectilesMissed` of `stats.projectilesSpawned` — a projectile that despawned without landing a hit (out of bounds, lifetime, back in hand, or gone off with no dummy in its blast); a finished test's `result.projectilesMissed` / `result.projectilesSpawned` |
+| Boss-Sized / Armored Dummy (P3-S12 AC1 / AC3) | `renderState().dummies[]` `width` / `height` / `defense` (the spec's) — every hit's `amount` already has the defense applied (see "Damage math") |
 
 ### Events (`SimEvent`, deterministic log)
 
@@ -132,7 +139,8 @@ stream since the last reset.
 
 ### Render state
 
-`renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, size, defense, active debuffs —
+`renderState()` → `player`, `facing`, `aim`, `dummies[]` (center, `prevX/prevY` — the centre a tick earlier,
+equal to it for a dummy that never moves — `path` (a Moving Dummy's two ends, else null), size, defense, active debuffs —
 `buffId`, `remainingTicks` and the `durationTicks` they were last (re)applied with), `projectiles[]` (`prevX/prevY` → `x/y`, velocity in tiles/s, `spriteKey`; a returning
 weapon in flight is its one projectile), `blade` (`swing` | `thrust` | `beam` | `whip`: `prevAngle →
 angle`, `prevLength → length`, radians, 0 = +x, π/2 = down; a `beam` runs from the player along
@@ -212,7 +220,9 @@ Order (wiki Damage): **variance → defense → crit**.
   projectile's base damage is ⌊damage × pct / 100⌋ before variance — rounded down as in the wiki's
   own figures (Sapphire Staff "60% of the weapon's damage (10 base damage)" for 18; Amber Staff
   "80% … (16 base damage)" for 21). Set only from a quoted wiki percentage.
-- Knockback ignored: dummies never move (Target Dummy is "unresponsive to knockback", [Target Dummy](https://terraria.wiki.gg/wiki/Target_Dummy)).
+- Knockback ignored: hits never move a dummy (Target Dummy is "unresponsive to knockback", [Target Dummy](https://terraria.wiki.gg/wiki/Target_Dummy)); a Moving Dummy keeps to its path.
+- Armored Dummy (P3-S12 AC3): its `defense` goes through the same verified formula above — nothing else is
+  modeled for it (no armor penetration, no difficulty scaling, no damage reduction).
 
 ## Determinism contract
 
@@ -220,6 +230,14 @@ Order (wiki Damage): **variance → defense → crit**.
   damage value is an integer, so totals are exact.
 - Frame rate only changes how many ticks run per `advance()` call, never what a tick does; timed
   tests count ticks, not wall time.
+- **Dummy motion (P3-S12)** is a closed form of the world tick, never integrated: at the start of the tick
+  that reaches tick t (kernel step 0, world.ts header) a moving dummy's centre is home + direction ×
+  `dummyPathOffset(motion, t)` = the distance `speedTps × t ÷ 60` folded into the 0 → `rangeTiles` → 0
+  path (a triangle wave), its box rebuilt from the spec's size — so no rounding accumulates, every world
+  starts it at home (reset, `setDummies`, a timed test: "Run again" reproduces), and hits and the
+  auto-aim that tick see it where it is. The auto-aim never leads it. Proven in `dummies.test.ts`
+  (bit-identical across `step` chunking and jittered `advance`, exact over 100 k ticks) and by the
+  Moving scenarios in `determinism.test.ts` (30/60/144 fps, jittered, spiky; golden-pinned).
 - Proven in `determinism.test.ts` across 30/60/144 fps, jittered and spiky frame patterns, and
   arbitrary `step()` chunking. A pinned golden fingerprint catches unintended semantic drift;
   intentional changes re-pin it with a [Changelog](#changelog) entry (AMENDMENTS-008 B38).
@@ -279,7 +297,7 @@ See `approximations.ts` for the user-facing copy. Summary (✓ = rule verified o
 | homing | ◇ | Nearest dummy in range; velocity-direction blend by `strength`, speed kept. |
 | dot | ◇ | dps from the Buff; ignores defense, no crit, refresh-not-stack — undocumented on the wiki. |
 | multi-hit | ◇ | `localImmunityTicks` re-hit cooldown per source per dummy. |
-| knockback | ✓ | Ignored (Target Dummy never moves). |
+| knockback | ✓ | Ignored: hits never push a dummy (the Target Dummy is unaffected; a Moving Dummy keeps to its path). |
 | dummy-hitbox | ◇ | 2×3 tiles = placed size ✓; NPC pixel hitbox undocumented. |
 | boomerang-flight | ✓/◇ | Turns back at its first hit ✓ (wiki Combat Wrench: most boomerangs "instantly turn around after hitting enemies") or at its throw range; back at the throw speed ◇ (in-game it returns faster); one out at a time ◇. |
 | flail-launch | ✓/◇ | Extends until it strikes or reaches its length, then retracts ✓ (wiki Flails); retract speed = extend speed ◇ ("slightly faster", no number); the struck dummy isn't hit again on the way back ◇. |
@@ -299,6 +317,7 @@ See `approximations.ts` for the user-facing copy. Summary (✓ = rule verified o
 | blast-area | ✓/◇ | One explosion per throw ✓; every dummy whose hitbox reaches into the radius takes one hit ◇; knockback, self-damage, self-knockback, blocks and liquids not modeled. |
 | blast-falloff | ◇ | `linear` only: 100 % at the centre → 0 % at the edge by the distance to the nearest hitbox point, whole percent rounded down — a Lab formula (no wiki curve). |
 | explosive-consumable | ◇ | One item used per throw (`consumablesUsed`); never runs out. |
+| dummy-motion | ◇ | P3-S12 Moving Dummy: a straight back-and-forth path at a constant speed, instant turnaround, never pushed off; Space / timed tests aim where it is without leading; summon attacks still land. Listed while a moving dummy is a target. |
 
 ## Modeling conventions (AMENDMENTS-010 B44 / B46 / B47, AMENDMENTS-013 B63, record marker B49)
 
@@ -408,6 +427,27 @@ Homing and multiHit are refused (`modifier-not-implemented`).
 
 Intentional engine behavior changes and the golden fingerprints they re-pin (`GOLDEN_30S` in
 `determinism.test.ts`, 30 s at 144 fps, Node / V8; AMENDMENTS-008 B38).
+
+- **2026-10-14: dummy roster v2 — Moving, Boss-Sized, Armored (PRD P3-S12).** `DummySpec.motion`
+  (`DummyMotion`: `axis` `horizontal` | `vertical`, `speedTps`, `rangeTiles`; validated — a malformed one is
+  `invalid-dummy`) and kernel step 0, which moves a dummy with a path to the closed-form point of the tick
+  (src/sim/motion.ts, `dummyPathOffset`; a no-op for a dummy without one). `renderState().dummies[]` gains
+  `prevX` / `prevY` (interpolation) and `path` (both ends), and reports `width` / `height` from the spec;
+  `stats.projectilesMissed` (a projectile that despawned without landing a hit — the kernel's despawns go
+  through one place that counts it) with `result.projectilesMissed` / `result.projectilesSpawned`;
+  `LabSim.approximations` adds the new `dummy-motion` while a moving dummy is a target; the `knockback`
+  copy no longer says dummies never move. The caller's dummy specs are copied deeply (a path included).
+  Boss-Sized and Armored need no engine change (`widthTiles` / `heightTiles` / `defense` predate this; the
+  verified defense formula is unchanged). Public constants `DEFAULT_DUMMY_WIDTH_TILES` /
+  `DEFAULT_DUMMY_HEIGHT_TILES`. Fingerprints: the sixteen earlier scenarios are **unchanged** (proved by the
+  unchanged pins — no event, digest or hit changes for dummies without a path). New scenarios pinned:
+  moving horizontal vs arcing arrows `{ total: 289, dot: 0, hits: 19, crits: 2, uses: 72, digest:
+  '6ca22c50' }` (49 of 72 arrows miss); moving vertical vs straight bolts `{ 569, 0, 36, 2, 90, 'd84bf0f0' }`
+  (47 of 90 miss); a sword vs a horizontal mover (out of reach and back) `{ 383, 0, 23, 4, 95, '6c46d2ed' }`;
+  a sentry vs a vertical mover (in and out of range) `{ 1435, 0, 81, 0, 1, 'ef52d63b' }`; a bomb vs a
+  horizontal mover (it lands where the dummy was) `{ 2535, 0, 25, 0, 72, '4cfb6878' }` (40 throws reach no
+  dummy); Boss-Sized 6 × 9 vs a 5-pellet 40° fan `{ 2980, 0, 225, 25, 45, '21b37d05' }` (every pellet lands);
+  Armored defense 20 `{ 2164, 0, 95, 14, 95, '96c724bf' }`.
 
 - **2026-10-14: explosions counted (P3-S11 design review #8).** `stats.explosions` / `result.explosions`
   count `explosion` events, so the results can say how many thrown explosives were still on their fuses

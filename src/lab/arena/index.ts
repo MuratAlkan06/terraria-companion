@@ -47,6 +47,13 @@
  * - Multiple Dummies (P3-S6): one view per engine dummy, rebuilt whenever the engine's row changes,
  *   each numbered under its feet (the primary target's number in gold) as the HUD's hit strip names
  *   them; scene framing widens to keep the whole row in view (../camera.ts `sceneXFor`).
+ * - Dummy roster v2 (P3-S12, ../dummyVisuals.ts): a dummy is drawn at its engine size (the Boss-Sized
+ *   Dummy's whole multiples keep the art crisp); a Moving Dummy glides where the engine has it
+ *   (interpolated) over the dashed track of its path, and its views are keyed by the path, never by where
+ *   it is now (../thrownVisuals.ts `dummySignature`), so moving rebuilds nothing; the camera frames the
+ *   whole path — both ends — and any dummy reaching above the default band (../camera.ts `dummyFrames`,
+ *   `sceneBandFor`), so the view never follows or jumps. An Armored Dummy wears armor, its defense under
+ *   its feet beside a shield.
  * - Camera framing (../camera.ts): `scene` on tablet/desktop, `action` (zoomed onto the fight) on
  *   phones, both placed clear of the HUD rows; re-fit on resize, HUD inset changes, weapon changes
  *   (the reach — or a thrown explosive's whole blast circle — decides the zoom) and target changes.
@@ -56,11 +63,12 @@
 import { Application, BitmapFont, BitmapText, Container, Graphics, Sprite, TextureStyle, TilingSprite, type Texture } from 'pixi.js'
 import { PLACEHOLDER_PALETTE, PLACEHOLDER_ROWS, placeholderVariantFor } from '../../components/art/placeholderSprites'
 import type { BladePose, RenderState } from '../../sim'
-import { ARENA_LAYOUT, buildArenaBackdrop, buildDebuffIcon, buildDeepTile, buildDummy, buildPlayer, buildSummon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette, type SummonArt } from '../art/arenaArt'
+import { ARENA_LAYOUT, buildArenaBackdrop, buildDebuffIcon, buildDeepTile, buildDummy, buildPlayer, buildShieldIcon, buildSummon, buildTagIcon, GAME_PX_PER_ART_PX, GAME_PX_PER_TILE, silhouette, type SummonArt } from '../art/arenaArt'
 import { A, ARENA_PALETTE } from '../art/arenaPalette'
 import { bladeSpriteTransform, DEG, guideCells, heldWeaponVisual, holdStyleFor, interpolateBlade, streakCells, thrustVisual, trailSpan } from '../blade'
-import { actionBox, fitCamera, sceneXFor, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
+import { actionBox, dummyFrames, fitCamera, sceneBandFor, sceneXFor, screenToWorld, worldToScreen, type CameraFit, type CameraFraming } from '../camera'
 import { debuffMarker, DEBUFF_TINT_TOKENS, markerClearOfHud, type DebuffGlyph } from '../debuffVisuals'
+import { dummyArt, dummyCentre, dummyTrackCells } from '../dummyVisuals'
 import { blastPose, discSpans, ExplosiveStack, explosiveRotation, fuseSparkCells, fuseTip, ringCells } from '../explosiveVisuals'
 import { DotNumberTicker, FloatLayout, floatPose, readsAsPartOfNumber, RecyclingPool, TRACER_CLEARANCE, type FloatRect, type MarkClearance } from '../floatingNumbers'
 import { dotAnchor, numberZone } from '../numberZone'
@@ -290,10 +298,17 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   // A dummy's markers (the tallest icon, 2 art px over its bar's line, tiles): kept under the HUD's top row.
   const markerHeightTiles = ((Math.max(tagTexture.height, ...Object.values(debuffTextures).map((t) => t.height)) + 2) * GAME_PX_PER_ART_PX) / GAME_PX_PER_TILE
 
-  const dummyRows = buildDummy()
-  const dummyTexture = own(textureFromRows(dummyRows, ARENA_PALETTE))
-  const dummyFlashTexture = own(textureFromRows(silhouette(dummyRows, A.white), ARENA_PALETTE))
+  // The plain dummy and the Armored Dummy's armored one (P3-S12), each with its hit-flash silhouette.
+  const dummyTextures = Object.fromEntries(
+    (['plain', 'armored'] as const).map((variant) => {
+      const rows = buildDummy(variant)
+      return [variant, { body: own(textureFromRows(rows, ARENA_PALETTE)), flash: own(textureFromRows(silhouette(rows, A.white), ARENA_PALETTE)) }]
+    }),
+  ) as Record<'plain' | 'armored', { body: Texture; flash: Texture }>
+  const shieldTexture = own(textureFromRows(buildShieldIcon(), ARENA_PALETTE))
   const dummies = new Container()
+  // A Moving Dummy's dashed track, under the dummies (drawn once per target).
+  const pathTracks = new Graphics()
 
   const playerSprite = new Sprite(own(textureFromRows(buildPlayer(), ARENA_PALETTE)))
   playerSprite.anchor.set(0.5, 1)
@@ -326,7 +341,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const sparks = new Graphics()
   const blastLayer = new Graphics()
 
-  world.addChild(deep, backdropSprite, glows, dummies, tagLayer, summonLayer, puffs, playerSprite, guide, trail, blade, held, beam, lash, shots, tracerLines, tether, thrown, explosivesLayer, sparks, blastLayer)
+  world.addChild(deep, backdropSprite, glows, pathTracks, dummies, tagLayer, summonLayer, puffs, playerSprite, guide, trail, blade, held, beam, lash, shots, tracerLines, tether, thrown, explosivesLayer, sparks, blastLayer)
   // Multiple Dummies: each dummy's number under its feet, in screen space (crisp at any zoom), under the damage numbers.
   const dummyLabels = new Container()
   app.stage.addChildAt(dummyLabels, app.stage.getChildIndex(normalNumbers))
@@ -413,7 +428,10 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     const height = Math.max(1, host.clientHeight)
     app.renderer.resize(width, height)
     const blast = session?.blastFrame() ?? null
+    // Every dummy's box — a Moving Dummy's at both ends of its path (P3-S12): the framing never follows it.
+    const frames = dummyFrames(session?.sim.renderState().dummies ?? [])
     fit = fitCamera(width, height, app.renderer.resolution, {
+      ...sceneBandFor(frames),
       insetTop: options.insetTop?.() ?? 0,
       insetBottom: options.insetBottom?.() ?? 0,
       floorPx: options.floorPx?.() ?? 0,
@@ -421,10 +439,10 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       framing: options.framing?.() ?? 'scene',
       // A thrown explosive: its whole blast circle in the action box, kept whole past the scene's zoom, and
       // kept whole by the scene framing too (P3-S11 #3).
-      action: session ? actionBox(session.frameTiles, session.sim.renderState().dummies, blast) : null,
+      action: session ? actionBox(session.frameTiles, frames, blast) : null,
       actionWhole: session?.explosive != null,
       blast,
-      sceneX: sceneXFor(session?.sim.renderState().dummies ?? []),
+      sceneX: sceneXFor(frames),
     })
     world.position.set(fit.originX, fit.originY)
     world.scale.set(fit.scale)
@@ -437,7 +455,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   // ---------------------------------------------------------------------------- session
   let unsubscribeReset: (() => void) | null = null
   let spriteRequest = 0
-  const dummyViews = new Map<string, { root: Container; flash: Sprite; hitAt: number; dir: number; label: BitmapText | null; x: number }>()
+  const dummyViews = new Map<string, { root: Container; flash: Sprite; hitAt: number; dir: number; label: BitmapText | null; badge: Sprite | null; x: number; moving: boolean; feet: number }>()
   let builtDummies = ''
 
   const numbers = new RecyclingPool<FloatingNumber>(NUMBER_POOL, () => {
@@ -522,6 +540,7 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
   const buildDummies = (s: LabSession) => {
     dummies.removeChildren().forEach((c) => c.destroy({ children: true }))
     dummyLabels.removeChildren().forEach((c) => c.destroy())
+    pathTracks.clear()
     tagLayer.removeChildren().forEach((c) => c.destroy())
     dummyViews.clear()
     tagViews.clear()
@@ -531,8 +550,9 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     for (const [i, d] of list.entries()) {
       const root = new Container()
       root.position.set(d.x * GAME_PX_PER_TILE, (d.y + d.height / 2) * GAME_PX_PER_TILE)
-      const body = new Sprite(dummyTexture)
-      const flash = new Sprite(dummyFlashTexture)
+      const textures = dummyTextures[dummyArt(d)]
+      const body = new Sprite(textures.body)
+      const flash = new Sprite(textures.flash)
       for (const sprite of [body, flash]) {
         sprite.anchor.set(0.5, 1)
         sprite.width = d.width * GAME_PX_PER_TILE
@@ -541,15 +561,27 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
       flash.alpha = 0
       root.addChild(body, flash)
       dummies.addChild(root)
-      // A row's dummies are numbered as the HUD's hit strip names them; the primary target (1) in gold.
+      // A row's dummies are numbered as the HUD's hit strip names them; the primary target (1) in gold. An
+      // Armored Dummy (P3-S12): its defense, beside a shield.
       let label: BitmapText | null = null
+      let badge: Sprite | null = null
       if (list.length > 1) {
         label = new BitmapText({ text: String(i + 1), style: { fontFamily: DOT_FONT, fontSize: FONT_SIZE[DOT_FONT] } })
         label.anchor.set(0.5, 0)
         if (i === 0) label.tint = primaryLabel
         dummyLabels.addChild(label)
+      } else if (d.defense > 0) {
+        label = new BitmapText({ text: String(d.defense), style: { fontFamily: DOT_FONT, fontSize: FONT_SIZE[DOT_FONT] } })
+        label.anchor.set(0, 0)
+        badge = new Sprite(shieldTexture)
+        badge.anchor.set(1, 0)
+        badge.scale.set(GAME_PX_PER_ART_PX)
+        dummyLabels.addChild(badge, label)
       }
-      dummyViews.set(d.id, { root, flash, hitAt: -Infinity, dir: 1, label, x: d.x })
+      // A Moving Dummy's track along its path (dashed, in the reach guides' modeled-value gold).
+      const cells = dummyTrackCells(d, GAME_PX_PER_ART_PX)
+      if (cells.length > 0) drawGuide(pathTracks, cells, guideColor, guideShadow, 0.55)
+      dummyViews.set(d.id, { root, flash, hitAt: -Infinity, dir: 1, label, badge, x: d.x, moving: d.path !== null, feet: d.height / 2 })
       // The whip tag marker over its head (hidden until a whip tags it).
       const icon = new Sprite(tagTexture)
       icon.anchor.set(0.5, 1)
@@ -1095,12 +1127,20 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     beam.fill({ color: beamCore, alpha: 0.9 })
   }
 
-  /** Each row dummy's number, under its feet (screen space, whole CSS pixels). */
+  /** Each row dummy's number — or an Armored Dummy's shield and defense, centred together — under its feet (screen space, whole CSS pixels). */
   const placeDummyLabels = () => {
     for (const view of dummyViews.values()) {
       if (!view.label) continue
       const p = worldToScreen(fit, view.x, ARENA_LAYOUT.groundY + 0.25)
-      view.label.position.set(Math.round(p.x), Math.round(p.y))
+      if (!view.badge) {
+        view.label.position.set(Math.round(p.x), Math.round(p.y))
+        continue
+      }
+      const gap = 3
+      const total = view.badge.width + gap + view.label.width
+      const left = Math.round(p.x - total / 2)
+      view.badge.position.set(left + Math.round(view.badge.width), Math.round(p.y))
+      view.label.position.set(left + Math.round(view.badge.width) + gap, Math.round(p.y + (view.badge.height - view.label.height) / 2))
     }
   }
 
@@ -1179,6 +1219,13 @@ export async function mountArena(host: HTMLElement, options: ArenaOptions): Prom
     for (const n of dotNumbers.drain(state.tick, finished)) spawnNumber(n, 'dot', now, reduced, state)
     if (!s.returning && !s.explosive) tracks.sync(state.projectiles, state.tick, state.facing)
 
+    // A Moving Dummy glides where the engine has it, between its last two ticks (P3-S12).
+    for (const d of state.dummies) {
+      const view = dummyViews.get(d.id)
+      if (!view?.moving) continue
+      const at = dummyCentre(d, alpha, finished)
+      view.root.position.set(at.x * GAME_PX_PER_TILE, (at.y + view.feet) * GAME_PX_PER_TILE)
+    }
     for (const view of dummyViews.values()) {
       const age = now - view.hitAt
       view.flash.alpha = age < FLASH_MS ? FLASH_ALPHA * (1 - age / FLASH_MS) : 0

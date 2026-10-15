@@ -13,13 +13,15 @@ import { describe, expect, it } from 'vitest'
 import { hasAssumptions, type Assumption, type Assumptions } from '../../../components/assumptions'
 import type { Weapon } from '../../../data-access/types'
 import { assumptionsForEstimate } from '../../../lab/labAssumptions'
+import { bossDefenses } from '../../../lab/labBossDefense'
 import { createLabSession, type LabSession } from '../../../lab/labSession'
-import { ROW_COUNTS, type LabTarget } from '../../../lab/labSetup'
+import { BOSS_SCALES, DEFAULT_LAB_TARGET, LAB_TARGET_KINDS, RANGED_TARGET_X_TILES, ROW_COUNTS, type LabTarget } from '../../../lab/labSetup'
 import { behaviorFacts, labWeapons } from '../../../lab/labWeapons'
-import { ALL_WEAPONS, LAB_SETUP } from '../../../lab/testing/labData'
-import { DEFAULT_LAB_SETTINGS } from '../../../sim'
-import { AttackHint, EquippedBar, StatReadouts, TargetStrip } from './Hud'
-import { TargetSettingsPanel } from './TargetSettingsPanel'
+import { ALL_BOSSES, ALL_WEAPONS, LAB_SETUP } from '../../../lab/testing/labData'
+import { APPROXIMATIONS, DEFAULT_LAB_SETTINGS } from '../../../sim'
+import { AttackHint, EquippedBar, ShotsCounter, StatReadouts, TargetStrip } from './Hud'
+import { DEFENSE_RULE, targetAnnouncement, targetPhrase } from './settingsCopy'
+import { ARMORED_DEFENSE_SETTING_ID, MOVING_SPEED_SETTING_ID, TargetSettingsPanel } from './TargetSettingsPanel'
 import { ResultsSummary } from './TimedTest'
 
 const list = labWeapons(ALL_WEAPONS, LAB_SETUP)
@@ -101,7 +103,7 @@ describe('target picker (UX_SPEC §3.4; PRD P3-S6 AC1)', () => {
   it('locked during a timed test: every target input is disabled', () => {
     const html = panel(session(pierceStaff, row(2)), { locked: true })
     const inputs = [...html.matchAll(/<input [^>]*id="lab-target-[^"]+"[^>]*>/g)]
-    expect(inputs.length).toBe(3 + ROW_COUNTS.length) // Infinite Dummy, Multiple Dummies, Debuff Dummy + the row sizes
+    expect(inputs.length).toBe(LAB_TARGET_KINDS.length + ROW_COUNTS.length) // the six targets (P3-S12 roster) + the row sizes
     for (const m of inputs) expect(m[0]).toContain('disabled=""')
   })
 
@@ -201,5 +203,132 @@ describe('the equipped weapon’s behavior stats (PRD P3-S7 AC2; P3-S6 pierce / 
     expect(behaviorFacts({ labBehavior: { kind: 'archetype', params: { archetype: 'piercing-beam', mode: 'channel-beam', tickRateTicks: 5 } } })).toEqual([
       { key: 'hit-rate', label: 'Hits every', short: 'Hit', value: '5 ticks', shortValue: '5t' },
     ])
+  })
+})
+
+describe('dummy roster v2 in the panel and the HUD (PRD P3-S12; UX_SPEC §3.4 picker)', () => {
+  const picks = bossDefenses(ALL_BOSSES)
+  const gun = pick((w) => {
+    const p = archetypeOf(w)
+    return p?.archetype === 'bow-gun' && p.projectilesPerUse === 1 && p.spreadDegrees === 0 && !(w.labBehavior.kind === 'archetype' && w.labBehavior.modifiers)
+  })
+  const sessionWith = (target: LabTarget) => {
+    let seed = 9
+    const created = createLabSession(gun, { seed: () => seed++, setup: LAB_SETUP, bossDefenses: picks, target })
+    if (!created.ok) throw new Error('refused')
+    return created.session
+  }
+  const panelFor = (target: LabTarget, extra: Record<string, unknown> = {}) => panel(sessionWith(target), { bossDefenses: picks, ...extra })
+
+  it('six targets as labeled radios, in the spec’s order', () => {
+    const html = panel(session(pierceStaff))
+    const ids = [...html.matchAll(/<input [^>]*id="lab-target-(single|boss|moving|row|armored|debuff)"[^>]*>/g)].map((m) => m[1])
+    expect(ids).toEqual([...LAB_TARGET_KINDS])
+    for (const title of ['Infinite Dummy', 'Boss-Sized Dummy', 'Moving Dummy', 'Multiple Dummies', 'Armored Dummy', 'Debuff Dummy']) expect(html).toContain(title)
+  })
+
+  it('Boss-Sized: a size group of whole multiples (the chosen one checked), labeled test sizes, and a card with the engine’s box', () => {
+    const html = panelFor({ kind: 'boss', scale: 3 })
+    expect(inputTag(html, 'lab-target-boss')).toContain('checked=""')
+    const sizes = [...html.matchAll(/<input [^>]*id="lab-target-scale-(\d)"[^>]*>/g)]
+    expect(sizes.map((m) => Number(m[1]))).toEqual([...BOSS_SCALES])
+    expect(sizes.filter((m) => m[0].includes('checked=""')).map((m) => m[1])).toEqual(['3'])
+    expect(html).toContain('6 × 9 tiles, 3 times the Infinite Dummy')
+    expect(html).toContain('Test sizes: the Infinite Dummy scaled up, not any boss’s hitbox.')
+    expect(html).toContain('data-target-card="boss"')
+    expect(html).toContain('Never dies or moves · defense 0 · 6 × 9 tiles')
+  })
+
+  it('Moving: the two paths and a speed slider (its value and unit) with the test-value and no-lead note; the card states the path', () => {
+    const html = panelFor({ kind: 'moving', axis: 'vertical', speedTps: 7 })
+    expect(inputTag(html, 'lab-target-axis-vertical')).toContain('checked=""')
+    expect(inputTag(html, 'lab-target-axis-horizontal')).not.toContain('checked')
+    expect(html).toContain('Away and back')
+    expect(html).toContain('Up and back')
+    expect(inputTag(html, MOVING_SPEED_SETTING_ID)).toMatch(/type="range" min="1" max="16" step="1"[^>]*value="7"/)
+    expect(inputTag(html, MOVING_SPEED_SETTING_ID)).toContain('aria-valuetext="7 tiles/s"')
+    expect(html).toContain('data-target-speed="7"')
+    expect(html).toContain('Test values, not any enemy’s speed or path.')
+    expect(html).toContain('without leading it')
+    expect(html).toContain('data-target-card="moving"')
+    expect(html).toContain('Never dies · defense 0 · 2 × 3 tiles')
+    expect(html).toContain(`Starts ${RANGED_TARGET_X_TILES} tiles in front of you; rises 5 tiles and comes back down at 7 tiles/s`)
+    expect(panelFor({ kind: 'moving', axis: 'horizontal', speedTps: 4 })).toContain(`travels to ${RANGED_TARGET_X_TILES + 8} tiles and back at 4 tiles/s`)
+  })
+
+  it('Armored: a defense slider (a test value) and the verified boss picks; a picked boss is named with its wiki link', () => {
+    const own = panelFor({ kind: 'armored', defense: 20, bossId: null })
+    expect(inputTag(own, ARMORED_DEFENSE_SETTING_ID)).toMatch(/type="range" min="0" max="100" step="1"[^>]*value="20"/)
+    expect(own).toContain('A test value you choose, not any enemy’s stat')
+    expect(own).toContain('Never dies or moves · defense 20 · 2 × 3 tiles')
+    const rows = [...own.matchAll(/data-boss-defense="([a-z-]+)"/g)].map((m) => m[1])
+    expect(rows).toEqual(picks.map((b) => b.id))
+    expect([...own.matchAll(/<input [^>]*id="lab-target-boss-[^"]+"[^>]*>/g)].some((m) => m[0].includes('checked'))).toBe(false)
+    expect(own).toContain('Normal-mode defense from the wiki’s NPC data')
+    const plantera = picks.find((b) => b.id === 'plantera')!
+    const named = panelFor({ kind: 'armored', defense: plantera.defense, bossId: plantera.id })
+    expect(inputTag(named, `lab-target-boss-${plantera.id}`)).toContain('checked=""')
+    expect(named).toContain('Plantera’s defense (its first form’s), as the wiki lists it.')
+    expect(named).toContain(`href="${plantera.sourceUrl}"`)
+    expect(named).toContain('defense 36 (Plantera’s)')
+    // no boss records: the slider alone
+    expect(panel(sessionWith({ kind: 'armored', defense: 20, bossId: null }))).not.toContain('data-lab-setting="target-boss-defense"')
+  })
+
+  it('Armored: the card and the slider help word the defense rule as the assumptions tip does (AMENDMENTS-016 B101c)', () => {
+    expect(DEFENSE_RULE).toBe('Each hit is reduced by half the dummy defense (rounded down, never below 1).')
+    expect(APPROXIMATIONS.defense.detail).toContain('Each hit is reduced by half the dummy defense, rounded down, never below 1')
+    const own = panelFor({ kind: 'armored', defense: 20, bossId: null })
+    expect(own).toContain('Adjustable defense: each hit is reduced by half the dummy defense (rounded down, never below 1)')
+    expect(own).toContain(`A test value you choose, not any enemy’s stat — or pick a boss below. ${DEFENSE_RULE}`)
+    const plantera = picks.find((b) => b.id === 'plantera')!
+    expect(panelFor({ kind: 'armored', defense: plantera.defense, bossId: plantera.id })).toContain(`not its hitbox, attacks or phases. ${DEFENSE_RULE}`)
+    for (const html of [own, panel(session(pierceStaff))]) {
+      expect(html).not.toContain('loses half')
+      expect(html).not.toContain('half of it')
+    }
+  })
+
+  it('locked during a timed test: the roster’s own inputs are disabled too', () => {
+    for (const target of [{ kind: 'boss', scale: 2 }, { kind: 'moving', axis: 'horizontal', speedTps: 4 }, { kind: 'armored', defense: 10, bossId: null }] as LabTarget[]) {
+      const html = panelFor(target, { locked: true })
+      const inputs = [...html.matchAll(/<input [^>]*id="lab-target-[^"]+"[^>]*>/g)]
+      expect(inputs.length).toBeGreaterThan(LAB_TARGET_KINDS.length)
+      for (const m of inputs) expect(m[0], target.kind).toContain('disabled=""')
+    }
+  })
+
+  it('the test-settings heading no longer duplicates the side panel’s id (lab-settings-title)', () => {
+    const html = panel(session(pierceStaff))
+    expect(html).not.toContain('id="lab-settings-title"')
+    expect(html).toContain('aria-labelledby="lab-test-settings-title"')
+  })
+
+  it('the Moving Dummy’s shots readout and results row; the announcer’s and the run line’s words', () => {
+    const s = sessionWith({ kind: 'moving', axis: 'vertical', speedTps: 14 })
+    hold(s, 300)
+    const shots = s.getHud().shots!
+    const html = render(createElement(ShotsCounter, { shots, compact: false }))
+    expect(html).toContain(`data-stat="shots-missed">${shots.missed}<`)
+    expect(html).toContain(`data-stat="shots-fired">${shots.fired}<`)
+    expect(html).toContain('aria-label="Missed shots"')
+    expect(html).toContain('pointer-events-none')
+    expect(render(createElement(ShotsCounter, { shots: { noun: 'throw', fired: 3, missed: 1 }, compact: true }))).toContain('throws')
+    s.startTimedTest(10)
+    for (let i = 0; i < 600; i++) s.frame(1000 / 60)
+    const result = s.getHud().timedTest.result!
+    const props = { result, weaponName: gun.name, appliesDot: false, usesAmmo: true, assumptions: tips(assumptionsForEstimate(s.assumptions, 'timed-test-dps')), onRunAgain: () => {}, onReset: () => {}, compact: false }
+    const summary = render(createElement(ResultsSummary, { ...props, shotNoun: 'shot', targetName: targetPhrase(s.getHud().target) }))
+    expect(summary).toContain(`data-result="shots-missed">${result.projectilesMissed}<`)
+    expect(summary).toContain(`data-result="shots-fired">${result.projectilesSpawned}<`)
+    expect(summary).toContain('vs the Moving Dummy (up and back at 14 tiles/s)')
+    expect(render(createElement(ResultsSummary, props))).not.toContain('data-result="shots-missed"')
+    expect(targetAnnouncement({ kind: 'boss', scale: 4 })).toBe('Boss-Sized Dummy, 8 × 12 tiles — the stats start again from zero.')
+    expect(targetAnnouncement({ kind: 'armored', defense: 36, bossId: 'plantera' }, 'Plantera')).toBe('Armored Dummy, defense 36 (Plantera’s) — the stats start again from zero.')
+    expect(targetAnnouncement({ kind: 'moving', axis: 'horizontal', speedTps: 4 })).toBe('Moving Dummy, away and back at 4 tiles/s — the stats start again from zero.')
+    expect(targetPhrase({ kind: 'armored', defense: 36, bossId: 'plantera' }, 'Plantera')).toBe('the Armored Dummy (defense 36, Plantera’s)')
+    expect(targetPhrase({ kind: 'armored', defense: 20, bossId: null })).toBe('the Armored Dummy (defense 20)')
+    expect(targetPhrase({ kind: 'row', count: 3 })).toBe('3 Infinite Dummies in a row')
+    expect(targetPhrase(DEFAULT_LAB_TARGET)).toBe('the Infinite Dummy')
   })
 })

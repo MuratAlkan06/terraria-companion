@@ -19,6 +19,10 @@
  *   reach the engine; special ammo effects are not modeled — said plainly with the modeling choices.
  * - `target-row` (PRD P3-S6): Multiple Dummies is a Lab test setup (count, spacing, which dummy is the
  *   primary target) — listed with the modeling choices while that target is chosen.
+ * - `target-boss` / `target-moving` / `target-armored` (PRD P3-S12, `targetAssumption`): the Boss-Sized
+ *   Dummy's test size, the Moving Dummy's path length and speed, the Armored Dummy's defense (a test value,
+ *   or a boss's verified defense with its source) — with the modeling choices while that target is chosen;
+ *   the engine adds its own `dummy-motion` for a moving dummy.
  * - `attack-until-back` (PRD P3-S7): for a weapon that comes back to hand, how long one attack lasts
  *   in the HUD's measurements (labSession.ts) — right after the rule it extends.
  * - `dps-while-attacking`: how the HUD's live estimate is measured (labSession.ts) — first in its tip.
@@ -39,8 +43,9 @@
  * - Every engine approximation is shown verbatim (its copy is already in plain words).
  */
 import type { Archetype, Weapon } from '../schemas'
-import { DUMMY_ROW_SPACING_TILES, type Approximation } from '../sim'
-import { firesProjectiles, RANGED_TARGET_X_TILES, ROW_COUNTS, type LabTarget } from './labSetup'
+import { DEFAULT_DUMMY_HEIGHT_TILES, DEFAULT_DUMMY_WIDTH_TILES, DUMMY_ROW_SPACING_TILES, type Approximation } from '../sim'
+import type { BossDefense } from './labBossDefense'
+import { firesProjectiles, MOVING_PATH_TILES, RANGED_TARGET_X_TILES, ROW_COUNTS, type LabTarget } from './labSetup'
 
 /** Same shape as an engine approximation, so the tip renders both identically. */
 export interface LabAssumption {
@@ -189,9 +194,59 @@ const SUMMONER_IDS: ReadonlySet<string> = new Set([
   'sentry-placement',
 ])
 
-/** What else decides the list: the Lab's target (Multiple Dummies) and whether the weapon comes back to hand. */
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/**
+ * The P3-S12 targets' own Lab assumption (null for the others), listed with the modeling choices while the
+ * target is chosen — its values in the words:
+ * - `target-boss`: the Boss-Sized Dummy's box is a Lab test size (the Infinite Dummy scaled up), not any boss's hitbox.
+ * - `target-moving`: the path length (a Lab choice) and the speed (the player's test value); the engine's
+ *   `dummy-motion` entry describes how it moves.
+ * - `target-armored`: the defense is a test value the player chose — or a boss's verified first-form
+ *   defense, named with its wiki page (`boss`, ./labBossDefense.ts) — and only defense is applied.
+ */
+export function targetAssumption(target: LabTarget | undefined, boss: BossDefense | null = null): LabAssumption | null {
+  switch (target?.kind) {
+    case 'boss': {
+      const w = DEFAULT_DUMMY_WIDTH_TILES * target.scale
+      const h = DEFAULT_DUMMY_HEIGHT_TILES * target.scale
+      return {
+        id: 'target-boss',
+        title: `Boss-Sized Dummy: a ${w} × ${h}-tile test size`,
+        detail: `The Boss-Sized Dummy is the Infinite Dummy scaled up ${target.scale} times — a ${w} × ${h}-tile hitbox, its near side and its feet where the Infinite Dummy’s are — so attacks that spread out or cover an area land more of their hits on it. Its size is a Lab test value, not any boss’s hitbox; it never moves and has no defense.`,
+      }
+    }
+    case 'moving': {
+      const tiles = MOVING_PATH_TILES[target.axis]
+      return {
+        id: 'target-moving',
+        title: `Moving Dummy: ${tiles} tiles ${target.axis === 'horizontal' ? 'away and back' : 'up and back'} at ${target.speedTps} tiles/s`,
+        detail: `The Moving Dummy starts where the Infinite Dummy stands and travels ${tiles} tiles ${target.axis === 'horizontal' ? 'away from you and back' : 'up and back down'}, over and over, at the ${plural(target.speedTps, 'tile')} per second you set. The path length is a Lab choice and the speed a test value — neither is any enemy’s.`,
+      }
+    }
+    case 'armored':
+      return boss
+        ? {
+            id: 'target-armored',
+            title: `Armored Dummy: defense ${target.defense}, as ${boss.name}`,
+            detail: `Defense ${target.defense} is ${boss.name}’s defense as the wiki’s NPC data lists it${boss.multiForm ? ' — its first form’s; it changes later in the fight' : ''}. Only the defense is applied: ${boss.name}’s hitbox, movement, attacks${boss.multiForm ? ', phases' : ''} and any damage reduction are not modeled. Each hit loses half the defense, rounded down, never below 1.`,
+            sourceUrl: boss.sourceUrl,
+          }
+        : {
+            id: 'target-armored',
+            title: `Armored Dummy: defense ${target.defense} (a test value)`,
+            detail: `Defense ${target.defense} is a test value you chose, not any enemy’s stat. Each hit loses half the defense, rounded down, never below 1 — the wiki’s defense formula for enemies.`,
+          }
+    default:
+      return null
+  }
+}
+
+/** What else decides the list: the Lab's target (Multiple Dummies, P3-S12's roster) and whether the weapon comes back to hand. */
 export interface LabAssumptionContext {
   target?: LabTarget
+  /** An Armored Dummy at a boss's verified defense: that boss (names it, with its source), else null. */
+  boss?: BossDefense | null
   /** WeaponSummary.returnsToHand: an attack lasts until the thrown weapon is back. */
   returnsToHand?: boolean
   /** Minions or sentries are involved (a summon staff, or the minion loadout): the live DPS rule changes. */
@@ -214,9 +269,11 @@ export function labAssumptionsFor(
   context: LabAssumptionContext = {},
 ): LabAssumption[] {
   const summoner = (a: Approximation) => !a.ruling && SUMMONER_IDS.has(a.id)
+  const target = targetAssumption(context.target, context.boss ?? null)
   return [
     ...archetypeAssumptions(archetype),
     ...(context.target?.kind === 'row' ? [LAB_ASSUMPTIONS['target-row']] : []),
+    ...(target ? [target] : []),
     ...(context.loadout ? [LAB_ASSUMPTIONS['minion-loadout']] : []),
     ...engine.filter((a) => a.ruling),
     ...statedThrustReach(weapon, engine),
@@ -259,7 +316,7 @@ const CADENCE_IDS: ReadonlySet<string> = new Set(['fixed-tick', 'cadence', 'reus
  * counted, how it moves and how often it may re-hit a dummy (`yoyo-control`: every 10 ticks), and how
  * many dummies there are to hit.
  */
-const HIT_RATE_IDS: ReadonlySet<string> = new Set([...CADENCE_IDS, 'yoyo-control', 'target-row'])
+const HIT_RATE_IDS: ReadonlySet<string> = new Set([...CADENCE_IDS, 'yoyo-control', 'target-row', 'target-moving', 'dummy-motion'])
 
 /**
  * What decides a summon staff's hit rate: the tick, how many summons the slots hold, how often each
@@ -280,6 +337,8 @@ const SUMMON_RATE_IDS: ReadonlySet<string> = new Set([
   'minion-ranged-shot',
   'sentry-placement',
   'target-row',
+  'target-moving',
+  'dummy-motion',
 ])
 
 /**

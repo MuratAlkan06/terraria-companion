@@ -10,7 +10,7 @@ import type { Archetype, ArchetypeParams, Buff, Item, Weapon } from '../schemas'
 import type { ApproximationId } from './approximations'
 import type { Aabb } from './geometry'
 import type { Rng } from './rng'
-import type { ArenaBounds, BladePose, LabSettings, MinionAiClass, SimRefusal, SummonKind, Vec2 } from './types'
+import type { ArenaBounds, BladePose, DummyMotion, LabSettings, MinionAiClass, SimRefusal, SummonKind, Vec2 } from './types'
 
 /** Anything that can damage a dummy, with its own local-immunity bookkeeping. */
 export interface HitSource {
@@ -65,8 +65,16 @@ export type BlastFalloff = 'none' | 'linear'
 export interface DummyState {
   readonly index: number
   readonly id: string
+  /** The hitbox now. A moving dummy's box is moved in place at the start of each tick (world.ts header). */
   readonly box: Aabb
+  /** The hitbox size (tiles) from its spec. */
+  readonly size: { readonly width: number; readonly height: number }
   readonly defense: number
+  /** A Moving Dummy's path (P3-S12) from `home` (its spec's centre), else null. */
+  readonly motion: DummyMotion | null
+  readonly home: Readonly<Vec2>
+  /** The centre one tick earlier (the renderer interpolates from it). */
+  readonly prev: Vec2
   /** Sorted by buffId (deterministic iteration). */
   debuffs: DebuffState[]
   /** A whip's tag (one whip, one tag: a new strike refreshes it), else null. */
@@ -156,6 +164,8 @@ export interface ProjectileState {
   vy: number
   age: number
   hitsLeft: number
+  /** It has landed a hit (a contact hit, or its explosion hit a dummy): a despawn without one counts as missed. */
+  landed: boolean
   readonly gravity: boolean
   readonly lifetimeTicks: number
   readonly source: HitSource
