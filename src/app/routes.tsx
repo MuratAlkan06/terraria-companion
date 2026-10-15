@@ -277,7 +277,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       icon: Scale,
       surfaces: ['more', 'footer'],
       order: 900,
-      description: 'Data license, attribution & takedown contact',
+      description: 'Data license, attribution, takedown contact, fonts & software credits',
     },
   },
 ]

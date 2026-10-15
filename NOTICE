@@ -1,0 +1,88 @@
+Terraria Companion — third-party notices
+========================================
+
+Terraria Companion is a free, non-commercial, unofficial fan project. It combines the
+project's own work with third-party material under several licenses, summarized here.
+The site's /about/licensing page carries the same information for visitors.
+
+LICENSE: not yet chosen by the owner
+------------------------------------
+The application source code has no license file. Choosing one is the owner's decision
+and is pending (ADR-001 D3 planned MIT; the owner has not confirmed it). Until a LICENSE
+file is added, the source code is not offered under any license. The third-party material
+below keeps its own licenses either way.
+
+
+1. Terraria Wiki content — CC BY-NC-SA 4.0
+------------------------------------------
+Source:   the Official Terraria Wiki, https://terraria.wiki.gg/ — text and data by the
+          wiki's contributors.
+License:  Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+          https://creativecommons.org/licenses/by-nc-sa/4.0/
+          Full text: LICENSES/CC-BY-NC-SA-4.0.txt
+Policy:   https://terraria.wiki.gg/wiki/Terraria_Wiki:Copyrights
+
+The data files this project derives from the wiki (src/data/ and the others listed in
+LICENSES/DATA-NOTICE.md) are modified versions, shared under the same license
+(ShareAlike). LICENSES/DATA-NOTICE.md lists the files, the changes made and the terms.
+
+
+2. Terraria game content — © Re-Logic (not openly licensed)
+-----------------------------------------------------------
+Terraria and all related names, artwork, sprites and audio are © Re-Logic; Terraria
+and Re-Logic are trademarks of Re-Logic. This project is not affiliated with, endorsed
+by or sponsored by Re-Logic or the Terraria Wiki.
+
+Sprites are NOT covered by the wiki's Creative Commons license. The image files are
+downloaded locally from the wiki (npm run pipeline:sprites), never committed (see
+.gitignore) and never hotlinked. public/sprites/manifest.json records each file's wiki
+File: page, SHA-1 and rights ("re-logic"). Sprite takedown requests are honored: the
+procedure is in README.md, "Takedown runbook".
+
+Takedown contact: [contact pending — see below]
+
+
+3. Fonts — SIL Open Font License 1.1
+------------------------------------
+Full text with both copyright notices: LICENSES/OFL-1.1.txt (served with the site at
+/licenses/OFL-1.1.txt; source copy public/licenses/OFL-1.1.txt).
+
+- Press Start 2P — Copyright 2012 The Press Start 2P Project Authors, with Reserved
+  Font Name "Press Start 2P". npm: @fontsource/press-start-2p
+- Inter — Copyright 2016 The Inter Project Authors. npm: @fontsource-variable/inter
+
+The font files are self-hosted from these npm packages and bundled unmodified.
+
+
+4. Open-source libraries
+------------------------
+Bundled into the built site, each under its own license (full texts in each package's
+LICENSE file and repository; the build also generates them, with the packages these
+libraries include, and serves them at /licenses/third-party-software.txt):
+
+- React (react, react-dom) — MIT
+- React Router (react-router) — MIT
+- Radix UI (radix-ui) — MIT
+- Lucide (lucide-react) — ISC
+- PixiJS (pixi.js) — MIT
+- MiniSearch (minisearch) — MIT
+- TanStack Virtual (@tanstack/react-virtual) — MIT
+- Zod (zod) — MIT
+- Zustand (zustand) — MIT
+- Tailwind CSS (tailwindcss; its generated CSS ships with the site) — MIT
+
+Build and test tools (such as Vite, TypeScript, Vitest, oxlint, tsx and luaparse) are
+used during development and are not shipped.
+
+
+5. Original work
+----------------
+Site decoration (backgrounds, logo, interface art) and the placeholder sprites shown in
+fallback mode are original pixel art made for this project.
+
+
+Pending owner inputs
+--------------------
+- Takedown / contact address: not published. Set takedownContact in src/app/site.ts
+  and replace the placeholder above and in README.md before any public deployment.
+- Code license: not chosen (see the top of this file).
