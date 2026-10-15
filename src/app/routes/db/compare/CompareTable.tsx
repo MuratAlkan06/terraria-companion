@@ -1,4 +1,4 @@
-import { ArrowLeftRight, FlaskConical, Minus, Plus, X } from 'lucide-react'
+import { ArrowLeftRight, Backpack, FlaskConical, Minus, Plus, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { buttonClass } from '../../../../components/buttonStyles'
@@ -20,6 +20,7 @@ import { bossMapHref, bossPageHref } from '../../bosses/bossNav'
 import { ClassBadge } from '../weapons/WeaponBits'
 import { humanizeSlug } from '../weapons/weaponDisplay'
 import { weaponHref } from '../weapons/weaponNav'
+import { builderHrefFor } from '../../loadout/loadoutLinks'
 import * as copy from './compareCopy'
 import {
   acquisitionCell,
@@ -190,6 +191,15 @@ export function CompareTable({ weapons, graph, conditions, sprites, progress, on
               </td>
             ))}
           </Row>
+          {hasRoute('loadout') ? (
+            <Row label={copy.ROW_LABELS.builder} rowKey="builder">
+              {weapons.map((w) => (
+                <td key={w.id} className={CELL}>
+                  <BuilderCell weapon={w} />
+                </td>
+              ))}
+            </Row>
+          ) : null}
         </RowGroup>
 
         <RowGroup label={copy.GROUP_NOTES} span={span}>
@@ -403,6 +413,17 @@ function LabCell({ weapon }: { weapon: Weapon }) {
     <Link to={`${pathFor('lab')}${labWeaponSearch(weapon.id)}`} className={buttonClass('primary', 'w-full px-3')} data-send-to-lab={weapon.id}>
       <FlaskConical aria-hidden="true" className="size-5 shrink-0" />
       {copy.LAB_TEST}
+      <span className="sr-only"> ({weapon.name})</span>
+    </Link>
+  )
+}
+
+/** "Open in Builder" (UX_SPEC §3.6; B99f): the Loadout Builder with this weapon fixed in its slot (loadoutLinks, dependency-free). */
+function BuilderCell({ weapon }: { weapon: Weapon }) {
+  return (
+    <Link to={builderHrefFor(weapon)} className={buttonClass('secondary', 'w-full px-3')} data-open-in-builder={weapon.id}>
+      <Backpack aria-hidden="true" className="size-5 shrink-0" />
+      {copy.OPEN_IN_BUILDER}
       <span className="sr-only"> ({weapon.name})</span>
     </Link>
   )

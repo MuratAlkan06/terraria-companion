@@ -254,25 +254,27 @@ describe('HomePage render (SSR markup)', () => {
     expect(html).not.toContain('/weapons/999999')
   })
 
-  it('AC3 (P3-S1, P5-S5 shipped): "Test Weapons" links into /lab and "What Should I Do Next?" into the recommender; unshipped actions and rails stay absent', () => {
+  it('AC3 (P3-S1, P4-S2, P5-S5 shipped): "Build My Loadout" links into /loadout, "Test Weapons" into /lab and "What Should I Do Next?" into the recommender; unshipped rails stay absent', () => {
     const html = renderHome(day(13))
     const start = html.indexOf('data-hero-actions')
     const actions = html.slice(start, html.indexOf('</ul>', start))
     // Real links to registered routes — never a disabled control.
     expect(heroActions().map((a) => [a.label, a.to])).toEqual([
+      ['Build My Loadout', pathFor('loadout')],
       ['Test Weapons', pathFor('lab')],
       ['What Should I Do Next?', `${pathFor('bosses')}?recommend=1`],
     ])
     expect(pathFor('lab')).toBe('/lab')
-    expect(actions.match(/<a [^>]*>/g)).toHaveLength(2)
+    expect(pathFor('loadout')).toBe('/loadout')
+    expect(actions.match(/<a [^>]*>/g)).toHaveLength(3)
+    expect(actions).toMatch(/<a [^>]*href="\/loadout"[^>]*>.*Build My Loadout<\/a>/s)
     expect(actions).toMatch(/<a [^>]*href="\/lab"[^>]*>.*Test Weapons<\/a>/s)
     // P5-S5: the /bosses route lists its `recommend` feature, so the button opens the panel there
     expect(actions).toMatch(/<a [^>]*href="\/bosses\?recommend=1"[^>]*>.*What Should I Do Next\?<\/a>/s)
     expect(actions).not.toMatch(/disabled/)
-    // /loadout doesn't exist: its button is absent (PRD P1-S2 AC3), as is the saved-builds rail.
-    expect(html).not.toMatch(/Build My Loadout/i)
+    // The saved-builds rail and /builds are P4-S4: absent (PRD P1-S2 AC3).
     expect(html).not.toMatch(/saved builds/i)
-    expect(html).not.toMatch(/href="\/(loadout|builds)/)
+    expect(html).not.toMatch(/href="\/builds/)
   })
 
   it('P5-S5: the recommender button exists only while /bosses lists the `recommend` feature (absent, never disabled)', () => {

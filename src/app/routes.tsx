@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { BookOpen, ClipboardList, Columns3, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -26,6 +26,8 @@ const chunkGuides = () => import('./routes/guides/chunk-guides')
 const chunkReadiness = () => import('./routes/bosses/readiness/chunk-readiness')
 /** The weapon comparison (`chunk-compare`, UX_SPEC §1): P4-S1. */
 const chunkCompare = () => import('./routes/db/compare/chunk-compare')
+/** The Loadout Builder (`chunk-loadout`, UX_SPEC §1): P4-S2. */
+const chunkLoadout = () => import('./routes/loadout/chunk-loadout')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -81,6 +83,22 @@ export const APP_ROUTES: readonly AppRoute[] = [
       surfaces: ['header', 'tabbar'],
       order: 20,
       description: 'Swing weapons at a training dummy — a browser simulation',
+    },
+  },
+  {
+    // P4-S2: the 4-step builder; `?step=1..4` + the draft's inputs and swaps, `?build=:id` opens a saved build
+    // (UX_SPEC §1). Entry points: the homepage hero's "Build My Loadout" (heroActions), the phone "More" sheet
+    // (UX_SPEC §2: first in its list) and — B96b/B99b precedent — the header's desktop "More" menu, after Lab
+    // (UX_SPEC §2 header order: Weapons · Lab · Loadout · Bosses).
+    id: 'loadout',
+    path: '/loadout',
+    Component: lazy(() => chunkLoadout().then((m) => ({ default: m.LoadoutPage }))),
+    nav: {
+      label: 'Loadout',
+      icon: Backpack,
+      surfaces: ['header', 'more'],
+      order: 25,
+      description: 'Stage, class and goal in; a scored loadout out',
     },
   },
   {

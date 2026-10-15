@@ -5,7 +5,7 @@
  */
 import type { DamageClass, StatEffect, StatKind, Weapon } from '../schemas'
 import { getField } from '../schemas/getField'
-import { BASE_CRIT_PCT, STAT_POINTS, TICKS_PER_SECOND, type StatPointsRow } from './constants'
+import { BASE_CRIT_PCT, SPECIAL_SCOPE_KEYWORDS, STAT_POINTS, TICKS_PER_SECOND, type StatPointsRow } from './constants'
 
 /** A loadout class (DATA_SCHEMA_SPEC §8a LoadoutClass); "hybrid" matches every class. */
 export type ClassChoice = DamageClass | 'hybrid'
@@ -30,6 +30,26 @@ export function effectScope(effect: StatEffect): DamageClass | undefined {
 /** §2.3: an effect counts for class C iff it has no scope or its scope is C; hybrid matches every class. */
 export function appliesTo(effect: StatEffect, cls: ClassChoice): boolean {
   const scope = effectScope(effect)
+  return scope === undefined || cls === 'hybrid' || scope === cls
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const SPECIAL_SCOPE_RES = (Object.entries(SPECIAL_SCOPE_KEYWORDS) as [DamageClass, readonly string[]][]).map(
+  ([cls, words]) => [cls, new RegExp(`\\b(?:${words.map(escapeRe).join('|')})\\b`, 'i')] as const,
+)
+
+/**
+ * The class an unscored special's wiki text is tied to (AMENDMENTS-016 B108(a), SPECIAL_SCOPE_KEYWORDS):
+ * exactly one class's keywords match → that class; none or several → undefined (unscoped, conservative).
+ */
+export function specialScope(text: string): DamageClass | undefined {
+  const matched = SPECIAL_SCOPE_RES.filter(([, re]) => re.test(text)).map(([cls]) => cls)
+  return matched.length === 1 ? matched[0] : undefined
+}
+
+/** A special counts as relevant to `cls` unless it is scoped to another class (hybrid: every class). */
+export const specialFits = (text: string, cls: ClassChoice): boolean => {
+  const scope = specialScope(text)
   return scope === undefined || cls === 'hybrid' || scope === cls
 }
 

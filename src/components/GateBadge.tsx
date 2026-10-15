@@ -6,6 +6,8 @@ import { cx } from './cx'
  * GateBadge (UX_SPEC §3.1, §8): lock glyph + the gating boss's name, inline after an item's name —
  * never colour alone. Links to the gate's page (or its place on the boss map) when given. Callers
  * omit badges for gates the player has marked defeated, so they disappear with tracked progress.
+ * The visible "After" is part of the spoken sentence ("Available after you defeat X") — no aria-hidden
+ * duplicate, so no reading of the chip says "after" twice (AMENDMENTS-016 B108 nit).
  */
 export interface GateBadgeProps {
   /** The gating progression node's name ("Eye of Cthulhu", "Hardmode"). */
@@ -22,9 +24,10 @@ export function GateBadge({ name, to, className }: GateBadgeProps) {
     <>
       <Lock aria-hidden="true" className="size-3.5 shrink-0" />
       <span>
-        <span className="sr-only">Available after you defeat </span>
-        <span aria-hidden="true">After </span>
-        {name}
+        <span className="sr-only">Available </span>
+        After
+        <span className="sr-only"> you defeat</span>
+        {` ${name}`}
       </span>
     </>
   )

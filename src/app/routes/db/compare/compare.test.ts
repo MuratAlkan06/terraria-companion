@@ -544,6 +544,17 @@ describe('entry points: weapon page, nav, Lab (UX_SPEC §2, §3.3, §3.6)', () =
     expect(html).toContain(`data-send-to-lab="${CAR.id}"`)
   })
 
+  it('UX_SPEC §3.6 "Open in Builder" (B99f, landed with P4-S2): every column links the Loadout Builder with that weapon fixed in its slot — at Step 1, no stage (B108(c): the builder asks for it)', () => {
+    const html = renderCompare([CAR, ZENITH, BLADE_STAFF])
+    expect(html).toContain('data-row="builder"')
+    expect(html).toContain(`href="/loadout?class=ranged&amp;main=${CAR.id}"`)
+    expect(html).toContain(`href="/loadout?class=melee&amp;main=${ZENITH.id}"`)
+    // a minion staff goes to the summon slot
+    expect(html).toContain(`href="/loadout?class=summon&amp;summon=${BLADE_STAFF.id}"`)
+    expect(html).not.toMatch(/href="\/loadout\?[^"]*(step|stage)=/)
+    expect(ownText(html)).toContain(copy.OPEN_IN_BUILDER)
+  })
+
   it('the picker’s starter list: recently viewed weapons only, newest first, deduplicated, capped', () => {
     expect(refWeaponId('i:4956')).toBe(4956)
     expect(refWeaponId('boss:plantera')).toBeUndefined()

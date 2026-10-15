@@ -58,21 +58,21 @@ export function defaultReadinessSetup(stage: Stage = 'early-prehm'): ReadinessSe
 }
 
 /** Mirrors `Slug` in src/schemas/common.ts. */
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 /** Mirrors Zod 4 `z.iso.datetime()` defaults: UTC "Z" only, seconds required, any sub-second precision. */
-const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
+export const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
 
 const SETUP_KEYS = ['bossId', 'stage', 'difficulty', 'class', 'loadout', 'analyzedAt'] as const
 const LOADOUT_KEYS = ['mainWeapon', 'altWeapon', 'helmet', 'chest', 'legs', 'accessories', 'ammo', 'buffs', 'summon'] as const
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** `ItemId` = z.int().positive(). */
-const isItemId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+export const isItemId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 
-function exactKeys(record: Record<string, unknown>, keys: readonly string[], where: string): void {
+export function exactKeys(record: Record<string, unknown>, keys: readonly string[], where: string): void {
   const unexpected = Object.keys(record).filter((k) => !keys.includes(k))
   if (unexpected.length > 0) throw new TypeError(`${where}: unexpected keys ${unexpected.join(', ')}`)
   const missing = keys.filter((k) => !(k in record))
@@ -85,25 +85,29 @@ function slotId(value: unknown, where: string): number | null {
   return value
 }
 
-function parseLoadout(input: unknown): ReadinessLoadout {
-  if (!isRecord(input)) throw new TypeError('readiness.loadout: expected an object')
-  exactKeys(input, LOADOUT_KEYS, 'readiness.loadout')
+/**
+ * Strict parse of a DATA_SCHEMA_SPEC §8a LoadoutSlots (shared with the `builds` domain, whose saved
+ * builds hold the same shape); `where` prefixes the error messages.
+ */
+export function parseLoadout(input: unknown, where = 'readiness.loadout'): ReadinessLoadout {
+  if (!isRecord(input)) throw new TypeError(`${where}: expected an object`)
+  exactKeys(input, LOADOUT_KEYS, where)
   const { accessories, ammo, buffs } = input
   if (!Array.isArray(accessories) || accessories.length < 5 || accessories.length > 7) {
-    throw new TypeError('readiness.loadout.accessories: expected 5–7 slots')
+    throw new TypeError(`${where}.accessories: expected 5–7 slots`)
   }
-  if (!Array.isArray(ammo) || !ammo.every(isItemId)) throw new TypeError('readiness.loadout.ammo: expected item ids')
-  if (!Array.isArray(buffs) || !buffs.every(isItemId)) throw new TypeError('readiness.loadout.buffs: expected item ids')
+  if (!Array.isArray(ammo) || !ammo.every(isItemId)) throw new TypeError(`${where}.ammo: expected item ids`)
+  if (!Array.isArray(buffs) || !buffs.every(isItemId)) throw new TypeError(`${where}.buffs: expected item ids`)
   return {
-    mainWeapon: slotId(input.mainWeapon, 'readiness.loadout.mainWeapon'),
-    altWeapon: slotId(input.altWeapon, 'readiness.loadout.altWeapon'),
-    helmet: slotId(input.helmet, 'readiness.loadout.helmet'),
-    chest: slotId(input.chest, 'readiness.loadout.chest'),
-    legs: slotId(input.legs, 'readiness.loadout.legs'),
-    accessories: accessories.map((id, i) => slotId(id, `readiness.loadout.accessories.${i}`)),
+    mainWeapon: slotId(input.mainWeapon, `${where}.mainWeapon`),
+    altWeapon: slotId(input.altWeapon, `${where}.altWeapon`),
+    helmet: slotId(input.helmet, `${where}.helmet`),
+    chest: slotId(input.chest, `${where}.chest`),
+    legs: slotId(input.legs, `${where}.legs`),
+    accessories: accessories.map((id, i) => slotId(id, `${where}.accessories.${i}`)),
     ammo: [...ammo],
     buffs: [...buffs],
-    summon: slotId(input.summon, 'readiness.loadout.summon'),
+    summon: slotId(input.summon, `${where}.summon`),
   }
 }
 

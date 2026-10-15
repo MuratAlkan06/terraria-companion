@@ -143,8 +143,9 @@ export function GateGroup({ gates, ctx }: { gates: readonly string[]; ctx: Pick<
       <Lock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
       <span>
         <span className="sr-only">{copy.GATES_SR_LEAD}</span>
-        <span aria-hidden="true">{copy.GATES_LEAD}</span>
-        {copy.gateNames(gates.map(ctx.bossName))}
+        {copy.GATES_LEAD}
+        <span className="sr-only">{copy.GATES_SR_TAIL}</span>
+        {` ${copy.gateNames(gates.map(ctx.bossName))}`}
       </span>
     </span>
   )

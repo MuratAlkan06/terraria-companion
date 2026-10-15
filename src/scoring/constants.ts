@@ -9,7 +9,7 @@
  */
 import type { AttackPatternTag, DamageClass, Difficulty, StatKind } from '../schemas'
 
-export const SCORING_CONSTANTS_VERSION = 1 as const
+export const SCORING_CONSTANTS_VERSION = 2 as const
 
 export const CONSTANTS_CHANGELOG = [
   {
@@ -19,6 +19,16 @@ export const CONSTANTS_CHANGELOG = [
       'First set: SCORING_SPEC §2.3 STAT_POINTS rows, §3.4 slot counts + Demon Heart slot, §5.2 GOAL_WEIGHTS, §6 readiness thresholds and ' +
       'PLAYER_DEFENSE_FACTOR (verified on the wiki Defense page, oldid 1034119). The AMENDMENTS-011 B54 kinds landed by B70 have no ' +
       'v1 row: listed, not counted, until their rows are ruled (each row added bumps this version).',
+  },
+  {
+    version: 2,
+    date: '2026-10-14',
+    note:
+      'AMENDMENTS-015 B94(3), with the loadout builder (P4-S2): the two B54 rows SCORING_SPEC §2.3 gives as examples land — ' +
+      'ammo-save-pct → Off 0.5 per % (ranged-scoped: only ranged weapons fire ammo), armor-penetration-flat → Off 1 per point. ' +
+      'The other nine B54 kinds stay listed, not counted. New builder constants: §4.4 CATEGORY_TEMPLATE, §4.5 BUFF_SLOTS, ' +
+      '§4.7 GATED_PER_SLOT. Goldens re-pinned: §9.1 classSynergy 76 → 78/100 (the Crystal Assassin Shirt’s 10% ammo saving now ' +
+      'counts 5 matched ranged points: 70 of 90).',
   },
 ] as const
 
@@ -50,9 +60,10 @@ export interface StatPointsRow {
 }
 
 /**
- * STAT_POINTS v1 — SCORING_SPEC §2.3, row for row. `crit-pct` scores 0 for summon (B17), applied by
- * the points function, not here. `flight-time-ticks` is read as the max of the effect and the
- * accessory's `wingStats.flightTimeTicks` (disclosed) by the points function.
+ * STAT_POINTS v2 — SCORING_SPEC §2.3, row for row, plus the two B54 rows §2.3 exemplifies (v2,
+ * AMENDMENTS-015 B94(3)). `crit-pct` scores 0 for summon (B17), applied by the points function, not
+ * here. `flight-time-ticks` is read as the max of the effect and the accessory's
+ * `wingStats.flightTimeTicks` (disclosed) by the points function.
  */
 export const STAT_POINTS = {
   'damage-pct': { off: 1 },
@@ -76,18 +87,20 @@ export const STAT_POINTS = {
   'mining-speed-pct': { uncounted: 'abstain' },
   'aggro-flat': { uncounted: 'abstain' },
   // AMENDMENTS-011 B54 kinds (landed by B70). The §2.3 "knockback" row (v1 abstains) covers the two
-  // knockback kinds; the rest wait for their rows. Minion / whip / tag kinds are summon-scoped (§2.3).
+  // knockback kinds. v2 (B94(3)): the two rows §2.3 names as examples — ammo saving (ranged: only
+  // ranged weapons fire ammo) and armor penetration; the rest wait for their rows. Minion / whip / tag
+  // kinds are summon-scoped (§2.3).
   'knockback-pct': { uncounted: 'abstain' },
   'minion-knockback': { uncounted: 'abstain', impliedScope: 'summon' },
+  'ammo-save-pct': { off: 0.5, impliedScope: 'ranged' },
+  'armor-penetration-flat': { off: 1 },
   'whip-speed-pct': { uncounted: 'row-pending', impliedScope: 'summon' },
   'tag-effect-slots': { uncounted: 'row-pending', impliedScope: 'summon' },
   'fishing-power-flat': { uncounted: 'row-pending' },
-  'ammo-save-pct': { uncounted: 'row-pending' },
   'lava-immunity-ticks': { uncounted: 'row-pending' },
   'melee-scale-pct': { uncounted: 'row-pending' },
   'tile-reach-flat': { uncounted: 'row-pending' },
   'potion-cooldown-pct': { uncounted: 'row-pending' },
-  'armor-penetration-flat': { uncounted: 'row-pending' },
 } as const satisfies Readonly<Record<StatKind, StatPointsRow>>
 
 // --- §2.2 damage-potential proxy -------------------------------------------------------------------
@@ -181,7 +194,10 @@ export const RARITY_RANK_SPECIAL = { rainbow: 12, 'fiery-red': 13, amber: 14 } a
 export const GOAL_COMPONENTS = ['estDamage', 'defense', 'mobility', 'survivability', 'classSynergy'] as const
 export type GoalComponent = (typeof GOAL_COMPONENTS)[number]
 
-/** GOAL_WEIGHTS v1 (rows sum to 1.0), in GOAL_COMPONENTS order. Goal scoring (P4-S4) reads these; readiness does not. */
+/**
+ * GOAL_WEIGHTS (unchanged since v1; rows sum to 1.0), in GOAL_COMPONENTS order. The builder's armor
+ * score (§4.3) reads them; goal scoring (P4-S4) too; readiness does not.
+ */
 export const GOAL_WEIGHTS = {
   boss: [0.45, 0.1, 0.15, 0.2, 0.1],
   'max-damage': [0.7, 0.05, 0.05, 0.1, 0.1],
@@ -190,3 +206,72 @@ export const GOAL_WEIGHTS = {
   mobility: [0.1, 0.1, 0.55, 0.15, 0.1],
   balanced: [0.25, 0.2, 0.2, 0.2, 0.15],
 } as const satisfies Readonly<Record<string, readonly [number, number, number, number, number]>>
+
+export type GoalId = keyof typeof GOAL_WEIGHTS
+
+// --- §4 loadout builder (v2) ----------------------------------------------------------------------
+
+/** §4.4 accessory quota categories: offense, defense, mobility, utility (Accessory.categories). */
+export type AccessoryQuota = 'off' | 'def' | 'mob' | 'util'
+
+/**
+ * CATEGORY_TEMPLATE(G) (§4.4): the five base quotas, then what extends them to SLOT_COUNT[D] — one
+ * repeated category, or "rotate" (balanced: the 6th slot takes the 1st quota, the 7th the 2nd).
+ */
+export const CATEGORY_TEMPLATE = {
+  boss: { base: ['off', 'off', 'mob', 'def', 'off'], extra: 'off' },
+  'max-damage': { base: ['off', 'off', 'off', 'off', 'mob'], extra: 'off' },
+  exploration: { base: ['mob', 'mob', 'util', 'def', 'off'], extra: 'mob' },
+  survivability: { base: ['def', 'def', 'mob', 'off', 'def'], extra: 'def' },
+  mobility: { base: ['mob', 'mob', 'mob', 'util', 'def'], extra: 'mob' },
+  balanced: { base: ['off', 'def', 'mob', 'util', 'off'], extra: 'rotate' },
+} as const satisfies Readonly<Record<GoalId, { base: readonly [AccessoryQuota, AccessoryQuota, AccessoryQuota, AccessoryQuota, AccessoryQuota]; extra: AccessoryQuota | 'rotate' }>>
+
+/** §4.4: the quota list for `slots` accessory slots. */
+export function categoryTemplate(goal: GoalId, slots: number): AccessoryQuota[] {
+  const { base, extra } = CATEGORY_TEMPLATE[goal]
+  return Array.from({ length: slots }, (_, i) => (i < base.length ? base[i] : extra === 'rotate' ? base[(i - base.length) % base.length] : extra))
+}
+
+/** §4.5: buff potions the builder fills (≤ 3). */
+export const BUFF_SLOTS = 3
+/** §4.7: gated candidates shown per slot in the gated track ("After you defeat …"). */
+export const GATED_PER_SLOT = 3
+
+// --- AMENDMENTS-016 B108(a): class scope of unscored specials (editorial keyword registry) -------------
+
+/**
+ * The registry's own version (B108(a): "a small versioned editorial keyword registry"). It changes which
+ * accessories QUALIFY for the builder's slots, not any point value, so it is versioned apart from
+ * SCORING_CONSTANTS_VERSION (whose points and weights it leaves untouched — the readiness checker,
+ * which reads those, is unaffected). Changing a keyword bumps this version and adds a changelog entry.
+ */
+export const SPECIAL_SCOPE_VERSION = 1 as const
+
+export const SPECIAL_SCOPE_CHANGELOG = [
+  {
+    version: 1,
+    date: '2026-10-14',
+    note:
+      'AMENDMENTS-016 B108(a), with the builder review: arrows / bows / ammo → ranged; yoyos and melee speed (plus the unambiguous ' +
+      '“melee knockback / weapons / attacks / damage” phrases) → melee; mana and “magic damage / weapons / attacks” → magic (bare ' +
+      '“magic” matches item flavour such as “magic yoyo skills”); minions / whips / sentries and “summon damage / tag” → summon (the ' +
+      'verb “Summons …” describes a passive effect any class gets, e.g. Spore Sac). A text matching no class, or more than one, stays ' +
+      'unscoped (“melee speed … and minion knockback” is a general bonus).',
+  },
+] as const
+
+/**
+ * Whole-word phrases (case-insensitive) that tie an unscored special effect to ONE class. Conservative by
+ * design: unmatched text stays unscoped. Used by the builder's §4.4 qualification (empty beats zero): a
+ * 0-point accessory whose every special is scoped to another class doesn't qualify for a slot.
+ */
+export const SPECIAL_SCOPE_KEYWORDS = {
+  ranged: ['arrow', 'arrows', 'bow', 'bows', 'ammo'],
+  melee: ['yoyo', 'yoyos', 'yo-yo', 'yo-yos', 'melee speed', 'melee knockback', 'melee weapon', 'melee weapons', 'melee attack', 'melee attacks', 'melee damage'],
+  magic: ['mana', 'magic damage', 'magic weapon', 'magic weapons', 'magic attack', 'magic attacks'],
+  summon: ['minion', 'minions', 'whip', 'whips', 'sentry', 'sentries', 'summon damage', 'summon tag'],
+} as const satisfies Readonly<Record<Exclude<DamageClass, 'other'>, readonly string[]>>
+
+/** The world-type condition of each world evil (gatedBy.conditions): items needing the OTHER one are out of play (B108(b)). */
+export const WORLD_EVIL_CONDITION = { corruption: 'corruption-world', crimson: 'crimson-world' } as const

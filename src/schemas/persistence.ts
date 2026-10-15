@@ -67,6 +67,30 @@ export const SavedBuildV1 = z.strictObject({
 export type SavedBuildV1 = z.infer<typeof SavedBuildV1>
 export const BuildsV1 = envelope(z.strictObject({ builds: z.array(SavedBuildV1) }))
 
+/**
+ * The loadout builder's slots (src/scoring/recommend.ts SLOT_IDS — the parity is pinned in
+ * src/app/buildsStore.test.ts): the units a user can empty, including ammo and potion positions that
+ * LoadoutSlots' plain lists cannot address.
+ */
+export const BuildSlotId = z.enum(['main', 'alt', 'armor', 'acc0', 'acc1', 'acc2', 'acc3', 'acc4', 'acc5', 'acc6', 'ammo0', 'ammo1', 'buff0', 'buff1', 'buff2', 'summon'])
+export type BuildSlotId = z.infer<typeof BuildSlotId>
+
+/**
+ * AMENDMENTS-016 B106: v2 adds the builder's target boss, the items marked owned, and which empty
+ * slots the user emptied. Additive: every new field is optional and absent in v1 data, so a v1 build
+ * reads as-is (the v1 → v2 migration is the identity). `emptiedSlots` present = v2 semantics (a null
+ * slot not listed was left unfilled by the recommendation); absent = a v1 build, whose nulls keep v1's
+ * "deliberately empty" meaning.
+ */
+export const SavedBuildV2 = z.strictObject({
+  ...SavedBuildV1.shape,
+  targetBoss: Slug.optional(),
+  ownedIds: z.array(ItemId).optional(),
+  emptiedSlots: z.array(BuildSlotId).optional(),
+})
+export type SavedBuildV2 = z.infer<typeof SavedBuildV2>
+export const BuildsV2 = envelope(z.strictObject({ builds: z.array(SavedBuildV2) }))
+
 export const ProgressV1 = envelope(
   z.strictObject({
     worldEvil: WorldEvil.nullable(),

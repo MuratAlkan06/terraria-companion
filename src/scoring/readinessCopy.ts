@@ -14,7 +14,8 @@ import type { DamageClass, StatEffect, StatKind } from '../schemas'
 import type { Availability } from './candidates'
 import type { ClassChoice } from './proxies'
 
-export type EstimateKey = 'dps' | 'perMinute' | 'blocked' | 'contact' | 'synergy'
+/** `dpp` / `edo`: the loadout builder's per-weapon rate (§2.2) and its build-level rate with gear (§5.1). */
+export type EstimateKey = 'dps' | 'perMinute' | 'blocked' | 'contact' | 'synergy' | 'dpp' | 'edo'
 
 export type Segment =
   | { kind: 'text'; text: string }
@@ -409,6 +410,8 @@ export const ESTIMATE_CONTEXT: Readonly<Record<EstimateKey, string>> = {
   blocked: 'damage blocked per hit',
   contact: 'contact damage after defense',
   synergy: 'class-matching stat points',
+  dpp: 'estimated damage per second',
+  edo: 'estimated damage per second with your gear',
 }
 
 /** One AssumptionsTip entry (same shape as src/components/assumptions.ts). */
@@ -465,7 +468,7 @@ export const assumptionText = {
     id: 'point-weights',
     title: `Point weights (editorial, v${version})`,
     detail:
-      'Each numeric effect is worth points: 1 per % of damage, critical strike chance or attack speed; 2 per flat damage; 1 per % of movement speed; 0.1 per tick of flight; 2 per defense; 4 per % of damage reduction; 2 per life regeneration; 0.25 per max life; 0.1 per max mana; 1 per % of mana cost reduction; 1 per mana regeneration; 20 per minion slot; 10 per sentry slot; 0.5 per % of whip range. Critical strike chance counts 0 for summon.',
+      'Each numeric effect is worth points: 1 per % of damage, critical strike chance or attack speed; 2 per flat damage; 1 per armor penetration; 1 per % of movement speed; 0.1 per tick of flight; 2 per defense; 4 per % of damage reduction; 2 per life regeneration; 0.25 per max life; 0.1 per max mana; 1 per % of mana cost reduction; 1 per mana regeneration; 0.5 per % of ammo saving (ranged); 20 per minion slot; 10 per sentry slot; 0.5 per % of whip range. Critical strike chance counts 0 for summon.',
   }),
   pointsUncounted: (): AssumptionText => ({
     id: 'points-uncounted',

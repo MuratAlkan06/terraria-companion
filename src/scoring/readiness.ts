@@ -216,19 +216,19 @@ const unverified = (record: unknown, path: string) => getField(record, path).sta
 const COOLDOWN_BUFFS: ReadonlySet<string> = new Set(['potion-sickness', 'mana-sickness'])
 
 /** A special whose verified text names a dash (Shield of Cthulhu, Tabi, Master Ninja Gear, …). */
-const DASH_TEXT = /\bdash/i
+export const DASH_TEXT = /\bdash/i
 /**
  * Unmodeled mobility in a special's verified text (Hermes Boots "The wearer can run super fast",
  * Rocket Boots "Allows flight", Cloud in a Bottle "double jump"): real but unquantified, so an unmet
  * need next to one reads "unknown", never "harder" (§1.3). Informational texts ("Displays movement
  * speed…") don't count; wings with a verified flight time are already counted.
  */
-const UNCOUNTED_MOBILITY = {
+export const UNCOUNTED_MOBILITY = {
   dodge: /\b(run|runs|running|super fast|movement speed|move speed)\b/i,
   flight: /\b(flight|fly|flying)\b/i,
   jump: /\b(double jump|jump height|jump speed|jump mobility)\b/i,
 } as const
-const INFORMATIONAL = /^\s*displays\b/i
+export const INFORMATIONAL = /^\s*displays\b/i
 
 export const itemRef = (id: number) => `i:${id}`
 export const bossRef = (id: string) => `boss:${id}`

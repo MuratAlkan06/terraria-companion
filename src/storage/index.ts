@@ -9,9 +9,11 @@
  *   can keep state in memory and warn.
  *
  * Registered: `settings` (P1), `recent` (P2-S3), `progress` (P5-S1), `checklists` (P6-S8, A7),
- * `favorites` (P7-S1), `readiness` (P5-S6/S7, Feature A AC4). Later slices add theirs (builds, plans).
+ * `favorites` (P7-S1), `readiness` (P5-S6/S7, Feature A AC4), `builds` (P4-S2, the loadout builder's
+ * saved builds). Later slices add theirs (plans).
  */
 import { meta } from '../data/meta'
+import { buildsDomain, type BuildsData } from './builds'
 import { checklistsDomain, type ChecklistsData } from './checklists'
 import { favoritesDomain, type FavoritesData } from './favorites'
 import { progressDomain, type ProgressData } from './progress'
@@ -30,6 +32,7 @@ interface DomainDataMap {
   checklists: ChecklistsData
   favorites: FavoritesData
   readiness: ReadinessSetup
+  builds: BuildsData
 }
 
 export type DomainKey = keyof DomainDataMap
@@ -42,6 +45,7 @@ const DOMAINS: { [K in DomainKey]: DomainDef<DomainDataMap[K]> } = {
   checklists: checklistsDomain,
   favorites: favoritesDomain,
   readiness: readinessDomain,
+  builds: buildsDomain,
 }
 
 export const storageKey = (domain: DomainKey): string => `tc.v1.${domain}`

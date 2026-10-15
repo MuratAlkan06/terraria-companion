@@ -66,9 +66,13 @@ export const ADD_POTION = 'Add potion'
 export const NOT_COUNTED_TAG = 'not counted'
 export const AVAILABILITY = 'Availability:'
 export const COUNTED_AS_YOURS = 'Counted because it’s in your loadout.'
-/** A gate chip: "After A, B and C" (every boss listed is needed); screen readers hear "Available after you defeat …" (GateBadge's words). */
-export const GATES_LEAD = 'After '
-export const GATES_SR_LEAD = 'Available after you defeat '
+/**
+ * A gate chip: "After A, B and C" (every boss listed is needed); screen readers hear "Available after you
+ * defeat …" (GateBadge's words) — the visible "After" is part of that sentence, never hidden and repeated.
+ */
+export const GATES_LEAD = 'After'
+export const GATES_SR_LEAD = 'Available '
+export const GATES_SR_TAIL = ' you defeat'
 export const gateNames = (names: readonly string[]): string =>
   names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 export const inactiveSlots = (n: number, difficulty: string): string =>

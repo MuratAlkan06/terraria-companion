@@ -205,7 +205,8 @@ describe('AnalysisPane states (UX_SPEC §3.8, §5.2, §6)', () => {
     expect([...html.matchAll(/data-factor="([a-z]+)"/g)].map((m) => m[1])).toEqual(['damage', 'defense', 'mobility', 'synergy', 'preparation'])
     expect(text(html)).toContain(copy.ASSUMPTIONS_TITLE)
     expect(html).toContain('data-analysis-assumption="tracked-only"')
-    expect(text(html)).toContain(copy.constantsFooter(1))
+    // constants v2 (AMENDMENTS-015 B94(3), P4-S2): the footer names the current version
+    expect(text(html)).toContain(copy.constantsFooter(2))
     expect(html).toMatch(/<button type="button" aria-expanded="false" aria-controls="i"[^>]*data-improve-toggle=""/)
     expect(html).not.toContain('data-improve-group')
     // every est. chip in the whole pane has a tip
@@ -344,7 +345,7 @@ describe('SetupPane (UX_SPEC §3.8 SetupPane; AMENDMENTS-001 A4; B69/Q3, Q4)', (
     expect(wings).toContain('data-availability="gated"')
     // ONE gate chip names every boss, joined by "and" (all are needed), on its own row; "counted" is its own line (B96c)
     expect(wings).toContain('data-gate-group="plantera+queen-bee"')
-    expect(wings).toMatch(/<p class="flex flex-wrap[^"]*"><span>Availability:<\/span><span data-gate-group="plantera\+queen-bee"[\s\S]*?<span class="sr-only">Available after you defeat <\/span><span aria-hidden="true">After <\/span>Plantera and Queen Bee<\/span><\/span><\/p><p>Counted because it’s in your loadout\.<\/p>/)
+    expect(wings).toMatch(/<p class="flex flex-wrap[^"]*"><span>Availability:<\/span><span data-gate-group="plantera\+queen-bee"[\s\S]*?<span class="sr-only">Available <\/span>After<span class="sr-only"> you defeat<\/span> Plantera and Queen Bee<\/span><\/span><\/p><p>Counted because it’s in your loadout\.<\/p>/)
     expect(wings).not.toContain('data-gate=')
     expect(text(wings)).toContain(copy.COUNTED_AS_YOURS)
     expect(wings).not.toContain('data-not-counted')
@@ -451,7 +452,7 @@ describe('wording and placement (AMENDMENTS-015 B96c/d)', () => {
     }
     const mobility = analysis.factors.find((f) => f.id === 'mobility') as ReadinessAnalysis['factors'][number]
     const html = wrap(createElement(ReadinessFactorCard, { factor: mobility, ctx: segmentContext(page, analysis.estimates), headingId: 'f3' }))
-    expect(html).toMatch(new RegExp(`data-gate-note="${id('Leaf Wings')}"[^>]*><span>Leaf Wings:</span><span data-gate-group="plantera\\+queen-bee"[\\s\\S]*?After </span>Plantera and Queen Bee</span>`))
+    expect(html).toMatch(new RegExp(`data-gate-note="${id('Leaf Wings')}"[^>]*><span>Leaf Wings:</span><span data-gate-group="plantera\\+queen-bee"[\\s\\S]*?After<span class="sr-only"> you defeat</span> Plantera and Queen Bee</span>`))
     // the summary repeats the line, and its gated items follow it the same way
     const pane = renderAnalysis()
     const easier = /<div data-summary="easier"[\s\S]*?<\/ul><\/div>/.exec(pane)?.[0] ?? ''
@@ -588,7 +589,7 @@ describe('copy audit (SCORING_SPEC §8.4; PRD §9 AC3; UX_SPEC §10.3): every UI
     copy.changeSlot('Helmet', 'Hallowed Mask'),
     copy.emptySlot('Helmet'),
     copy.removeFrom('Hallowed Mask', 'Helmet'),
-    copy.constantsFooter(1),
+    copy.constantsFooter(2),
   ]
 
   it.each(samples.map((s) => [s]))('%s', (line) => {

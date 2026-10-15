@@ -85,6 +85,7 @@ export const ROW_LABELS = {
   acquisition: 'How to obtain',
   tooltip: 'Item tooltip',
   lab: 'Weapon Lab',
+  builder: 'Loadout Builder',
   pros: 'Pros',
   cons: 'Cons',
   source: 'Source',
@@ -166,6 +167,9 @@ export const GATE_MAP_LINK = 'Mark bosses on the map'
 // Acquisition
 export const ACQUISITION_NONE = 'No way to obtain it is listed in the dataset.'
 export const ACQUISITION_DETAILS = 'Details on its page'
+
+// Loadout Builder (UX_SPEC §3.6 ActionRow "Open in Builder"; AMENDMENTS-016 B99f, landed with P4-S2)
+export const OPEN_IN_BUILDER = 'Open in Builder'
 
 // Lab
 export const LAB_TEST = 'Test in Weapon Lab'

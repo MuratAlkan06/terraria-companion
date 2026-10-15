@@ -39,9 +39,15 @@ const item = (name: string) => items.find((i) => i.name === name) as Item
 const tracked = (...ids: string[]) => effectiveProgress(graph, { worldEvil: null, nodeStates: Object.fromEntries(ids.map((id) => [id, 'defeated' as const])) })
 
 describe('constants (SCORING_SPEC §2.3 / §5.2 / §6, versioned — B38 discipline)', () => {
-  it('version 1 with a changelog entry for it', () => {
-    expect(SCORING_CONSTANTS_VERSION).toBe(1)
-    expect(CONSTANTS_CHANGELOG.map((c) => c.version)).toEqual([1])
+  it('version 2 (AMENDMENTS-015 B94(3)), with a changelog entry per version, the latest naming its re-pinned golden', () => {
+    expect(SCORING_CONSTANTS_VERSION).toBe(2)
+    expect(CONSTANTS_CHANGELOG.map((c) => c.version)).toEqual([1, 2])
+    expect(CONSTANTS_CHANGELOG.at(-1)?.version).toBe(SCORING_CONSTANTS_VERSION)
+    const v2 = CONSTANTS_CHANGELOG[1].note
+    expect(v2).toMatch(/B94\(3\)/)
+    expect(v2).toMatch(/ammo-save-pct → Off 0\.5 per %/)
+    expect(v2).toMatch(/armor-penetration-flat → Off 1 per point/)
+    expect(v2).toMatch(/76 → 78/)
   })
 
   it('STAT_POINTS covers every StatKind (closed enum) and pins the §2.3 rows exactly', () => {
@@ -70,8 +76,19 @@ describe('constants (SCORING_SPEC §2.3 / §5.2 / §6, versioned — B38 discipl
     })
   })
 
-  it('the B54 kinds without a ruled row score nothing (listed, not counted) — none is given an invented weight', () => {
-    const b54 = ['fishing-power-flat', 'ammo-save-pct', 'knockback-pct', 'tag-effect-slots', 'lava-immunity-ticks', 'melee-scale-pct', 'tile-reach-flat', 'potion-cooldown-pct', 'armor-penetration-flat', 'minion-knockback', 'whip-speed-pct'] as const
+  it('v2 rows (B94(3)): the two §2.3-exampled B54 kinds — ammo saving 0.5 Off per % (ranged-scoped), armor penetration 1 Off per point', () => {
+    expect(STAT_POINTS['ammo-save-pct']).toEqual({ off: 0.5, impliedScope: 'ranged' })
+    expect(STAT_POINTS['armor-penetration-flat']).toEqual({ off: 1 })
+    const stat = (s: StatKind, value: number) => ({ kind: 'stat' as const, stat: s, value })
+    expect(effectPoints(stat('ammo-save-pct', 10), 'ranged')).toEqual({ off: 5, def: 0, mob: 0, surv: 0 })
+    expect(appliesTo(stat('ammo-save-pct', 10), 'melee')).toBe(false)
+    expect(appliesTo(stat('ammo-save-pct', 10), 'hybrid')).toBe(true)
+    expect(sumPoints(effectPoints(stat('armor-penetration-flat', 5), 'magic'))).toBe(5)
+    expect(appliesTo(stat('armor-penetration-flat', 5), 'summon')).toBe(true)
+  })
+
+  it('the nine B54 kinds without a ruled row score nothing (listed, not counted) — none is given an invented weight', () => {
+    const b54 = ['fishing-power-flat', 'knockback-pct', 'tag-effect-slots', 'lava-immunity-ticks', 'melee-scale-pct', 'tile-reach-flat', 'potion-cooldown-pct', 'minion-knockback', 'whip-speed-pct'] as const
     for (const kind of b54) {
       const row: { off?: number; def?: number; mob?: number; surv?: number; uncounted?: string } = STAT_POINTS[kind]
       expect(row.uncounted, kind).toBeDefined()
