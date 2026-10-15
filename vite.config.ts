@@ -40,5 +40,13 @@ export default defineConfig(({ command }) => ({
     // Stylesheets stay stubbed in tests except an explicit `?raw` import (src/styles/hatch.test.ts reads the
     // shipped CSS to check its contrast); without this Vitest returns "" for those too.
     css: { include: [/\.css\?raw$/] },
+    // Vitest's 5 s default is too tight for the whole-dataset sweeps (scoring live sweep, search reachability,
+    // emitted-dataset gates, per-weapon/accessory page checks): GitHub's ubuntu runner runs them ~2.2–3.3× slower than
+    // a dev machine. CI run 38819483932 timed out builderCompare's live sweep at 7.1 s (2.7 s locally), and ~10 more
+    // tests across 7 files ran 2.5–3.7 s there. One global value, not per-test timeouts, because that slow tail spans
+    // many files and moves with the data. Hang detection keeps its meaning: a timeout can't interrupt those synchronous
+    // sweeps anyway, and an async test that never settles still fails, at 30 s. Explicit per-test and per-hook timeouts
+    // (vite.config.test.ts's builds, the dataset-loading beforeAll hooks) still take precedence.
+    testTimeout: 30_000,
   },
 }))
