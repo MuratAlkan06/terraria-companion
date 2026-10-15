@@ -1,4 +1,6 @@
 # Terraria Companion
+[![CI](https://github.com/MuratAlkan06/terraria-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/MuratAlkan06/terraria-companion/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A free, non-commercial, unofficial companion site for Terraria (desktop): weapon, item and boss data built
 from the Official Terraria Wiki, plus planning tools. A static single-page app (Vite + React); the design
