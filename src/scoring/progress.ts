@@ -10,9 +10,11 @@
  *
  * - Required-gate DAG only. Optional bosses are never required-gate ancestors, so a stage never
  *   assumes them defeated (under-recommend).
- * - World evil (B69/Q6): the Eater of Worlds / Brain of Cthulhu count only through a TRACKED defeat of
- *   the node matching the chosen world evil; with no world evil chosen, neither counts (conservative).
- *   They are never virtual.
+ * - World evil (B69/Q6, amended by AMENDMENTS-015 B96a): the Eater of Worlds / Brain of Cthulhu count
+ *   only through a TRACKED defeat. With a world evil chosen, only the matching node counts (the other
+ *   isn't in that world); with none chosen ("Both", the map's setting) a tracked defeat of either
+ *   counts — the map's cascade opens its successors and the recommender settles the fork on the same
+ *   mark, so every consumer agrees on what the user marked. They are never virtual.
  * - Milestone / event gates are satisfied iff all their required-gate predecessors are (recursive,
  *   memoized) — B24: Hardmode is reached once the Wall of Flesh is defeated. A node listed in EP
  *   (tracked or virtual) is satisfied as listed.
@@ -100,9 +102,12 @@ export function requiredAncestors(graph: ProgressionGraphLike, nodeId: string): 
 
 const stageOrder = (stage: string) => (STAGE_IDS as readonly string[]).indexOf(stage)
 
-/** World-evil nodes count only when they match the chosen world evil (none when nothing is chosen). */
-function countsInWorld(node: ProgressionNodeLike, worldEvil: WorldEvil | null): boolean {
-  return node.worldEvil === undefined || (worldEvil !== null && node.worldEvil === worldEvil)
+/**
+ * Does a tracked defeat of this node count in this world? Any non-world-evil node does; a world-evil
+ * node does under "Both" (no world evil chosen, B96a) or when it matches the chosen world evil.
+ */
+export function countsInWorld(node: Pick<ProgressionNodeLike, 'worldEvil'>, worldEvil: WorldEvil | null): boolean {
+  return node.worldEvil === undefined || worldEvil === null || node.worldEvil === worldEvil
 }
 
 /** The nodes the player has marked defeated (skipped never counts), filtered by the world-evil rule. */
@@ -185,4 +190,36 @@ export function satisfiedNodes(graph: ProgressionGraphLike, ep: ReadonlySet<stri
 /** A node's gates that are not satisfied under EP (what must be done before it). */
 export function unmetGates(graph: ProgressionGraphLike, ep: ReadonlySet<string>, nodeId: string, memo: Map<string, boolean> = new Map()): string[] {
   return requiredPredecessors(graph, nodeId).filter((p) => !isNodeSatisfied(graph, ep, p, memo))
+}
+
+/**
+ * Distance from the frontier (AMENDMENTS-015 B94(5)): how many boss defeats, in sequence along
+ * required-gate edges, stand between EP and `nodeId`. 0 = satisfied; an open boss (every gate
+ * satisfied) = 1; otherwise a boss adds 1 to its deepest unmet gate, while a milestone or event adds
+ * nothing of its own. Unknown ids sort after every real node (nodes.length + 1). `steps` caches per EP.
+ */
+export function stepsFromFrontier(
+  graph: ProgressionGraphLike,
+  ep: ReadonlySet<string>,
+  nodeId: string,
+  memo: Map<string, boolean> = new Map(),
+  steps: Map<string, number> = new Map(),
+): number {
+  const index = indexOf(graph)
+  const beyond = graph.nodes.length + 1
+  const visit = (id: string, path: ReadonlySet<string>): number => {
+    const known = steps.get(id)
+    if (known !== undefined) return known
+    const node = index.nodeById.get(id)
+    let n: number
+    if (!node) n = beyond
+    else if (isNodeSatisfied(graph, ep, id, memo)) n = 0
+    else {
+      const deepest = Math.max(0, ...unmetGates(graph, ep, id, memo).filter((p) => !path.has(p)).map((p) => visit(p, new Set(path).add(p))))
+      n = Math.min(beyond, deepest + (node.kind === 'boss' ? 1 : 0))
+    }
+    steps.set(id, n)
+    return n
+  }
+  return visit(nodeId, new Set([nodeId]))
 }

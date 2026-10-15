@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProgressionEdge, ProgressionNode } from '../data-access/types'
 import progressionJson from '../data/progression.json'
 import {
+  countsInWorld,
   effectiveProgress,
   isNodeSatisfied,
   requiredAncestors,
@@ -58,11 +59,21 @@ describe('isNodeSatisfied over the real graph (tracked defeats only)', () => {
     expect(trackedDefeats(graph, tracked(defeated('not-a-node'))).size).toBe(0)
   })
 
-  it('B69/Q6: the Eater of Worlds / Brain of Cthulhu count only for the matching chosen world evil (none when unchosen)', () => {
-    expect(satisfied(defeated('eater-of-worlds'), 'eater-of-worlds', null)).toBe(false)
+  it('B69/Q6 + B96a: a tracked Eater of Worlds / Brain of Cthulhu counts under "Both" and for the matching chosen world evil — never the other world’s, never untracked', () => {
+    expect(satisfied(defeated('eater-of-worlds'), 'eater-of-worlds', null)).toBe(true)
+    expect(satisfied(defeated('brain-of-cthulhu'), 'brain-of-cthulhu', null)).toBe(true)
     expect(satisfied(defeated('eater-of-worlds'), 'eater-of-worlds', 'corruption')).toBe(true)
     expect(satisfied(defeated('eater-of-worlds'), 'eater-of-worlds', 'crimson')).toBe(false)
     expect(satisfied(defeated('brain-of-cthulhu'), 'brain-of-cthulhu', 'crimson')).toBe(true)
+    expect(satisfied({}, 'eater-of-worlds', null)).toBe(false)
+    // under "Both" the marked fork counts and the unmarked one doesn't
+    expect(trackedDefeats(graph, tracked(defeated('eye-of-cthulhu', 'eater-of-worlds')))).toEqual(new Set(['eye-of-cthulhu', 'eater-of-worlds']))
+    expect(satisfied(defeated('eater-of-worlds'), 'brain-of-cthulhu', null)).toBe(false)
+    // the other world's mark is filtered only under a chosen world evil
+    expect(trackedDefeats(graph, tracked(defeated('eater-of-worlds', 'brain-of-cthulhu'), 'crimson'))).toEqual(new Set(['brain-of-cthulhu']))
+    expect(countsInWorld({ worldEvil: 'corruption' }, null)).toBe(true)
+    expect(countsInWorld({ worldEvil: 'corruption' }, 'crimson')).toBe(false)
+    expect(countsInWorld({}, 'crimson')).toBe(true)
   })
 
   it('memoized: one shared memo evaluates every node at most once, and a cached answer is reused', () => {

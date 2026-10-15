@@ -23,8 +23,11 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { SpriteIndex } from '../../../data-access/types'
 import { getField } from '../../../schemas/getField'
+import { hasRoute } from '../../routes'
+import { readinessHref } from './bossNav'
 import { DefeatControl, NodeStatusTag } from './DefeatControl'
 import { lockedNote, MARKER_NOTE, OPEN_PAGE_LABEL, PROGRESS_LEGEND } from './focusCardCopy'
+import { MAP_CTA } from './readiness/readinessUiCopy'
 
 /**
  * The map's compact focus card (PRD P5-S1 AC4; UX_SPEC §3.7, §4d). Nodes without a page open this
@@ -202,6 +205,14 @@ export function BossFocusCard({ id, graph, nodeId, sprites, worldEvil, nodeState
         {pageHref ? (
           <Link to={pageHref} data-page-link="" className={buttonClass('primary', 'w-full')}>
             {OPEN_PAGE_LABEL(node.name)}
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        ) : null}
+        {/* Feature A AC5: the progression map is an entry point too (absent if the route isn't shipped). */}
+        {pageHref && node.boss && hasRoute('readiness') ? (
+          <Link to={readinessHref(node.boss.id)} data-readiness-link={node.boss.id} className={buttonClass('secondary', 'w-full')}>
+            {MAP_CTA}
+            <span className="sr-only"> for {node.name}</span>
             <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         ) : null}

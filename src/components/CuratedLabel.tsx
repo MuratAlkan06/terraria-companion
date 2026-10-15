@@ -9,7 +9,8 @@ import { Toggletip } from './Toggletip'
  */
 export const CURATED_EXPLANATION = 'Curated: maintained by hand from the Terraria Wiki, not extracted from its data.'
 
-export function CuratedLabel({ className }: { className?: string }) {
+/** `explanation` replaces the default toggletip text where the curated content is more specific (readiness TAG_NEEDS lines). */
+export function CuratedLabel({ className, explanation = CURATED_EXPLANATION }: { className?: string; explanation?: string }) {
   return (
     <Toggletip
       className={cx(
@@ -22,7 +23,7 @@ export function CuratedLabel({ className }: { className?: string }) {
         </>
       }
     >
-      <p>{CURATED_EXPLANATION}</p>
+      <p>{explanation}</p>
     </Toggletip>
   )
 }

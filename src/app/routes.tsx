@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { BookOpen, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { BookOpen, ClipboardList, FlaskConical, House, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import HomePage from './routes/HomePage'
 
@@ -22,6 +22,8 @@ const chunkLab = () => import('./routes/lab/chunk-lab')
 const chunkBosses = () => import('./routes/bosses/chunk-bosses')
 /** Guides (`chunk-guides`, UX_SPEC §1): the index and every guide page (P6-S8). */
 const chunkGuides = () => import('./routes/guides/chunk-guides')
+/** The Boss Readiness Checker (`chunk-readiness`, UX_SPEC §1): Feature A, P5-S6/S7. */
+const chunkReadiness = () => import('./routes/bosses/readiness/chunk-readiness')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -98,6 +100,21 @@ export const APP_ROUTES: readonly AppRoute[] = [
     id: 'boss-detail',
     path: '/bosses/:id',
     Component: lazy(() => chunkBosses().then((m) => ({ default: m.BossPage }))),
+  },
+  {
+    // P5-S6/S7 (Feature A): `?boss=:id&class=&difficulty=` prefill (UX_SPEC §1); entry points on boss pages + map cards.
+    // AMENDMENTS-015 B96b: a headline feature, so it has its own desktop entry (the header's "More" menu,
+    // after Bosses) as well as the phone "More" sheet — no boss-page detour needed.
+    id: 'readiness',
+    path: '/readiness',
+    Component: lazy(() => chunkReadiness().then((m) => ({ default: m.ReadinessPage }))),
+    nav: {
+      label: 'Readiness',
+      icon: ClipboardList,
+      surfaces: ['header', 'more'],
+      order: 40,
+      description: 'Check your gear against a boss, factor by factor',
+    },
   },
   {
     id: 'guides',

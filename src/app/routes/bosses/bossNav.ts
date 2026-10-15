@@ -20,3 +20,8 @@ export function bossPageHref(bossId: string): string | undefined {
 export function bossMapHref(nodeId?: string): string {
   return nodeId ? `/bosses?${MAP_NODE_PARAM}=${encodeURIComponent(nodeId)}` : '/bosses'
 }
+
+/** The readiness checker prefilled with a boss (Feature A AC5: reachable from boss pages and the map; UX_SPEC §1). */
+export function readinessHref(bossId: string): string {
+  return `/readiness?boss=${encodeURIComponent(bossId)}`
+}

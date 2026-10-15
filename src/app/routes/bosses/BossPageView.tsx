@@ -1,6 +1,7 @@
-import { CalendarDays, CircleHelp, Flag, Map as MapIcon } from 'lucide-react'
+import { ArrowRight, CalendarDays, CircleHelp, Flag, Map as MapIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { buttonClass } from '../../../components/buttonStyles'
 import { CuratedLabel } from '../../../components/CuratedLabel'
 import { cx } from '../../../components/cx'
 import { FavoriteStar } from '../../../components/FavoriteStar'
@@ -15,10 +16,12 @@ import { SpriteImg } from '../../../components/SpriteImg'
 import { UnknownValue } from '../../../components/UnknownValue'
 import { meta } from '../../../data/meta'
 import { getField } from '../../../schemas/getField'
+import { hasRoute } from '../../routes'
 import { humanizeSlug } from '../db/weapons/weaponDisplay'
 import { ItemCell, PanelHeading, SourceIconLink, TipList } from './BossBits'
 import { BossDrops } from './BossDrops'
-import { bossMapHref, bossPageHref } from './bossNav'
+import { bossMapHref, bossPageHref, readinessHref } from './bossNav'
+import { BOSS_CTA_NOTE, bossCta } from './readiness/readinessUiCopy'
 import type { BossPageData } from './bossPageData'
 import { ATTACK_TAG_LABEL, bossDropSections, bossPageUnknowns, curatedList, isMultiForm, nextSteps, quoteLead, quoteTrail, SECTION_IDS, statField, statsView, stepPhrase, strategyGroups, TIME_LABEL } from './bossPageModel'
 import { ClassGear } from './ClassGear'
@@ -68,10 +71,31 @@ export function BossPageView({ data, worldEvil, nodeStates, headingId, gearData 
           <BossDrops boss={boss} sections={drops} conditions={conditions} sprites={sprites} titleId={SECTION_IDS.drops} />
         </div>
         <aside aria-label={`${boss.name}: stats and next steps`} className="min-w-0 space-y-4 md:space-y-6">
+          <ReadinessCta boss={boss} />
           <NextStepsPanel data={data} progress={progress} />
           <StatsPanel data={data} />
         </aside>
       </div>
+    </div>
+  )
+}
+
+// --- "Check Readiness" CTA (UX_SPEC §3.7; PRD §9 Feature A AC5) ------------------------------
+
+/**
+ * Opens the readiness checker prefilled with this boss. Top of the rail: on phones the rail follows
+ * the drops, which is UX_SPEC §3.7's order (… DropsTable · "Check Readiness" CTA · NextNodes); from lg
+ * it is beside the page from the first screen. Absent (never disabled) if the route isn't shipped.
+ */
+function ReadinessCta({ boss }: { boss: BossPageData['boss'] }) {
+  if (!hasRoute('readiness')) return null
+  return (
+    <div data-section="readiness" className="space-y-2 border-2 border-gold-600 bg-panel p-3 shadow-pixel">
+      <p className="text-sm text-fg-muted">{BOSS_CTA_NOTE}</p>
+      <Link to={readinessHref(boss.id)} data-readiness-link={boss.id} className={buttonClass('primary', 'w-full text-center')}>
+        {bossCta(boss.name)}
+        <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
+      </Link>
     </div>
   )
 }

@@ -132,7 +132,9 @@ function ownCopy(html: string, b: Boss): string {
   return t
 }
 
-const ALLOWED_LOCAL = new RegExp(`^(/weapons/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`)
+const ALLOWED_LOCAL = new RegExp(
+  `^(/weapons/\\d+|/bosses\\?node=[a-z0-9-]+|/bosses/(${BOSS_PAGE_IDS.join('|')})|/readiness\\?boss=(${BOSS_PAGE_IDS.join('|')})|/guides/(${Object.values(BOSS_PREP_GUIDES).map((g) => g.slug).join('|')}))$`,
+)
 
 /** One class tab's panel markup. */
 const classPanel = (html: string, cls: string) => {
@@ -151,9 +153,12 @@ describe('boss pages: every page (pre-Hardmode P5-S2, Wall of Flesh + Hardmode P
     const b = boss(id)
     const html = render(b, gearData)
 
-    // AC1 sections, in order: visual/header, summon, where & when, prep, gear (per class), attack patterns + tips, drops, next steps (+ stats)
+    // AC1 sections, in order: visual/header, summon, where & when, prep, gear (per class), attack patterns + tips, drops,
+    // the "Check Readiness" CTA (UX_SPEC §3.7, P5-S6 — top of the rail), next steps (+ stats)
     const sections = [...html.matchAll(/data-section="([a-z]+)"/g)].map((m) => m[1])
-    expect(sections).toEqual(['header', 'summon', 'where', 'prep', 'gear', 'patterns', 'drops', 'next', 'stats'])
+    expect(sections).toEqual(['header', 'summon', 'where', 'prep', 'gear', 'patterns', 'drops', 'readiness', 'next', 'stats'])
+    // Feature A AC5: every boss page opens the readiness checker prefilled with itself
+    expect(html).toContain(`href="/readiness?boss=${b.id}"`)
     expect(html).toContain(`>${escaped(b.name)}</h1>`)
     // the full sprite file (B30 `full`), never a thumbnail
     expect(html).toContain(`src="${b.sprite}"`)
