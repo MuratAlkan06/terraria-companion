@@ -15,6 +15,7 @@ import { UnknownValue } from '../../../../components/UnknownValue'
 import type { Item, SpriteIndex } from '../../../../data-access/types'
 import { getField } from '../../../../schemas/getField'
 import { bossPageHref } from '../../bosses/bossNav'
+import { GrindButton } from '../../plan/GrindLink'
 import { humanizeSlug, sourceTitle, stageLabel } from '../weapons/weaponDisplay'
 import { unknownCount } from '../weapons/weaponUnknowns'
 import * as copy from './itemCopy'
@@ -110,6 +111,10 @@ function DetailHeader({ item, sprites, unknowns }: { item: Item; sprites: Sprite
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <ProvenanceLink href={item.wikiUrl} srContext={`for ${item.name}`} />
           <PartiallyVerifiedBadge items={unknowns} />
+        </div>
+        {/* PRD §9 Feature B AC5 / UX_SPEC §3.10 ItemPage "grind CTA": the item's plan (absent until the planner ships) */}
+        <div className="flex flex-col gap-2 empty:hidden md:flex-row">
+          <GrindButton id={item.id} name={item.name} className="w-full md:w-auto" />
         </div>
         {fallback ? (
           <p data-sprite-note={fallback} className="flex gap-2 text-sm text-fg-muted">

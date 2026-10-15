@@ -255,13 +255,20 @@ describe('Improve My Build panel (P5-S7; UX_SPEC §3.8, §8 GatedSection)', () =
   const { analysis, improve } = analysisOf(PLANTERA, MECHS)
   const html = wrap(createElement(ImprovePanel, { result: improve, ctx: segmentContext(page, analysis.estimates), sprites: null, setUrl: (s) => page.engine.sets.get(s)?.wikiUrl, idPrefix: 'imp' }))
 
-  it('per group: obtainable-now rows with "Show Me How to Get It" (weapon / item → its page\'s acquisition section; others → their wiki article)', () => {
+  it('per group: obtainable-now rows with "Show Me How to Get It" (any item → its Feature B grind plan, /plan/new?item=:id; armor sets → their article)', () => {
     expect(ACQUISITION_ANCHOR).toBe(ACQUISITION_TITLE_ID)
     const weapon = /<section[^>]*aria-labelledby="imp-weapon"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
-    for (const s of improve.groups[0].obtainable) expect(new RegExp(`<a [^>]*data-show-how="i:${s.id}"[^>]*>`).exec(weapon)?.[0]).toContain(`href="/weapons/${s.id}#acq-title"`)
+    // PRD P5-S7 AC2 / §9 Feature B AC5 / UX_SPEC §3.8: deep-links into the planner now that P6-S5 ships
+    for (const s of improve.groups[0].obtainable) expect(new RegExp(`<a [^>]*data-show-how="i:${s.id}"[^>]*>`).exec(weapon)?.[0]).toContain(`href="/plan/new?item=${s.id}"`)
     const healing = /<section[^>]*aria-labelledby="imp-healing"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
-    // P6 encyclopedia (AMENDMENTS-016): an Item record's "Show Me How to Get It" opens its item page at "How to obtain"
-    expect(healing).toMatch(/<a [^>]*href="\/items\/188#acq-title"[^>]*data-show-how="i:188"|<a [^>]*data-show-how="i:188"[^>]*href="\/items\/188#acq-title"/)
+    expect(healing).toMatch(/<a [^>]*href="\/plan\/new\?item=188"[^>]*data-show-how="i:188"|<a [^>]*data-show-how="i:188"[^>]*href="\/plan\/new\?item=188"/)
+    // gated suggestions too (the brief's "readiness Improve's gated suggestions")
+    const gatedItems = improve.groups.flatMap((x) => x.gated).flatMap((g) => g.items).filter((s) => s.kind !== 'armor-set')
+    expect(gatedItems.length).toBeGreaterThan(0)
+    for (const s of gatedItems) {
+      const tag = [...html.matchAll(/<a [^>]*data-show-how="[^"]*"[^>]*>/g)].map((m) => m[0]).find((a) => a.includes(`data-show-how="${s.key}"`))
+      expect(tag, s.key).toContain(`href="/plan/new?item=${s.id}"`)
+    }
     expect(count(html, /data-show-how="/g)).toBe(improve.groups.reduce((n, g) => n + g.obtainable.length + g.gated.reduce((m, x) => m + x.items.length, 0), 0))
   })
 

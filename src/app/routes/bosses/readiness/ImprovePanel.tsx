@@ -6,6 +6,8 @@ import { GatedSection } from '../../../../components/GatedSection'
 import { PixelPanel } from '../../../../components/PixelPanel'
 import type { SpriteIndex } from '../../../../data-access/types'
 import type { ImproveResult, Suggestion, SuggestionGroup } from '../../../../scoring/improve'
+import { hasRoute } from '../../../routes'
+import { planNewHref } from '../../plan/planLinks'
 import { ItemCell } from '../BossBits'
 import { bossMapHref, bossPageHref } from '../bossNav'
 import { GateNotes, Segments, type SegmentContext } from './ReadinessFactorCard'
@@ -15,8 +17,7 @@ import * as copy from './readinessUiCopy'
  * ImprovePanel (UX_SPEC §3.8; PRD P5-S7 AC1–AC3; PRD §9 Feature A AC2): per targeted component, the
  * obtainable-now upgrades (tracked defeats only) and, apart, GatedSections "After you defeat {Boss}"
  * keyed by the exact bosses each upgrade still needs. Every suggestion links its page and "Show Me How
- * to Get It" — the weapon page's acquisition section in-app, else the item's wiki article (Feature B's
- * planner, P6-S5, is not shipped: no dead link).
+ * to Get It" — Feature B's plan for that item (P6-S5, `/plan/new?item=:id`); an armor set, its set article.
  */
 export interface ImprovePanelProps {
   result: ImproveResult
@@ -94,7 +95,14 @@ function SuggestionRow({ s, ctx, sprites, setUrl }: { s: Suggestion; ctx: Segmen
   const info = ctx.info(s.id)
   const set = s.setId ? setUrl(s.setId) : undefined
   const item = s.kind === 'armor-set' ? { ...info, name: s.name, ...(set ? { link: { kind: 'external' as const, href: set } } : {}) } : info
-  const howTo = item.link?.kind === 'internal' ? { kind: 'internal' as const, to: `${item.link.to}#${ACQUISITION_ANCHOR}` } : item.link
+  // PRD P5-S7 AC2 / §9 Feature B AC5 / UX_SPEC §3.8: "Show Me How to Get It" opens the item's grind plan once the
+  // planner ships (any single item); an armor set — several items — keeps its set article
+  const howTo =
+    s.kind !== 'armor-set' && hasRoute('plan-new')
+      ? { kind: 'internal' as const, to: planNewHref(s.id) }
+      : item.link?.kind === 'internal'
+        ? { kind: 'internal' as const, to: `${item.link.to}#${ACQUISITION_ANCHOR}` }
+        : item.link
   return (
     <li data-suggestion={s.key} className="space-y-1 border-2 border-panel-border bg-night-900 p-2">
       <ItemCell item={item} sprites={sprites} />

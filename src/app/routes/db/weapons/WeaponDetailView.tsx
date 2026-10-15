@@ -17,6 +17,7 @@ import { offersLab } from '../../../../lab/labLinks'
 import type { DamageClass } from '../../../../schemas'
 import { getField, type FieldView } from '../../../../schemas/getField'
 import { hasRoute } from '../../../routes'
+import { GrindButton } from '../../plan/GrindLink'
 import { compareHref } from '../compare/compareLinks'
 import { ClassBadge } from './WeaponBits'
 import { BASE_CRIT_PCT, labBlurb, sourceTitle, stageLabel, weaponStatRows } from './weaponDisplay'
@@ -135,10 +136,11 @@ function DetailHeader({
           <ProvenanceLink href={weapon.wikiUrl} srContext={`for ${weapon.name}`} />
           <PartiallyVerifiedBadge items={unknowns} />
         </div>
-        {/* ActionRow (UX_SPEC §3.3): SendToLabButton · "Compare"; each present only when it applies. */}
+        {/* ActionRow (UX_SPEC §3.3): SendToLabButton · "Compare" · "What Should I Grind For?" (Feature B, P6-S5); each present only when it applies. */}
         <div className="flex flex-col gap-2 empty:hidden md:flex-row md:flex-wrap">
           <SendToLabButton weapon={weapon} className="w-full md:w-auto" />
           <CompareLink weapon={weapon} className="w-full md:w-auto" />
+          <GrindButton id={weapon.id} name={weapon.name} className="w-full md:w-auto" />
         </div>
       </div>
     </PixelPanel>

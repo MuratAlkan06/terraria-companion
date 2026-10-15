@@ -7,8 +7,9 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, House, Package, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, FolderOpen, House, Package, Pickaxe, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
+import BuildsRedirect from './routes/BuildsRedirect'
 import HomePage from './routes/HomePage'
 
 /** All database pages live in one lazy chunk (`chunk-db`, UX_SPEC §1). */
@@ -28,6 +29,8 @@ const chunkReadiness = () => import('./routes/bosses/readiness/chunk-readiness')
 const chunkCompare = () => import('./routes/db/compare/chunk-compare')
 /** The Loadout Builder (`chunk-loadout`, UX_SPEC §1): P4-S2. */
 const chunkLoadout = () => import('./routes/loadout/chunk-loadout')
+/** Feature B, "What Should I Grind For?" (`chunk-plan`, UX_SPEC §1): P6-S5/S6. */
+const chunkPlan = () => import('./routes/plan/chunk-plan')
 
 export type NavSurface = 'header' | 'tabbar' | 'more' | 'footer'
 
@@ -152,6 +155,34 @@ export const APP_ROUTES: readonly AppRoute[] = [
     },
   },
   {
+    // P6-S5/S6 (Feature B, PRD §9): the plan list (UX_SPEC §1 `/plan`). Entry points: the phone "More" sheet (UX_SPEC
+    // §2: "… Readiness, Plans, Items …") and — B96b/B99b precedent for headline features — the header's desktop
+    // "More" menu, after Readiness; item / weapon pages ("What Should I Grind For?"), the readiness checker's "Show Me
+    // How to Get It" and the builder's gated track link /plan/new?item=:id.
+    id: 'plans',
+    path: '/plan',
+    Component: lazy(() => chunkPlan().then((m) => ({ default: m.PlansPage }))),
+    nav: {
+      label: 'Plans',
+      icon: Pickaxe,
+      surfaces: ['header', 'more'],
+      order: 45,
+      description: 'Pick any item: every material, drop and boss it takes, as a checklist',
+    },
+  },
+  {
+    // P6-S5: the goal picker, or `?item=:id` — that item's plan preview and "Make My Plan" (UX_SPEC §1, §10.11).
+    id: 'plan-new',
+    path: '/plan/new',
+    Component: lazy(() => chunkPlan().then((m) => ({ default: m.PlanNewPage }))),
+  },
+  {
+    // P6-S5/S6: a saved plan — tree + checklist + owned quantities (UX_SPEC §3.9).
+    id: 'plan',
+    path: '/plan/:planId',
+    Component: lazy(() => chunkPlan().then((m) => ({ default: m.PlanPage }))),
+  },
+  {
     // P6 item encyclopedia (AMENDMENTS-016; UX_SPEC §1 `/items`, §3.10): category hub + every Item record, filterable
     // by category / game stage / name (`?category=&stage=&q=`). Entry points: the phone "More" sheet (UX_SPEC §2:
     // "… Readiness, Plans, Items, Guides …") and — B96b/B99b precedent — the header's desktop "More" menu, after
@@ -190,6 +221,20 @@ export const APP_ROUTES: readonly AppRoute[] = [
     id: 'guide',
     path: '/guides/:slug',
     Component: lazy(() => chunkGuides().then((m) => ({ default: m.GuidePage }))),
+  },
+  {
+    // AMENDMENTS-016 B111 R5 / UX_SPEC §2: the More sheet's "Builds" entry ("… Guides, Builds, Favorites, About"),
+    // landing on the builder's saved-builds list (a redirect — see BuildsRedirect).
+    id: 'builds',
+    path: '/builds',
+    Component: BuildsRedirect,
+    nav: {
+      label: 'Builds',
+      icon: FolderOpen,
+      surfaces: ['more'],
+      order: 70,
+      description: 'Your saved loadouts: open, compare or check readiness',
+    },
   },
   {
     // P7-S1: starred weapons and bosses (tc.v1.favorites); in chunk-db per UX_SPEC §1.

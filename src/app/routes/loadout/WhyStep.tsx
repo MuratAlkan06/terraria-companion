@@ -10,6 +10,8 @@ import type { BuilderResult } from '../../../scoring/recommend'
 import type { ProfileReference, ReferencedComponent } from '../../../scoring/references'
 import { getStageInfo } from '../../stages'
 import { bossMapHref, bossPageHref } from '../bosses/bossNav'
+import { PlanItLink } from '../plan/GrindLink'
+import * as planCopy from '../plan/planCopy'
 import type { ReadinessPageData } from '../bosses/readiness/readinessData'
 import { Segments } from '../bosses/readiness/ReadinessFactorCard'
 import { segmentContext } from '../bosses/readiness/readinessUi'
@@ -266,6 +268,17 @@ export function WhyStep({ page, result, eff, references }: WhyStepProps) {
                       <p className="text-fg-muted" data-alternative-now="">
                         <Segments segments={e.alternative ? gatedCopy.alternative({ kind: 'item', id: e.alternative.id, text: e.alternative.name }) : gatedCopy.noAlternative()} ctx={ctx} />
                       </p>
+                      {/* PRD §9 Feature B AC5: a gated item's grind plan (a set: one per piece) */}
+                      {e.pieces ? (
+                        <p className="flex flex-wrap items-center gap-x-3" data-plan-pieces="">
+                          <span className="text-fg-muted">{planCopy.PLAN_PIECES}</span>
+                          {e.pieces.map((pid) => (
+                            <PlanItLink key={pid} id={pid} name={page.info(pid).name} label={page.info(pid).name} />
+                          ))}
+                        </p>
+                      ) : (
+                        <PlanItLink id={e.id} name={e.name} />
+                      )}
                     </div>
                   </li>
                 ))}

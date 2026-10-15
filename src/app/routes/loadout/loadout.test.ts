@@ -431,6 +431,15 @@ describe('Step 3 — why it works (SCORING_SPEC §4.7, §5.1; UX_SPEC §3.5 Step
     for (const g of result.gated) expect(html).toContain(`data-gated-section="${g.missing.join('+')}"`)
   })
 
+  it('PRD §9 Feature B AC5: every gated entry links its grind plan (/plan/new?item=:id); an armor set, one per piece', () => {
+    const entries = result.gated.flatMap((g) => g.entries)
+    for (const e of entries) {
+      const ids = e.pieces ? [...e.pieces] : [e.id]
+      for (const id of ids) expect(html).toMatch(new RegExp(`<a [^>]*href="/plan/new\\?item=${id}"[^>]*data-plan-it="${id}"|<a [^>]*data-plan-it="${id}"[^>]*href="/plan/new\\?item=${id}"`))
+    }
+    expect(count(html, /data-plan-it="/g)).toBe(entries.reduce((n, e) => n + (e.pieces ? e.pieces.length : 1), 0))
+  })
+
   it('assumptions: the inputs used (skips marked), every build assumption; the weights version said once (B108 nit: no duplicate footer)', () => {
     const skipped = run({ ...EMPTY_STATE, step: 3 })
     const t = text(wrap(createElement(WhyStep, { page, result: skipped.result, eff: skipped.eff })))

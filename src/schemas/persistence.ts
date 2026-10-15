@@ -110,20 +110,32 @@ export const PlanStepV1 = z.strictObject({
 })
 export type PlanStepV1 = z.infer<typeof PlanStepV1>
 
+/** A plan node key: an item (`i:<id>`) or an "Any X" recipe group (`grp:<slug>`) — P6-S5/S6. */
+export const PlanNodeKey = z.string().regex(/^(?:i:[1-9]\d*|grp:[a-z0-9]+(?:-[a-z0-9]+)*)$/)
+
+/**
+ * P6-S5/S6 (first emitted with Feature B; additive to the §8a draft — spec parity rides the amendments chain
+ * per B58): `targetAmount` (how many of the goal; absent = 1), `choices` (node key → the chosen route key, or
+ * a group's chosen member node key; the plan is rebuilt from current data with them), `stageAtCreation`
+ * nullable (no stage was selected — never defaulted), `owned` keyed by plan node key (`i:22`,
+ * `grp:any-iron-bar`).
+ */
 export const PlanV1 = z.strictObject({
   planId: z.string().min(8),
   targetItemId: ItemId,
+  targetAmount: z.int().positive().optional(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   status: z.enum(['active', 'done']),
-  stageAtCreation: Stage,
+  stageAtCreation: Stage.nullable(),
   snapshot: z.strictObject({
     generatedAt: IsoDateTime,
     gameVersion: z.string(),
     steps: z.array(PlanStepV1).min(1),
   }), // regenerable snapshot
-  owned: z.record(z.string(), z.int().nonnegative()), // itemId(string) → qty
+  owned: z.record(z.string(), z.int().nonnegative()), // plan node key → qty
   checkedStepIds: z.array(z.string()),
+  choices: z.record(PlanNodeKey, z.string()).optional(),
 })
 export type PlanV1 = z.infer<typeof PlanV1>
 export const PlansV1 = envelope(z.strictObject({ plans: z.array(PlanV1) }))
