@@ -1,12 +1,15 @@
 import { CircleHelp } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useLocation, useNavigate } from 'react-router'
+import { version as APP_VERSION } from '../../../../package.json'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { ErrorState, SkeletonPanel } from '../../../components/States'
+import { meta } from '../../../data/meta'
 import { effectiveProgress } from '../../../scoring/progress'
 import { recommendLoadout, type Pin, type SlotId, type SlotOption, type AltView } from '../../../scoring/recommend'
 import { profileReferences } from '../../../scoring/references'
 import type { SavedBuild } from '../../../storage/builds'
+import { buildRecordOf, type BuildRecord } from '../../../storage/transfer'
 import { useBuildsStore } from '../../buildsStore'
 import { useProgressStore } from '../../progressStore'
 import { useSettingsStore } from '../../settingsStore'
@@ -15,6 +18,8 @@ import { useDelayedFlag, useResource } from '../../useResource'
 import { useDocumentTitle } from '../../useDocumentTitle'
 import { loadReadinessData, peekReadinessData, type ReadinessPageData } from '../bosses/readiness/readinessData'
 import { BuildsView } from './BuildsView'
+import { buildText, dataNames } from './buildText'
+import { BuildExportDialog } from './BuildTransfer'
 import { InputsStep, type InputField } from './InputsStep'
 import { runSavedBuild } from './loadoutCompare'
 import * as copy from './loadoutCopy'
@@ -64,6 +69,8 @@ import type { LoadoutClass } from '../../../schemas'
  * tc.v1.builds (quarantine on unreadable data); `?view=builds` lists them (UX_SPEC §1 /builds, as a
  * builder sub-view). AMENDMENTS-016 B108: a rebuild that resets fixed picks is warned before and said
  * visibly after (H1); leaving the builder with unsaved changes to a saved build asks first (H5, UX_SPEC §6).
+ * P7-S2b (ADR D6, B123(a)): a saved build (the list) or this loadout (Step 4) exports as readable text with
+ * its `#code:` line (one BuildExportDialog); the list's "Import a build" adds a pasted one as a new build.
  */
 export const PAGE_TITLE_ID = 'loadout-title'
 
@@ -133,6 +140,15 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
   const [ownedOpen, setOwnedOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<SavedBuild | null>(null)
   const ownedButtonId = 'loadout-owned-add'
+  // P7-S2b: the text export — kept while the dialog closes; focus returns to what opened it.
+  const [exporting, setExporting] = useState<{ name: string; value: string } | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportFrom = useRef<HTMLElement | null>(null)
+  const openExport = (record: BuildRecord) => {
+    exportFrom.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
+    setExporting({ name: record.name, value: buildText(record, dataNames(page), { now: new Date(), appVersion: APP_VERSION, gameVersion: meta.gameVersion }) })
+    setExportOpen(true)
+  }
 
   // In-place edits (rebuild, swaps, notices) replace the entry and keep the scroll position — the change
   // and its notice stay where the user is (B108 H1); a new step is a new entry and starts at the top.
@@ -306,6 +322,8 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
           backHref={builderHref}
           openHref={(b) => `${LOADOUT_PATH}${loadoutSearch(stateFromBuild(b, page.engine))}`}
           onDelete={setConfirmDelete}
+          onExport={(b) => openExport(buildRecordOf(b))}
+          onImport={(record) => builds.create(record)}
         />
       ) : (
         <>
@@ -395,6 +413,7 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
               }
               setAnnouncement(copy.savedAnnounce(draft.name))
             }}
+            onExport={(name) => openExport(draftFrom(name, eff, result, state.pins))}
             onDelete={setConfirmDelete}
             compare={{
               page,
@@ -455,6 +474,15 @@ export function LoadoutView({ page }: { page: ReadinessPageData }) {
         }}
         returnFocus={() => document.getElementById(ownedButtonId)}
       />
+      {exporting ? (
+        <BuildExportDialog
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+          name={exporting.name}
+          value={exporting.value}
+          returnFocus={() => (exportFrom.current?.isConnected ? exportFrom.current : document.getElementById(headingId))}
+        />
+      ) : null}
       <ConfirmDialog
         open={confirmDelete !== null}
         onOpenChange={(open) => !open && setConfirmDelete(null)}

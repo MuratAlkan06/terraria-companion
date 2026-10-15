@@ -19,6 +19,8 @@ import { SITE } from '../site'
  * the rest collapse into a "More" menu; the search never shrinks below 240px. The wordmark shows
  * from md, steps aside at lg–xl (1024–1439px, where inline search + nav + stage chip need the
  * room; the logo mark and the accessible name stay) and returns from xl.
+ * AMENDMENTS-016 B123(h): Home isn't among the links (the logo links home), so the inline links are
+ * the tab bar's sections — Weapons · Lab · Bosses — and More holds the rest.
  */
 export interface SiteHeaderProps {
   /** Route registry the nav is derived from (default: the app's; tests pass a fake config). */

@@ -1,6 +1,7 @@
 import { Check, CircleAlert } from 'lucide-react'
 import { cx } from '../../../components/cx'
 import { PixelPanel } from '../../../components/PixelPanel'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { getStageInfo } from '../../stages'
 import { checkedIn, progressLabel, useChecklistStore, type ChecklistProgress, type ChecklistState } from './checklistStore'
 import { checklistKey, type Guide } from './guideModel'
@@ -13,6 +14,7 @@ import { checklistKey, type Guide } from './guideModel'
  */
 export const CHECKLIST_ID = 'guide-checklist'
 const TITLE_ID = 'guide-checklist-title'
+const CHECKLISTS_DOMAIN = ['checklists'] as const
 
 export const QUARANTINE_NOTICE = 'Some saved data couldn’t be read and was set aside (not deleted).'
 export const PERSIST_ERROR_NOTICE = 'Couldn’t save to this browser’s storage. Your checks stay until you leave or reload the page.'
@@ -77,12 +79,7 @@ export function ChecklistView({ guide, byKey, quarantined, persistError, onChang
         </p>
       </div>
       <ProgressBar {...progress} />
-      {quarantined ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {QUARANTINE_NOTICE}
-        </p>
-      ) : null}
+      <QuarantineNotice domains={CHECKLISTS_DOMAIN} active={quarantined} message={QUARANTINE_NOTICE} />
       <ul className="-mx-2 space-y-0.5">
         {guide.checklist.map((entry) => {
           const isChecked = checked.has(entry.id)

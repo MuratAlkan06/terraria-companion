@@ -261,7 +261,7 @@ export const blocksLeave = (unsaved: boolean, current: { pathname: string }, nex
  * the difficulty has, and the potion positions past its stored potions — exactly as v1 builds always
  * reopened.
  */
-export function savedEmptiedSlots(build: SavedBuild): SlotId[] {
+export function savedEmptiedSlots(build: Pick<SavedBuild, 'emptiedSlots' | 'slots' | 'difficulty'>): SlotId[] {
   if (build.emptiedSlots) return [...build.emptiedSlots]
   const s = build.slots
   const empty = new Set<SlotId>()
@@ -397,6 +397,8 @@ export const swapButtonId = (slot: SlotId) => `loadout-swap-${slot}`
 export const stepHeadingId = (step: Step) => `loadout-step-${step}`
 /** The builds view's heading (focus lands there when the view opens). */
 export const BUILDS_HEADING_ID = 'loadout-builds'
+/** A saved build's card heading in the builds view (focus lands there after an import adds it). */
+export const buildHeadingId = (buildId: string) => `build-${buildId}`
 /** Step 4's comparison block (focus lands there when a saved build's "Compare" opens it). */
 export const COMPARISON_ID = 'loadout-comparison'
 

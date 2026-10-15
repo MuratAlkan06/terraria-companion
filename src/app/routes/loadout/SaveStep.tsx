@@ -1,8 +1,9 @@
-import { CircleAlert, ClipboardList, Columns2, Columns3, Dices, FolderOpen, List, Save, Trash2 } from 'lucide-react'
+import { CircleAlert, ClipboardCopy, ClipboardList, Columns2, Columns3, Dices, FolderOpen, List, Save, Trash2 } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { Link } from 'react-router'
 import { buttonClass } from '../../../components/buttonStyles'
 import { PixelPanel } from '../../../components/PixelPanel'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { SendToLabButton } from '../../../components/SendToLabButton'
 import type { Weapon } from '../../../data-access/types'
 import type { BuilderResult, Pins } from '../../../scoring/recommend'
@@ -12,6 +13,7 @@ import { hasRoute } from '../../routes'
 import type { ReadinessPageData } from '../bosses/readiness/readinessData'
 import { readinessBuildHref } from '../bosses/readiness/readinessLinks'
 import { compareHref } from '../db/compare/compareLinks'
+import * as text from './buildTextCopy'
 import { ComparePanel } from './ComparePanel'
 import type { SavedRun } from './loadoutCompare'
 import * as copy from './loadoutCopy'
@@ -23,6 +25,8 @@ import { BUILDS_VIEW_HREF, type EffectiveInputs } from './loadoutModel'
  * - Save: name the loadout and save it to this browser (tc.v1.builds). Editing a saved build: "Save
  *   changes" overwrites it, "Save as copy" forks it, and an "Unsaved changes" line says when the draft
  *   differs. The button itself is the confirmation ("Saved ✓" for 2 s, then "Save as copy").
+ * - Export as text (P7-S2b, ADR D6): this loadout with the name above, saved or not — what Save would write —
+ *   as the readable build text with its `#code:` line (the page's BuildExportDialog).
  * - Compare: the draft beside a saved build (ComparePanel — profile, goal fit, slot by slot).
  * - Surprise Me (AC3, SCORING_SPEC §4.8): a random stage-legal loadout for the same inputs, warned
  *   before it replaces fixed picks and said after.
@@ -31,6 +35,8 @@ import { BUILDS_VIEW_HREF, type EffectiveInputs } from './loadoutModel'
  * - The saved builds, each with Open, Compare, Analyze and Delete (ConfirmDialog, destructive), and the
  *   full list (`?view=builds`).
  */
+const BUILDS_DOMAIN = ['builds'] as const
+
 export interface SaveStepProps {
   builds: readonly SavedBuild[]
   loadStatus: 'loaded' | 'empty' | 'quarantined'
@@ -45,6 +51,8 @@ export interface SaveStepProps {
   mainWeapon?: Weapon
   openHref: (build: SavedBuild) => string
   onSave: (name: string, mode: 'overwrite' | 'new') => void
+  /** Opens the text export of this loadout under `name` (the page owns the dialog). */
+  onExport: (name: string) => void
   onDelete: (build: SavedBuild) => void
   /** The comparison (P4-S4): the data, the draft, and the compared build scored as saved. */
   compare?: {
@@ -76,14 +84,20 @@ export function SaveStep(props: SaveStepProps) {
     const t = setTimeout(() => setFlash(false), SAVED_FLASH_MS)
     return () => clearTimeout(t)
   }, [flash])
-  const save = (mode: 'overwrite' | 'new') => {
+  /** The name, or undefined after saying it's required (focus moves to the field). */
+  const checkedName = (): string | undefined => {
     const trimmed = name.trim()
     if (trimmed === '') {
       setError(true)
       document.getElementById(`${id}name`)?.focus()
-      return
+      return undefined
     }
     setError(false)
+    return trimmed
+  }
+  const save = (mode: 'overwrite' | 'new') => {
+    const trimmed = checkedName()
+    if (trimmed === undefined) return
     const finalName = mode === 'new' && editing && trimmed === editing.name ? copy.copyName(trimmed) : trimmed
     props.onSave(finalName, mode)
     setName(finalName)
@@ -94,12 +108,7 @@ export function SaveStep(props: SaveStepProps) {
   const surpriseWarnId = `${id}surprise-warning`
   return (
     <div className="space-y-5" data-step-body="4">
-      {props.loadStatus === 'quarantined' ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm" data-quarantine="">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {copy.QUARANTINE_NOTICE}
-        </p>
-      ) : null}
+      <QuarantineNotice domains={BUILDS_DOMAIN} active={props.loadStatus === 'quarantined'} message={copy.QUARANTINE_NOTICE} />
       {props.persistError ? (
         <p role="status" className="flex gap-2 text-sm text-negative" data-persist-error="">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -156,7 +165,23 @@ export function SaveStep(props: SaveStepProps) {
               {flash ? copy.SAVED : copy.SAVE}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              const trimmed = checkedName()
+              if (trimmed !== undefined) props.onExport(trimmed)
+            }}
+            aria-describedby={`${id}export-hint`}
+            className={buttonClass('secondary')}
+            data-export-draft=""
+          >
+            <ClipboardCopy aria-hidden="true" className="size-5" />
+            {text.EXPORT_DRAFT}
+          </button>
         </div>
+        <p id={`${id}export-hint`} className="text-xs text-fg-muted">
+          {text.EXPORT_DRAFT_HINT}
+        </p>
       </PixelPanel>
 
       {props.compare ? (

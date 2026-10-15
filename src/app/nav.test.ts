@@ -23,15 +23,18 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('P4-S2 / P6 nav: Home + Weapons + Lab + Bosses in header and tab bar; Loadout, Compare, Readiness, Plans, Items and Guides in header + More; Builds in More; Favorites and Licensing in More + footer', () => {
+  it('P4-S2 / P6 / P7-S2 / P7-S2b nav: Weapons + Lab + Bosses in header and tab bar, Home in the tab bar only (B123h); Loadout, Compare, Readiness, Plans, Items, Guides and Builds in header + More; Favorites, Your data and Licensing in More + footer', () => {
     // AMENDMENTS-015 B96b: Readiness has a desktop entry (the header's "More" menu, after Bosses);
     // AMENDMENTS-016 B99b: Compare gets one too, by the same reasoning (before Readiness, as in the More sheet).
     // P4-S2: Loadout follows the same precedent, in the UX_SPEC §2 header order (Weapons · Lab · Loadout · Bosses).
     // P6 item encyclopedia (AMENDMENTS-016): Items joins the header's "More" menu (B96b/B99b precedent), before Guides (UX_SPEC §2).
     // P6-S5/S6 (Feature B): Plans joins the header's "More" menu after Readiness (B96b/B99b precedent; UX_SPEC §2 sheet order).
-    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/', '/weapons', '/lab', '/loadout', '/bosses', '/compare', '/readiness', '/plan', '/items', '/guides'])
-    // AMENDMENTS-001 A8: the footer's secondary links are data-driven; Favorites joins at P7-S1.
-    expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/favorites', '/about/licensing'])
+    // AMENDMENTS-016 B117/B118: Builds gets its desktop entry (the header's "More" menu, last — the sheet's order).
+    // AMENDMENTS-016 B123(h): Home leaves the header's links (the logo links home); Bosses follows Lab, then Loadout.
+    expect(navItemsFor('header').map((i) => i.to)).toEqual(['/weapons', '/lab', '/bosses', '/loadout', '/compare', '/readiness', '/plan', '/items', '/guides', '/builds'])
+    expect(navItemsFor('header').map((i) => i.to)).not.toContain('/')
+    // AMENDMENTS-001 A8: the footer's secondary links are data-driven; Favorites joins at P7-S1, Your data at P7-S2.
+    expect(navItemsFor('footer').map((i) => i.to)).toEqual(['/favorites', '/settings/data', '/about/licensing'])
     const { tabs, more } = tabBarLayout()
     // UX_SPEC §2: Home · Weapons · Lab · Bosses · More (Compare, Readiness, Guides, Favorites, About live in the More
     // sheet — the sheet's own order: "Loadout, Compare, Readiness, Plans, Items, Guides, …").
@@ -47,6 +50,8 @@ describe('route registry + data-driven nav', () => {
         // AMENDMENTS-016 B111 R5: "Builds" (UX_SPEC §2 "… Guides, Builds, Favorites, About")
         { to: '/builds', label: 'Builds' },
         { to: '/favorites', label: 'Favorites' },
+        // P7-S2: the saved-data page (back up, restore, clear, set-aside copies), before About.
+        { to: '/settings/data', label: 'Your data' },
         { to: '/about/licensing' },
       ],
     })
@@ -68,10 +73,18 @@ describe('route registry + data-driven nav', () => {
     }
   })
 
-  it('B111 R5: /builds is registered (a redirect to the builder’s saved-builds list) and listed in the More sheet only', () => {
+  it('B111 R5 / B117: /builds is registered (a redirect to the builder’s saved-builds list), in the More sheet and the header’s More menu', () => {
     const builds = APP_ROUTES.find((r) => r.id === 'builds')
     expect(builds?.path).toBe('/builds')
-    expect(builds?.nav?.surfaces).toEqual(['more'])
+    expect(builds?.nav?.surfaces).toEqual(['header', 'more'])
+  })
+
+  it('P7-S2: /settings/data is a lazy route in the More sheet and the footer only', () => {
+    const data = APP_ROUTES.find((r) => r.id === 'data')
+    if (!data) throw new Error('no data route')
+    expect(data.path).toBe('/settings/data')
+    expect(data.nav?.surfaces).toEqual(['more', 'footer'])
+    expect((data.Component as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.lazy'))
   })
 
   it.each(['lab', 'bosses', 'guides', 'favorites', 'readiness', 'compare', 'loadout', 'items'])('/%s is registered as a lazy route (its own chunk), never an eager import', (id) => {
@@ -133,20 +146,23 @@ describe('route registry + data-driven nav', () => {
     // Up to 3 links: no More menu at all; a 4th goes into it.
     expect(headerNavLayout(six.slice(0, 3)).more).toEqual([])
     expect(headerNavLayout(six.slice(0, 4)).more.map((i) => i.id)).toEqual(['bosses'])
-    // Today's registry: Home + Weapons + Lab inline; Loadout (P4-S2), Bosses, Compare (B99b), Readiness (B96b), Plans (P6-S5), Items (P6) then Guides in "More" (B34).
+    // Today's registry (B123h): Weapons + Lab + Bosses inline — the tab bar's sections, Home left to the logo;
+    // Loadout (P4-S2), Compare (B99b), Readiness (B96b), Plans (P6-S5), Items (P6), Guides then Builds (B117) in "More" (B34).
     expect(headerNavLayout()).toMatchObject({
-      inline: [{ to: '/' }, { to: '/weapons' }, { to: '/lab' }],
+      inline: [{ to: '/weapons', label: 'Weapons' }, { to: '/lab', label: 'Lab' }, { to: '/bosses', label: 'Bosses' }],
       more: [
         { to: '/loadout', label: 'Loadout' },
-        { to: '/bosses', label: 'Bosses' },
         { to: '/compare', label: 'Compare' },
         { to: '/readiness', label: 'Readiness' },
         { to: '/plan', label: 'Plans' },
         { to: '/items', label: 'Items' },
         { to: '/guides', label: 'Guides' },
+        { to: '/builds', label: 'Builds' },
       ],
     })
     expect(headerNavLayout().more).toHaveLength(7)
+    // The inline links are exactly the tab bar's sections other than Home (B123h: "matching the tab bar").
+    expect(headerNavLayout().inline.map((i) => i.to)).toEqual(tabBarLayout().tabs.map((i) => i.to).filter((to) => to !== '/'))
   })
 
   it('reserves a More slot when there are more-only items', () => {

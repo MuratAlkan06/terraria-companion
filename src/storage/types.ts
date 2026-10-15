@@ -16,8 +16,11 @@ export interface DomainDef<T> {
   parse: (data: unknown) => T
 }
 
-/** Minimal Storage surface so the engine is swappable (ADR D6) and testable. */
-export type StorageBackend = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+/**
+ * Minimal Storage surface so the engine is swappable (ADR D6) and testable. `key`/`length` are optional:
+ * only listing set-aside copies (the quarantine notice, the data page) needs to enumerate keys.
+ */
+export type StorageBackend = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & Partial<Pick<Storage, 'key' | 'length'>>
 
 export type LoadResult<T> =
   | { kind: 'loaded'; data: T; migratedFrom?: number }

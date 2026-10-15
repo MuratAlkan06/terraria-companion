@@ -2,6 +2,7 @@ import { CircleAlert, FolderInput, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../../../../components/ConfirmDialog'
+import { QuarantineNotice } from '../../../../components/QuarantineNotice'
 import { WORLD_EVIL_LABEL } from '../../../../components/nodeMap/graph'
 import { ErrorState, SkeletonPanel } from '../../../../components/States'
 import { improveSuggestions } from '../../../../scoring/improve'
@@ -68,6 +69,7 @@ export default function ReadinessPage() {
   )
 }
 
+const READINESS_DOMAIN = ['readiness'] as const
 const isClass = (v: string | null): v is ReadinessClass => v !== null && (READINESS_CLASSES as readonly string[]).includes(v)
 const isDifficulty = (v: string | null): v is ReadinessDifficulty => v !== null && (READINESS_DIFFICULTIES as readonly string[]).includes(v)
 
@@ -235,12 +237,7 @@ export function ReadinessView({ page }: { page: ReadinessPageData }) {
 
   return (
     <>
-      {store.loadStatus === 'quarantined' ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {copy.QUARANTINE_NOTICE}
-        </p>
-      ) : null}
+      <QuarantineNotice domains={READINESS_DOMAIN} active={store.loadStatus === 'quarantined'} message={copy.QUARANTINE_NOTICE} />
       {store.persistError ? (
         <p role="status" className="flex gap-2 text-sm text-negative">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

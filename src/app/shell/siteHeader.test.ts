@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
-import type { AppRoute } from '../routes'
+import { APP_ROUTES, type AppRoute } from '../routes'
 import { SiteHeader } from './SiteHeader'
 
 /**
@@ -55,5 +55,24 @@ describe('SiteHeader with six nav sections (B29)', () => {
     const html = renderHeader('/')
     expect(html).toMatch(/<a [^>]*href="\/"[^>]*>.*?<span class="[^"]*\bsr-only\b[^"]*\bmd:not-sr-only lg:sr-only xl:not-sr-only\b[^"]*">Terraria Companion<\/span>/)
     expect(html).toMatch(/class="[^"]*\blg:min-w-60\b[^"]*"><div class="relative w-full max-w-md"/)
+  })
+})
+
+describe('SiteHeader with the app’s own registry (AMENDMENTS-016 B123h)', () => {
+  it('Weapons · Lab · Bosses inline (the tab bar’s sections), no Home link — the logo links home — and the rest in More', () => {
+    const html = renderHeader('/', APP_ROUTES)
+    const nav = primaryNav(html)
+    expect([...nav.matchAll(/<a [^>]*href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/weapons', '/lab', '/bosses'])
+    expect(nav).not.toContain('href="/"')
+    expect(nav).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*>More<svg/)
+    // the logo is the way home, outside the nav
+    expect(html.slice(0, html.indexOf('<nav aria-label="Primary"'))).toMatch(/<a [^>]*href="\/"[^>]*>/)
+  })
+
+  it('the More trigger is current on a section it holds (Loadout), not on an inline one (Bosses)', () => {
+    const more = (path: string) => /<button[^>]*aria-haspopup="menu"[^>]*>/.exec(primaryNav(renderHeader(path, APP_ROUTES)))?.[0] ?? ''
+    expect(more('/loadout')).toMatch(/\btext-accent after:bg-accent\b/)
+    expect(more('/bosses')).not.toMatch(/\btext-accent\b/)
+    expect(primaryNav(renderHeader('/bosses/plantera', APP_ROUTES))).toMatch(/<a [^>]*aria-current="page"[^>]*href="\/bosses"|<a [^>]*href="\/bosses"[^>]*aria-current="page"/)
   })
 })

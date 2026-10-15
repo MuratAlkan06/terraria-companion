@@ -3,6 +3,8 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Outlet, ScrollRestoration, useLocation } from 'react-router'
 import { FavoritesSaveNotice } from '../../components/FavoriteStar'
 import { PixelLoader } from '../../components/PixelLoader'
+import { QuarantineNotice } from '../../components/QuarantineNotice'
+import { useQuarantineStore, useQuarantineVisible } from '../quarantineStore'
 import { pathFor } from '../routes'
 import { useDelayedFlag } from '../useResource'
 import { BottomTabBar } from './BottomTabBar'
@@ -20,7 +22,14 @@ import { SiteHeader } from './SiteHeader'
  * Loading (UX_SPEC §5.1, design review P2-S3 #6): the first load of a lazy route shows the
  * PixelLoader only after 300ms (no flash for fast loads); a slow client-side navigation keeps
  * the previous page up (router transition) and shows a pending bar along the top edge.
+ *
+ * Set-aside saved data (UX_SPEC §5.6, P7-S2): app-wide data — the stage setting, boss progress, recently
+ * viewed — has no single page of its own, so its QuarantineNotice sits above every page (pages carry their
+ * own domains' notices; the data page lists them all, so this one steps aside there). A notice's last
+ * outcome clears on navigation.
  */
+const APP_WIDE_DOMAINS = ['settings', 'progress', 'recent'] as const
+
 const PENDING_BAR_DELAY_MS = 150
 
 export default function AppShell() {
@@ -38,6 +47,7 @@ export default function AppShell() {
   useEffect(() => {
     if (settledPath.current === pathname) return
     settledPath.current = pathname
+    useQuarantineStore.getState().clearOutcome()
     mainRef.current?.focus({ preventScroll: true })
   }, [pathname])
 
@@ -53,6 +63,7 @@ export default function AppShell() {
         {immersive ? null : <SiteHeader />}
         <RoutePendingBar active={pending} />
         <main id="main" ref={mainRef} tabIndex={-1} aria-busy={pending || undefined} className="flex-1 focus:outline-none">
+          {immersive || pathname === pathFor('data') ? null : <AppWideQuarantineNotice />}
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
@@ -70,6 +81,15 @@ export default function AppShell() {
       <ScrollRestoration getKey={scrollRestorationKey} />
     </Tooltip.Provider>
   )
+}
+
+function AppWideQuarantineNotice() {
+  const visible = useQuarantineVisible(APP_WIDE_DOMAINS)
+  return visible ? (
+    <div className="mx-auto w-full max-w-7xl px-4 pt-4 md:px-6">
+      <QuarantineNotice domains={APP_WIDE_DOMAINS} />
+    </div>
+  ) : null
 }
 
 /** Lazy-route fallback: reserved space first, the PixelLoader only once loading passes 300ms. */

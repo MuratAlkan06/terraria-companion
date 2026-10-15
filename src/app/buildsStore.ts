@@ -13,9 +13,11 @@
  *   time ("Save" when editing), "Save as copy" creates a new one (UX_SPEC §6).
  * - Writes are BuildsV2 (AMENDMENTS-016 B106: + target boss, owned items, user-emptied slots); v1 data
  *   reads as-is, its builds without those fields (src/storage/builds.ts).
+ * - P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear).
  */
 import { create } from 'zustand'
 import { loadDomain, saveDomain, type StorageBackend } from '../storage'
+import { onDomainsChanged } from '../storage/events'
 import { EMPTY_BUILDS, type BuildsData, type SavedBuild } from '../storage/builds'
 
 type LoadStatus = 'loaded' | 'empty' | 'quarantined'
@@ -50,6 +52,7 @@ function hydrate(backend: StorageBackend | null | undefined): Pick<BuildsState, 
 /** A builds store over `backend` (default: localStorage). Tests pass an in-memory backend and an id factory. */
 export function createBuildsStore(backend?: StorageBackend | null, makeId: (now: Date) => string = newBuildId) {
   return create<BuildsState>()((set, get) => {
+    onDomainsChanged(backend, ['builds'], () => set({ ...hydrate(backend), persistError: false }))
     const commit = (builds: SavedBuild[], what: string) => {
       let persistError = false
       try {

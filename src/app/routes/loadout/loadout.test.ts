@@ -462,6 +462,7 @@ describe('Step 4 — save (UX_SPEC §3.5 Step4, §5.6, §6)', () => {
     weaponIds: [434],
     openHref: (b) => `/loadout?build=${b.buildId}`,
     onSave: () => {},
+    onExport: () => {},
     onDelete: () => {},
   }
   const build: SavedBuild = {

@@ -12,10 +12,12 @@
  * - Changing a choice regenerates the saved steps (the user's own action — §8c "never silent rewrite"); a data
  *   update is applied only when the user asks (`updateSnapshot`), which also drops check marks of steps that
  *   no longer exist. Until then they are kept.
+ * - P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear).
  */
 import { create } from 'zustand'
 import { meta } from '../../../data/meta'
 import { loadDomain, saveDomain, type StorageBackend } from '../../../storage'
+import { onDomainsChanged } from '../../../storage/events'
 import { EMPTY_PLANS, type PlansData, type SavedPlan, type StoredPlanStep } from '../../../storage/plans'
 import type { Stage } from '../../stages'
 
@@ -71,6 +73,7 @@ const snapshotOf = (steps: StoredPlanStep[], now: Date): SavedPlan['snapshot'] =
 /** A plans store over `backend` (default: localStorage). Tests pass an in-memory backend and an id factory. */
 export function createPlansStore(backend?: StorageBackend | null, makeId: (now: Date) => string = newPlanId) {
   return create<PlansState>()((set, get) => {
+    onDomainsChanged(backend, ['plans'], () => set({ ...hydrate(backend), persistError: false }))
     const commit = (plans: SavedPlan[], what: string) => {
       let persistError = false
       try {

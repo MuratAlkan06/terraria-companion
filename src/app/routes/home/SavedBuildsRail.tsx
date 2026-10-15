@@ -1,12 +1,14 @@
-import { CircleAlert, List } from 'lucide-react'
+import { List } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { ItemSlot } from '../../../components/ItemSlot'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { asRarity } from '../../../components/rarity'
 import { SpriteImg } from '../../../components/SpriteImg'
 import type { SpriteIndex, WeaponListRecord } from '../../../data-access/types'
 import { buildItemIds, type SavedBuild } from '../../../storage/builds'
 import { useBuildsStore } from '../../buildsStore'
+import { useQuarantineVisible } from '../../quarantineStore'
 import { useResource } from '../../useResource'
 import { BUILDS_VIEW_HREF, buildOpenHref } from '../loadout/loadoutLinks'
 import { loadBuildPreviewData, peekBuildPreviewData, previewItems, type BuildPreviewData, type HomeResource } from './homeData'
@@ -22,12 +24,15 @@ import { RAIL_ALL, RAIL_EMPTY_BUILD, RAIL_QUARANTINE, RAIL_TITLE, railItems, rai
  * sits in the eager bundle and never pulls the builder's modules.
  */
 const TITLE_ID = 'saved-builds-title'
+const BUILDS_DOMAIN = ['builds'] as const
 const dateText = (iso: string) => new Date(iso).toLocaleString('en-US', { dateStyle: 'medium' })
 
 export function SavedBuildsRail({ home }: { home: HomeResource }) {
   const builds = useBuildsStore((s) => s.builds)
   const loadStatus = useBuildsStore((s) => s.loadStatus)
-  if (builds.length === 0 && loadStatus !== 'quarantined') return null
+  // Set-aside builds are said (and actionable) even with none saved; resolved, the rail goes away again.
+  const quarantine = useQuarantineVisible(BUILDS_DOMAIN, loadStatus === 'quarantined')
+  if (builds.length === 0 && !quarantine) return null
   return <SavedBuildsSection builds={builds} quarantined={loadStatus === 'quarantined'} home={home} />
 }
 
@@ -47,12 +52,7 @@ export function SavedBuildsSection({ builds, quarantined, home }: { builds: read
           {RAIL_ALL}
         </Link>
       </div>
-      {quarantined ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm" data-rail-quarantine="">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {RAIL_QUARANTINE}
-        </p>
-      ) : null}
+      <QuarantineNotice domains={BUILDS_DOMAIN} active={quarantined} message={RAIL_QUARANTINE} />
       {sorted.length > 0 ? (
         // the RecentRail pattern: bleeds to the screen edges below md; 4px room keeps focus rings unclipped
         <ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pt-1 pb-3 scheme-dark [scrollbar-color:var(--color-stone-600)_transparent] md:-mx-1 md:scroll-px-1 md:px-1">

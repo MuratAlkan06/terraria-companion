@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { buttonClass } from '../../../components/buttonStyles'
 import { cx } from '../../../components/cx'
 import { PixelPanel } from '../../../components/PixelPanel'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { EmptyState } from '../../../components/States'
 import { asRarity } from '../../../components/rarity'
 import { RarityText } from '../../../components/RarityText'
@@ -90,6 +91,8 @@ function useFlash(): string {
   return shown
 }
 
+const PLANS_DOMAIN = ['plans'] as const
+
 export default function PlansPage() {
   useDocumentTitle(copy.DOC_TITLE)
   const plans = usePlansStore((s) => s.plans)
@@ -129,11 +132,7 @@ export default function PlansPage() {
           </Notice>
         ) : null}
       </div>
-      {loadStatus === 'quarantined' ? (
-        <Notice tone="warn" icon={<CircleAlert className="size-5 text-accent" />} data="quarantine">
-          <p>{copy.QUARANTINE}</p>
-        </Notice>
-      ) : null}
+      <QuarantineNotice domains={PLANS_DOMAIN} active={loadStatus === 'quarantined'} message={copy.QUARANTINE} />
       {persistError ? (
         <Notice tone="warn" icon={<CircleAlert className="size-5 text-accent" />} data="persist-error">
           <p>{copy.PERSIST_ERROR}</p>

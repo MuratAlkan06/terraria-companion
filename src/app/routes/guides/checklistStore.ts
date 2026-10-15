@@ -9,9 +9,11 @@
  *
  * Unreadable payloads are quarantined by the storage module (set aside, never deleted); the store
  * then starts empty and reports `loadStatus: 'quarantined'` for the page's notice (UX_SPEC §5.6).
+ * P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear).
  */
 import { create } from 'zustand'
 import { loadDomain, saveDomain, type StorageBackend } from '../../../storage'
+import { onDomainsChanged } from '../../../storage/events'
 import { EMPTY_CHECKLISTS, withEntry, type ChecklistsData } from '../../../storage/checklists'
 import { checklistKey, type Guide } from './guideModel'
 
@@ -35,25 +37,28 @@ function hydrate(backend: StorageBackend | null | undefined): Pick<ChecklistStat
 
 /** A checklist store over `backend` (default: localStorage). Tests pass an in-memory backend. */
 export function createChecklistStore(backend?: StorageBackend | null) {
-  return create<ChecklistState>()((set, get) => ({
-    ...hydrate(backend),
-    persistError: false,
-    setChecked: (key, entryId, checked) => {
-      // Latest stored payload: another owner may have written its own keys since we hydrated.
-      const latest = loadDomain('checklists', backend)
-      const base: ChecklistsData = latest.kind === 'loaded' ? latest.data : { byKey: get().byKey }
-      const { byKey } = withEntry(base, key, entryId, checked)
-      let persistError = false
-      try {
-        saveDomain('checklists', { byKey }, backend)
-      } catch (error) {
-        persistError = true
-        console.warn('[checklists] Change kept for this session only.', error)
-      }
-      // A payload that turned unreadable since startup was just set aside: say so, like at load.
-      set({ byKey, persistError, ...(latest.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}) })
-    },
-  }))
+  return create<ChecklistState>()((set, get) => {
+    onDomainsChanged(backend, ['checklists'], () => set({ ...hydrate(backend), persistError: false }))
+    return {
+      ...hydrate(backend),
+      persistError: false,
+      setChecked: (key, entryId, checked) => {
+        // Latest stored payload: another owner may have written its own keys since we hydrated.
+        const latest = loadDomain('checklists', backend)
+        const base: ChecklistsData = latest.kind === 'loaded' ? latest.data : { byKey: get().byKey }
+        const { byKey } = withEntry(base, key, entryId, checked)
+        let persistError = false
+        try {
+          saveDomain('checklists', { byKey }, backend)
+        } catch (error) {
+          persistError = true
+          console.warn('[checklists] Change kept for this session only.', error)
+        }
+        // A payload that turned unreadable since startup was just set aside: say so, like at load.
+        set({ byKey, persistError, ...(latest.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}) })
+      },
+    }
+  })
 }
 
 export const useChecklistStore = createChecklistStore()

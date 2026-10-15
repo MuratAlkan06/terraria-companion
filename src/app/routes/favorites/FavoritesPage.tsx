@@ -5,6 +5,7 @@ import { EmptyChest } from '../../../components/art/EmptyChest'
 import { buttonClass } from '../../../components/buttonStyles'
 import { EntityCard } from '../../../components/EntityCard'
 import { FAVORITE_UNSAVED, FavoriteStarButton } from '../../../components/FavoriteStar'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { asRarity, rarityLabel } from '../../../components/rarity'
 import { SpriteImg } from '../../../components/SpriteImg'
 import { EmptyState, ErrorState, SkeletonList } from '../../../components/States'
@@ -33,6 +34,7 @@ export const TITLE_ID = 'favorites-title'
 export const EMPTY_TITLE = 'Nothing starred yet'
 export const EMPTY_MESSAGE = 'Tap the star on any weapon or boss to keep it here.'
 export const QUARANTINE_NOTICE = 'Some saved data couldn’t be read and was set aside (not deleted).'
+const FAVORITES_DOMAIN = ['favorites'] as const
 export const PERSIST_ERROR_NOTICE = 'Couldn’t save to this browser’s storage. Your favorites are kept until you reload or close this tab.'
 
 export default function FavoritesPage() {
@@ -72,12 +74,7 @@ export default function FavoritesPage() {
         </p>
       </header>
 
-      {loadStatus === 'quarantined' ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {QUARANTINE_NOTICE}
-        </p>
-      ) : null}
+      <QuarantineNotice domains={FAVORITES_DOMAIN} active={loadStatus === 'quarantined'} message={QUARANTINE_NOTICE} />
       {persistError ? (
         <p role="status" className="flex gap-2 text-sm text-negative">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

@@ -1,23 +1,30 @@
-import { ArrowLeft, Backpack, CircleAlert, ClipboardList, FolderOpen, Trash2 } from 'lucide-react'
+import { ArrowLeft, Backpack, CircleAlert, ClipboardCopy, ClipboardList, DatabaseBackup, FolderOpen, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
 import { buttonClass } from '../../../components/buttonStyles'
 import { InventoryGrid } from '../../../components/InventoryGrid'
 import { PixelPanel } from '../../../components/PixelPanel'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { buildItemIds, type SavedBuild } from '../../../storage/builds'
-import { hasRoute } from '../../routes'
+import type { BuildRecord } from '../../../storage/transfer'
+import { hasRoute, pathFor } from '../../routes'
 import { getStageInfo } from '../../stages'
 import type { ReadinessPageData } from '../bosses/readiness/readinessData'
 import { readinessBuildHref } from '../bosses/readiness/readinessLinks'
+import * as text from './buildTextCopy'
+import { BuildImport } from './BuildTransfer'
 import * as copy from './loadoutCopy'
 import { ItemSquare } from './LoadoutBits'
-import { LOADOUT_PATH } from './loadoutModel'
+import { buildHeadingId, LOADOUT_PATH } from './loadoutModel'
 
 /**
  * The saved-builds list (PRD P4-S4 AC4; UX_SPEC §1 `/builds` — shipped as the builder's `?view=builds`
  * sub-view, no route of its own): every build saved in this browser, newest first, each with its inputs,
  * an equip preview of the slots AS SAVED (sprites + Terraria tooltips), Open, Analyze (the readiness
- * checker's import) and Delete (ConfirmDialog, destructive — owned by the page). Export / import is
- * P7-S2. Empty: the designed one-line invitation with a single call to action (UX_SPEC §5.2).
+ * checker's import), Export (P7-S2b: the build as readable text with its `#code:` line — the page's
+ * BuildExportDialog) and Delete (ConfirmDialog, destructive — owned by the page). "Import a build" reads a pasted
+ * build text into a NEW saved build (UX_SPEC §4(f), AMENDMENTS-016 B123(a)); the whole-data backup (P7-S2) is the
+ * data page's, linked here. Empty: the designed one-line invitation with a single call to action (UX_SPEC §5.2) —
+ * the import stays offered (a fresh browser is where a build text arrives).
  */
 export interface BuildsViewProps {
   page: ReadinessPageData
@@ -28,7 +35,13 @@ export interface BuildsViewProps {
   backHref: string
   openHref: (build: SavedBuild) => string
   onDelete: (build: SavedBuild) => void
+  /** Opens the build's text export (the page owns the dialog). */
+  onExport: (build: SavedBuild) => void
+  /** Saves an imported build as a NEW saved build and returns it. */
+  onImport: (build: BuildRecord) => SavedBuild
 }
+
+const BUILDS_DOMAIN = ['builds'] as const
 
 const dateText = (iso: string) => new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -47,13 +60,16 @@ export function BuildsView(props: BuildsViewProps) {
         </h2>
         <p className="text-sm text-fg-muted">{copy.BUILDS_INTRO}</p>
         {sorted.length > 0 ? <p className="text-sm text-fg-muted" data-builds-count={sorted.length}>{copy.buildsCount(sorted.length)}</p> : null}
+        {/* UX_SPEC §1 `/builds` "export/import" (P7-S2): backups live on the data page, builds included. */}
+        {hasRoute('data') ? (
+          <Link to={pathFor('data')} className="inline-flex min-h-tap items-center gap-1.5 text-sm font-semibold text-link underline decoration-1 underline-offset-4 hover:text-accent-strong" data-builds-backup="">
+            <DatabaseBackup aria-hidden="true" className="size-4" />
+            {copy.BUILDS_BACKUP}
+          </Link>
+        ) : null}
       </div>
-      {props.loadStatus === 'quarantined' ? (
-        <p role="status" className="flex gap-2 border-2 border-earth-600 bg-earth-900 p-2 text-sm" data-quarantine="">
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gate" />
-          {copy.QUARANTINE_NOTICE}
-        </p>
-      ) : null}
+      <BuildImport page={props.page} builds={props.builds} onAdd={props.onImport} />
+      <QuarantineNotice domains={BUILDS_DOMAIN} active={props.loadStatus === 'quarantined'} message={copy.QUARANTINE_NOTICE} />
       {props.persistError ? (
         <p role="status" className="flex gap-2 text-sm text-negative" data-persist-error="">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -77,9 +93,9 @@ export function BuildsView(props: BuildsViewProps) {
             const boss = b.targetBoss ? (props.page.engine.bosses.get(b.targetBoss)?.name ?? b.targetBoss) : undefined
             return (
               <li key={b.buildId} className="min-w-0" data-build-card={b.buildId}>
-                <PixelPanel as="article" padded={false} aria-labelledby={`build-${b.buildId}`} className="flex h-full flex-col gap-3 p-3 md:p-4">
+                <PixelPanel as="article" padded={false} aria-labelledby={buildHeadingId(b.buildId)} className="flex h-full flex-col gap-3 p-3 md:p-4">
                   <div className="min-w-0">
-                    <h3 id={`build-${b.buildId}`} className="font-semibold break-words">
+                    <h3 id={buildHeadingId(b.buildId)} tabIndex={-1} className="font-semibold break-words focus:outline-none">
                       {b.name}
                     </h3>
                     <p className="text-xs text-fg-muted">{copy.buildMeta(copy.CLASS_NAMES[b.class], getStageInfo(b.stage).label, copy.DIFFICULTY_NAMES[b.difficulty], b.goal ? copy.GOAL_NAMES[b.goal] : undefined)}</p>
@@ -106,6 +122,10 @@ export function BuildsView(props: BuildsViewProps) {
                         {copy.ANALYZE}
                       </Link>
                     ) : null}
+                    <button type="button" onClick={() => props.onExport(b)} aria-label={text.exportSr(b.name)} className={buttonClass('secondary', 'min-h-tap px-3 text-sm')} data-export={b.buildId}>
+                      <ClipboardCopy aria-hidden="true" className="size-4" />
+                      {text.EXPORT}
+                    </button>
                     <button type="button" onClick={() => props.onDelete(b)} aria-label={copy.deleteSr(b.name)} className="inline-flex min-h-tap min-w-tap items-center justify-center gap-1.5 border-2 border-panel-border bg-panel px-3 text-sm font-semibold text-fg hover:bg-night-700" data-delete={b.buildId}>
                       <Trash2 aria-hidden="true" className="size-4" />
                       {copy.DELETE}

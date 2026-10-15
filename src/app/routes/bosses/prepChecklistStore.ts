@@ -9,9 +9,11 @@
  *
  * Entry ids derive from the checklist line's text (FNV-1a 32), so reordering the overlay keeps every
  * check; rewording a line starts that line unchecked (the safe direction).
+ * P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear).
  */
 import { create } from 'zustand'
 import { loadDomain, saveDomain, type StorageBackend } from '../../../storage'
+import { onDomainsChanged } from '../../../storage/events'
 import { EMPTY_CHECKLISTS, withEntry, type ChecklistsData } from '../../../storage/checklists'
 
 export const prepChecklistKey = (bossId: string): string => `boss:${bossId}:prep`
@@ -46,24 +48,27 @@ function hydrate(backend: StorageBackend | null | undefined): Pick<PrepChecklist
 
 /** A prep-checklist store over `backend` (default: localStorage). Tests pass an in-memory backend. */
 export function createPrepChecklistStore(backend?: StorageBackend | null) {
-  return create<PrepChecklistState>()((set, get) => ({
-    ...hydrate(backend),
-    persistError: false,
-    setChecked: (key, entryId, checked) => {
-      // Latest stored payload: the guides store may have written its own keys since we hydrated.
-      const latest = loadDomain('checklists', backend)
-      const base: ChecklistsData = latest.kind === 'loaded' ? latest.data : { byKey: get().byKey }
-      const next = withEntry(base, key, entryId, checked)
-      let persistError = false
-      try {
-        saveDomain('checklists', next, backend)
-      } catch (error) {
-        persistError = true
-        console.warn('[checklists] Change kept for this session only.', error)
-      }
-      set({ byKey: next.byKey, persistError, ...(latest.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}) })
-    },
-  }))
+  return create<PrepChecklistState>()((set, get) => {
+    onDomainsChanged(backend, ['checklists'], () => set({ ...hydrate(backend), persistError: false }))
+    return {
+      ...hydrate(backend),
+      persistError: false,
+      setChecked: (key, entryId, checked) => {
+        // Latest stored payload: the guides store may have written its own keys since we hydrated.
+        const latest = loadDomain('checklists', backend)
+        const base: ChecklistsData = latest.kind === 'loaded' ? latest.data : { byKey: get().byKey }
+        const next = withEntry(base, key, entryId, checked)
+        let persistError = false
+        try {
+          saveDomain('checklists', next, backend)
+        } catch (error) {
+          persistError = true
+          console.warn('[checklists] Change kept for this session only.', error)
+        }
+        set({ byKey: next.byKey, persistError, ...(latest.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}) })
+      },
+    }
+  })
 }
 
 export const usePrepChecklistStore = createPrepChecklistStore()

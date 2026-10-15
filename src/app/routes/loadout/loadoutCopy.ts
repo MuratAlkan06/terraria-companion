@@ -364,6 +364,7 @@ export const BUILDS_DOC_TITLE = 'Saved builds'
 export const BUILDS_TITLE = 'Saved builds'
 export const BUILDS_INTRO = 'Every loadout saved in this browser. Opening one re-scores its items against the current data.'
 export const BUILDS_BACK = 'Back to the builder'
+export const BUILDS_BACKUP = 'Back up or restore your builds'
 export const BUILDS_EMPTY = 'No saved builds in this browser.'
 export const BUILDS_EMPTY_CTA = 'Build my loadout'
 export const buildsCount = (n: number) => (n === 1 ? '1 saved build' : `${n} saved builds`)

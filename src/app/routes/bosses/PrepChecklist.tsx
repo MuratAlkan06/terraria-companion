@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { PixelPanel } from '../../../components/PixelPanel'
+import { QuarantineNotice } from '../../../components/QuarantineNotice'
 import { UnknownValue } from '../../../components/UnknownValue'
 import type { Boss, SpriteIndex } from '../../../data-access/types'
 import { ItemCell, PanelHeading, SourceIconLink } from './BossBits'
@@ -13,6 +14,8 @@ import { prepChecklistKey, usePrepChecklistStore } from './prepChecklistStore'
  * exists). A progress line stays visible at the top of the panel on phones (UX_SPEC §7 "sticky
  * checklist progress"). Unknown checklist → UnknownValue; storage problems are said, not hidden.
  */
+const CHECKLISTS_DOMAIN = ['checklists'] as const
+
 export function PrepChecklist({ boss, itemOf, sprites, titleId }: { boss: Boss; itemOf: (id: number) => ItemInfo; sprites: SpriteIndex | null; titleId: string }) {
   const list = prepEntries(boss)
   const key = prepChecklistKey(boss.id)
@@ -57,11 +60,7 @@ export function PrepChecklist({ boss, itemOf, sprites, titleId }: { boss: Boss; 
               Couldn’t save on this device — your checks are kept for this visit only.
             </p>
           ) : null}
-          {quarantined ? (
-            <p role="status" className="text-sm text-fg-muted">
-              Saved checklist data couldn’t be read and was set aside (not deleted).
-            </p>
-          ) : null}
+          <QuarantineNotice domains={CHECKLISTS_DOMAIN} active={quarantined} message="Saved checklist data couldn’t be read and was set aside (not deleted)." />
           <ul aria-describedby={progressId} className="space-y-2">
             {entries.map((entry) => {
               const inputId = `${key}-${entry.id}`

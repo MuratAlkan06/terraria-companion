@@ -16,11 +16,14 @@
  * - Unreadable payloads are quarantined by the storage module (set aside, never deleted): the store
  *   starts from the default setup and reports `loadStatus: 'quarantined'` (UX_SPEC §5.6). A failed
  *   save keeps the change for this session and sets `persistError` (DATA_SCHEMA_SPEC §4b).
+ * - P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear),
+ *   as on a load (an analysis is restored only for inputs that were analyzed as stored).
  */
 import { create } from 'zustand'
 import { MAX_ACCESSORY_SLOTS } from '../scoring/constants'
 import type { TrackedProgress } from '../scoring/progress'
 import { loadDomain, saveDomain, type StorageBackend } from '../storage'
+import { onDomainsChanged } from '../storage/events'
 import { defaultReadinessSetup, type ReadinessClass, type ReadinessDifficulty, type ReadinessLoadout, type ReadinessSetup } from '../storage/readiness'
 import { useSettingsStore } from './settingsStore'
 import type { Stage } from './stages'
@@ -99,6 +102,7 @@ function hydrate(backend: StorageBackend | null | undefined, defaultStage: Stage
 /** A readiness store over `backend` (default: localStorage). Tests pass an in-memory backend. */
 export function createReadinessStore(backend?: StorageBackend | null, defaultStage: Stage = 'early-prehm') {
   return create<ReadinessState>()((set, get) => {
+    onDomainsChanged(backend, ['readiness'], () => set({ ...hydrate(backend, get().setup.stage), persistError: false }))
     const commit = (setup: ReadinessSetup, snapshot: ReadinessSnapshot | null, what: string) => {
       let persistError = false
       try {

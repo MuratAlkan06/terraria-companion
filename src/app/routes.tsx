@@ -7,7 +7,7 @@
  *
  * Eager: shell + `/` (UX_SPEC §1). Every other section is a lazy chunk (ADR D7).
  */
-import { Backpack, BookOpen, ClipboardList, Columns3, FlaskConical, FolderOpen, House, Package, Pickaxe, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
+import { Backpack, BookOpen, ClipboardList, Columns3, DatabaseBackup, FlaskConical, FolderOpen, House, Package, Pickaxe, Scale, Skull, Star, Swords, type LucideIcon } from 'lucide-react'
 import { lazy, type ComponentType } from 'react'
 import BuildsRedirect from './routes/BuildsRedirect'
 import HomePage from './routes/HomePage'
@@ -60,10 +60,12 @@ export interface AppRoute {
 
 export const APP_ROUTES: readonly AppRoute[] = [
   {
+    // AMENDMENTS-016 B123(h): Home leaves the desktop header's links — the logo links home (UX_SPEC §2) — so
+    // the header's inline links match the tab bar's sections: Weapons · Lab · Bosses.
     id: 'home',
     path: '/',
     Component: HomePage,
-    nav: { label: 'Home', icon: House, surfaces: ['header', 'tabbar'], order: 0 },
+    nav: { label: 'Home', icon: House, surfaces: ['tabbar'], order: 0 },
   },
   {
     id: 'weapons',
@@ -91,8 +93,9 @@ export const APP_ROUTES: readonly AppRoute[] = [
   {
     // P4-S2: the 4-step builder; `?step=1..4` + the draft's inputs and swaps, `?build=:id` opens a saved build
     // (UX_SPEC §1). Entry points: the homepage hero's "Build My Loadout" (heroActions), the phone "More" sheet
-    // (UX_SPEC §2: first in its list) and — B96b/B99b precedent — the header's desktop "More" menu, after Lab
-    // (UX_SPEC §2 header order: Weapons · Lab · Loadout · Bosses).
+    // (UX_SPEC §2: first in its list) and — B96b/B99b precedent — the header's desktop "More" menu, first in it:
+    // AMENDMENTS-016 B123(h) puts Bosses inline after Lab, so Loadout sorts after Bosses (and before Compare —
+    // the More sheet's order is unchanged).
     id: 'loadout',
     path: '/loadout',
     Component: lazy(() => chunkLoadout().then((m) => ({ default: m.LoadoutPage }))),
@@ -100,7 +103,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       label: 'Loadout',
       icon: Backpack,
       surfaces: ['header', 'more'],
-      order: 25,
+      order: 32,
       description: 'Stage, class and goal in; a scored loadout out',
     },
   },
@@ -224,16 +227,17 @@ export const APP_ROUTES: readonly AppRoute[] = [
   },
   {
     // AMENDMENTS-016 B111 R5 / UX_SPEC §2: the More sheet's "Builds" entry ("… Guides, Builds, Favorites, About"),
-    // landing on the builder's saved-builds list (a redirect — see BuildsRedirect).
+    // landing on the builder's saved-builds list (a redirect — see BuildsRedirect). B117/B118 (B96b/B99b parity):
+    // the header's desktop "More" menu lists it too, last (after Guides — the sheet's order).
     id: 'builds',
     path: '/builds',
     Component: BuildsRedirect,
     nav: {
       label: 'Builds',
       icon: FolderOpen,
-      surfaces: ['more'],
+      surfaces: ['header', 'more'],
       order: 70,
-      description: 'Your saved loadouts: open, compare or check readiness',
+      description: 'Your saved loadouts: open, compare, check readiness, export or import',
     },
   },
   {
@@ -247,6 +251,21 @@ export const APP_ROUTES: readonly AppRoute[] = [
       surfaces: ['more', 'footer'],
       order: 800,
       description: 'The weapons and bosses you starred',
+    },
+  },
+  {
+    // P7-S2: the saved-data page — back up (one JSON file), restore from a backup (preview, then merge / replace /
+    // skip per part), what each part holds and its size, clear one part, and every set-aside copy with its actions.
+    // Entry points: the phone "More" sheet and the footer (beside Favorites, the other this-browser-only page).
+    id: 'data',
+    path: '/settings/data',
+    Component: lazy(() => import('./routes/settings/DataPage')),
+    nav: {
+      label: 'Your data',
+      icon: DatabaseBackup,
+      surfaces: ['more', 'footer'],
+      order: 850,
+      description: 'Back up, restore or clear what this browser saved',
     },
   },
   {

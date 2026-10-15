@@ -322,6 +322,7 @@ describe('Step 4 — Compare & Save (PRD P4-S4 AC1/AC2; UX_SPEC §3.5 Step4)', (
     weaponIds: [],
     openHref: (b) => `/loadout?build=${b.buildId}`,
     onSave: () => {},
+    onExport: () => {},
     onDelete: () => {},
     compare: { page, draft: { result: draft.result, pins, eff: draft.eff }, saved: savedRun, vsMissing: false, onCompare: () => {} },
     surprise: { fixedPicks: Object.keys(pins).length, drawn: null, seeHref: '/loadout?step=2', onSurprise: () => {} },
@@ -482,7 +483,7 @@ describe('the saved-builds view (PRD P4-S4 AC4; UX_SPEC §1 /builds as `?view=bu
   const a = saveOf({ step: 2, stage: 'early-hm', cls: 'ranged', difficulty: 'expert', goal: 'boss', boss: 'plantera', owned: [], pins: {} }, 'b-test-0401', 'Ranged for Plantera')
   const b = { ...saveOf({ step: 2, stage: 'early-prehm', cls: 'melee', owned: [], pins: {} }, 'b-test-0402', 'Starter melee'), updatedAt: '2026-10-15T09:00:00.000Z' }
   const view = (builds: SavedBuild[]) =>
-    wrap(createElement(BuildsView, { page, builds, loadStatus: 'loaded', persistError: false, headingId: 'h', backHref: '/loadout', openHref: (x) => `/loadout?build=${x.buildId}`, onDelete: () => {} }))
+    wrap(createElement(BuildsView, { page, builds, loadStatus: 'loaded', persistError: false, headingId: 'h', backHref: '/loadout', openHref: (x) => `/loadout?build=${x.buildId}`, onDelete: () => {}, onExport: () => {}, onImport: (r) => ({ ...r, ...stamp, buildId: 'b-test-new1' }) }))
 
   it('newest first, each with its inputs, target boss, an equip preview of the slots as saved, Open, Analyze and Delete', () => {
     const html = view([a, b])
@@ -506,7 +507,7 @@ describe('the saved-builds view (PRD P4-S4 AC4; UX_SPEC §1 /builds as `?view=bu
     expect(html).toContain('data-builds-empty=""')
     expect(text(html)).toContain(copy.BUILDS_EMPTY)
     expect(html).toContain('href="/loadout"')
-    const q = wrap(createElement(BuildsView, { page, builds: [], loadStatus: 'quarantined', persistError: true, headingId: 'h', backHref: '/loadout', openHref: () => '', onDelete: () => {} }))
+    const q = wrap(createElement(BuildsView, { page, builds: [], loadStatus: 'quarantined', persistError: true, headingId: 'h', backHref: '/loadout', openHref: () => '', onDelete: () => {}, onExport: () => {}, onImport: (r) => ({ ...r, ...stamp, buildId: 'b-test-new1' }) }))
     expect(text(q)).toContain(copy.QUARANTINE_NOTICE)
     expect(text(q)).toContain(copy.PERSIST_ERROR_NOTICE)
   })
@@ -534,6 +535,7 @@ describe('copy audit over the rendered P4-S3/S4 surfaces (UX_SPEC §10.3)', () =
           weaponIds: [],
           openHref: () => '',
           onSave: () => {},
+          onExport: () => {},
           onDelete: () => {},
           compare: { page, draft: { result, pins: state.pins, eff }, saved: runSavedBuild(other, page.engine, NONE), vsMissing: false, onCompare: () => {} },
           surprise: { fixedPicks: 0, drawn: null, seeHref: '', onSurprise: () => {} },

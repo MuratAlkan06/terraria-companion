@@ -11,9 +11,13 @@
  * Every write saves immediately (no save button). If the browser can't save, the change is kept for
  * this session and `persistError` says so (DATA_SCHEMA_SPEC §4b). Other features read tracking from
  * this one store (PRD P5-S4 AC4), through src/scoring/progress.ts for gate satisfaction.
+ *
+ * P7-S2: when the domain changes outside the store (an import, a restore, a clear) it re-reads storage —
+ * as on a load, so the map treats the new marks as already shown (no cascade replay for imported data).
  */
 import { create } from 'zustand'
 import { loadDomain, saveDomain, type StorageBackend } from '../storage'
+import { onDomainsChanged } from '../storage/events'
 import { EMPTY_PROGRESS, isNodeSlug, type NodeState, type ProgressData, type WorldEvil } from '../storage/progress'
 
 type LoadStatus = 'loaded' | 'empty' | 'quarantined'
@@ -50,6 +54,10 @@ function hydrate(backend: StorageBackend | null | undefined): Pick<ProgressState
 /** A progress store over `backend` (default: localStorage). Tests pass an in-memory backend. */
 export function createProgressStore(backend?: StorageBackend | null) {
   return create<ProgressState>()((set, get) => {
+    onDomainsChanged(backend, ['progress'], () => {
+      const fresh = hydrate(backend)
+      set({ ...fresh, persistError: false, shownNodeStates: fresh.progress.nodeStates })
+    })
     /** Saves and applies `progress`; on a failed save keeps it in memory and flags it. */
     const commit = (progress: ProgressData, what: string): boolean => {
       let persistError = false

@@ -15,9 +15,11 @@
  * (DATA_SCHEMA_SPEC §4b: visible warning, state kept in memory). The first failure after a working
  * save (or at the start) bumps `persistWarnings`: the shell's FavoritesSaveNotice shows ONE notice
  * per failure run, while every star keeps its own warning glyph + tooltip.
+ * P7-S2: re-reads storage when the domain changes outside the store (an import, a restore, a clear).
  */
 import { create } from 'zustand'
 import { loadDomain, saveDomain, type StorageBackend } from '../storage'
+import { onDomainsChanged } from '../storage/events'
 import { EMPTY_FAVORITES, uniqueRefs, withFavorite, type FavoritesData } from '../storage/favorites'
 
 type LoadStatus = 'loaded' | 'empty' | 'quarantined'
@@ -43,34 +45,37 @@ function hydrate(backend: StorageBackend | null | undefined): Pick<FavoritesStat
 
 /** A favorites store over `backend` (default: localStorage). Tests pass an in-memory backend. */
 export function createFavoritesStore(backend?: StorageBackend | null) {
-  return create<FavoritesState>()((set, get) => ({
-    ...hydrate(backend),
-    persistError: false,
-    persistWarnings: 0,
-    setFavorite: (ref, favorited) => {
-      const { refs, persistError: unsaved, persistWarnings } = get()
-      // Latest stored list (another tab may have saved since we hydrated) — unless our last save
-      // failed, in which case storage is behind and memory is the truth.
-      const latest = unsaved ? undefined : loadDomain('favorites', backend)
-      const base: FavoritesData = latest?.kind === 'loaded' ? latest.data : { refs: [...refs] }
-      const next = withFavorite(base, ref, favorited)
-      let saved = true
-      try {
-        saveDomain('favorites', next, backend)
-      } catch (error) {
-        saved = false
-        console.warn('[favorites] Change kept for this session only.', error)
-      }
-      // A payload that turned unreadable since startup was just set aside: say so, like at load.
-      set({
-        refs: next.refs,
-        persistError: !saved,
-        ...(!saved && !unsaved ? { persistWarnings: persistWarnings + 1 } : {}),
-        ...(latest?.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}),
-      })
-      return saved
-    },
-  }))
+  return create<FavoritesState>()((set, get) => {
+    onDomainsChanged(backend, ['favorites'], () => set({ ...hydrate(backend), persistError: false }))
+    return {
+      ...hydrate(backend),
+      persistError: false,
+      persistWarnings: 0,
+      setFavorite: (ref, favorited) => {
+        const { refs, persistError: unsaved, persistWarnings } = get()
+        // Latest stored list (another tab may have saved since we hydrated) — unless our last save
+        // failed, in which case storage is behind and memory is the truth.
+        const latest = unsaved ? undefined : loadDomain('favorites', backend)
+        const base: FavoritesData = latest?.kind === 'loaded' ? latest.data : { refs: [...refs] }
+        const next = withFavorite(base, ref, favorited)
+        let saved = true
+        try {
+          saveDomain('favorites', next, backend)
+        } catch (error) {
+          saved = false
+          console.warn('[favorites] Change kept for this session only.', error)
+        }
+        // A payload that turned unreadable since startup was just set aside: say so, like at load.
+        set({
+          refs: next.refs,
+          persistError: !saved,
+          ...(!saved && !unsaved ? { persistWarnings: persistWarnings + 1 } : {}),
+          ...(latest?.kind === 'quarantined' ? { loadStatus: 'quarantined' as const } : {}),
+        })
+        return saved
+      },
+    }
+  })
 }
 
 export const useFavoritesStore = createFavoritesStore()
