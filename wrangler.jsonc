@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Assets-only deploy of the locally built dist/ (sprites never transit the repo).
+  // Deploy: npm run build && npx wrangler deploy   (see docs/RELEASE.md §6)
+  "name": "terraria-companion",
+  "compatibility_date": "2026-10-12",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
