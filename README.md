@@ -17,6 +17,7 @@ npm run dev      # development server
 npm test         # test suite (Vitest)
 npm run build    # production build into dist/ — a static site
 npm run preview  # serve the built dist/ locally
+npm run build && npx wrangler deploy  # publish to Cloudflare Workers (needs wrangler login; see wrangler.jsonc)
 ```
 
 The game data in `src/data/` is committed, so the site runs without the data pipeline. The sprite images are

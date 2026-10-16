@@ -22,3 +22,8 @@ npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .playwright-mcp/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
