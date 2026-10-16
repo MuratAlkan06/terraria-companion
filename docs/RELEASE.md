@@ -257,7 +257,13 @@ None. Every B131(e) item is delivered (§7), including the whole pre-B85 list.
 3. **Remote and CI** — **resolved.** The repository is public at https://github.com/MuratAlkan06/terraria-companion.
    `.github/workflows/ci.yml` (landing with the deploy-prep commit) runs lint, typecheck, the test suite and the
    build on Node 22 for pushes to `main` and for pull requests.
-4. **Deployment** — **open; the only remaining item:** static `dist/` to Cloudflare Pages (GitHub Pages as the
+4. **Deployment** — **DEPLOYED (2026-10-16):** live at https://terraria-companion.terraria-companion.workers.dev
+   (Cloudflare Workers static assets; assets-only `wrangler.jsonc`, SPA fallback via `not_found_handling`; deploy
+   command `npm run build && npx wrangler deploy`). Live smoke review APPROVED (all 8 items; console clean; 85 ms
+   TTFB). Ops notes (queued polish, B149): (a) SPA fallback means asset paths never return a real 404 — a
+   monitoring blind spot; (b) `_headers` files are NOT honored by Workers static assets (verified empirically) —
+   long-lived asset caching needs a different mechanism; (c) preview URLs are on by default. Original plan line:
+   static `dist/` to Cloudflare Pages (GitHub Pages as the
    alternate, ADR D8); see README "Before any public deployment".
 
 Nothing in the P6 slice awaits the owner: the armor and accessory pages are delivered in 41bbb32 (§2, §5), not cut.
